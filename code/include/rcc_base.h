@@ -1,0 +1,118 @@
+//
+// Created by RestRegular on 2025/6/28.
+//
+
+#ifndef RCC_RCC_BASE_H
+#define RCC_RCC_BASE_H
+
+#include <iostream>
+#include <stack>
+#include <unordered_set>
+#include <unordered_map>
+#include <vector>
+#include <memory>
+#include "lib/rcc_utils.h"
+
+#define RCC_UNDEFINED_CONST "RCC-UNDEFINED"
+#define RCC_UNKNOWN_CONST "RCC-UNKNOWN"
+#define RCC_NULL_CONST "RCC-NULL"
+
+namespace base {
+    // 自定义类型
+    typedef std::stack<std::string> StringStack;
+    typedef std::vector<std::string> StringVector;
+    typedef std::unordered_set<std::string> StringSet;
+    typedef std::unordered_map<std::string, std::string> StringMap;
+
+    // 枚举类声明
+    enum class ErrorType;
+
+    // 类声明
+    class RCCError;
+    class RCCSyntaxError;
+
+    // 函数声明
+    bool containsKeyword(const std::string &str);
+    std::string getErrorTypeName(const ErrorType &error_type);
+
+    // 全局变量声明
+    extern StringStack PROGRAM_WORKING_DIRECTORY_STACK; // Program working directory
+    extern const StringSet KEYWORDS;
+    extern const StringSet OPERATORS;
+    extern const StringSet ARITHMETIC_OPERATORS;
+    extern const StringSet ASSIGN_OPERATORS;
+    extern const StringSet ENHANCED_ASSIGN_OPERATORS;
+    extern const StringMap ENH_MAT_ORD_OPTORS;
+    extern const StringSet COMPARISON_OPERATOR;
+    extern const StringSet RELATIONAL_OPERATOR;
+    extern const StringSet OTHER_OPERATOR;
+    extern const StringSet COMMENT_OPERATOR;
+    extern const std::unordered_map<std::string, std::shared_ptr<StringSet>> CLASSIFY_OPERATORS;
+    extern const std::vector<std::shared_ptr<StringSet>> OPERATOR_LIST;
+    extern const StringSet DELIMITERS;
+    extern const StringSet RANGERS;
+    extern const StringMap RANGER_MATCH;
+    extern const StringSet CONSTANTS;
+    extern const StringSet TYPES;
+    extern const StringSet DESCRIBE_LABELS;
+    extern const std::string NULL_VALUE;
+    extern const std::unordered_map<std::string, int> OPERATOR_PRECEDENCE;
+    extern const StringVector OPERATOR_PRECEDENCE_LIST;
+    extern const StringSet GROUP_SIGNS;
+
+    // 类定义
+    class RCCError: public std::exception, public utils::Object {
+        ErrorType error_type;
+        std::string error_type_name;
+        std::string error_position;
+        std::string error_line;
+        StringVector error_info;
+        StringVector repair_tips;
+        std::string trace_info;
+        std::string space = std::string(4, ' ');
+    public:
+        [[nodiscard]] std::string toString() const override;
+
+        [[nodiscard]] std::string getErrorTitle() const;
+
+        [[nodiscard]] std::string getErrorInfo() const;
+
+        void addTraceInfo(const std::string &traceInfo);
+
+    protected:
+        RCCError(ErrorType error_type, std::string error_position, std::string error_line,
+                 StringVector error_info, StringVector repair_tips);
+
+        RCCError(std::string error_type, std::string error_position, std::string error_line,
+                 StringVector error_info, StringVector repair_tips);
+
+    };
+
+    class RCCSyntaxError: public RCCError {
+        RCCSyntaxError(std::string error_position, std::string error_line,
+                       StringVector error_info, StringVector repair_tips);
+    public:
+        static RCCSyntaxError illegalEscapeCharError(const std::string &error_position, const std::string &error_line, const char &c);
+        static RCCSyntaxError illegalCharacterError(const std::string &error_position, const std::string &error_line, const char &c);
+        static RCCSyntaxError undefinedExpressionError(const std::string &error_position, const std::string &error_line);
+        static RCCSyntaxError unclosedQuoteError(const std::string &error_position, const std::string &error_line, const char &quote_type);
+        static RCCSyntaxError invalidIdentifierError(const std::string &error_position, const std::string &error_line, const std::string &error_identifier);
+        static RCCSyntaxError illegalOperatorError(const std::string &error_position, const std::string &error_line, const std::string &illegal_operator, const std::string &expected_operator);
+    };
+
+    class RCCParserError: public RCCError {
+        RCCParserError(std::string error_position, std::string error_line,
+                       StringVector error_info, StringVector repair_tips);
+    public:
+        static RCCParserError unexpectedTokenError(const std::string &error_position, const std::string &error_line, const std::string &unexpected_token);
+    };
+
+    // 枚举类定义
+    enum class ErrorType {
+        SYNTAX_ERROR,
+        PARSER_ERROR,
+    };
+}
+
+
+#endif //RCC_RCC_BASE_H
