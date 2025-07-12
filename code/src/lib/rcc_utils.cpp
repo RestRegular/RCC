@@ -34,6 +34,14 @@ namespace utils {
         return "Object{id=" + std::to_string(id) + "}";
     }
 
+    std::string Object::formatString(size_t indent, size_t level) const {
+        return {};
+    }
+
+    std::string Object::toJsonString() const {
+        return "\"" + StringManager::escape(toString()) + "\"";
+    }
+
     const auto &program_start_time = std::chrono::high_resolution_clock::now();
 
     // 序列化 ArgType 到二进制文件
@@ -221,10 +229,16 @@ namespace utils {
 
     // 将字符串转换为char
     char stringToChar(const std::string &str) {
-        if (str.length() != 1) {
-            throw std::invalid_argument("String must be of length 1: " + str);
+        if (str.size() == 1) {
+            return str[0];
         }
-        return str[0];
+        if (str.size() == 3 && str[0] == '\'' && str[2] == '\'') {
+            return str[1];
+        }
+        if (str.size() == 4 && str[0] == '\'' && str[1] == '\\' && str[3] == '\'') {
+            return StringManager::getInstance().escapeChar(str[2]);
+        }
+        throw std::invalid_argument("Invalid character string: " + str);
     }
 
     // 将字符串转换为bool
@@ -310,6 +324,15 @@ namespace utils {
         '\\', '\'', '"', 't', 'n'
     };
 
+    std::unordered_set<char> StringManager::rawEscapeChars = {
+        '\\', '\'', '"', '\t', '\n'
+    };
+
+    std::unordered_set<char> StringManager::spaceChars = {
+        ' ', '\t', '\n', '\r'
+    };
+
+
     StringManager &StringManager::getInstance() {
         static StringManager instance;
         return instance;
@@ -337,7 +360,7 @@ namespace utils {
         if (it != escapeHandlers.end()) {
             return it->second();
         }
-        std::cerr << "[RVM Warning]: Unknown escape sequence '\\" << escapeChar << "'" << std::endl;
+        std::cerr << "[RCC Warning]: Unknown escape sequence '\\" << escapeChar << "'" << std::endl;
         return {1, escapeChar};
     }
 
@@ -424,6 +447,22 @@ namespace utils {
 
     inline bool StringManager::isStringFormat(const std::string &str) {
         return str.size() >= 2 && str.front() == '"' && str.back() == '"';
+    }
+
+    bool StringManager::isStrictValidStringFormat(const std::string &str) {
+        if (!isStringFormat(str)) return false;
+        const auto &strContent = str.substr(1, str.size() - 2);
+        for (size_t i = 0; i < strContent.size(); ++i) {
+            const auto &c = strContent[i];
+            if (rawEscapeChars.contains(c)) {
+                if (c == '\\') {
+                    i ++;
+                    continue;
+                }
+                return false;
+            }
+        }
+        return true;
     }
 
     bool StringManager::isCharFormat(const std::string &str) {
@@ -665,10 +704,20 @@ namespace utils {
         return escapeChars.contains(c);
     }
 
-    std::string StringManager::escapeChar(const char &c) {
+    bool StringManager::isSpace(const char &c) {
+        return spaceChars.contains(c);
+    }
+
+    std::string StringManager::escapeCharToStr(const char &c) {
         return needEscape(c) ?
             getInstance().escapeHandlers[c]() :
             std::string {1, c};
+    }
+
+    char StringManager::escapeChar(const char &c) {
+        return needEscape(c) ?
+            escapeCharToStr(c)[0] :
+            c;
     }
 
     // Pos具体实现
@@ -741,6 +790,22 @@ namespace utils {
         }
     }
 
+    void Pos::setLine(size_t line) {
+        this->line = line;
+    }
+
+    void Pos::setColumn(size_t column) {
+        this->column = column;
+    }
+
+    void Pos::setOffset(size_t offset) {
+        this->offset = offset;
+    }
+
+    void Pos::setFilepath(const std::string &filepath) {
+        this->filepath = filepath;
+    }
+
     std::string Pos::briefString() const {
         return getFileFromPath(filepath) + ":" + std::to_string(line) + ":" + std::to_string(column);
     }
@@ -749,21 +814,32 @@ namespace utils {
         return "Pos{line=" + std::to_string(line) + ", column=" + std::to_string(column) + ", offset=" + std::to_string(offset) + ", file=" + getFileFromPath(filepath) + "}";
     }
 
+    std::string Pos::formatString(size_t indent, size_t level) const {
+        return spaceString(indent * level) + "Pos{\n" +
+        spaceString(indent * (level + 1)) + "line=" + std::to_string(line) + ",\n" +
+        spaceString(indent * (level + 1)) + "column=" + std::to_string(column) + ",\n" +
+        spaceString(indent * (level + 1)) + "offset=" + std::to_string(offset) + ",\n" +
+        spaceString(indent * (level + 1)) + "file=" + getFileFromPath(filepath) + "\n" +
+        spaceString(indent * level) + "}";
+    }
+
     ArgType getArgType(const std::string &str) {
         if (str.empty()) {
             return ArgType::unknown;
-        } else if (isStringFormat(str)) {
+        }
+        if (isStringFormat(str)) {
             return ArgType::string;
-        } else if (isNumber(str)) {
+        }
+        if (isNumber(str)) {
             return ArgType::number;
-        } else if (base::containsKeyword(str)) {
+        }
+        if (base::containsKeyword(str)) {
             return ArgType::keyword;
         }
         if (isValidIdentifier(str)){
             return ArgType::identifier;
-        } else {
-            return ArgType::unknown;
         }
+        return ArgType::unknown;
     }
 
     std::string getArgTypeName(const ArgType &argType) {
@@ -1497,4 +1573,37 @@ namespace utils {
 
     ProgArgParser::DependentRule::DependentRule(std::string opt1, std::string opt2, ProgArgParser::CheckDir direction)
     : opt1(std::move(opt1)), opt2(std::move(opt2)), direction(direction){}
+
+    RangerPos::RangerPos(size_t startLine, size_t startColumn, size_t endLine, size_t endColumn, std::string filepath)
+    : Pos(startLine, startColumn, -1, filepath), endLine(endLine), endColumn(endColumn){}
+
+    std::string RangerPos::toString() const {
+        return filepath + ":" + std::to_string(line) + ":" + (column > 0 ? std::to_string(column) : "1") + ", line " +
+                std::to_string(line) + (column > 1 ? ", column " + std::to_string(column) : "") + " to " +
+                "line " + std::to_string(endLine) + (endColumn > 1 ? ", column " + std::to_string(endColumn) : "");
+    }
+
+    std::string RangerPos::briefString() const {
+        return getFileFromPath(filepath) + ":" + std::to_string(line) + ":" + std::to_string(column) + " ~ " + std::to_string(endLine) + ":" + std::to_string(endColumn);
+    }
+
+    std::string RangerPos::professionalString() const {
+        return "Pos{startLine=" + std::to_string(line) + ", startColumn=" + std::to_string(column) + ", endLine=" + std::to_string(endLine) + ", endColumn=" + std::to_string(endColumn) + ", file=" + getFileFromPath(filepath) + "}";
+    }
+
+    size_t RangerPos::getEndLine() const {
+        return endLine;
+    }
+
+    size_t RangerPos::getEndColumn() const {
+        return endColumn;
+    }
+
+    std::ostream &operator<<(std::ostream &out, const RangerPos &rangerPos) {
+        return out << "line: " << rangerPos.getLine() << ", column: " << rangerPos.getColumn() << " to " << "line: " << rangerPos.getEndLine() << ", column: " << rangerPos.getEndColumn();
+    }
+
+    std::string spaceString(size_t n) {
+        return std::string(n, ' ');
+    }
 } // utils

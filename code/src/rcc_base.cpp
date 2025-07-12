@@ -2,6 +2,8 @@
 // Created by RestRegular on 2025/6/28.
 //
 
+#include <utility>
+
 #include "../include/rcc_base.h"
 
 namespace base {
@@ -133,22 +135,59 @@ namespace base {
 
     std::string getErrorTypeName(const ErrorType &error_type) {
         switch (error_type) {
-            case ErrorType::SYNTAX_ERROR:
-                return "SyntaxError";
-            default:
-                return "UndefinedError";
+            case ErrorType::SYNTAX_ERROR: return "SyntaxError";
+            case ErrorType::PARSER_ERROR: return "ParserError";
+            default: return "UndefinedError";
         }
     }
 
     RCCError::RCCError(ErrorType error_type, std::string error_position, std::string error_line,
                        std::vector<std::string> error_info, std::vector<std::string> repair_tips)
-                       : error_type(error_type), error_type_name(getErrorTypeName(error_type)), error_position(error_position),
-                         error_line(error_line), error_info(std::move(error_info)), repair_tips(std::move(repair_tips)){}
+                       : error_type(error_type), error_type_name(getErrorTypeName(error_type)), error_position(std::move(error_position)),
+                         error_line(std::move(error_line)), error_info(std::move(error_info)), repair_tips(std::move(repair_tips)){}
 
-    RCCError::RCCError(std::string error_type, std::string error_position, std::string error_line,
+    [[maybe_unused]] RCCError::RCCError(std::string error_type, std::string error_position, std::string error_line,
                        std::vector<std::string> error_info, std::vector<std::string> repair_tips)
-                       : error_type_name(error_type), error_position(error_position),
-                         error_line(error_line), error_info(std::move(error_info)), repair_tips(std::move(repair_tips)){}
+                       : error_type(), error_type_name(std::move(error_type)), error_position(std::move(error_position)),
+                         error_line(std::move(error_line)), error_info(std::move(error_info)), repair_tips(std::move(repair_tips)){}
+
+    std::string RCCError::getErrorLine(const size_t &spaceSize) const {
+        std::ostringstream  oss;
+        if (!error_position.empty() && error_position != RCC_UNKNOWN_CONST) {
+            oss << std::string(spaceSize, ' ') << "[ Line ] : "
+                << utils::StringManager::wrapText(error_position, 80, spaceSize + 10, "", "~ ") << "\n";
+            if (!error_line.empty() && error_line != RCC_UNKNOWN_CONST) {
+                oss << std::string(spaceSize + 9, ' ') << "| "
+                        << utils::StringManager::wrapText(error_line, 80, spaceSize + 9, "", "| ~ ") << "\n";
+            }
+            oss << "\n";
+        }
+        return oss.str();
+    }
+
+    std::string RCCError::getErrorPosition(const size_t &spaceSize) const {
+        if (!error_position.empty()) {
+            return std::string(spaceSize, ' ') + "[ Pos  ] : " +
+            utils::StringManager::wrapText(error_position, 80, spaceSize + 10, "", "~ ") + "\n\n";
+        }
+        return {};
+    }
+
+    std::string RCCError::getErrorTip(const std::size_t &spaceSize) const {
+        if (!repair_tips.empty()) {
+            std::stringstream ss;
+            ss << utils::spaceString(spaceSize) << "[ Tips ] : ";
+            for (size_t i = 0; i < repair_tips.size(); ++i) {
+                ss << utils::StringManager::wrapText(repair_tips[i], 80, spaceSize + 10, "", "~ ");
+                if (i < repair_tips.size() - 1) {
+                    ss << "\n" << std::string(spaceSize + 9, ' ') << "- ";
+                }
+            }
+            ss << "\n";
+            return ss.str();
+        }
+        return {};
+    }
 
     std::string RCCError::toString() const {
         const auto &space_size = space.size();
@@ -160,38 +199,28 @@ namespace base {
             oss << " [ Trace Back ]\n" << trace_info << "\n";
         }
 
-        if (!error_position.empty() && error_position != RCC_UNKNOWN_CONST) {
-            oss << space << "[ Line ] : "
-                << utils::StringManager::wrapText(error_position, 80, space_size + 10, "", "~ ") << "\n"
-                << std::string(space_size + 9, ' ') << "| "
-                << utils::StringManager::wrapText(error_line, 80, space_size + 9, "", "| ~ ") << "\n\n";
+        if (!error_line.empty()) {
+            oss << getErrorLine(space_size);
         }
 
         if (!error_info.empty()) {
-            oss << getErrorInfo();
+            oss << getErrorInfo(space_size);
         }
 
         if (!repair_tips.empty()) {
-            oss << space << "[ Tips ] : ";
-            for (size_t i = 0; i < repair_tips.size(); ++i) {
-                oss << utils::StringManager::wrapText(repair_tips[i], 80, space_size + 10, "", "~ ");
-                if (i < repair_tips.size() - 1) {
-                    oss << "\n" << std::string(space_size + 9, ' ') << "- ";
-                }
-            }
-            oss << "\n";
+            oss << getErrorTip(space_size);
         }
 
         return oss.str();
     }
 
-    std::string RCCError::getErrorInfo() const {
+    std::string RCCError::getErrorInfo(const size_t &spaceSize) const {
         std::ostringstream oss;
-        oss << space << "[ Info ] : ";
+        oss << std::string(spaceSize, ' ') << "[ Info ] : ";
         for (size_t i = 0; i < error_info.size(); ++i) {
-            oss << utils::StringManager::wrapText(error_info[i], 80, space.size() + 10, "", "~ ");
+            oss << utils::StringManager::wrapText(error_info[i], 80, spaceSize + 10, "", "~ ");
             if (i < error_info.size() - 1) {
-                oss << "\n" << std::string(space.size() + 9, ' ') << "- ";
+                oss << "\n" << std::string(spaceSize + 9, ' ') << "- ";
             }
         }
         oss << "\n\n";
@@ -209,8 +238,12 @@ namespace base {
         this->trace_info += traceInfo;
     }
 
+    std::string RCCError::briefString() const {
+        return getErrorTitle() + getErrorPosition(4) + getErrorInfo(4) + getErrorTip(4);
+    }
+
     RCCSyntaxError::RCCSyntaxError(std::string error_position, std::string error_line, StringVector error_info,StringVector repair_tips)
-    : RCCError(ErrorType::SYNTAX_ERROR, error_position, error_line, error_info, repair_tips) {}
+    : RCCError(ErrorType::SYNTAX_ERROR, std::move(error_position), std::move(error_line), std::move(error_info), std::move(repair_tips)) {}
 
     RCCSyntaxError
     RCCSyntaxError::illegalEscapeCharError(const std::string &error_position, const std::string &error_line,
@@ -242,11 +275,11 @@ namespace base {
                                "documentation at the https://github.com/RestRegular/Rio."});
     }
 
-    RCCSyntaxError RCCSyntaxError::unclosedQuoteError(const std::string &error_position, const std::string &error_line,
-                                                      const char &quote_type) {
+    RCCSyntaxError RCCSyntaxError::unclosedQuoteError(const std::string &error_position, const std::string &unclosed_quote_sign_pos,
+                                                      const std::string &error_line, const char &quote_type) {
         return RCCSyntaxError(error_position, error_line,
                               {"This error is caused by the use of unclosed quotation marks.",
-                               "Unclosed quote sign: " + std::string(1, quote_type)},
+                               "Unclosed quote sign: '" + std::string(1, quote_type) + "' at " + unclosed_quote_sign_pos},
                               {"Please check if there is a missing corresponding quotation mark somewhere "
                                "in the code."});
     }
@@ -272,18 +305,44 @@ namespace base {
     }
 
     RCCParserError::RCCParserError(std::string error_position, std::string error_line,
-                                   StringVector error_info, StringVector repair_tips)
+                                   StringVector error_info)
                                    : RCCError(ErrorType::PARSER_ERROR,
                                               std::move(error_position), std::move(error_line),
-                                              std::move(error_info), std::move(repair_tips)){}
+                                              std::move(error_info), {}){}
 
     RCCParserError
-    RCCParserError::unexpectedTokenError(const std::string &error_position, const std::string &error_line,
-                                         const std::string &unexpected_token) {
+    RCCParserError::unexpectedTokenTypeError(const std::string &error_position, const std::string &error_line,
+                                             const std::string &unexpected_token, const std::string &expected_token_type) {
         return RCCParserError(error_position, error_line,
                               {"This error occurred because an unexpected token appeared, "
-                               "causing the parser to fail to recognize it correctly.",
-                               "Unexpected token: " + unexpected_token},
-                              {"Please check the code for errors, or contact the developer for help."});
+                               "causing the analyzer to fail to recognize it correctly.",
+                               "Unexpected token: " + unexpected_token,
+                               "Expected token type: " + expected_token_type});
+    }
+
+    RCCParserError
+    RCCParserError::expressionBuilderNotFoundError(const std::string &error_position, const std::string &fixName,
+                                                   const std::string &errorType) {
+        return RCCParserError(error_position, RCC_UNKNOWN_CONST,
+                              {"This error is caused by the failure to find the " + fixName + " expression construction "
+                               "function for the corresponding token type.",
+                               "Error token type: " + errorType});
+    }
+
+    RCCParserError
+    RCCParserError::unclosedExpressionError(const std::string &error_position, const std::string &expressionBeginToken,
+                                            const std::string &errorToken, const std::string &expectedTokenType) {
+        return RCCParserError(error_position, RCC_UNKNOWN_CONST,
+                              {"This error is caused by an unclosed expression.",
+                               "Expression begin token: " + expressionBeginToken,
+                               "Expression end token: " + errorToken,
+                               "Expected end token type: " + expectedTokenType});
+    }
+
+    RCCParserError RCCParserError::syntaxError(const std::string &error_position, const std::string &syntaxErrorMsg, const std::string &errorDetailMsg) {
+        return RCCParserError(error_position, RCC_UNKNOWN_CONST,
+                              {"This error is caused by a syntax error.",
+                              "Syntax error: " + syntaxErrorMsg,
+                              "Details: " + errorDetailMsg});
     }
 }

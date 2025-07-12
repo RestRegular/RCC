@@ -1,0 +1,161 @@
+//
+// Created by RestRegular on 2025/6/29.
+//
+
+#ifndef RCC_RCC_AST_H
+#define RCC_RCC_AST_H
+
+#include "../rcc_core.h"
+
+namespace ast {
+    // 枚举类声明
+    enum class NodeType;
+
+    // 类声明
+    // --- 工具类 ---
+
+    // --- 访问器 ---
+    class Visitor;
+    class PrintVisitor;
+    class JsonVisitor;
+    // --- 节点类 ---
+    class Node;
+    class ExpressionNode;
+    class StatementNode;
+    class ExpressionStatementNode;
+    class PrefixExpressionNode;
+    class LiteralNode;
+    class StringLiteralNode;
+    class NumberLiteralNode;
+    class IntegerLiteralNode;
+    class FloatLiteralNode;
+    class BooleanLiteralNode;
+    class CharacterLiteralNode;
+    class PairExpressionNode;
+    class DictionaryExpressionNode;
+    class ListExpressionNode;
+    class RangerNode;
+    class ParenRangerNode;
+    class BlockRangerNode;
+    class IdentifierNode;
+    class LabelNode;
+    class InfixExpressionNode;
+    class UnaryExpressionNode;
+    class PostfixExpressionNode;
+    class BracketExpressionNode;
+    class IndexExpressionNode;
+    class VariableDefinitionNode;
+    class VariableAssignmentNode;
+    class ParameterNode;
+    class ArgumentNode;
+    class FunctionDeclarationNode;
+    class FunctionDefinitionNode;
+    class AnonFunctionDefinitionNode;
+    class ConditionNode;
+    class BranchNode;
+    class LoopNode;
+    class WhileLoopNode;
+    class UntilLoopNode;
+    class ForLoopNode;
+    class PassExpressionNode;
+    class EncapsulatedExpressionNode;
+    class ConstructorDefinitionNode;
+    class ClassDeclarationNode;
+    class ClassDefinitionNode;
+    class FunctionCallNode;
+    class ReturnExpressionNode;
+    class BreakExpressionNode;
+    class ProgramNode;
+    // --- 语法树类 ---
+    class Ast;
+
+    // 函数声明
+    std::string getNodeTypeName(NodeType nodeType);
+
+    // 全局变量声明
+
+    // 类定义
+
+    // 枚举类定义
+    enum class NodeType {
+        AND, // 逻辑与操作节点
+        ANON_FUNCTION_DEFINITION, // 匿名函数定义节点
+        ASSIGNMENT, // 赋值操作节点
+        ARGUMENT_ASSIGNMENT, // 属性赋值节点
+        ATTRIBUTE_EXPRESSION, // 属性访问表达式节点
+        BLOCK, // 代码块节点
+        BOOL, // 布尔类型字面量节点
+        BREAK, // break语句节点
+        BRACE, // 大括号节点
+        BRACKET, // 方括号节点
+        BRANCH, // 分支节点
+        CALL, // 函数调用节点
+        CHAR, // 字符类型字面量节点
+        CLASS, // 类定义或声明节点
+        COMPOUND, // 复合语句（可能用于支持多条语句的组合）
+        COMPARE, // 比较运算节点
+        CONDITION, // 条件语句
+        CONSTRUCTOR, // 构造函数定义节点
+        CONTINUE, // continue语句节点
+        DECORATOR, // 装饰器节点
+        DICTIONARY, // 字典结构节点
+        DIVIDE, // 除法运算节点
+        ENCAPSULATED, // 封装表达式节点
+        EQUALITY, // 等于比较操作节点
+        EXPRESSION_STATEMENT, // 表达式作为单独语句的节点
+        FLOAT, // 浮点数字面量节点
+        FLOOR_DIVIDE, // 向下取整除法运算节点
+        FOR, // for循环控制结构节点
+        FUNCTION, // 函数定义或声明节点
+        FUNCTION_DECLARATION, // 函数声明节点
+        FUNCTION_DEFINITION, // 函数体定义节点
+        GREATER, // 大于比较操作节点
+        GREATER_EQUAL, // 大于等于比较操作节点
+        IDENTIFIER, // 标识符引用节点
+        IMPORT, // 模块导入语句节点
+        INCREMENT,  // 自增操作节点
+        DECREMENT,  // 自减操作节点
+        INDEX_ASSIGNMENT, // 索引赋值操作节点
+        INDEX_EXPRESSION, // 索引访问表达式节点
+        INFIX, // 中缀表达式通用节点
+        INTEGER, // 整数字面量节点
+        LABEL, // 标签节点
+        LESS, // 小于比较操作节点
+        LESS_EQUAL, // 小于等于比较操作节点
+        LIST, // 列表结构节点
+        LOGICAL, // 逻辑运算节点
+        LOOP, // 循环控制结构节点
+        METHOD, // 方法定义节点
+        MINUS, // 减法或负号运算节点
+        MODULE, // 模块顶层结构节点
+        MODULO, // 取模运算节点
+        MULTIPLY, // 乘法运算节点
+        NOT, // 逻辑非操作节点
+        NOT_EQUAL, // 不等于比较操作节点
+        NULL_NODE, // 空值(null)字面量节点
+        OR, // 逻辑或操作节点
+        PARALLEL, // 表示用逗号分隔的并列节点
+        PAIR, // 表示用冒号分隔的键值对节点
+        PAREN, // 表示括号表达式节点
+        PASS, // pass语句节点
+        PLUS, // 加法或正号运算节点
+        POSTFIX, // 后缀表达式节点
+        POWER, // 幂运算节点
+        PREFIX, // 前缀表达式节点
+        PROGRAM, // 抽象语法树根节点，表示整个程序结构
+        RANGER, // 表示范围节点
+        RETURN, // return返回语句节点
+        STRING, // 字符串字面量节点
+        SUPER, // super关键字节点（通常用于继承上下文）
+        TERNARY, // 三元条件表达式节点
+        THIS, // this指针/对象引用节点
+        UNARY, // 一元表达式节点
+        UNDEFINED, // 未定义值节点
+        UNKNOWN, // 未知类型节点（错误处理或预留）
+        VAR, // 变量定义节点
+        WHILE, // while循环控制结构节点
+    };
+
+} // analyzer
+
+#endif //RCC_RCC_AST_H

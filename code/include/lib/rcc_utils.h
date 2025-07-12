@@ -22,6 +22,8 @@ namespace utils {
         [[nodiscard]] virtual std::string toString() const;
         [[nodiscard]] virtual std::string briefString() const;
         [[nodiscard]] virtual std::string professionalString() const;
+        [[nodiscard]] virtual std::string formatString(size_t indent, size_t level) const;
+        [[nodiscard]] virtual std::string toJsonString() const;
         virtual ~Object() = default;
     };
 
@@ -71,23 +73,28 @@ namespace utils {
         static std::string parseStringFormat(const std::string &input);
         static void parseStringFormat_nret(std::string &result);
         static bool isStringFormat(const std::string &str);
+        static bool isStrictValidStringFormat(const std::string &str);
         static bool isCharFormat(const std::string &str);
         static void trim(std::string &str);
         static std::string trim(const std::string &str);
         static std::string toStringFormat(const std::string &str);
         static std::map<std::string, std::string> splitStringByChars(const std::string& input, const std::string& delimiters);
         static std::string escape(const std::string &input);
-        static std::string escapeChar(const char &c) ;
+        static std::string escapeCharToStr(const char &c);
+        static char escapeChar(const char &c);
         static std::string wrapText(const std::string& text, size_t lineWidth, size_t indent = 0,
                                     const std::string& last_line_suffix = "", const std::string& next_line_prefix = "");
         static std::string combineNearbyString(const std::string &input, const int &line_row);
         static bool needEscape(const char &c);
+        static bool isSpace(const char &c);
     private:
         StringManager();
         std::string handleEscapeSequence(std::string_view input, size_t &pos);
         static constexpr size_t INITIAL_BUFFER_SIZE = 1024;
         std::map<char, std::function<std::string()>> escapeHandlers;
         static std::unordered_set<char> escapeChars;
+        static std::unordered_set<char> rawEscapeChars;
+        static std::unordered_set<char> spaceChars;
     };
 
     std::string doubleToString(double value);
@@ -103,6 +110,7 @@ namespace utils {
     std::string getPosStrFromFilePath(const std::string &file_path);
     size_t getSpaceFrontOfLineCode(const std::string& lineCode);
     void addCharBeforeNewline(std::string &code, const char &c= ';');
+    std::string spaceString(size_t n);
 
     // === 路径处理 ===
     std::string getFileNameFromPath(const std::string &path);
@@ -159,13 +167,39 @@ namespace utils {
         [[nodiscard]] std::string toString() const override; // 获取位置信息详细字符串
         [[nodiscard]] std::string briefString() const override; // 获取位置信息简略字符串
         [[nodiscard]] std::string professionalString() const override; // 获取位置信息详细字符串
+        [[nodiscard]] std::string formatString(size_t indent, size_t level) const override;
         void serialize(std::ostream& out, const SerializationProfile &profile) const;
         void deserialize(std::istream& in, const SerializationProfile &profile);
-    private:
+        void setLine(size_t line);
+        void setColumn(size_t column);
+        void setOffset(size_t offset);
+        void setFilepath(const std::string &filepath);
+    protected:
         size_t line{0};
         size_t column{0};
         size_t offset{0};
         std::string filepath{};
+    };
+
+    struct RangerPos: Pos {
+        RangerPos() = default;
+        RangerPos(size_t startLine, size_t startColumn, size_t endLine, size_t endColumn, std::string filepath);
+
+        [[nodiscard]] std::string toString() const override;
+
+        [[nodiscard]] std::string briefString() const override;
+
+        [[nodiscard]] std::string professionalString() const override;
+
+        friend std::ostream& operator<<(std::ostream& out, const RangerPos& rangerPos);
+
+        [[nodiscard]] size_t getEndLine() const;
+
+        [[nodiscard]] size_t getEndColumn() const;
+
+    protected:
+        size_t endLine{0};
+        size_t endColumn{0};
     };
 
     // === 参数处理 ===
@@ -327,7 +361,6 @@ namespace utils {
 
     // === 数值处理 ===
     struct Number: Object {
-    public:
         NumType type;
         int int_value;
         double double_value;

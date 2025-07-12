@@ -13,9 +13,12 @@
 #include <memory>
 #include "lib/rcc_utils.h"
 
+#define RIO_PROGRAM_SIGN "Rio Program & compiled by RCC(Rio Compiler Collection)"
 #define RCC_UNDEFINED_CONST "RCC-UNDEFINED"
 #define RCC_UNKNOWN_CONST "RCC-UNKNOWN"
 #define RCC_NULL_CONST "RCC-NULL"
+#define RCC_TOKEN_STREAM_START "$RCC_TOKEN_STREAM_START$"
+#define RCC_TOKEN_STREAM_END "$RCC_TOKEN_STREAM_END$"
 
 namespace base {
     // 自定义类型
@@ -71,19 +74,27 @@ namespace base {
         std::string trace_info;
         std::string space = std::string(4, ' ');
     public:
+        std::string getErrorTip(const std::size_t & spaceSize) const;
+
         [[nodiscard]] std::string toString() const override;
 
         [[nodiscard]] std::string getErrorTitle() const;
 
-        [[nodiscard]] std::string getErrorInfo() const;
+        [[nodiscard]] std::string getErrorInfo(const size_t &spaceSize) const;
+
+        [[nodiscard]] std::string getErrorLine(const size_t &spaceSize) const;
+
+        [[nodiscard]] std::string getErrorPosition(const size_t &spaceSize) const;
 
         void addTraceInfo(const std::string &traceInfo);
+
+        [[nodiscard]] std::string briefString() const override;
 
     protected:
         RCCError(ErrorType error_type, std::string error_position, std::string error_line,
                  StringVector error_info, StringVector repair_tips);
 
-        RCCError(std::string error_type, std::string error_position, std::string error_line,
+        [[maybe_unused]] RCCError(std::string error_type, std::string error_position, std::string error_line,
                  StringVector error_info, StringVector repair_tips);
 
     };
@@ -95,16 +106,23 @@ namespace base {
         static RCCSyntaxError illegalEscapeCharError(const std::string &error_position, const std::string &error_line, const char &c);
         static RCCSyntaxError illegalCharacterError(const std::string &error_position, const std::string &error_line, const char &c);
         static RCCSyntaxError undefinedExpressionError(const std::string &error_position, const std::string &error_line);
-        static RCCSyntaxError unclosedQuoteError(const std::string &error_position, const std::string &error_line, const char &quote_type);
+        static RCCSyntaxError unclosedQuoteError(const std::string &error_position, const std::string &unclosed_quote_sign_pos, const std::string &error_line, const char &quote_type);
         static RCCSyntaxError invalidIdentifierError(const std::string &error_position, const std::string &error_line, const std::string &error_identifier);
         static RCCSyntaxError illegalOperatorError(const std::string &error_position, const std::string &error_line, const std::string &illegal_operator, const std::string &expected_operator);
     };
 
     class RCCParserError: public RCCError {
         RCCParserError(std::string error_position, std::string error_line,
-                       StringVector error_info, StringVector repair_tips);
+                       StringVector error_info);
     public:
-        static RCCParserError unexpectedTokenError(const std::string &error_position, const std::string &error_line, const std::string &unexpected_token);
+        static RCCParserError unexpectedTokenTypeError(const std::string &error_position, const std::string &error_line,
+                                                       const std::string &unexpected_token,
+                                                       const std::string &expected_token_type);
+        static RCCParserError expressionBuilderNotFoundError(const std::string &error_position, const std::string &fixName,
+                                                             const std::string &errorType);
+        static RCCParserError unclosedExpressionError(const std::string &error_position, const std::string &expressionBeginToken,
+                                                      const std::string &errorToken, const std::string &expectedTokenType);
+        static RCCParserError syntaxError(const std::string &error_position, const std::string &syntaxErrorMsg, const std::string &errorDetailMsg);
     };
 
     // 枚举类定义
