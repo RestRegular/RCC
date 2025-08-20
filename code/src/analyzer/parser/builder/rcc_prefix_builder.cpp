@@ -2,6 +2,7 @@
 // Created by RestRegular on 2025/6/30.
 //
 
+#include "../../../../include/analyzer/rcc_ast.h"
 #include "../../../../include/analyzer/rcc_parser.h"
 
 namespace parser {
@@ -56,6 +57,9 @@ namespace parser {
         const auto &classToken = currentToken();
         next();
         auto nameNode = buildExpression(Precedence::LOWEST);
+        if (nextTokenIs(TokenType::TOKEN_NEWLINE)) {
+            return std::make_shared<ClassDeclarationNode>(classToken, nameNode);
+        }
         if (!expectedNextTokenAndConsume(TokenType::TOKEN_LBRACE)) {
             recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LBRACE);
             return nullptr;
@@ -95,8 +99,32 @@ namespace parser {
                 labelNodes.push_back(std::make_shared<LabelNode>(currentToken()));
             }
         }
-        if (nextTokenIs(TokenType::TOKEN_NEWLINE)) {
+        if (nextTokenIs(TokenType::TOKEN_NEWLINE))
+        {
             // 函数声明
+            if (callNode->getRealType() == NodeType::CALL)
+            {
+                if (const auto callFuncNode = std::static_pointer_cast<FunctionCallNode>(callNode);
+                    callFuncNode->getRightNode()->getRealType() == NodeType::ANON_FUNCTION_DEFINITION) {
+                    if (const auto &funcDefNode
+                        = std::static_pointer_cast<AnonFunctionDefinitionNode>(
+                            callFuncNode->getRightNode()))
+                    {
+                        return std::make_shared<FunctionDefinitionNode>(funToken, callNode, colonToken, labelNodes,
+                            std::make_shared<Token>(funcDefNode->getIndicatorToken()),
+                            funcDefNode->getBodyNode());
+                    }
+                 }
+            } else if (callNode->getRealType() == NodeType::ANON_FUNCTION_DEFINITION &&
+                callNode->getType() == NodeType::INFIX)
+            {
+                if (const auto &funcDefNode = std::static_pointer_cast<InfixExpressionNode>(callNode))
+                {
+                    return std::make_shared<FunctionDefinitionNode>(funToken, funcDefNode->getLeftNode(), colonToken, labelNodes,
+                        std::make_shared<Token>(funcDefNode->getOpToken()),
+                        funcDefNode->getRightNode());
+                }
+            }
             return std::make_shared<FunctionDeclarationNode>(funToken, callNode, colonToken, labelNodes);
         }
         std::shared_ptr<Token> indicatorToken = nullptr;
@@ -116,20 +144,13 @@ namespace parser {
     ExpressionNodePtr Parser::buildIdentifierExpression(){
         // 创建标识符节点，但是需要根据后续节点判断是否为其他节点类型，例如函数调用、函数定义、类定义等
         const auto &nameToken = currentToken();
-        if (nextTokenIs(TokenType::TOKEN_LPAREN)) {
-            const auto identifierNode = std::make_shared<IdentifierNode>(nameToken);
-            // 创建函数调用节点
-            next();
-            const auto &functionCallNode = buildCallExpression(identifierNode);
-            return functionCallNode;
-        }
         if (nextTokenIs(TokenType::TOKEN_COLON)) {
             // 为变量添加标签
             next();
             if (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)) {
                 const auto &colonToken = currentToken();
                 std::vector<std::shared_ptr<LabelNode> > labels{};
-                while (nextTokenIs(TokenType::TOKEN_LABEL)) {
+                while (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)) {
                     next();
                     labels.push_back(std::make_shared<LabelNode>(currentToken()));
                 }
@@ -215,7 +236,7 @@ namespace parser {
         return nullptr;
     }
 
-    ExpressionNodePtr Parser::buildLabelExpression(){
+    ExpressionNodePtr Parser::buildLabelExpression() {
         return std::make_shared<LabelNode>(currentToken());
     }
 
@@ -268,8 +289,8 @@ namespace parser {
                             indicatorToken, rangerNode,
                             colonToken, labels, indicatorToken, bodyNode);
                     }
+                    for (const auto &_: labels) previous();
                 }
-                previous();
             }
             return rangerNode;
         }
@@ -304,8 +325,12 @@ namespace parser {
 
     ExpressionNodePtr Parser::buildReturnExpression(){
         const auto &returnToken = currentToken();
-        next();
-        auto expression = buildExpression(Precedence::LOWEST);
+        ExpressionNodePtr expression = nullptr;
+        if (!nextTokenIs(TokenType::TOKEN_NEWLINE))
+        {
+            next();
+            expression = buildExpression(Precedence::LOWEST);
+        }
         return std::make_shared<ReturnExpressionNode>(returnToken, expression);
     }
 
@@ -402,14 +427,73 @@ namespace parser {
         const auto &beginToken = currentToken();
         next();
         while (currentTokenIs(TokenType::TOKEN_NEWLINE)) next();
-        auto bodyNode = buildExpression(currentTokenPrecedence());
-        next();
+        ExpressionNodePtr bodyNode = nullptr;
+        if (!currentTokenIs(TokenType::TOKEN_RBRACKET))
+        {
+            bodyNode = buildExpression(currentTokenPrecedence());
+            next();
+        }
         while (currentTokenIs(TokenType::TOKEN_NEWLINE)) next();
         if (!currentTokenIs(TokenType::TOKEN_RBRACKET)) {
             recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_RBRACKET);
             return nullptr;
         }
         return std::make_shared<ListExpressionNode>(beginToken, currentToken(), bodyNode);
+    }
+
+    ExpressionNodePtr Parser::buildVariableExpression() {
+        typedef VariableDefinitionNode::VarDefData VarDefData;
+        auto varToken = currentToken();
+        next();
+        const auto &expression = buildExpression(Precedence::LOWEST);
+        if (!expression) {
+            recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_IDENTIFIER);
+            return nullptr;
+        }
+
+        std::vector<std::shared_ptr<VarDefData>> varDefs{};
+
+        std::function<void(const ExpressionNodePtr &)> processExpressionNode =
+            [&](const ExpressionNodePtr &exp) {
+                if (exp->getType() == NodeType::INFIX) {
+                    const auto infixNode = std::static_pointer_cast<InfixExpressionNode>(exp);
+                    if (exp->getRealType() == NodeType::PARALLEL) {
+                        processExpressionNode(infixNode->getLeftNode());
+                        processExpressionNode(infixNode->getRightNode());
+                    }
+                    else {
+                        pass("There has another condition when exp type was infix.");
+                    }
+                }
+                else if (exp->getType() == NodeType::ASSIGNMENT) {
+                    const auto &assignNode = std::static_pointer_cast<AssignmentNode>(exp);
+                    const auto &[nameNode,
+                        valueNode] = assignNode->getAssignPair();
+                    if (nameNode->getType() != NodeType::IDENTIFIER) {
+                        recordUnexpectedTokenTypeError(nameNode->getMainToken(), TokenType::TOKEN_IDENTIFIER);
+                        return;
+                    }
+                    const auto &identNode = std::static_pointer_cast<IdentifierNode>(nameNode);
+                    varDefs.push_back(std::make_shared<VarDefData>(identNode,
+                        identNode->getColonTokenPtr() != nullptr,
+                        identNode->getLabels(),
+                        valueNode != nullptr, valueNode));
+                }
+                else if (exp->getType() == NodeType::IDENTIFIER) {
+                    const auto &identNode = std::static_pointer_cast<IdentifierNode>(exp);
+                    varDefs.push_back(std::make_shared<VarDefData>(identNode,
+                        identNode->getColonTokenPtr() != nullptr,
+                        identNode->getLabels(),
+                        false,
+                        nullptr));
+                }
+                else {
+                    pass("another condition: " + getNodeTypeName(exp->getType()));
+                }
+        };
+
+        processExpressionNode(expression);
+        return std::make_shared<VariableDefinitionNode>(varToken, varDefs);
     }
 
     ExpressionNodePtr Parser::buildForExpression() {

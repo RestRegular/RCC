@@ -14,11 +14,30 @@
 #include "lib/rcc_utils.h"
 
 #define RIO_PROGRAM_SIGN "Rio Program & compiled by RCC(Rio Compiler Collection)"
+
+#define RCC_VERSION_MAJOR "1"
+#define RCC_VERSION_MINOR "0"
+#define RCC_VERSION_PATCH "0"
+
+#define RCC_VERSION "v" RCC_VERSION_MAJOR "." RCC_VERSION_MINOR "." RCC_VERSION_PATCH
+
 #define RCC_UNDEFINED_CONST "RCC-UNDEFINED"
 #define RCC_UNKNOWN_CONST "RCC-UNKNOWN"
 #define RCC_NULL_CONST "RCC-NULL"
 #define RCC_TOKEN_STREAM_START "$RCC_TOKEN_STREAM_START$"
 #define RCC_TOKEN_STREAM_END "$RCC_TOKEN_STREAM_END$"
+
+#define RCC_TRUE        "true"
+#define RCC_FALSE       "false"
+#define RCC_NULL        "null"
+#define RCC_REL_RE      "RE"
+#define RCC_REL_RNE     "RNE"
+#define RCC_REL_RGE     "RGE"
+#define RCC_REL_RG      "RG"
+#define RCC_REL_RLE     "RLE"
+#define RCC_REL_RL      "RL"
+#define RCC_REL_AND     "AND"
+#define RCC_REL_OR      "OR"
 
 namespace base {
     // 自定义类型
@@ -62,6 +81,7 @@ namespace base {
     extern const std::unordered_map<std::string, int> OPERATOR_PRECEDENCE;
     extern const StringVector OPERATOR_PRECEDENCE_LIST;
     extern const StringSet GROUP_SIGNS;
+    extern const StringMap RELATION_MAP;
 
     // 类定义
     class RCCError: public std::exception, public utils::Object {
@@ -104,11 +124,12 @@ namespace base {
                        StringVector error_info, StringVector repair_tips);
     public:
         static RCCSyntaxError illegalEscapeCharError(const std::string &error_position, const std::string &error_line, const char &c);
-        static RCCSyntaxError illegalCharacterError(const std::string &error_position, const std::string &error_line, const char &c);
+        static RCCSyntaxError illegalSymbolError(const std::string &error_position, const std::string &error_line, const std::string& c);
         static RCCSyntaxError undefinedExpressionError(const std::string &error_position, const std::string &error_line);
         static RCCSyntaxError unclosedQuoteError(const std::string &error_position, const std::string &unclosed_quote_sign_pos, const std::string &error_line, const char &quote_type);
         static RCCSyntaxError invalidIdentifierError(const std::string &error_position, const std::string &error_line, const std::string &error_identifier);
         static RCCSyntaxError illegalOperatorError(const std::string &error_position, const std::string &error_line, const std::string &illegal_operator, const std::string &expected_operator);
+        static RCCSyntaxError duplicateTypeLabelError(const std::string &error_position, const std::string &error_line, const std::string &type_label);
     };
 
     class RCCParserError: public RCCError {

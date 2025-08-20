@@ -1,0 +1,99 @@
+var lib = import("./lib/lib.rio")
+
+fun sout(message): void {
+    lib.sout("[test_lib.rio]: ", message)
+}
+
+class List: public {
+    var listValue: list
+    var length: int
+
+    ctor() {
+        this.listValue = []
+        this.length = 0
+    }
+
+    ctor(listValue: list) {
+        this.listValue = listValue
+        this.length = lib.size(listValue)
+    }
+
+    fun at(index: int): any {
+        if index >= this.length {
+            ret null
+        }
+        if index < 0 {
+            while index < 0 {
+                index += this.length
+            }
+        }
+        ret (this.listValue)[index]
+    }
+
+    fun getLength(): int {
+        ret this.length
+    }
+
+    fun iterate(handler: funi): void {
+        var i: int = 0
+        while i < this.length {
+            handler(this.at(i), i)
+            i += 1
+        }
+    }
+
+    fun toString(): str {
+        var result: str = "["
+        this.iterate((item, index) -> {
+            result += item
+            if index < this.length - 1 {
+                result += ", "
+            }
+        })
+        result += "]"
+        ret result
+    }
+
+    fun print(): void {
+        lib.sout(this.listValue)
+    }
+
+    fun sort(is_ascending: bool): void {
+        fun quick_sort(arr: list): list {
+            if lib.size(arr) <= 1 {
+                ret arr
+            }
+            var pivot = arr[0]
+            var less: list
+            var greater: list
+            var i = 1
+            while i < lib.size(arr) {
+                if arr[i] <= pivot {
+                    less += arr[i]
+                }
+                i ++
+            }
+            i = 1
+            while i < lib.size(arr) {
+                if arr[i] > pivot {
+                    greater += arr[i]
+                }
+                i ++
+            }
+            ret quick_sort(less) + pivot + quick_sort(greater)
+        }
+        this.listValue = quick_sort(this.listValue)
+    }
+}
+
+fun test() {
+    lib.sout("Hello world from 'test_lib.rio'!")
+    var a: List = List([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    a.print()
+}
+
+lib.entry((*args, **kwargs) -> {
+    test()
+})
+
+export(test, sout, List)

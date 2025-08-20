@@ -161,7 +161,7 @@ namespace ast {
         const std::shared_ptr<ExpressionNode> &paramNode, const std::shared_ptr<Token> &colonToken_,
         const std::vector<std::shared_ptr<LabelNode>> &labelNodes_, const Token &indicatorToken_,
         const std::shared_ptr<ExpressionNode> &bodyNode)
-            : ExpressionNode(mainToken_, NodeType::PREFIX),
+            : ExpressionNode(mainToken_, NodeType::ANON_FUNCTION_DEFINITION),
              paramNode(paramNode), colonToken(colonToken_),
      labelNodes(labelNodes_), indicatorToken(indicatorToken_), bodyNode(bodyNode){}
 
@@ -266,7 +266,7 @@ namespace ast {
     }
 
     ConditionNode::ConditionNode(const std::vector<std::shared_ptr<ExpressionNode>> &branchNodes)
-        : ExpressionNode(NodeType::CONDITION), branchNodes(branchNodes) {}
+        : ExpressionNode(branchNodes[0]->getMainToken(), NodeType::CONDITION), branchNodes(branchNodes) {}
 
     std::vector<std::shared_ptr<ExpressionNode>> ConditionNode::getBranchNodes() const {
         return branchNodes;
@@ -276,10 +276,26 @@ namespace ast {
         visitor.visitConditionNode(*this);
     }
 
-    LoopNode::LoopNode(Token loopToken, const std::shared_ptr<ExpressionNode> &conditionNode,
+    static std::unordered_map<std::string, LoopType> loopTypeMap = {
+        {"for", LoopType::FOR},
+        {"until", LoopType::UNTIL},
+        {"while", LoopType::WHILE}
+    };
+
+    LoopNode::LoopNode(const Token& loopToken, const std::shared_ptr<ExpressionNode> &conditionNode,
         const std::shared_ptr<ExpressionNode> &bodyNode)
             : ExpressionNode(loopToken, NodeType::LOOP),
-     conditionNode(conditionNode), bodyNode(bodyNode){}
+     conditionNode(conditionNode), bodyNode(bodyNode)
+    {
+        if (const auto &it = loopTypeMap.find(loopToken.getValue());
+            it != loopTypeMap.end())
+        {
+            loopType = it->second;
+        } else
+        {
+            throw std::runtime_error("Invalid loop type");
+        }
+    }
 
     std::shared_ptr<ExpressionNode> LoopNode::getConditionNode() const {
         return conditionNode;
@@ -293,8 +309,13 @@ namespace ast {
         visitor.visitLoopNode(*this);
     }
 
+    LoopType LoopNode::getLoopType() const
+    {
+        return loopType;
+    }
+
     WhileLoopNode::WhileLoopNode(const Token &whileToken, const std::shared_ptr<ExpressionNode> &conditionNode,
-        const std::shared_ptr<ExpressionNode> &bodyNode)
+                                 const std::shared_ptr<ExpressionNode> &bodyNode)
             : LoopNode(whileToken, conditionNode, bodyNode) {}
 
     UntilLoopNode::UntilLoopNode(const Token &untilToken, const std::shared_ptr<ExpressionNode> &conditionNode,
@@ -362,28 +383,28 @@ namespace ast {
         return bodyNode;
     }
 
-    ClassDeclarationNode::ClassDeclarationNode(
-            ClassDeclarationNode::Token classToken, Token nameToken,
-            std::shared_ptr<Token> colonToken,
-            std::vector<std::shared_ptr<Token>> labelTokens)
-            : Node(), classToken(std::move(classToken)), nameToken(std::move(nameToken)),
-              colonToken(std::move(colonToken)), labelTokens(std::move(labelTokens)){}
+    ClassDeclarationNode::ClassDeclarationNode(const Token &classToken,
+        const std::shared_ptr<ExpressionNode> &nameNode_)
+            : ExpressionNode(classToken, NodeType::PREFIX),
+               nameNode(nameNode_) {}
+
+    std::shared_ptr<ExpressionNode> ClassDeclarationNode::getNameNode() const {
+        return nameNode;
+    }
 
     void ClassDeclarationNode::acceptVisitor(Visitor &visitor) {
         visitor.visitClassDeclarationNode(*this);
     }
 
-    Pos ClassDeclarationNode::getPos() const {
-        return classToken.getPos();
-    }
 
-    ClassDefinitionNode::ClassDefinitionNode(const Token &classToken, const std::shared_ptr<ExpressionNode> &labelNode,
-        const std::shared_ptr<ExpressionNode> &bodyNode)
+    ClassDefinitionNode::ClassDefinitionNode(const Token &classToken,
+                                             const std::shared_ptr<ExpressionNode> &nameNode_,
+                                             const std::shared_ptr<ExpressionNode> &bodyNode_)
             : ExpressionNode(classToken, NodeType::PREFIX),
-     nameNode(labelNode), bodyNode(bodyNode){}
+     nameNode(nameNode_), bodyNode(bodyNode_){}
 
-    std::shared_ptr<ExpressionNode> ClassDefinitionNode::getLabelNode() const {
-        return nameNode;
+    std::vector<std::shared_ptr<LabelNode>> ClassDefinitionNode::getLabelNode() const {
+        return std::static_pointer_cast<IdentifierNode>(nameNode)->getLabels();
     }
 
     std::shared_ptr<ExpressionNode> ClassDefinitionNode::getBodyNode() const {
@@ -409,7 +430,7 @@ namespace ast {
         visitor.visitProgramNode(*this);
     }
 
-    utils::Pos ProgramNode::getPos() const {
+    Pos ProgramNode::getPos() const {
         if (statements.empty()) {
             return {0, 0, 0, RCC_UNKNOWN_CONST};
         } else {
@@ -524,7 +545,7 @@ namespace ast {
     }
 
     void NullLiteralNode::acceptVisitor(Visitor &visitor) {
-        LiteralNode::acceptVisitor(visitor);
+        visitor.visitNullLiteralNode(*this);
     }
 
     std::string NullLiteralNode::literalString() const {
@@ -701,6 +722,58 @@ namespace ast {
         visitor.visitListExpressionNode(*this);
     }
 
+    AssignmentNode::AssignmentNode(const Token &opToken,
+        const std::pair<std::shared_ptr<ExpressionNode>, std::shared_ptr<ExpressionNode>> &assignPair)
+            : ExpressionNode(opToken, NodeType::ASSIGNMENT), assignPair(assignPair) {}
+
+    std::pair<std::shared_ptr<ExpressionNode>, std::shared_ptr<ExpressionNode>> AssignmentNode::
+    getAssignPair() const {
+        return assignPair;
+    }
+
+    void AssignmentNode::acceptVisitor(Visitor &visitor) {
+        visitor.visitAssignmentNode(*this);
+    }
+
+    VariableDefinitionNode::VarDefData::VarDefData(const std::shared_ptr<IdentifierNode> &nameNode,
+        const bool &hasLabels, const std::vector<std::shared_ptr<LabelNode>> &labelNodes, const bool &hasInitialValue,
+        const std::shared_ptr<ExpressionNode> &valueNode)
+            : nameNode(nameNode), hasLabels_(hasLabels),
+        labelNodes(labelNodes), hasInitialValue_(hasInitialValue),
+        valueNode(valueNode) {}
+
+    std::shared_ptr<IdentifierNode> VariableDefinitionNode::VarDefData::getNameNode() const {
+        return nameNode;
+    }
+
+    bool VariableDefinitionNode::VarDefData::hasLabels() const {
+        return hasLabels_;
+    }
+
+    std::vector<std::shared_ptr<LabelNode>> VariableDefinitionNode::VarDefData::getLabelNodes() const {
+        return labelNodes;
+    }
+
+    bool VariableDefinitionNode::VarDefData::hasInitialValue() const {
+        return hasInitialValue_;
+    }
+
+    std::shared_ptr<ExpressionNode> VariableDefinitionNode::VarDefData::getValueNode() const {
+        return valueNode;
+    }
+
+    VariableDefinitionNode::VariableDefinitionNode(const Token &varToken,
+                                                   const std::vector<std::shared_ptr<VarDefData>> &varDefs)
+            : ExpressionNode(varToken, NodeType::VAR), varDefs(varDefs) {}
+
+    std::vector<std::shared_ptr<VariableDefinitionNode::VarDefData>> VariableDefinitionNode::getVarDefs() const {
+        return varDefs;
+    }
+
+    void VariableDefinitionNode::acceptVisitor(Visitor &visitor) {
+        visitor.visitVariableDefinitionNode(*this);
+    }
+
     const Token &InfixExpressionNode::getOpToken() const {
         return opToken;
     }
@@ -764,6 +837,11 @@ namespace ast {
 
     void PostfixExpressionNode::acceptVisitor(Visitor &visitor) {
         visitor.visitPostfixNode(*this);
+    }
+
+    NodeType PostfixExpressionNode::getPostfixType() const
+    {
+        return postfixType;
     }
 
     void UnaryExpressionNode::setOpToken(const Token &op_token) {

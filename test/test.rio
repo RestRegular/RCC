@@ -1,1 +1,23 @@
-[12 + 5 - 6]
+var lib: clas = import("./lib/lib.rio")
+var test_lib: clas = import("./test_lib.rio")
+
+class Object: public {
+    var _id: int static = 0, id: int
+
+    ctor() {
+        this.id = Object._id
+        Object._id += 1
+    }
+
+    fun toString(): str -> {
+        ret "Object(id=" + this.id + ")"
+    }
+}
+
+fun main() {
+    lib.sout(lib.type(test_lib))
+}
+
+lib.entry((*args, **kwargs) -> {
+    main()
+})

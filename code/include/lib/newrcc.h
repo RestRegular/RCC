@@ -9,7 +9,6 @@
 #include <utility>
 #include <vector>
 #include <stdexcept>
-#include <utility>
 
 namespace cc {
 
@@ -76,7 +75,6 @@ namespace cc {
     };
 
     class Decoration {
-    private:
         std::string decoration;
 
     public:

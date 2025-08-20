@@ -15,9 +15,10 @@
 #include <functional>
 #include "../../include/lib/rcc_utils.h"
 #include "../../include/rcc_base.h"
+#include "../../include/lib/newrcc.h"
 
-namespace utils {
-
+namespace utils
+{
     size_t Object::_id = 0;
 
     Object::Object(): id(_id++) {}
@@ -40,6 +41,22 @@ namespace utils {
 
     std::string Object::toJsonString() const {
         return "\"" + StringManager::escape(toString()) + "\"";
+    }
+
+    std::string Object::hashCode() {
+        if (_hasCode.empty()) {
+            _hasCode = hashToCode(toString());
+            return _hasCode;
+        }
+        return _hasCode;
+    }
+
+    std::string Object::uniqueId() {
+        if (_uniqueId.empty()) {
+            _uniqueId = generateUniqueId(toString());
+            return _uniqueId;
+        }
+        return _uniqueId;
     }
 
     const auto &program_start_time = std::chrono::high_resolution_clock::now();
@@ -69,7 +86,8 @@ namespace utils {
     std::string Number::toString() const {
         if (type == NumType::int_type) {
             return std::to_string(int_value);
-        } else if (type == NumType::double_type) {
+        }
+        if (type == NumType::double_type) {
             return std::to_string(double_value);
         }
         return "";
@@ -285,9 +303,8 @@ namespace utils {
     std::string parseStringFormat(const std::string &result) {
         if (isStringFormat(result)) {
             return result.substr(1, result.size() - 2);
-        } else {
-            return result;
         }
+        return result;
     }
 
     // 解析字符串格式，不返回结果
@@ -482,7 +499,7 @@ namespace utils {
 
 
     std::string StringManager::toStringFormat(const std::string &str) {
-        return "\"" + str + "\"";
+        return "\"" + escape(str) + "\"";
     }
 
     std::map<std::string, std::string>
@@ -515,26 +532,26 @@ namespace utils {
     std::string StringManager::escape(const std::string &input) {
         std::string result;
         result.reserve(input.size() * 2); // 预留足够的空间，避免频繁分配内存
-        for (char c: input) {
+        for (const char c: input) {
             switch (c) {
-                case '\n':
-                    result.append("\\n");
-                    break;  // 换行符
-                case '\t':
-                    result.append("\\t");
-                    break;  // 制表符
-                case '\r':
-                    result.append("\\r");
-                    break;  // 回车符
-                case '\"':
-                    result.append("\\\"");
-                    break; // 双引号
-                case '\\':
-                    result.append("\\\\");
-                    break; // 反斜杠
-                default:
-                    result.push_back(c);
-                    break;        // 其他字符直接追加
+            case '\n':
+                result.append("\\n");
+                break;  // 换行符
+            case '\t':
+                result.append("\\t");
+                break;  // 制表符
+            case '\r':
+                result.append("\\r");
+                break;  // 回车符
+            case '\"':
+                result.append("\\\"");
+                break; // 双引号
+            case '\\':
+                result.append("\\\\");
+                break; // 反斜杠
+            default:
+                result.push_back(c);
+                break;        // 其他字符直接追加
             }
         }
         return result;
@@ -721,6 +738,8 @@ namespace utils {
     }
 
     // Pos具体实现
+    Pos Pos::UNKNOW_POS = Pos(-1, -1, -1, RCC_UNKNOWN_CONST);
+
     Pos::Pos(size_t line, size_t column, size_t offset, std::string filepath):
     line(line), column(column), offset(offset), filepath(std::move(filepath)) {}
 
@@ -749,18 +768,22 @@ namespace utils {
         return filepath;
     }
 
-    std::string Pos::getFilePosStr() const {
-        return "\"" + this->getFilepath() + ":1:1\", line 1";
+    std::string Pos::getFileField() const {
+        return getFileNameFromPath(filepath);
     }
 
-    void Pos::serialize(std::ostream &out, const utils::SerializationProfile &profile) const {
-        if (profile < utils::SerializationProfile::Release) {
+    std::string Pos::getFilePosStr() const {
+        return "\"" + StringManager::escape(this->getFilepath()) + ":1:1\", line 1";
+    }
+
+    void Pos::serialize(std::ostream &out, const SerializationProfile &profile) const {
+        if (profile < SerializationProfile::Release) {
             // 写入整数类型的成员变量
             out.write(reinterpret_cast<const char *>(&line), sizeof(line));
             out.write(reinterpret_cast<const char *>(&column), sizeof(column));
 
             // 写入字符串的长度
-            size_t filepathLength = filepath.size();
+            const size_t filepathLength = filepath.size();
             out.write(reinterpret_cast<const char *>(&filepathLength), sizeof(filepathLength));
 
             // 写入字符串的内容
@@ -844,16 +867,16 @@ namespace utils {
 
     std::string getArgTypeName(const ArgType &argType) {
         switch (argType) {
-            case ArgType::identifier:
-                return "identifier";
-            case ArgType::keyword:
-                return "keyword";
-            case ArgType::number:
-                return "number";
-            case ArgType::string:
-                return "string";
-            default:
-                return "unknown";
+        case ArgType::identifier:
+            return "identifier";
+        case ArgType::keyword:
+            return "keyword";
+        case ArgType::number:
+            return "number";
+        case ArgType::string:
+            return "string";
+        default:
+            return "unknown";
         }
     }
 
@@ -889,14 +912,14 @@ namespace utils {
 
     std::string Arg::toString() const {
         switch (type) {
-            case ArgType::unknown:
-            case ArgType::identifier:
-            case ArgType::keyword:
-                return "[Arg(" + utils::getArgTypeName(type) + "): '" + value + "']";
-            case ArgType::number:
-                return "[Arg(" + utils::getArgTypeName(type) + "): " + value + "]";
-            case ArgType::string:
-                return "[Arg(" + utils::getArgTypeName(type) + "): \"" + value + "\"]";
+        case ArgType::unknown:
+        case ArgType::identifier:
+        case ArgType::keyword:
+            return "[Arg(" + utils::getArgTypeName(type) + "): '" + value + "']";
+        case ArgType::number:
+            return "[Arg(" + utils::getArgTypeName(type) + "): " + value + "]";
+        case ArgType::string:
+            return "[Arg(" + utils::getArgTypeName(type) + "): \"" + value + "\"]";
         }
         return "Error";
     }
@@ -946,7 +969,8 @@ namespace utils {
         return "[(" + getArgTypeName(type) + ")" +  value + "]";
     }
 
-    std::string readFile(const std::string &filepath) {
+    std::string readFile(const std::string &path) {
+        const std::string &filepath = processRVMPath(path);
         std::ifstream inFile(filepath);
         if (!std::filesystem::exists(filepath)) {
             // ToDo: 添加错误处理逻辑
@@ -963,7 +987,8 @@ namespace utils {
         return content;
     }
 
-    std::vector<std::string> readFileToLines(const std::string &filepath){
+    std::vector<std::string> readFileToLines(const std::string &path){
+        const auto &filepath = processRVMPath(path);
         std::ifstream inFile(filepath);
         if (!std::filesystem::exists(filepath)) {
             std::cerr << "This file [path: " << filepath << "] does not exist." << std::endl;
@@ -984,7 +1009,8 @@ namespace utils {
     }
 
     // 写入文件（覆盖模式）
-    bool writeFile(const std::string &filepath, const std::string &content) {
+    bool writeFile(const std::string &path, const std::string &content) {
+        const auto &filepath = processRVMPath(path);
         // 以二进制模式打开文件，覆盖原有内容
         std::ofstream file(filepath, std::ios::binary);
         if (!file.is_open()) {
@@ -997,7 +1023,8 @@ namespace utils {
     }
 
     // 追加文件（追加模式）
-    bool appendFile(const std::string &filepath, const std::string &content) {
+    bool appendFile(const std::string &path, const std::string &content) {
+        const auto &filepath = processRVMPath(path);
         // 以二进制模式和追加模式打开文件
         std::ofstream file(filepath, std::ios::binary | std::ios::app);
         if (!file.is_open()) {
@@ -1128,16 +1155,16 @@ namespace utils {
 
     std::string getSerializationProfileName(const SerializationProfile &profile){
         switch (profile) {
-            case SerializationProfile::Debug:
-                return "Debug";
-            case SerializationProfile::Minified:
-                return "Minified";
-            case SerializationProfile::Release:
-                return "Release";
-            case SerializationProfile::Testing:
-                return "Testing";
-            default:
-                return "Unknown";
+        case SerializationProfile::Debug:
+            return "Debug";
+        case SerializationProfile::Minified:
+            return "Minified";
+        case SerializationProfile::Release:
+            return "Release";
+        case SerializationProfile::Testing:
+            return "Testing";
+        default:
+            return "Unknown";
         }
     }
 
@@ -1160,12 +1187,13 @@ namespace utils {
         return oss.str();
     }
 
-    std::string getAbsolutePath(const std::string &path, const std::string &dir_path)  {
-        if (path.empty()) return "";
+    std::string getAbsolutePath(const std::string &relPath, const std::string &dir_path)  {
+        if (relPath.empty()) return "";
+        const auto &path = processRVMPath(relPath);
         namespace fs = std::filesystem;
         try {
             // 将输入路径转换为 filesystem::path 对象
-            fs::path input_path(path);
+            const fs::path input_path(path);
 
             // 如果路径已经是绝对路径，直接返回
             if (input_path.is_absolute()) {
@@ -1187,14 +1215,14 @@ namespace utils {
 
     std::tuple<char, char, char, char, char> getSeparators(TimeFormat format)  {
         switch (format) {
-            case TimeFormat::ISO:
-                return {'-', '-', ' ', ':', ':'};
-            case TimeFormat::US:
-            case TimeFormat::European:
-                return {'/', '/', ' ', ':', ':'};
-            case TimeFormat::Timestamp:
-            default:
-                throw std::runtime_error("Unsupported date format");
+        case TimeFormat::ISO:
+            return {'-', '-', ' ', ':', ':'};
+        case TimeFormat::US:
+        case TimeFormat::European:
+            return {'/', '/', ' ', ':', ':'};
+        case TimeFormat::Timestamp:
+        default:
+            throw std::runtime_error("Unsupported date format");
         }
     }
 
@@ -1216,7 +1244,7 @@ namespace utils {
         if (year < 0 || month < 1 || month > 12 || day < 1 || day > 31 ||
             hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
             return false;
-        }
+            }
 
         return true;
     }
@@ -1549,6 +1577,130 @@ namespace utils {
         return randomValue;
     }
 
+    std::string getCurrentTime(TimeFormat format)
+    {
+        // 获取当前系统时间点
+        auto now = std::chrono::system_clock::now();
+
+        switch (format)
+        {
+        case TimeFormat::ISO:
+            {
+                std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+                std::tm local_time = *std::localtime(&now_time);
+
+                std::stringstream ss;
+                ss << std::put_time(&local_time, "%Y-%m-%d");
+                return ss.str();
+            } break;
+
+        case TimeFormat::ISO_WITH_TIME:
+            {
+                std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+                std::tm local_time = *std::localtime(&now_time);
+
+                std::stringstream ss;
+                ss << std::put_time(&local_time, "%Y-%m-%d %H:%M:%S");
+                return ss.str();
+            } break;
+
+        case TimeFormat::US:
+            {
+                std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+                std::tm local_time = *std::localtime(&now_time);
+
+                std::stringstream ss;
+                ss << std::put_time(&local_time, "%m/%d/%Y");
+                return ss.str();
+            } break;
+
+        case TimeFormat::US_WITH_TIME:
+            {
+                std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+                std::tm local_time = *std::localtime(&now_time);
+
+                std::stringstream ss;
+                ss << std::put_time(&local_time, "%m/%d/%Y %H:%M:%S");
+                return ss.str();
+            } break;
+
+        case TimeFormat::European:
+            {
+                std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+                std::tm local_time = *std::localtime(&now_time);
+
+                std::stringstream ss;
+                ss << std::put_time(&local_time, "%d/%m/%Y");
+                return ss.str();
+            } break;
+
+        case TimeFormat::European_WITH_TIME:
+            {
+                std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+                std::tm local_time = *std::localtime(&now_time);
+
+                std::stringstream ss;
+                ss << std::put_time(&local_time, "%d/%m/%Y %H:%M:%S");
+                return ss.str();
+            } break;
+
+        case TimeFormat::Timestamp:
+            {
+                // 秒级时间戳
+                auto now_epoch = std::chrono::system_clock::to_time_t(now);
+                return std::to_string(now_epoch);
+            } break;
+
+        case TimeFormat::TimestampMS:
+            {
+                // 毫秒级时间戳
+                auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
+                auto value = now_ms.time_since_epoch().count();
+                return std::to_string(value);
+            } break;
+
+        default:
+            return "";
+        }
+    }
+
+    void pass(const std::string &annotation) {
+        if (!annotation.empty()) {
+            std::cout << "; " << cc::colorfulText("[RCC PASS]: ",
+                cc::TextColor::LIGHT_CRAY) << annotation << std::endl;
+        }
+    }
+
+    uint64_t hashToCode(const std::string &str) {
+        constexpr uint64_t fnv_offset_basis = 14695981039346656037ULL;
+
+        uint64_t hash = fnv_offset_basis;
+
+        for (const char &c : str) {
+            constexpr uint64_t fnv_prime = 1099511628211ULL;
+            hash ^= static_cast<uint8_t>(c);
+            hash *= fnv_prime;
+        }
+
+        return hash;
+    }
+
+    std::string generateUniqueId(const std::string& str) {
+        static std::unordered_map<std::string, std::string> idMap;
+        static uint64_t counter = 0;
+
+        if (!idMap.contains(str)) {
+            idMap[str] = "id" + std::to_string(counter++);
+        }
+
+        return idMap[str];
+    }
+
+    std::string hashToStr(const std::string &str) {
+        return std::to_string(hashToCode(str));
+    }
+
+
     std::string getFileDirFromPath(const std::string &path) {
         std::filesystem::path file_path(path);
         return file_path.parent_path().string();
@@ -1560,6 +1712,18 @@ namespace utils {
 
     void appendProgramWorkingDir(const std::string &path) {
         base::PROGRAM_WORKING_DIRECTORY_STACK.push(getAbsolutePath(getFileDirFromPath(path)));
+    }
+
+    bool checkPathEqual(const std::string& path1, const std::string& path2, const bool &recursion)
+    {
+        return path1 == path2 || (recursion && checkPathEqual(getAbsolutePath(path1), getAbsolutePath(path2), false));
+    }
+
+    std::string processRVMPath(const std::string& path)
+    {
+        std::string result = path;
+        std::replace(result.begin(), result.end(), '/', '\\');
+        return result;
     }
 
     ProgArgParser::OptionInfo::OptionInfo(std::string name, std::function<void(const std::string &)> setter,

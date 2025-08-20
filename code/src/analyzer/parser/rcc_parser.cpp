@@ -6,9 +6,8 @@
 #include "../../../include/analyzer/rcc_parser.h"
 
 namespace parser {
-
-    std::shared_ptr<ProgramNode> Parser::parse() {
-        return buildProgram();
+    std::pair<bool, std::shared_ptr<ProgramNode>> Parser::parse() {
+        return {hasError(), buildProgram()};
     }
 
     Parser::Parser(std::queue<std::shared_ptr<Token>> tokens)
@@ -43,7 +42,7 @@ namespace parser {
         {TokenType::TOKEN_STAR, &Parser::buildUnaryExpression},
         {TokenType::TOKEN_DOUBLE_STAR, &Parser::buildUnaryExpression},
         // 变量定义
-        {TokenType::TOKEN_VAR, &Parser::buildPrefixExpression},
+        {TokenType::TOKEN_VAR, &Parser::buildVariableExpression},
         // 函数定义
         {TokenType::TOKEN_FUNCTION, &Parser::buildFunctionExpression},
         // 条件语句
@@ -80,7 +79,7 @@ namespace parser {
             {TokenType::TOKEN_AND, &Parser::buildInfixExpression},
             {TokenType::TOKEN_OR, &Parser::buildInfixExpression},
             {TokenType::TOKEN_MODULO, &Parser::buildInfixExpression},
-            {TokenType::TOKEN_ASSIGN, &Parser::buildInfixExpression},
+            {TokenType::TOKEN_ASSIGN, &Parser::buildAssignExpression},
             {TokenType::TOKEN_COMMA, &Parser::buildInfixExpression},
             {TokenType::TOKEN_PLUS_ASSIGN, &Parser::buildInfixExpression},
             {TokenType::TOKEN_MINUS_ASSIGN, &Parser::buildInfixExpression},
@@ -88,7 +87,10 @@ namespace parser {
             {TokenType::TOKEN_SLASH_ASSIGN, &Parser::buildInfixExpression},
             {TokenType::TOKEN_MODULO_ASSIGN, &Parser::buildInfixExpression},
             {TokenType::TOKEN_COLON, &Parser::buildInfixExpression},
-            {TokenType::TOKEN_INDICATOR, &Parser::buildInfixExpression}
+            {TokenType::TOKEN_INDICATOR, &Parser::buildInfixExpression},
+            {TokenType::TOKEN_DOT, &Parser::buildInfixExpression},
+            {TokenType::TOKEN_LPAREN, &Parser::buildCallExpression},
+            {TokenType::TOKEN_LBRACKET, &Parser::buildIndexExpression}
     };
 
     std::map<TokenType, PostfixExpressionBuilder> Parser::postfixExpressionBuilders {
@@ -121,7 +123,10 @@ namespace parser {
             {TokenType::TOKEN_OR, Precedence::LOGIC},
             {TokenType::TOKEN_DOUBLE_PLUS, Precedence::POSTFIX},
             {TokenType::TOKEN_DOUBLE_MINUS, Precedence::POSTFIX},
-            {TokenType::TOKEN_INDICATOR, Precedence::INDICATOR}
+            {TokenType::TOKEN_INDICATOR, Precedence::INDICATOR},
+            {TokenType::TOKEN_DOT, Precedence::ATTRIBUTE},
+            {TokenType::TOKEN_LPAREN, Precedence::CALL},
+            {TokenType::TOKEN_LBRACKET, Precedence::INDEX}
     };
 
     const Token &Parser::currentToken() const {
@@ -142,18 +147,20 @@ namespace parser {
     }
 
     void Parser::previous() {
+        if (_previous_tokens.empty()) throw std::runtime_error("No previous token");
         _tempTokens.push_front(_next_token);
         _next_token = _current_token;
-        _current_token = _previous_token;
-        _previous_token = nullptr;
+        _current_token = _previous_tokens.top();
+        _previous_tokens.pop();
     }
 
     const Token & Parser::previousToken() const {
-        return *_previous_token;
+        if (_previous_tokens.empty()) throw std::runtime_error("No previous token");
+        return *_previous_tokens.top();
     }
 
     const Token &Parser::next() {
-        _previous_token = _current_token;
+        _previous_tokens.push(_current_token);
         _current_token = _next_token;
         if (!_tempTokens.empty()) {
             _next_token = _tempTokens.front();
@@ -180,7 +187,7 @@ namespace parser {
     }
 
     void Parser::reset() {
-        _previous_token = nullptr;
+        _previous_tokens = {};
         _current_token = nullptr;
         _next_token = nullptr;
         // 清空临时 token 队列

@@ -5,7 +5,6 @@
 #ifndef TOKEN_RCC_CORE_H
 #define TOKEN_RCC_CORE_H
 
-#include <iostream>
 #include "./lib/rcc_utils.h"
 #include "lib/RJson/RJson.h"
 
@@ -17,11 +16,11 @@ namespace core {
     enum class StatementType;
     enum class ExpressionType;
     enum class BlockType;
-    enum class ArgumentType;
     enum class SubscriptType;
     enum class CallExpressionType;
-    enum class FunctionType;
+    // enum class FunctionType;
     enum class CondBranchType;
+    enum class LoopType;
 
     // ÀàÉùÃ÷
     class Token;
@@ -77,8 +76,8 @@ namespace core {
     };
     enum class CommentType {
         NONE,
-        TOKEN_COMMENT,
-        TOKEN_DOC_COMMENT
+        SINGLE_LINE_COMMENT,
+        DOC_COMMENT
     };
     enum class TokenType {
         TOKEN_AND,
@@ -118,7 +117,6 @@ namespace core {
         TOKEN_GREATER_EQUAL,
         TOKEN_IDENTIFIER,
         TOKEN_IF,
-        TOKEN_IMPORT,
         TOKEN_INDICATOR,
         TOKEN_INTEGER,
         TOKEN_KEYWORD,
@@ -161,7 +159,6 @@ namespace core {
         TOKEN_STAR,
         TOKEN_STAR_ASSIGN,
         TOKEN_SUPER,
-        TOKEN_THIS,
         TOKEN_TRY,
         TOKEN_TRUE,
         TOKEN_TILDE,
@@ -186,18 +183,17 @@ namespace core {
         FOR, // Complete
         ENCAPSULATED, // Complete
         CTOR_DEF, // Complete
-        CLASS_DEC, // ToDo
+        CLASS_DEC, // Complete
         CLASS_DEF, // Complete
         DICTIONARY, // Complete
         LIST, // Complete
-        TUPLE, // ToDo
-        SUBSCRIPT, // ToDo
-        TRY,
-        CATCH,
-        THROW,
-        FINALLY,
-        RASM,
-        IMPORT
+        TUPLE, // Complete
+        SUBSCRIPT, // Complete
+        TRY, // Todo
+        CATCH, // Todo
+        THROW, // Todo
+        FINALLY, // Todo
+        RASM, // ToDo
     };
     enum class ExpressionType {
         PARENS_EXPRESSION, // generic
@@ -222,13 +218,6 @@ namespace core {
         FINALLY_BLOCK,
         CLASS_BLOCK
     };
-    enum class ArgumentType {
-        POSITIONAL,
-        KEYWORD,
-        DEFAULT,
-        POSITIONAL_VARARGS,
-        KEYWORD_VARARGS
-    };
     enum class SubscriptType {
         RANGE,
         INDEX
@@ -238,15 +227,22 @@ namespace core {
         CALL_FUNC,
         DEF_FUNC
     };
-    enum class FunctionType {
-        STD_FUNC,
-        ANNO_FUNC,
-        CTOR_FUNC
-    };
-    enum class CondBranchType {
+    // enum class FunctionType {
+    //     STD_FUNC,
+    //     ANNO_FUNC,
+    //     CTOR_FUNC
+    // };
+    enum class CondBranchType
+    {
         IF_BRANCH,
         ELSE_BRANCH,
         ELIF_BRANCH
+    };
+    enum class LoopType
+    {
+        WHILE,
+        FOR,
+        UNTIL
     };
 
 }

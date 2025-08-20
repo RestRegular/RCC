@@ -3,12 +3,17 @@
 //
 
 
-#include "../../../../include/analyzer/rcc_ast_components.h"
-#include "../../../../include/analyzer/visitors/rcc_visitor.h"
+#include "../../include/analyzer/rcc_ast_components.h"
+#include "../../include/visitors/rcc_print_visitor.h"
 
 namespace ast {
 
     void PrintVisitor::visitLiteralNode(LiteralNode &node) {
+        oss << node.formatString(indent, level);
+    }
+
+    void PrintVisitor::visitNullLiteralNode(NullLiteralNode& node)
+    {
         oss << node.formatString(indent, level);
     }
 
@@ -36,13 +41,11 @@ namespace ast {
         oss << node.formatString(indent, level);
     }
 
-    // void PrintVisitor::visitVariableDefinitionNode(VariableDefinitionNode &node) {
-    //     oss << node.formatString(indent, level);
-    // }
+    void PrintVisitor::visitVariableDefinitionNode(VariableDefinitionNode &node) {
+    }
 
-    // void PrintVisitor::visitVariableAssignmentNode(VariableAssignmentNode &node) {
-    //     oss << node.formatString(indent, level);
-    // }
+    void PrintVisitor::visitAssignmentNode(AssignmentNode &node) {
+    }
 
     void PrintVisitor::visitParameterNode(ParameterNode &node) {
         oss << node.formatString(indent, level);
@@ -84,15 +87,15 @@ namespace ast {
         oss << spaceString(indent * level) << "}";
     }
 
-    void PrintVisitor::visitInfixNode(const InfixExpressionNode &node) {
+    void PrintVisitor::visitInfixNode(InfixExpressionNode &node) {
         oss << node.formatString(indent, level);
     }
 
-    void PrintVisitor::visitUnaryExpressionNode(UnaryExpressionNode node) {
+    void PrintVisitor::visitUnaryExpressionNode(UnaryExpressionNode &node) {
         oss << node.formatString(indent, level);
     }
 
-    void PrintVisitor::visitExpressionStatementNode(ExpressionStatementNode node) {
+    void PrintVisitor::visitExpressionStatementNode(ExpressionStatementNode &node) {
         oss << spaceString(indent * level) << "ExpressionStatement={\n";
         level++;
         node.getExpression()->acceptVisitor(*this);

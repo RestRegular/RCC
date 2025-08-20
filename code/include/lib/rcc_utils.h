@@ -10,6 +10,7 @@
 #include <vector>
 #include <unordered_set>
 #include <sstream>
+#include <cstdint>
 
 namespace utils {
 
@@ -17,6 +18,8 @@ namespace utils {
     class Object {
         static size_t _id;
         size_t id;
+        std::string _hasCode;
+        std::string _uniqueId;
     public:
         Object();
         [[nodiscard]] virtual std::string toString() const;
@@ -24,6 +27,8 @@ namespace utils {
         [[nodiscard]] virtual std::string professionalString() const;
         [[nodiscard]] virtual std::string formatString(size_t indent, size_t level) const;
         [[nodiscard]] virtual std::string toJsonString() const;
+        [[nodiscard]] virtual std::string hashCode();
+        [[nodiscard]] virtual std::string uniqueId();
         virtual ~Object() = default;
     };
 
@@ -55,15 +60,18 @@ namespace utils {
     };
 
     enum class TimeFormat {
-        ISO,        // YYYY-MM-DD
-        US,         // MM/DD/YYYY
-        European,   // DD/MM/YYYY
-        Timestamp   // Unix timestamp
+        ISO,             // YYYY-MM-DD
+        ISO_WITH_TIME,   // YYYY-MM-DD HH:MM:SS
+        US,              // MM/DD/YYYY
+        US_WITH_TIME,    // MM/DD/YYYY HH:MM:SS
+        European,        // DD/MM/YYYY
+        European_WITH_TIME, // DD/MM/YYYY HH:MM:SS
+        Timestamp,       // Unix timestamp (seconds since epoch)
+        TimestampMS      // Unix timestamp with milliseconds
     };
 
     // === 字符串处理 ===
-    struct StringManager: Object {
-    public:
+    struct StringManager final : Object {
         static StringManager &getInstance();
         static std::vector<std::string> split(const std::string &content, char delimiter = ',');
         std::string processQuotedString(std::string_view input);
@@ -120,10 +128,12 @@ namespace utils {
     std::string getFileDirFromPath(const std::string &path);
     std::string getWindowsRVMDir();
     std::string getWindowsDefaultDir();
-    std::string getAbsolutePath(const std::string& path, const std::string &dir_path = "");
+    std::string getAbsolutePath(const std::string& relPath, const std::string &dir_path = "");
     std::string getEscapedPathFormatString(const std::string& path);
     void setProgramEnvDir(const std::string &dir_path);
     void appendProgramWorkingDir(const std::string &path);
+    bool checkPathEqual(const std::string &path1, const std::string &path2, const bool &recursion = true);
+    std::string processRVMPath(const std::string &path);
 
     // === 数据类型转换 ===
     int stringToInt(const std::string& str);
@@ -149,19 +159,21 @@ namespace utils {
                              int &year, int &month, int &day, int &hour, int &minute, int &second);
 
     // === 文件操作 ===
-    std::string readFile(const std::string& filepath);
-    std::vector<std::string> readFileToLines(const std::string &filepath);
-    bool writeFile(const std::string &filepath, const std::string &content);
-    bool appendFile(const std::string &filepath, const std::string &content);
+    std::string readFile(const std::string& path);
+    std::vector<std::string> readFileToLines(const std::string &path);
+    bool writeFile(const std::string &path, const std::string &content);
+    bool appendFile(const std::string &path, const std::string &content);
 
     // === 位置信息 ===
     struct Pos : Object {
+        static Pos UNKNOW_POS;
         Pos() = default;
         Pos(size_t line, size_t column, size_t offset, std::string filepath);
         [[nodiscard]] size_t getLine() const;
         [[nodiscard]] size_t getColumn() const;
         [[nodiscard]] size_t getOffset() const;
         [[nodiscard]] std::string getFilepath() const;
+        [[nodiscard]] std::string getFileField() const;
         [[nodiscard]] std::string getFilePosStr() const;
         friend std::ostream& operator<<(std::ostream& out, const Pos& pos);
         [[nodiscard]] std::string toString() const override; // 获取位置信息详细字符串
@@ -181,7 +193,7 @@ namespace utils {
         std::string filepath{};
     };
 
-    struct RangerPos: Pos {
+    struct RangerPos final : Pos {
         RangerPos() = default;
         RangerPos(size_t startLine, size_t startColumn, size_t endLine, size_t endColumn, std::string filepath);
 
@@ -203,8 +215,7 @@ namespace utils {
     };
 
     // === 参数处理 ===
-    struct Arg : Object {
-    public:
+    struct Arg final : Object {
         Arg() = default;
         Arg(Pos pos, const std::string &value);
         explicit Arg(const std::string& value);
@@ -223,7 +234,7 @@ namespace utils {
     };
 
     // === 命令行参数解析器 ===
-    class ProgArgParser: Object {
+    class ProgArgParser final : Object {
     public:
         enum class CheckDir {
             UniDir,
@@ -264,7 +275,7 @@ namespace utils {
         [[nodiscard]] std::string getHelpString(size_t lineWidth = 80, size_t optionIndent = 2, size_t descriptionIndent = 6) const;
 
     private:
-        class FlagInfo: Object {
+        class FlagInfo final : Object {
         public:
             std::string name;
             bool* var;
@@ -275,7 +286,7 @@ namespace utils {
             [[nodiscard]] std::string toString() const override;
         };
 
-        class OptionInfo: Object {
+        class OptionInfo final : Object {
         public:
             std::string name;
             std::function<void(const std::string&)> setter;
@@ -300,7 +311,7 @@ namespace utils {
         FlagInfo* findFlag(const std::string& name);
         [[nodiscard]] std::string getOptionMainName(const std::string& name) const;
 
-        class MutuallyExclusiveRule: Object {
+        class MutuallyExclusiveRule final : Object {
         public:
             std::string opt1;
             std::string opt2;
@@ -309,7 +320,7 @@ namespace utils {
         };
         std::vector<MutuallyExclusiveRule> mutuallyExclusive_;
 
-        class DependentRule: Object {
+        class DependentRule final : Object {
         public:
             std::string opt1;
             std::string opt2;
@@ -360,7 +371,7 @@ namespace utils {
     };
 
     // === 数值处理 ===
-    struct Number: Object {
+    struct Number final : Object {
         NumType type;
         int int_value;
         double double_value;
@@ -374,11 +385,22 @@ namespace utils {
     int getRandomInt(int min, int max);
     double getRandomFloat(double min, double max, int decimalPlaces = 6);
 
+    // === 时间处理 ===
+    std::string getCurrentTime(TimeFormat format = TimeFormat::ISO);
+
     // === Utils ===
     template<typename T>
     size_t vectorLastIndex(const std::vector<T> &vec) {
         return vec.empty() ? -1 : vec.size() - 1;
     }
+
+    void pass(const std::string &annotation="");
+
+    std::string generateUniqueId(const std::string& str);
+
+    // FNV-1a 哈希算法实现
+    uint64_t hashToCode(const std::string& str);
+    std::string hashToStr(const std::string& str);
 } // utils
 
 #endif //RVM_RA_UTILS_H

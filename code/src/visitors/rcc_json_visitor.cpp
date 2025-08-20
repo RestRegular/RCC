@@ -2,9 +2,9 @@
 // Created by RestRegular on 2025/6/30.
 //
 
-#include "../../../../include/analyzer/visitors/rcc_visitor.h"
-#include "../../../../include/analyzer/rcc_ast_components.h"
-#include "../../../../include/lib/rcc_utils.h"
+#include "../../include/visitors/rcc_json_visitor.h"
+#include "../../include/analyzer/rcc_ast_components.h"
+#include "../../include/lib/rcc_utils.h"
 
 namespace ast {
     using namespace rjson::rj;
@@ -38,6 +38,11 @@ namespace ast {
         });
     }
 
+    void JsonVisitor::visitNullLiteralNode(NullLiteralNode& node)
+    {
+        visitLiteralNode(node);
+    }
+
     void JsonVisitor::visitStringLiteralNode(StringLiteralNode &node) {
         visitLiteralNode(node);
     }
@@ -62,18 +67,11 @@ namespace ast {
         visitLiteralNode(node);
     }
 
-    // void JsonVisitor::visitVariableDefinitionNode(VariableDefinitionNode &node){
-    //     auto builderRecord = builder;
-    //     builder = RJsonBuilder(rjson::RJType::RJ_OBJECT);
-    //     node.getVariableAssignmentNode()->acceptVisitor(*this);
-    //     builderRecord.insertString("nodeType", getNodeTypeName(node.getType()))
-    //     .insertRJValue("node", builder.build());
-    //     builder = builderRecord;
-    // }
+    void JsonVisitor::visitVariableDefinitionNode(VariableDefinitionNode &node) {
+    }
 
-    // void JsonVisitor::visitVariableAssignmentNode(VariableAssignmentNode &node) {
-    //     visitInfixNode(node);
-    // }
+    void JsonVisitor::visitAssignmentNode(AssignmentNode &node) {
+    }
 
     void JsonVisitor::visitParameterNode(ParameterNode &node) {
 
@@ -131,14 +129,23 @@ namespace ast {
     }
 
     void JsonVisitor::visitClassDeclarationNode(ClassDeclarationNode &node) {
-
+        auto builderRecord = builder;
+        builderRecord.insertString("nodeType", getNodeTypeName(NodeType::CLASS_DECLARATION));
+        auto classNode = RJsonBuilder(rjson::RJType::RJ_OBJECT);
+        classNode.insertObject("mainToken", node.getMainToken().toRJValue().getObjectValue())
+        .insertString("opSign", node.getMainToken().getValue());
+        builder = RJsonBuilder(rjson::RJType::RJ_OBJECT);
+        node.getNameNode()->acceptVisitor(*this);
+        classNode.insertObject("nameNode", builder.build().getObjectValue());
+        builderRecord.insertObject("node", classNode.build().getObjectValue());
+        builder = builderRecord;
     }
 
     void JsonVisitor::visitClassDefinitionNode(ClassDefinitionNode &node) {
         auto builderRecord = builder;
-        builderRecord.insertString("nodeType", getNodeTypeName(NodeType::CLASS));
+        builderRecord.insertString("nodeType", getNodeTypeName(NodeType::CLASS_DEFINITION));
         auto classNode = RJsonBuilder(rjson::RJType::RJ_OBJECT);
-        classNode.insertRJValue("mainToken", node.getMainToken().toRJValue())
+        classNode.insertObject("mainToken", node.getMainToken().toRJValue().getObjectValue())
         .insertString("opSign", node.getMainToken().getValue());
         builder = RJsonBuilder(rjson::RJType::RJ_OBJECT);
         node.getNameNode()->acceptVisitor(*this);
@@ -165,7 +172,7 @@ namespace ast {
         builder = builderRecord;
     }
 
-    void JsonVisitor::visitInfixNode(const InfixExpressionNode &node) {
+    void JsonVisitor::visitInfixNode(InfixExpressionNode &node) {
         auto builderRecord = builder;
         builderRecord.insertString("nodeType", getNodeTypeName(node.getInfixType()));
         auto infixNode = RJsonBuilder(rjson::RJType::RJ_OBJECT);
@@ -181,7 +188,7 @@ namespace ast {
         builder = builderRecord;
     }
 
-    void JsonVisitor::visitExpressionStatementNode(ExpressionStatementNode node) {
+    void JsonVisitor::visitExpressionStatementNode(ExpressionStatementNode &node) {
         builder.insertRJValue("mainToken", node.getMainToken().toRJValue())
         .insertString("nodeType", getNodeTypeName(node.getExpression()->getType()));
         auto builderRecord = builder;
@@ -480,7 +487,7 @@ namespace ast {
         builder = builderRecord;
     }
 
-    void JsonVisitor::visitUnaryExpressionNode(UnaryExpressionNode node) {
+    void JsonVisitor::visitUnaryExpressionNode(UnaryExpressionNode &node) {
         auto builderRecord = builder;
         builder = RJsonBuilder(rjson::RJType::RJ_OBJECT);
         node.getRightNode()->acceptVisitor(*this);

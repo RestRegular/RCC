@@ -29,7 +29,8 @@ namespace parser {
         {TokenType::TOKEN_SLASH_ASSIGN, NodeType::ARGUMENT_ASSIGNMENT},
         {TokenType::TOKEN_MODULO_ASSIGN, NodeType::ARGUMENT_ASSIGNMENT},
         {TokenType::TOKEN_COLON, NodeType::PAIR},
-        {TokenType::TOKEN_INDICATOR, NodeType::ANON_FUNCTION_DEFINITION}
+        {TokenType::TOKEN_INDICATOR, NodeType::ANON_FUNCTION_DEFINITION},
+        {TokenType::TOKEN_DOT, NodeType::ATTRIBUTE_EXPRESSION}
     };
 
     static std::unordered_set negligibleNewLineNodeTypeMap = {
@@ -51,19 +52,18 @@ namespace parser {
         ExpressionNodePtr right = nullptr;
         if (it->second == NodeType::ANON_FUNCTION_DEFINITION) {
              right = buildBraceExpression();
-        } else {
-            right = buildExpression(precedence);
+            return std::make_shared<AnonFunctionDefinitionNode>(opToken, left, nullptr, std::vector<std::shared_ptr<LabelNode>>{}, opToken, right);
         }
+        right = buildExpression(precedence);
         return std::make_shared<InfixExpressionNode>(opToken, it->second, opToken, left, right);
     }
 
     ExpressionNodePtr Parser::buildAssignExpression(const ExpressionNodePtr &left){
-        // auto opToken = currentToken();
-        // const auto &precedence = currentTokenPrecedence();
-        // next();
-        // const auto &right = buildExpression(precedence);
-        // return std::make_shared<VariableAssignmentNode>(opToken, left, right);
-        return nullptr;
+        const auto &opToken = currentToken();
+        const auto &precedence = currentTokenPrecedence();
+        next();
+        const auto &right = buildExpression(precedence);
+        return std::make_shared<AssignmentNode>(opToken, std::pair{left, right});
     }
 
     ExpressionNodePtr Parser::buildCompoundExpression(const ExpressionNodePtr &left){

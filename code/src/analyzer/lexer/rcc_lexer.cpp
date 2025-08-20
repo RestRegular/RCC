@@ -12,8 +12,8 @@
 namespace lexer {
 
     std::queue<std::shared_ptr<core::Token>>
-    Lexer::tokenize(const std::string &code,
-                    const std::string &filepath = RCC_UNKNOWN_CONST) {
+    Lexer::tokenize(const std::string &filepath) {
+        const std::string &code = utils::readFile(filepath);
         size_t row = 1, column = 0;
         std::vector tokens {
             std::make_shared<core::Token>(utils::Pos(1, 0, 0, filepath))
@@ -71,8 +71,8 @@ namespace lexer {
                         for (size_t j = i + 1; j < code.size() && std::isdigit(code[j]); ++j) {
                             t_ << code[j];
                         }
-                        std::string numStr = t_.str();
-                        if (numStr.size() > 1 && utils::isValidNumber(numStr)) {
+                        if (std::string numStr = t_.str();
+                            numStr.size() > 1 && utils::isValidNumber(numStr)) {
                             i += numStr.size() - 1;
                             tokens.emplace_back(std::make_shared<core::Token>(utils::Pos(row, column, numStr.size(), filepath), numStr));
                             column += numStr.size() - 1;
@@ -100,8 +100,8 @@ namespace lexer {
                                 tokens.resize(tokens.size() - 2);
                             }
                         }
-                        if (groupSign == "//") {
-                            commentType = core::CommentType::TOKEN_COMMENT;
+                        if (groupSign == "//" && commentType == core::CommentType::NONE) {
+                            commentType = core::CommentType::SINGLE_LINE_COMMENT;
                         } else if (groupSign == "/*") {
                             if (commentType == core::CommentType::NONE) {
                                 if (t.tellp() > 0) {
@@ -109,16 +109,16 @@ namespace lexer {
                                     t.str("");
                                     t.clear();
                                 }
-                                commentType = core::CommentType::TOKEN_DOC_COMMENT;
+                                commentType = core::CommentType::DOC_COMMENT;
                             }
                         } else if (groupSign == "*/") {
                             if (commentType == core::CommentType::NONE) {
-                                throw base::RCCSyntaxError::illegalCharacterError(
-                                        utils::Pos(row, column, groupSign.size(), filepath).toString(), RCC_UNKNOWN_CONST, groupSign[0]);
+                                throw base::RCCSyntaxError::illegalSymbolError(
+                                    utils::Pos(row, column, groupSign.size(), filepath).toString(), RCC_UNKNOWN_CONST, groupSign);
                             }
                             t.str("");
                             t.clear();
-                            if (commentType == core::CommentType::TOKEN_DOC_COMMENT) {
+                            if (commentType == core::CommentType::DOC_COMMENT) {
                                 commentType = core::CommentType::NONE;
                             }
                         } else if (commentType == core::CommentType::NONE) {
@@ -131,7 +131,7 @@ namespace lexer {
 
                     // 处理换行符
                     if (c == '\n') {
-                        if (commentType == core::CommentType::TOKEN_COMMENT) {
+                        if (commentType == core::CommentType::SINGLE_LINE_COMMENT) {
                             t.str("");
                             t.clear();
                             if (tokens.empty() || tokens.back()->getValue() != "\n") {
@@ -184,7 +184,7 @@ namespace lexer {
         }
 
         // 处理剩余的文本
-        if (!t.str().empty()) {
+        if (!t.str().empty() && commentType == core::CommentType::NONE) {
             tokens.emplace_back(std::make_shared<core::Token>(utils::Pos(row, column - t.str().size() + 1, t.str().size(), filepath), t.str()));
         }
 

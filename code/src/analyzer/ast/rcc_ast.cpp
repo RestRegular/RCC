@@ -2,7 +2,6 @@
 // Created by RestRegular on 2025/6/29.
 //
 
-#include "../../../include/rcc_base.h"
 #include "../../../include/analyzer/rcc_ast.h"
 
 namespace ast {
@@ -18,7 +17,8 @@ namespace ast {
             case NodeType::BREAK: return "BREAK";
             case NodeType::CALL: return "CALL";
             case NodeType::CHAR: return "CHAR";
-            case NodeType::CLASS: return "CLASS";
+            case NodeType::CLASS_DEFINITION: return "CLASS_DEFINITION";
+            case NodeType::CLASS_DECLARATION: return "CLASS_DECLARATION";
             case NodeType::COMPOUND: return "COMPOUND";
             case NodeType::CONTINUE: return "CONTINUE";
             case NodeType::DECORATOR: return "DECORATOR";
@@ -58,7 +58,6 @@ namespace ast {
             case NodeType::STRING: return "STRING";
             case NodeType::SUPER: return "SUPER";
             case NodeType::TERNARY: return "TERNARY";
-            case NodeType::THIS: return "THIS";
             case NodeType::UNDEFINED: return "UNDEFINED";
             case NodeType::UNKNOWN: return "UNKNOWN";
             case NodeType::WHILE: return "WHILE";

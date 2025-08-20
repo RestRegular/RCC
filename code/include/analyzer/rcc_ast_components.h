@@ -6,10 +6,9 @@
 #define RCC_RCC_AST_COMPONENTS_H
 
 #include <utility>
-
-#include "../rcc_base.h"
 #include "./rcc_ast.h"
-#include "visitors/rcc_visitor.h"
+#include "../rcc_base.h"
+#include "../visitors/rcc_base_visitor.h"
 
 namespace ast {
     using namespace utils;
@@ -137,6 +136,7 @@ namespace ast {
             const std::shared_ptr<ExpressionNode> &leftNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getNode() const;
         void acceptVisitor(Visitor &visitor) override;
+        [[nodiscard]] NodeType getPostfixType() const;
     };
 
     class UnaryExpressionNode : public ExpressionNode {
@@ -162,7 +162,7 @@ namespace ast {
     protected:
         Token token;
     public:
-        [[maybe_unused]] explicit LiteralNode(const core::Token& token, NodeType type);
+        [[maybe_unused]] explicit LiteralNode(const Token& token, NodeType type);
 
         [[nodiscard]] Pos getPos() const override;
 
@@ -175,10 +175,10 @@ namespace ast {
         [[nodiscard]] std::string formatString(size_t indent, size_t level) const override;
     };
 
-    class StringLiteralNode : public LiteralNode {
+    class StringLiteralNode final : public LiteralNode {
         std::string value;
     public:
-        explicit StringLiteralNode(const core::Token& token);
+        explicit StringLiteralNode(const Token& token);
 
         [[nodiscard]] Pos getPos() const override;
 
@@ -196,7 +196,7 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
     };
 
-    class IntegerLiteralNode : public NumberLiteralNode {
+    class IntegerLiteralNode final : public NumberLiteralNode {
         int value;
     public:
         explicit IntegerLiteralNode(const core::Token& token);
@@ -208,7 +208,7 @@ namespace ast {
         [[nodiscard]] std::string literalString() const override;
     };
 
-    class FloatLiteralNode : public NumberLiteralNode {
+    class FloatLiteralNode final : public NumberLiteralNode {
         double value;
     public:
         explicit FloatLiteralNode(const core::Token& token);
@@ -220,7 +220,7 @@ namespace ast {
         [[nodiscard]] std::string literalString() const override;
     };
 
-    class BooleanLiteralNode : public LiteralNode {
+    class BooleanLiteralNode final : public LiteralNode {
         bool value;
     public:
         explicit BooleanLiteralNode(const core::Token& token);
@@ -244,7 +244,7 @@ namespace ast {
         [[nodiscard]] std::string literalString() const override;
     };
 
-    class NullLiteralNode : public LiteralNode {
+    class NullLiteralNode final : public LiteralNode {
     public:
         explicit NullLiteralNode(const Token& token);
         [[nodiscard]] Pos getPos() const override;
@@ -252,7 +252,7 @@ namespace ast {
         [[nodiscard]] std::string literalString() const override;
     };
 
-    class IdentifierNode : public ExpressionNode {
+    class IdentifierNode final : public ExpressionNode {
         std::string name;
         std::shared_ptr<Token> colonToken;
         std::vector<std::shared_ptr<LabelNode>> labels;
@@ -268,7 +268,7 @@ namespace ast {
         [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabels() const;
     };
 
-    class LabelNode: public ExpressionNode {
+    class LabelNode final : public ExpressionNode {
         std::string label;
     public:
         explicit LabelNode(const Token& token);
@@ -288,7 +288,7 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
     };
 
-    class ParenRangerNode: public RangerNode {
+    class ParenRangerNode final : public RangerNode {
         std::shared_ptr<ExpressionNode> rangerNode;
     public:
         ParenRangerNode(const Token &lParenToken, const Token &rParenToken,
@@ -297,7 +297,7 @@ namespace ast {
         [[nodiscard]] std::shared_ptr<ExpressionNode> getRangerNode() const;
     };
 
-    class BlockRangerNode: public RangerNode {
+    class BlockRangerNode final : public RangerNode {
         std::vector<std::shared_ptr<ExpressionNode>> bodyExpressions;
     public:
         BlockRangerNode(const Token &lParenToken, const Token &rParenToken,
@@ -306,7 +306,7 @@ namespace ast {
         [[nodiscard]] std::vector<std::shared_ptr<ExpressionNode>> getBodyExpressions() const;
     };
 
-    class BracketExpressionNode : public RangerNode {
+    class BracketExpressionNode final : public RangerNode {
         std::shared_ptr<ExpressionNode> bodyNode;
     public:
         BracketExpressionNode(
@@ -317,7 +317,7 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
     };
 
-    class IndexExpressionNode: public PostfixExpressionNode {
+    class IndexExpressionNode final : public PostfixExpressionNode {
         std::shared_ptr<ExpressionNode> indexNode;
     public:
         IndexExpressionNode(
@@ -366,6 +366,46 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
     };
 
+    class AssignmentNode: public ExpressionNode {
+        std::pair<std::shared_ptr<ExpressionNode>, std::shared_ptr<ExpressionNode>> assignPair;
+    public:
+        AssignmentNode(
+            const Token &opToken,
+            const std::pair<std::shared_ptr<ExpressionNode>, std::shared_ptr<ExpressionNode>> &assignPair);
+        [[nodiscard]] std::pair<std::shared_ptr<ExpressionNode>, std::shared_ptr<ExpressionNode>> getAssignPair() const;
+        void acceptVisitor(Visitor &visitor) override;
+    };
+
+    class VariableDefinitionNode: public ExpressionNode {
+    public:
+        class VarDefData {
+            std::shared_ptr<IdentifierNode> nameNode;
+            bool hasLabels_{};
+            std::vector<std::shared_ptr<LabelNode>> labelNodes;
+            bool hasInitialValue_{};
+            std::shared_ptr<ExpressionNode> valueNode;
+        public:
+            VarDefData(
+                const std::shared_ptr<IdentifierNode> &nameNode,
+                const bool &hasLabels,
+                const std::vector<std::shared_ptr<LabelNode>> &labelNodes,
+                const bool &hasInitialValue,
+                const std::shared_ptr<ExpressionNode> &valueNode);
+            [[nodiscard]] std::shared_ptr<IdentifierNode> getNameNode() const;
+            [[nodiscard]] bool hasLabels() const;
+            [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabelNodes() const;
+            [[nodiscard]] bool hasInitialValue() const;
+            [[nodiscard]] std::shared_ptr<ExpressionNode> getValueNode() const;
+        };
+        VariableDefinitionNode(
+            const Token &varToken,
+            const std::vector<std::shared_ptr<VarDefData>> &varDefs);
+        [[nodiscard]] std::vector<std::shared_ptr<VarDefData>> getVarDefs() const;
+        void acceptVisitor(Visitor &visitor) override;
+    private:
+        std::vector<std::shared_ptr<VarDefData>> varDefs;
+    };
+
     class ParameterNode : public Node {
         typedef Token Token;
         Token nameToken;
@@ -399,7 +439,7 @@ namespace ast {
         [[nodiscard]] Token getColonToken() const;
     };
 
-    class FunctionDefinitionNode : public ExpressionNode {
+    class FunctionDefinitionNode final : public ExpressionNode {
         std::shared_ptr<ExpressionNode> callNode;
         std::shared_ptr<Token> colonToken;
         std::vector<std::shared_ptr<LabelNode>> labelNodes;
@@ -420,7 +460,7 @@ namespace ast {
         [[nodiscard]] std::shared_ptr<Token> getIndicatorToken() const;
     };
 
-    class AnonFunctionDefinitionNode : public ExpressionNode {
+    class AnonFunctionDefinitionNode final : public ExpressionNode {
         std::shared_ptr<ExpressionNode> paramNode;
         std::shared_ptr<Token> colonToken;
         std::vector<std::shared_ptr<LabelNode>> labelNodes;
@@ -491,7 +531,7 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
     };
 
-    class ConditionNode : public ExpressionNode {
+    class ConditionNode final : public ExpressionNode {
         std::vector<std::shared_ptr<ExpressionNode>> branchNodes;
     public:
         explicit ConditionNode(const std::vector<std::shared_ptr<ExpressionNode>> &branchNodes);
@@ -502,30 +542,32 @@ namespace ast {
     class LoopNode : public ExpressionNode {
         std::shared_ptr<ExpressionNode> conditionNode;
         std::shared_ptr<ExpressionNode> bodyNode;
+        LoopType loopType;
     public:
-        explicit LoopNode(Token loopToken,
+        explicit LoopNode(const Token& loopToken,
             const std::shared_ptr<ExpressionNode> &conditionNode,
             const std::shared_ptr<ExpressionNode> &bodyNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getConditionNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
         void acceptVisitor(Visitor &visitor) override;
+        [[nodiscard]] LoopType getLoopType() const;
     };
 
-    class WhileLoopNode : public LoopNode {
+    class WhileLoopNode final : public LoopNode {
     public:
         explicit WhileLoopNode(const Token &whileToken,
             const std::shared_ptr<ExpressionNode> &conditionNode,
             const std::shared_ptr<ExpressionNode> &bodyNode);
     };
 
-    class UntilLoopNode : public LoopNode {
+    class UntilLoopNode final : public LoopNode {
     public:
         explicit UntilLoopNode(const Token &untilToken,
             const std::shared_ptr<ExpressionNode> &conditionNode,
             const std::shared_ptr<ExpressionNode> &bodyNode);
     };
 
-    class ForLoopNode : public LoopNode {
+    class ForLoopNode final : public LoopNode {
         std::shared_ptr<ExpressionNode> initNode;
         std::shared_ptr<ExpressionNode> updateNode;
     public:
@@ -569,19 +611,14 @@ namespace ast {
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
     };
 
-    class ClassDeclarationNode : public Node {
-        typedef Token Token;
-        Token classToken;
-        Token nameToken;
-        std::shared_ptr<Token> colonToken;
-        std::vector<std::shared_ptr<Token>> labelTokens;
+    class ClassDeclarationNode : public ExpressionNode {
+        std::shared_ptr<ExpressionNode> nameNode;
     public:
-        explicit ClassDeclarationNode(Token classToken, Token nameToken, std::shared_ptr<Token> colonToken,
-                                      std::vector<std::shared_ptr<Token>> labelTokens);
-
+        explicit ClassDeclarationNode(
+            const Token &classToken,
+            const std::shared_ptr<ExpressionNode> &nameNode_);
+        [[nodiscard]] std::shared_ptr<ExpressionNode> getNameNode() const;
         void acceptVisitor(Visitor &visitor) override;
-
-        [[nodiscard]] Pos getPos() const override;
     };
 
     class ClassDefinitionNode : public ExpressionNode {
@@ -590,9 +627,9 @@ namespace ast {
     public:
         explicit ClassDefinitionNode(
                 const Token &classToken,
-                const std::shared_ptr<ExpressionNode> &labelNode,
-                const std::shared_ptr<ExpressionNode> &bodyNode);
-        [[nodiscard]] std::shared_ptr<ExpressionNode> getLabelNode() const;
+                const std::shared_ptr<ExpressionNode> &nameNode_,
+                const std::shared_ptr<ExpressionNode> &bodyNode_);
+        [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabelNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getNameNode() const;
         [[nodiscard]] Pos getPos() const override;
@@ -606,7 +643,7 @@ namespace ast {
 
         void acceptVisitor(Visitor &visitor) override;
 
-        [[nodiscard]] utils::Pos getPos() const override;
+        [[nodiscard]] Pos getPos() const override;
 
         [[nodiscard]] const std::vector<std::shared_ptr<StatementNode>> &getStatements() const;
 

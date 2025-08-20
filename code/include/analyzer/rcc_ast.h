@@ -45,7 +45,7 @@ namespace ast {
     class BracketExpressionNode;
     class IndexExpressionNode;
     class VariableDefinitionNode;
-    class VariableAssignmentNode;
+    class AssignmentNode;
     class ParameterNode;
     class ArgumentNode;
     class FunctionDeclarationNode;
@@ -91,7 +91,8 @@ namespace ast {
         BRANCH, // 分支节点
         CALL, // 函数调用节点
         CHAR, // 字符类型字面量节点
-        CLASS, // 类定义或声明节点
+        CLASS_DECLARATION, // 类声明节点
+        CLASS_DEFINITION, // 类定义节点
         COMPOUND, // 复合语句（可能用于支持多条语句的组合）
         COMPARE, // 比较运算节点
         CONDITION, // 条件语句
@@ -148,7 +149,6 @@ namespace ast {
         STRING, // 字符串字面量节点
         SUPER, // super关键字节点（通常用于继承上下文）
         TERNARY, // 三元条件表达式节点
-        THIS, // this指针/对象引用节点
         UNARY, // 一元表达式节点
         UNDEFINED, // 未定义值节点
         UNKNOWN, // 未知类型节点（错误处理或预留）

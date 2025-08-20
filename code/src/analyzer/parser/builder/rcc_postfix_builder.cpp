@@ -24,6 +24,10 @@ namespace parser {
     }
 
     ExpressionNodePtr Parser::buildCallExpression(const ExpressionNodePtr &left){
+        if (!left) {
+            recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_IDENTIFIER);
+            return nullptr;
+        }
         if (!currentTokenIs(TokenType::TOKEN_LPAREN)) {
             recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_LPAREN);
             return left;

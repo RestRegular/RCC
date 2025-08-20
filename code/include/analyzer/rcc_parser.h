@@ -30,7 +30,7 @@ namespace parser {
     class Parser {
     public:
         explicit Parser(std::queue<std::shared_ptr<Token>> tokens);
-        std::shared_ptr<ProgramNode> parse();
+        std::pair<bool, std::shared_ptr<ProgramNode>> parse();
         [[nodiscard]] StringVector getErrorMsgs() const;
         void printParserErrors(std::ostream &os = std::cerr) const;
         [[nodiscard]] bool hasError() const;
@@ -38,10 +38,13 @@ namespace parser {
         static Token STREAM_START_TOKEN;
         static Token STREAM_END_TOKEN;
 
+        // 解析状态
+        bool isInDictRanger = false;
+
         // 词法分析结果
         std::queue<std::shared_ptr<Token>> _tokens;
         // 先前的 Token
-        std::shared_ptr<Token> _previous_token;
+        std::stack<std::shared_ptr<Token>> _previous_tokens;
         // 当前的 Token
         std::shared_ptr<Token> _current_token;
         // 临时 Token
@@ -129,6 +132,7 @@ namespace parser {
         ExpressionNodePtr buildConstructorExpression();
         ExpressionNodePtr buildDictionaryExpression();
         ExpressionNodePtr buildListExpression();
+        ExpressionNodePtr buildVariableExpression();
 
         // 中缀表达式构建函数
         ExpressionNodePtr buildInfixExpression(const ExpressionNodePtr &left);

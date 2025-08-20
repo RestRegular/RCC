@@ -31,11 +31,9 @@ namespace core {
             {"true", TokenType::TOKEN_TRUE},
             {"false", TokenType::TOKEN_FALSE},
             {"null", TokenType::TOKEN_NULL},
-            {"this", TokenType::TOKEN_THIS},
             {"super", TokenType::TOKEN_SUPER},
             {"class", TokenType::TOKEN_CLASS},
             {"fun", TokenType::TOKEN_FUNCTION},
-            {"import", TokenType::TOKEN_IMPORT},
             {"if", TokenType::TOKEN_IF},
             {"else", TokenType::TOKEN_ELSE},
             {"elif", TokenType::TOKEN_ELIF},
@@ -272,7 +270,6 @@ namespace core {
             case TokenType::TOKEN_GREATER_EQUAL: return "TOKEN_GREATER_EQUAL";
             case TokenType::TOKEN_IDENTIFIER: return "TOKEN_IDENTIFIER";
             case TokenType::TOKEN_IF: return "TOKEN_IF";
-            case TokenType::TOKEN_IMPORT: return "TOKEN_IMPORT";
             case TokenType::TOKEN_INTEGER: return "TOKEN_INTEGER";
             case TokenType::TOKEN_KEYWORD: return "TOKEN_KEYWORD";
             case TokenType::TOKEN_LABEL: return "TOKEN_LABEL";
@@ -299,7 +296,6 @@ namespace core {
             case TokenType::TOKEN_STAR: return "TOKEN_STAR";
             case TokenType::TOKEN_STAR_ASSIGN: return "TOKEN_STAR_ASSIGN";
             case TokenType::TOKEN_SUPER: return "TOKEN_SUPER";
-            case TokenType::TOKEN_THIS: return "TOKEN_THIS";
             case TokenType::TOKEN_TRY: return "TOKEN_TRY";
             case TokenType::TOKEN_TRUE: return "TOKEN_TRUE";
             case TokenType::TOKEN_TILDE: return "TOKEN_TILDE";

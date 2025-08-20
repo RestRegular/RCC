@@ -12,9 +12,9 @@ namespace base {
 
     const StringSet KEYWORDS = {
             "var", "fun", "if", "else", "elif", "for", "while", "until",
-            "repeat", "ret", "break", "class", "iter", "this", "super",
+            "repeat", "ret", "break", "class", "iter", "super",
             "pass", "ctor", "encapsulated", "try", "catch", "finally", "throw",
-            "rasm", "import", "link"
+            "rasm", "link"
     };
 
     const StringSet OPERATORS = {
@@ -94,10 +94,17 @@ namespace base {
     };
 
     const StringSet DESCRIBE_LABELS = {
-            "public", "private", "static", "protected", "internal",
-            "const", "global", "quote", "override", "interface",
-            "virtual", "int", "float", "str", "bool", "char", "any",
-            "list", "dict", "series", "func", "void"
+        // access permission label
+        "public", "private", "protected", "builtin",
+        // restrict label
+        "const", "quote",
+        // life circle label
+        "static", "global",
+        // object-oriented feature label
+        "overwrite", "interface", "virtual",
+        // data type label
+        "int", "float", "str", "bool", "char", "any",
+        "list", "dict", "series", "func", "void", "nul"
     };
 
     const std::string NULL_VALUE = "null";
@@ -127,6 +134,11 @@ namespace base {
     const StringSet GROUP_SIGNS = {
             "+=", "-=", "*=", "/=", "==", ">=", "<=",
             "->", "//", "/*", "*/", "||", "&&", "!=", "**", ".*", "++", "--"
+    };
+
+    const StringMap RELATION_MAP = {
+        {"==", "RE"}, {"!=", "RNE"}, {">", "RG"}, {">=", "RGE"},
+        {"<", "RL"}, {"<=", "RLE"}, {"&&", "AND"}, {"||", "OR"}
     };
 
     bool containsKeyword(const std::string &str) {
@@ -256,12 +268,12 @@ namespace base {
     }
 
     RCCSyntaxError
-    RCCSyntaxError::illegalCharacterError(const std::string &error_position, const std::string &error_line,
-                                          const char &c) {
+    RCCSyntaxError::illegalSymbolError(const std::string &error_position, const std::string &error_line,
+                                       const std::string& c) {
         return RCCSyntaxError(error_position, error_line,
-                              {"This error is caused by the use of illegal character.",
-                               "Illegal character: " + std::string(1, c)},
-                              {"Please check the legal character set in Rio by accessing the official "
+                              {"This error is caused by the use of illegal symbol.",
+                               "Illegal symbol: '" + c + "'"},
+                              {"Please check the legal symbol set in Rio by accessing the official "
                                "documentation at the https://github.com/RestRegular/Rio."});
     }
 
@@ -302,6 +314,14 @@ namespace base {
                                "Expected operator: '" + expected_operator + "'"},
                               {"Please check whether the operator at the position of this error is legal "
                                "by accessing the official documentation at the https://github.com/RestRegular/Rio."});
+    }
+
+    RCCSyntaxError RCCSyntaxError::duplicateTypeLabelError(const std::string &error_position,
+        const std::string &error_line, const std::string &type_label) {
+        return RCCSyntaxError(error_position, error_line,
+                              {"This error is caused by using a duplicat type label.",
+                              "Duplicate type label: " + type_label},
+                              {"Please delete the redundant type labels from the duplicate type labels."});
     }
 
     RCCParserError::RCCParserError(std::string error_position, std::string error_line,

@@ -7,15 +7,13 @@
 
 #include <iostream>
 #include <queue>
-#include <vector>
 #include "../rcc_core.h"
 
 namespace lexer {
 
     class Lexer {
     public:
-        static std::queue<std::shared_ptr<core::Token>>
-        tokenize(const std::string &code, const std::string &filepath);
+        static std::queue<std::shared_ptr<core::Token>> tokenize(const std::string &filepath);
     };
 
 } // lexer
