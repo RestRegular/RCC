@@ -1,0 +1,120 @@
+/*
+ * This is a built-in library.
+ * It contains some built-in functions.
+ *
+ * - A built-in function is a function declared in a Rio file
+ * and marked with the `encapsulated` keyword, whose
+ * implementation is encapsulated in the compiler or virtual
+ * machine. When calling a built-in function, it is necessary
+ * to import the built-in extension file before making the call.
+ *
+ * - A pure-built-in function is a function whose declaration
+ * and implementation are both encapsulated in the compiler
+ * or virtual machine. Pure-built-in functions can be called
+ * directly.
+ *
+ * @author: @RestRegular
+ * @version: 1.1.0
+ * @time: 2025/08/20 0:13
+ */
+
+//
+// This is a pure-built-in function.
+// fun import(*args, **kwargs): any {
+//     /*
+//      * Import a rio file as an extension.
+//      * @return: extension class
+//      */
+//     encapsulated
+// }
+//
+
+//
+// This is a pure-built-in function.
+// fun export(*args, **kwargs): any {
+//     /*
+//      * Export the given symbols.
+//      * Only exported functions can be called externally.
+//      */
+//     encapsulated
+// }
+//
+
+fun sout(*args, end = "\n"): void {
+    /*
+     * This function prints the given arguments to the standard output.
+     *
+     * @param: args: the arguments to print.
+     * @param: end: the end of the output.
+     */
+    encapsulated
+}
+
+fun size(arg): int {
+    /*
+     * This function returns the size of an iterable data.
+     *
+     * @param: arg: the iterable data to get the size.
+     * @return: an int type data.
+     */
+    encapsulated
+}
+
+fun sin(arg = ""): str {
+    /*
+     * This function returns the input from the standard input.
+     *
+     * @param: arg: input prompt
+     * @return: a str type data from the standard input.
+     */
+    encapsulated
+}
+
+fun type(arg): str {
+    /*
+     * This function returns the type of the given argument.
+     *
+     * @param: arg: the argument to get the type.
+     * @return: a str type data.
+     */
+     encapsulated
+}
+
+fun setType(arg1, arg2): void {
+    /*
+     * This function sets the type of the given argument.
+     *
+     * @param: arg1: the argument to set the type.
+     * @param: arg2: the type to set.
+     */
+     encapsulated
+}
+
+fun unpack(arg) {
+    /*
+     * This function unpacks the given argument.
+     *
+     * @param: arg: the argument to unpack.
+     */
+    encapsulated
+}
+
+fun entry(arg, *args, **kwargs): void {
+    /*
+     * When this file is used as the execution entry point of the program,
+     * this function will call the passed-in function; otherwise, it
+     * will not, such as when this file is imported as an extension into
+     * other files.
+     *
+     * The called function must contain exactly two parameters, which are
+     * variable-length positional arguments and variable-length keyword
+     * arguments, such as: `(*args, **kwargs)`.
+     *
+     * @param: arg: the function to execute.
+     * @param: args: the arguments to pass to the executed function.
+     * @param: kwargs: the keyword arguments to pass to the executed function.
+     */
+    encapsulated
+}
+
+export(sout, sin, size, type, setType, entry)
