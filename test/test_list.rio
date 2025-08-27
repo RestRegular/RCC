@@ -1,7 +1,19 @@
-var lib = import("./lib/lib.rio")
+fun sout(*args, end = "\n"): void {
+    /*
+     * This function prints the given arguments to the standard output.
+     * @param: args: the arguments to print.
+     * @param: end: the end of the output.
+     */
+    encapsulated
+}
 
-fun sout(message): void {
-    lib.sout("[test_lib.rio]: ", message)
+fun size(arg): int {
+    /*
+     * This function returns the size of an iterable data.
+     * @param: arg: the iterable data to get the size.
+     * @return: an int type data.
+     */
+    encapsulated
 }
 
 class List: public {
@@ -15,12 +27,7 @@ class List: public {
 
     ctor(listValue: list) {
         this.listValue = listValue
-        this.length = lib.size(listValue)
-    }
-
-    ctor(*listItems) {
-        this.listValue = listItems
-        this.length = lib.size(listItems)
+        this.length = size(listValue)
     }
 
     fun at(index: int): any {
@@ -60,26 +67,26 @@ class List: public {
     }
 
     fun print(): void {
-        lib.sout(this.listValue)
+        sout(this.listValue)
     }
 
-    fun sort(is_ascending: bool = true): void {
+    fun sort(is_ascending: bool): void {
         fun quick_sort(arr: list): list {
-            if lib.size(arr) <= 1 {
+            if size(arr) <= 1 {
                 ret arr
             }
             var pivot = arr[0]
             var less: list
             var greater: list
             var i = 1
-            while i < lib.size(arr) {
+            while i < size(arr) {
                 if arr[i] <= pivot {
                     less += arr[i]
                 }
                 i ++
             }
             i = 1
-            while i < lib.size(arr) {
+            while i < size(arr) {
                 if arr[i] > pivot {
                     greater += arr[i]
                 }
@@ -91,17 +98,21 @@ class List: public {
     }
 }
 
-fun test(): void {
-    var list1: List = List(23, 7, 45, 12, 38, 3, 29, 41, 16,
-     50, 8, 33, 19, 47, 5, 27, 14, 36, 22, 9, 18, 7.35, 42,
-      13.89, 29, 4.72, 37.16, 21, 8.93, 45.27, 12, 33.64, 26,
-       1.58, 39.42, 15, 48.19, 24.76, 6, 31.05)
-    list1.sort(true)
-    list1.print()
+fun main(): void {
+    var a: List = List([1, 3, 4, 2, 5])
+    var a_str: str = a.toString()
+    sout(a_str)
+    sout(a)
+    a.print()
+    var iter_list: funi = () -> {
+        a.iterate((item, index) -> {
+            sout("item at index [", index, "]: ", item)
+        })
+    }
+    iter_list()
+    a.sort(true)
+    a.print()
+    iter_list()
 }
 
-lib.entry((*args, **kwargs) -> {
-    test()
-})
-
-export(test, sout, List)
+main()

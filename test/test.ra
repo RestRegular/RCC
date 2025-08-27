@@ -1,0 +1,8 @@
+ALLOT: vid0, vid1
+TP_SET: tp-int, vid0
+PUT: 1, vid0
+TP_SET: tp-str, vid1
+PUT: "hello\" \"world", vid1
+DIV: 15, 3, vid4
+ADD: vid3, vid4, vid5
+PUT: vid1, vid5

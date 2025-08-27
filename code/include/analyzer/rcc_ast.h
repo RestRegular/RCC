@@ -71,6 +71,7 @@ namespace ast {
 
     // 函数声明
     std::string getNodeTypeName(NodeType nodeType);
+    std::string getNodeTypeFormatName(NodeType nodeType);
 
     // 全局变量声明
 

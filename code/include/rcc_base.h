@@ -91,7 +91,7 @@ namespace base {
         std::string error_line;
         StringVector error_info;
         StringVector repair_tips;
-        std::string trace_info;
+        std::list<std::string> trace_info;
         std::string space = std::string(4, ' ');
     public:
         std::string getErrorTip(const std::size_t & spaceSize) const;
@@ -110,6 +110,15 @@ namespace base {
 
         [[nodiscard]] std::string briefString() const override;
 
+        static std::string makeTraceInfo(
+                const std::string &file_record_, const std::string &error_pos_filepath,
+                const std::string &utils_getPosStrFromFilePath, const std::string &makeFileIdentiFromPath,
+                const std::string &trace_info, const std::string &error_pos_str,
+                const std::string &raw_code, const std::string &scope_leader_pos,
+                const std::string &scope_leader_code);
+
+        [[nodiscard]] std::list<std::string> getTraceInfo() const;
+
     protected:
         RCCError(ErrorType error_type, std::string error_position, std::string error_line,
                  StringVector error_info, StringVector repair_tips);
@@ -119,7 +128,7 @@ namespace base {
 
     };
 
-    class RCCSyntaxError: public RCCError {
+    class RCCSyntaxError final : public RCCError {
         RCCSyntaxError(std::string error_position, std::string error_line,
                        StringVector error_info, StringVector repair_tips);
     public:
@@ -132,7 +141,7 @@ namespace base {
         static RCCSyntaxError duplicateTypeLabelError(const std::string &error_position, const std::string &error_line, const std::string &type_label);
     };
 
-    class RCCParserError: public RCCError {
+    class RCCParserError final : public RCCError {
         RCCParserError(std::string error_position, std::string error_line,
                        StringVector error_info);
     public:
@@ -146,10 +155,39 @@ namespace base {
         static RCCParserError syntaxError(const std::string &error_position, const std::string &syntaxErrorMsg, const std::string &errorDetailMsg);
     };
 
+    class RCCCompilerError final : public RCCError
+    {
+        RCCCompilerError(std::string error_position, std::string error_line,
+            StringVector error_info, StringVector repair_tips);
+    public:
+        static RCCCompilerError typeMissmatchError(const std::string &error_position, const std::string &error_line,
+                                                   const std::string& error_info, const std::string &expected_type,
+                                                   const std::string &actual_type, const std::vector<std::string> &repair_tips);
+        static RCCCompilerError typeMissmatchError(const std::string &error_position, const std::string &error_line,
+                                                   const StringVector& error_infos, const std::string &expected_type,
+                                                   const std::string &actual_type, const std::vector<std::string> &repair_tips);
+        static RCCCompilerError compilerError(const std::string &error_position, const std::string &error_line,
+                                              const std::string &rcc_error_code, const std::string& error_info);
+        static RCCCompilerError symbolNotFoundError(const std::string &error_position, const std::string &error_line,
+            const std::string &symbol_name, const std::string &error_info, const StringVector &repair_tips);
+        static RCCCompilerError symbolNotFoundError(const std::string &error_position, const std::string &error_line,
+            const std::string &symbol_name, const StringVector &error_infos, const StringVector &repair_tips);
+        static RCCCompilerError scopeError(const std::string &error_position, const std::string &error_line,
+                                           const std::string &expected_scope_field, const std::string &actual_scope_field, const StringVector& error_infos,
+                                           const StringVector &repair_tips);
+        static RCCCompilerError argumentError(const std::string &error_position, const std::string &error_line,
+            const StringVector &error_infos, const StringVector &repair_tips);
+        static RCCCompilerError semanticError(const std::string &error_position, const std::string &error_line,
+            const std::string &error_info, const StringVector &repair_tips);
+        static RCCCompilerError semanticError(const std::string &error_position, const std::string &error_line,
+            const StringVector &error_infos, const StringVector &repair_tips);
+    };
+
     // 枚举类定义
     enum class ErrorType {
         SYNTAX_ERROR,
         PARSER_ERROR,
+        COMPILER_ERROR,
     };
 }
 

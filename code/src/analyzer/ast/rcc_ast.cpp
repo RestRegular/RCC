@@ -88,4 +88,8 @@ namespace ast {
         }
     }
 
+    std::string getNodeTypeFormatName(NodeType nodeType)
+    {
+        return "[NodeType: " + getNodeTypeName(nodeType) + "]";
+    }
 }

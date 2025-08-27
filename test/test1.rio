@@ -1,0 +1,16 @@
+var lib: clas = import("./lib/lib.rio")
+
+fun main(): void {
+    var b: int = 10 * 2 - 5
+    while true {
+        if b >= 8 {
+            var a: int = "hello world"
+            lib.sout(a)
+            break
+        }
+    }
+}
+
+lib.entry((*args, **kwargs) -> {
+    main()
+})

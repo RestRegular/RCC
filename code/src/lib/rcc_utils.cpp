@@ -106,14 +106,13 @@ namespace utils
 
     // 获取文件名
     std::string getFileNameFromPath(const std::string &path) {
-        auto file_full_name = std::filesystem::path(path).filename().string();
+        const auto file_full_name = std::filesystem::path(path).filename().string();
         return file_full_name.substr(0, file_full_name.rfind('.'));
     }
 
     // 获取文件扩展名
     std::string getFileExtFromPath(const std::string &path) {
-        std::filesystem::path file_path(path);
-        if (file_path.has_extension()) {
+        if (const std::filesystem::path file_path(path); file_path.has_extension()) {
             return file_path.extension().string().substr(1); // 去掉点号
         }
         return ""; // 如果没有扩展名，返回空字符串
@@ -121,7 +120,7 @@ namespace utils
 
     // 获取文件名和扩展名
     std::pair<std::string, std::string> getFileInfoFromPath(const std::string &path) {
-        auto file_full_name = std::filesystem::path(path).filename().string();
+        const auto file_full_name = std::filesystem::path(path).filename().string();
         auto file_name = file_full_name.substr(0, file_full_name.rfind('.'));
         auto file_ext = file_full_name.substr(file_full_name.rfind('.') + 1);
         return {file_name, file_ext};
@@ -135,7 +134,7 @@ namespace utils
         return "[" + type + ": " + name + "]";
     }
 
-    std::string getWindowsRVMDir() {
+    std::string getWindowsRCCDir() {
         char path[MAX_PATH];
         GetModuleFileNameA(nullptr, path, MAX_PATH);
         return std::filesystem::path(path).parent_path().string();
@@ -557,15 +556,20 @@ namespace utils
         return result;
     }
 
-    std::string StringManager::wrapText(const std::string &text, size_t lineWidth, size_t indent, const std::string& last_line_suffix, const std::string& next_line_prefix){
+    std::string StringManager::wrapText(const std::string &text, size_t lineWidth, size_t indent, const std::string& lastLineSuffix, const std::string& nextLinePrefix, const
+                                        bool& retainPreSpaces){
         std::ostringstream oss;
         size_t currentWidth = 0;
         std::istringstream words(text);
         std::string word;
-
+        if (retainPreSpaces)
+        {
+            const auto frontSpaceSize = getSpaceFrontOfLineCode(text);
+            oss << std::string(frontSpaceSize, ' ');
+        }
         while (words >> word) {
             if (currentWidth + word.size() + (currentWidth > 0 ? 1 : 0) > lineWidth) {
-                oss << last_line_suffix << "\n" << std::string(indent, ' ') << next_line_prefix;
+                oss << lastLineSuffix << "\n" << std::string(indent, ' ') << nextLinePrefix;
                 currentWidth = 0;
             }
             if (currentWidth > 0) {
@@ -970,7 +974,7 @@ namespace utils
     }
 
     std::string readFile(const std::string &path) {
-        const std::string &filepath = processRVMPath(path);
+        const std::string &filepath = processRCCPath(path);
         std::ifstream inFile(filepath);
         if (!std::filesystem::exists(filepath)) {
             // ToDo: 添加错误处理逻辑
@@ -988,7 +992,7 @@ namespace utils
     }
 
     std::vector<std::string> readFileToLines(const std::string &path){
-        const auto &filepath = processRVMPath(path);
+        const auto &filepath = processRCCPath(path);
         std::ifstream inFile(filepath);
         if (!std::filesystem::exists(filepath)) {
             std::cerr << "This file [path: " << filepath << "] does not exist." << std::endl;
@@ -1010,13 +1014,12 @@ namespace utils
 
     // 写入文件（覆盖模式）
     bool writeFile(const std::string &path, const std::string &content) {
-        const auto &filepath = processRVMPath(path);
+        const auto &filepath = processRCCPath(path);
         // 以二进制模式打开文件，覆盖原有内容
         std::ofstream file(filepath, std::ios::binary);
         if (!file.is_open()) {
             return false; // 文件打开失败
         }
-
         // 写入内容
         file.write(content.data(), static_cast<int>(content.size()));
         return file.good(); // 检查写入是否成功
@@ -1024,7 +1027,7 @@ namespace utils
 
     // 追加文件（追加模式）
     bool appendFile(const std::string &path, const std::string &content) {
-        const auto &filepath = processRVMPath(path);
+        const auto &filepath = processRCCPath(path);
         // 以二进制模式和追加模式打开文件
         std::ofstream file(filepath, std::ios::binary | std::ios::app);
         if (!file.is_open()) {
@@ -1153,6 +1156,51 @@ namespace utils
         code.swap(new_code);
     }
 
+    std::string listJoin(const std::list<std::string>& strList, const std::string& delimiter){
+        if (strList.empty()) return "";
+        // 计算总长度（包括分隔符）
+        size_t totalLength = 0;
+        for (const auto& s : strList) {
+            totalLength += s.length();
+        }
+        // 添加分隔符的总长度
+        totalLength += delimiter.length() * (strList.size() - 1);
+        // 预分配内存
+        std::string result;
+        result.reserve(totalLength);
+        // 拼接字符串
+        auto it = strList.begin();
+        result += *it++;  // 添加第一个元素
+        while (it != strList.end()) {
+            result += delimiter;
+            result += *it++;
+        }
+        return result;
+    }
+
+    std::string vectorJoin(const std::vector<std::string>& strVector, const std::string& delimiter)
+    {
+        if (strVector.empty()) return "";
+        // 计算总长度（包括分隔符）
+        size_t totalLength = 0;
+        for (const auto& s : strVector) {
+            totalLength += s.length();
+        }
+        // 添加分隔符的总长度
+        totalLength += delimiter.length() * (strVector.size() - 1);
+        // 预分配内存
+        std::string result;
+        result.reserve(totalLength);
+        // 拼接字符串
+        auto it = strVector.begin();
+        result += *it++;  // 添加第一个元素
+        while (it != strVector.end()) {
+            result += delimiter;
+            result += *it++;
+        }
+        return result;
+    }
+
     std::string getSerializationProfileName(const SerializationProfile &profile){
         switch (profile) {
         case SerializationProfile::Debug:
@@ -1189,7 +1237,7 @@ namespace utils
 
     std::string getAbsolutePath(const std::string &relPath, const std::string &dir_path)  {
         if (relPath.empty()) return "";
-        const auto &path = processRVMPath(relPath);
+        const auto &path = processRCCPath(relPath);
         namespace fs = std::filesystem;
         try {
             // 将输入路径转换为 filesystem::path 对象
@@ -1211,6 +1259,40 @@ namespace utils
         } catch (const std::exception& e) {
             throw std::runtime_error("Failed to convert path to absolute path: " + std::string(e.what()));
         }
+    }
+
+    bool isValidPath(const std::string& path)
+    {
+        try {
+            return std::filesystem::exists(std::filesystem::path(path));
+        } catch (const std::filesystem::filesystem_error& e) {
+            throw std::runtime_error("Failed to check path existence: " + std::string(e.what()));
+        }
+
+    }
+
+    bool isAbsolutePath(const std::string& path)
+    {
+        if (path.empty()) {
+            return false;
+        }
+#ifdef _WIN32
+        // Windows系统的判断规则
+        if (path.size() >= 2 && isalpha(path[0]) && path[1] == ':') {
+            // 检查是否以盘符开头，如 "C:" 或 "c:"
+            return isValidPath(path);
+        }
+        // 检查UNC路径，如 "\\server\share"
+        if (path.size() >= 2 && path[0] == '\\' && path[1] == '\\') {
+            return isValidPath(path);
+        }
+#else
+        // Unix/Linux系统的判断规则
+        if (path[0] == '/') {
+            return isValidPath(path);
+        }
+#endif
+        return false;
     }
 
     std::tuple<char, char, char, char, char> getSeparators(TimeFormat format)  {
@@ -1375,7 +1457,7 @@ namespace utils
         std::ostringstream oss;
 
         oss << "Usage:\n";
-        oss << "  RVM.exe [options]\n\n";
+        oss << "  RCC.exe [options]\n\n";
         oss << "Flags:\n";
 
         // 添加标志参数的帮助信息
@@ -1719,7 +1801,7 @@ namespace utils
         return path1 == path2 || (recursion && checkPathEqual(getAbsolutePath(path1), getAbsolutePath(path2), false));
     }
 
-    std::string processRVMPath(const std::string& path)
+    std::string processRCCPath(const std::string& path)
     {
         std::string result = path;
         std::replace(result.begin(), result.end(), '/', '\\');
@@ -1769,5 +1851,11 @@ namespace utils
 
     std::string spaceString(size_t n) {
         return std::string(n, ' ');
+    }
+
+    std::string makeFileIdentStr(const std::string& filepath)
+    {
+        const auto &fileName = getFileFromPath(filepath);
+        return getObjectFormatString("File", fileName);
     }
 } // utils

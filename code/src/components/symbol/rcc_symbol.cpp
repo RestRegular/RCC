@@ -7,6 +7,8 @@
 #include "../../../include/rcc_base.h"
 #include "../../../include/components/symbol/rcc_symbol.h"
 
+#include "../../../include/visitors/rcc_compiler_visitor.h"
+
 namespace symbol {
     std::string symbolTypeToString(const SymbolType &type) {
         switch (type) {
@@ -17,6 +19,10 @@ namespace symbol {
             case SymbolType::CLASS: return "CLASS";
             default: return "UNKNOWN";
         }
+    }
+
+    std::string symbolTypeToFormatString(const SymbolType &type) {
+        return "[SymbolType: " + symbolTypeToString(type) + "]";
     }
 
     std::string labelTypeToString(const LabelType &type) {
@@ -95,6 +101,40 @@ namespace symbol {
         }
     }
 
+    std::string functionTypeToString(const FunctionType& type)
+    {
+        switch (type)
+        {
+        case FunctionType::FUNCTION: return "FUNCTION";
+        case FunctionType::CONSTRUCTOR: return "CONSTRUCTOR";
+        case FunctionType::METHOD: return "METHOD";
+        case FunctionType::ANONYMOUS: return "ANONYMOUS";
+        default: return RCC_UNKNOWN_CONST;
+        }
+    }
+
+    std::string functionTypeToFormatString(const FunctionType& type)
+    {
+        return "[FunctionType: " + functionTypeToString(type) + "]";
+    }
+
+    std::string paramTypeToString(const ParamType& type)
+    {
+        switch (type)
+        {
+        case ParamType::NO_PARAM: return "NO_PARAM";
+        case ParamType::PARAM_POSITIONAL: return "PARAM_POSITIONAL";
+        case ParamType::PARAM_KEYWORD: return "PARAM_KEYWORD";
+        case ParamType::PARAM_VAR_LEN_POSITIONAL: return "PARAM_VAR_LEN_POSITIONAL";
+        case ParamType::PARAM_VAR_LEN_KEYWORD: return "PARAM_VAR_LEN_KEYWORD";
+        default: return RCC_UNKNOWN_CONST;
+        }
+    }
+
+    std::string paramTypeToFormatString(const ParamType& type)
+    {
+        return "[ParamType: " + paramTypeToString(type) + "]";
+    }
 
     std::unordered_map<std::string, LabelType> labelTypeMap = {
         {"int", LabelType::TYPE_LABEL},
@@ -243,8 +283,7 @@ namespace symbol {
     std::string Symbol::toString() const
     {
         return "[Symbol(" + symbolTypeToString(type)
-        + "): " + value + ": " + raValue + " > " + std::to_string(scopeLevel)
-        + "]";
+        + "): " + value + "(" + raValue + ") @ " + std::to_string(scopeLevel) + "]";
     }
 
     bool Symbol::equalWith(const Symbol& other) const
@@ -331,13 +370,24 @@ namespace symbol {
         customClassSymbolMap[uid] = classSymbol;
     }
 
-    void TypeLabelSymbol::deleteCustomType(const std::string &uid) {
+    void TypeLabelSymbol::deleteCustomType(const std::string &uid)
+    {
         if (customTypeMap.contains(uid)) {
             customTypeMap.erase(uid);
             labelTypeMap.erase(uid);
-        } else {
-            throw std::runtime_error("TypeLabelSymbol::deleteCustomType: "
-                "custom type '" + uid + "' not found");
+        } else
+        {
+            throw base::RCCCompilerError::symbolNotFoundError(
+                ast::CompileVisitor::currentPos().toString(),
+                ast::CompileVisitor::getCodeLine(ast::CompileVisitor::currentPos()),
+                uid,
+                "Custom type not found",
+                {
+                    "Check if the custom type name is correct.",
+                    "Ensure the custom type has been properly defined.",
+                    "Verify the custom type exists in the current scope."
+                }
+            );
         }
     }
 
@@ -347,8 +397,17 @@ namespace symbol {
         {
             return it->second;
         }
-        throw std::runtime_error("TypeLabelSymbol::getCustomClassSymbol: "
-            "custom class '" + uid + "' not found");
+        throw base::RCCCompilerError::symbolNotFoundError(
+                ast::CompileVisitor::currentPos().toString(),
+                ast::CompileVisitor::getCodeLine(ast::CompileVisitor::currentPos()),
+                uid,
+                "Custom type not found",
+                {
+                    "Check if the custom type name is correct.",
+                    "Ensure the custom type has been properly defined.",
+                    "Verify the custom type exists in the current scope."
+                }
+            );
     }
 
     std::shared_ptr<TypeLabelSymbol> TypeLabelSymbol::getCustomTypeLabelSymbol(const std::string& uid, const size_t &scopeLevel)
@@ -972,6 +1031,23 @@ namespace symbol {
     void FunctionSymbol::setBuiltInType(const TypeOfBuiltin& type)
     {
         this->builtinType = type;
+    }
+
+    std::string FunctionSymbol::toString() const
+    {
+        std::string args = "(";
+        for (int i = 0;
+            const auto &param: parameters)
+        {
+            args += param->getVal();
+            if (i != parameters.size() - 1)
+            {
+                args += ", ";
+            }
+            i++;
+        }
+        args += ")";
+        return "[Function(" + getRaVal() + ")" + ": " + getVal() + args + ": " + returnType->getVal() + "]";
     }
 
     ClassSymbol::ClassSymbol(

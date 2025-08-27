@@ -42,6 +42,11 @@ namespace ast {
         return mainToken.getPos();
     }
 
+    std::string Node::getPosStr() const
+    {
+        return getPos().toString();
+    }
+
     std::string Node::formatString(size_t indent, size_t level) const {
         return spaceString(indent * level) + "Node={\n"
         + spaceString(indent * (level + 1)) + "mainToken={\n" + mainToken.formatString(indent, level + 2) + "\n"
@@ -107,7 +112,7 @@ namespace ast {
         visitor.visitParameterNode(*this);
     }
 
-    utils::Pos ParameterNode::getPos() const {
+    Pos ParameterNode::getPos() const {
         return nameToken.getPos();
     }
 
@@ -432,10 +437,9 @@ namespace ast {
 
     Pos ProgramNode::getPos() const {
         if (statements.empty()) {
-            return {0, 0, 0, RCC_UNKNOWN_CONST};
-        } else {
-            return statements[0]->getPos();
+            return Node::getPos();
         }
+        return statements[0]->getPos();
     }
 
     const std::vector<std::shared_ptr<StatementNode>> &ProgramNode::getStatements() const {
@@ -643,6 +647,11 @@ namespace ast {
         return bodyExpressions;
     }
 
+    Pos BlockRangerNode::getPos() const
+    {
+        return getRangerStartToken().getPos();
+    }
+
     BracketExpressionNode::BracketExpressionNode(
         const Token &lRangerToken, const Token &rRangerToken,
         const std::shared_ptr<ExpressionNode> &bodyNode)
@@ -657,9 +666,14 @@ namespace ast {
         visitor.visitBracketExpressionNode(*this);
     }
 
+    Pos BracketExpressionNode::getPos() const
+    {
+        return getRangerStartToken().getPos();
+    }
+
     IndexExpressionNode::IndexExpressionNode(const Token &token_,
-        const std::shared_ptr<ExpressionNode> &leftNode,
-        const std::shared_ptr<ExpressionNode> &indexNode_)
+                                             const std::shared_ptr<ExpressionNode> &leftNode,
+                                             const std::shared_ptr<ExpressionNode> &indexNode_)
             : PostfixExpressionNode(token_,
                 NodeType::INDEX_EXPRESSION, leftNode),
              indexNode(indexNode_) {}

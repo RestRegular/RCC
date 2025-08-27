@@ -2,8 +2,8 @@
 // Created by RestRegular on 2025/1/17.
 //
 
-#ifndef RVM_RA_UTILS_H
-#define RVM_RA_UTILS_H
+#ifndef RCC_RA_UTILS_H
+#define RCC_RA_UTILS_H
 
 #include <functional>
 #include <map>
@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <sstream>
 #include <cstdint>
+#include <list>
 
 namespace utils {
 
@@ -91,7 +92,8 @@ namespace utils {
         static std::string escapeCharToStr(const char &c);
         static char escapeChar(const char &c);
         static std::string wrapText(const std::string& text, size_t lineWidth, size_t indent = 0,
-                                    const std::string& last_line_suffix = "", const std::string& next_line_prefix = "");
+                                    const std::string& lastLineSuffix = "", const std::string& nextLinePrefix = "",
+                                    const bool& retainPreSpaces = false);
         static std::string combineNearbyString(const std::string &input, const int &line_row);
         static bool needEscape(const char &c);
         static bool isSpace(const char &c);
@@ -119,6 +121,10 @@ namespace utils {
     size_t getSpaceFrontOfLineCode(const std::string& lineCode);
     void addCharBeforeNewline(std::string &code, const char &c= ';');
     std::string spaceString(size_t n);
+    std::string makeFileIdentStr(const std::string &filepath);
+    std::string listJoin(const std::list<std::string>& strList, const std::string& delimiter="");
+    std::string vectorJoin(const std::vector<std::string>& strVector, const std::string& delimiter="");
+
 
     // === 路径处理 ===
     std::string getFileNameFromPath(const std::string &path);
@@ -126,14 +132,16 @@ namespace utils {
     std::pair<std::string, std::string> getFileInfoFromPath(const std::string &path);
     std::string getFileFromPath(const std::string &path);
     std::string getFileDirFromPath(const std::string &path);
-    std::string getWindowsRVMDir();
+    std::string getWindowsRCCDir();
     std::string getWindowsDefaultDir();
     std::string getAbsolutePath(const std::string& relPath, const std::string &dir_path = "");
+    bool isValidPath(const std::string &path);
+    bool isAbsolutePath(const std::string &path);
     std::string getEscapedPathFormatString(const std::string& path);
     void setProgramEnvDir(const std::string &dir_path);
     void appendProgramWorkingDir(const std::string &path);
     bool checkPathEqual(const std::string &path1, const std::string &path2, const bool &recursion = true);
-    std::string processRVMPath(const std::string &path);
+    std::string processRCCPath(const std::string &path);
 
     // === 数据类型转换 ===
     int stringToInt(const std::string& str);
@@ -403,4 +411,4 @@ namespace utils {
     std::string hashToStr(const std::string& str);
 } // utils
 
-#endif //RVM_RA_UTILS_H
+#endif //RCC_RA_UTILS_H

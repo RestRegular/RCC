@@ -2,6 +2,7 @@
 // Created by RestRegular on 2025/7/12.
 //
 
+#include <cstring>
 #include <numeric>
 #include <ranges>
 
@@ -10,9 +11,9 @@
 #include "../../include/components/ri/rcc_ri.h"
 #include "../../include/lib/RLogSystem/rlog_system.h"
 #include "../../include/analyzer/rcc_ast_components.h"
-#include "../../include/analyzer/rcc_lexer.h"
 #include "../../include/analyzer/rcc_parser.h"
 #include "../../include/components/symbol/rcc_symbol.h"
+#include "../../include/lib/RJson/RJson_error.h"
 #include "../../include/visitors/rcc_compiler_visitor.h"
 
 namespace ast
@@ -104,6 +105,25 @@ namespace ast
             raCodeStack.pop();
         }
         return *this;
+    }
+
+    std::string CompileVisitor::opItemTypeToString(const OpItemType& type)
+    {
+        switch (type)
+        {
+        case OpItemType::IDENTIFIER: return "IDENTIFIER";
+            break;
+        case OpItemType::LITERAL_VALUE: return "LITERAL_VALUE";
+            break;
+        case OpItemType::SET_LABEL: return "SET_LABEL";
+            break;
+        default: return RCC_UNDEFINED_CONST;
+        }
+    }
+
+    std::string CompileVisitor::opItemTypeToFormatString(const OpItemType& type)
+    {
+        return "[OpItemType: " + opItemTypeToString(type) + "]";
     }
 
     size_t CompileVisitor::VarID::_varId = 0;
@@ -220,6 +240,12 @@ namespace ast
         return opItemType != this->type;
     }
 
+    std::string CompileVisitor::OpItem::toString() const
+    {
+        return "[OpItem: " + value + "{raVal=" + raValue + ", type=" + typeLabel->toString()
+        + ", valueType=" + valueType->toString() + "}]";
+    }
+
     std::string CompileVisitor::OpItem::getVal() const {
         return value;
     }
@@ -279,7 +305,12 @@ namespace ast
             this->valueType = valueTypeSymbol;
         } else
         {
-            throw std::runtime_error("CompileVisitor::OpItem::setValueType: type mismatch.");
+            throw RCCCompilerError::typeMissmatchError(valueTypeSymbol->getPos().toString(),
+                topLexer()->getCodeLine(valueTypeSymbol->getPos()),
+                "Error symbol: " + valueTypeSymbol->toString(),
+                getListFormatString({"any", typeLabel->getVal()}),
+                valueTypeSymbol->getVal(),
+                {"You can try using the `any` type."});
         }
     }
 
@@ -301,6 +332,12 @@ namespace ast
 
     std::unordered_map<std::string,
             std::shared_ptr<ClassSymbol>> CompileVisitor::extensionMap = {};
+
+    std::stack<std::shared_ptr<lexer::Lexer>> CompileVisitor::_lexers {};
+
+    Pos CompileVisitor::_currentProcessingPos = Pos::UNKNOW_POS;
+
+    std::string CompileVisitor::fileRecord {};
 
     // 辅助函数：获取符号的类型标签
     std::shared_ptr<TypeLabelSymbol> getTypeLabelFromSymbol(const std::shared_ptr<Symbol>& symbol) {
@@ -492,13 +529,20 @@ namespace ast
                 {
                     // 确保目标值类型不为空
                     if (!targetValueType) {
-                        throw std::runtime_error("[CompileVisitor::processTypeAutoChange] targetOpItem->getValueType() is null");
+                        throw RCCCompilerError::compilerError(sourceSymbol->getPos().toString(),
+                            topLexer()->getCodeLine(sourceSymbol->getPos()),
+                            "[CompileVisitor::processTypeAutoChange] if (!targetValueType)  // true",
+                            "We must ensure that the value type of the target operation item is not null.");
                     }
 
                     // 类型不匹配则抛出异常
                     if (targetValueType->isNot("any") && !varSymbol->getTypeLabel()->equalWith(targetValueType)) {
-                        throw std::runtime_error("[CompileVisitor::processTypeAutoChange] varSymbol->getTypeLabel() != "
-                                                 "targetOpItem->getValueType()");
+                        throw RCCCompilerError::typeMissmatchError(sourceSymbol->getPos().toString(),
+                            topLexer()->getCodeLine(sourceSymbol->getPos()),
+                            "Error symbol: " + varSymbol->toString(),
+                            getListFormatString({"any", varSymbol->getTypeLabel()->getVal()}),
+                            targetValueType->getVal(),
+                            {"You can try using the `any` type."});
                     }
                     varSymbol->setValueType(targetValueType);
                     return;
@@ -506,7 +550,12 @@ namespace ast
 
                 // 源类型和目标类型都不是"any"时，检查是否匹配
                 if (!varSymbol->getTypeLabel()->equalWith(targetTypeLabel)) {
-                    throw std::runtime_error("[CompileVisitor::processTypeAutoChange] varSymbol->getTypeLabel() != targetOpItem->getTypeLabel()");
+                    throw RCCCompilerError::typeMissmatchError(sourceSymbol->getPos().toString(),
+                            topLexer()->getCodeLine(sourceSymbol->getPos()),
+                            "Error symbol: " + varSymbol->toString(),
+                            getListFormatString({"any", varSymbol->getTypeLabel()->getVal()}),
+                            targetTypeLabel->getVal(),
+                            {"You can try using the `any` type."});
                 }
             } break;
         case SymbolType::FUNCTION:
@@ -657,14 +706,17 @@ namespace ast
         return extensionMap.contains(extensionPath);
     }
 
-    void CompileVisitor::setSymbolBuiltinType(const std::shared_ptr<Symbol>& processingSymbol, const symbol::TypeOfBuiltin& type)
+    void CompileVisitor::setSymbolBuiltinType(const std::shared_ptr<Symbol>& processingSymbol, const TypeOfBuiltin& type)
     {
         if (processingSymbol->is(SymbolType::FUNCTION))
         {
             const auto &funcSymbol = std::static_pointer_cast<FunctionSymbol>(processingSymbol);
             funcSymbol->setBuiltInType(type);
         }
-        throw std::runtime_error("[CompileVisitor::setSymbolBuiltinType] processingSymbol->is(SymbolType::FUNCTION)");
+        throw RCCCompilerError::compilerError(processingSymbol->getPos().getFilepath(),
+            getCodeLine(processingSymbol->getPos()),
+            "[void CompileVisitor::setSymbolBuiltinType] if (processingSymbol->is(SymbolType::FUNCTION))  // false",
+            "When setting the built-in type of a symbol, we must ensure that the symbol is of function type.");
     }
 
     bool CompileVisitor::checkSymbolExists(const OpItem& opItem) const
@@ -683,28 +735,78 @@ namespace ast
         return processingSymbol && symbolTable.contains(processingSymbol->getVal());
     }
 
-    void CompileVisitor::checkExists(const OpItem& opItem) const
+    void CompileVisitor::checkExists(const OpItem& opItem, const Pos& pos) const
     {
         if (opItem.is(OpItemType::IDENTIFIER) && !checkSymbolExists(opItem))
         {
-            throw std::runtime_error("[CompileVisitor::checkExists] !checkSymbolExists(opItem): '" + opItem.getVal() + "'");
+            throw RCCCompilerError::symbolNotFoundError(pos.toString(), getCodeLine(pos), opItem.getVal(),
+                "Error operation item: " + opItem.toString(),
+                {"If the name of this operation item is not defined by you, then this error may occur within the compiler."
+                 " You are welcome to report this issue to the Rio team."});
         }
     }
 
-    void CompileVisitor::checkExists(const std::shared_ptr<OpItem>& opItem) const
+    void CompileVisitor::checkExists(const std::shared_ptr<OpItem>& opItem, const Pos& pos) const
     {
         if (opItem->is(OpItemType::IDENTIFIER) && !checkSymbolExists(opItem))
         {
-            throw std::runtime_error("[CompileVisitor::checkExists] !checkSymbolExists(opItem): '" + opItem->getVal() + "'");
+            throw RCCCompilerError::symbolNotFoundError(pos.toString(), getCodeLine(pos), opItem->getVal(),
+                            "Error operation item: " + opItem->toString(),
+                            {"If the name of this operation item is not defined by you, then this error may occur within the compiler."
+                             " You are welcome to report this issue to the Rio team."});
         }
     }
 
-    void CompileVisitor::checkExists(const std::shared_ptr<symbol::Symbol>& processingSymbol) const
+    void CompileVisitor::checkExists(const std::shared_ptr<Symbol>& processingSymbol) const
     {
         if (!checkSymbolExists(processingSymbol))
         {
-            throw std::runtime_error("[CompileVisitor::checkExists] !checkSymbolExists(processingSymbol): '" + processingSymbol->getVal() + "'");
+            throw RCCCompilerError::symbolNotFoundError(processingSymbol->getPos().toString(), getCodeLine(processingSymbol->getPos()), processingSymbol->getVal(),
+                                        "Error operation item: " + processingSymbol->toString(),
+                                        {"If the name of this operation item is not defined by you, then this error may occur within the compiler."
+                                         " You are welcome to report this issue to the Rio team."});
         }
+    }
+
+    std::string CompileVisitor::getListFormatString(const std::vector<std::string>& list)
+    {
+        const size_t size = list.size();
+        if (size == 0)
+        {
+            return "[]";
+        }
+        // 计算总长度
+        size_t totalLength = 2; // []
+        for (const auto& item : list)
+        {
+            totalLength += item.length();
+        }
+        totalLength += 2 * (size - 1); // ", " 分隔符
+        // 一次性分配内存并构建字符串
+        std::string result;
+        result.resize(totalLength);
+        char* ptr = result.data();
+        *ptr++ = '[';
+        // 处理第一个元素
+        const std::string& first = list[0];
+        std::memcpy(ptr, first.data(), first.length());
+        ptr += first.length();
+        // 处理剩余元素
+        for (size_t i = 1; i < size; ++i)
+        {
+            *ptr++ = ',';
+            *ptr++ = ' ';
+            const std::string& item = list[i];
+            std::memcpy(ptr, item.data(), item.length());
+            ptr += item.length();
+        }
+        *ptr = ']';
+        return result;
+    }
+
+    std::string CompileVisitor::getCodeLine(const Pos& pos)
+    {
+        return topLexer()->getCodeLine(pos);
     }
 
     void CompileVisitor::pushNewProcessingSymbol(const std::shared_ptr<Symbol>& symbol)
@@ -817,13 +919,40 @@ namespace ast
                 symbolTable.curScopeLevel(), true, nullptr, nullptr);
     }
 
+    void CompileVisitor::pushLexer(const std::shared_ptr<lexer::Lexer>& lexer)
+    {
+        _lexers.push(lexer);
+    }
+
+    void CompileVisitor::popLexer()
+    {
+        if (_lexers.empty()) {
+            throw RCCCompilerError::compilerError(RCC_UNKNOWN_CONST,
+            getCodeLine(currentPos()),
+            "[void CompileVisitor::popLexer] if (_lexers.empty())  // true",
+            "Before removing the lexical analyzer, ensure that there is at least one lexical analyzer already available.");
+        }
+        _lexers.pop();
+    }
+
+    std::shared_ptr<lexer::Lexer> CompileVisitor::topLexer()
+    {
+        return _lexers.top();
+    }
+
     void CompileVisitor::pushOpItem(const std::shared_ptr<OpItem> &opItem) {
         opItemStack.push(opItem);
     }
 
     CompileVisitor::OpItem CompileVisitor::rPopOpItem() {
-        if (!hasNextOpItem()) {
-            throw std::runtime_error("OpItem stack is empty, can not pop.");
+        if (!hasNextOpItem())
+        {
+            throw RCCCompilerError::compilerError(RCC_UNKNOWN_CONST, RCC_UNKNOWN_CONST,
+                "[CompileVisitor::OpItem CompileVisitor::rPopOpItem] if (!hasNextOpItem())  // true"
+                , {
+                    "When obtaining operation items, we must ensure that the operation item stack is not empty,"
+                    " that is, we must first add new operation items to the stack."
+                });
         }
         auto item = *opItemStack.top();
         opItemStack.pop();
@@ -832,7 +961,12 @@ namespace ast
 
     void CompileVisitor::popOpItem() {
         if (!hasNextOpItem()) {
-            throw std::runtime_error("OpItem stack is empty, can not pop.");
+            throw RCCCompilerError::compilerError(RCC_UNKNOWN_CONST, RCC_UNKNOWN_CONST,
+                "[void CompileVisitor::popOpItem] if (!hasNextOpItem())  // true"
+                , {
+                    "When obtaining operation items, we must ensure that the operation item stack is not empty,"
+                    " that is, we must first add new operation items to the stack."
+                });
         }
         opItemStack.pop();
     }
@@ -877,7 +1011,12 @@ namespace ast
 
     CompileVisitor::OpItem CompileVisitor::topOpItem() const {
         if (!hasNextOpItem()) {
-            throw std::runtime_error("OpItem stack is empty, can not get top OpItem.");
+            throw RCCCompilerError::compilerError(RCC_UNKNOWN_CONST, RCC_UNKNOWN_CONST,
+                "[CompileVisitor::OpItem CompileVisitor::topOpItem] if (!hasNextOpItem())  // true"
+                , {
+                    "When obtaining operation items, we must ensure that the operation item stack is not empty,"
+                    " that is, we must first add new operation items to the stack."
+                });
         }
         return *opItemStack.top();
     }
@@ -885,7 +1024,12 @@ namespace ast
     std::shared_ptr<CompileVisitor::OpItem> CompileVisitor::topOpItemPtr() const
     {
         if (!hasNextOpItem()) {
-            throw std::runtime_error("OpItem stack is empty, can not get top OpItem.");
+            throw RCCCompilerError::compilerError(RCC_UNKNOWN_CONST, RCC_UNKNOWN_CONST,
+                "[std::shared_ptr<CompileVisitor::OpItem> CompileVisitor::topOpItemPtr] if (!hasNextOpItem())  // true"
+                , {
+                    "When obtaining operation items, we must ensure that the operation item stack is not empty,"
+                    " that is, we must first add new operation items to the stack."
+                });
         }
         return opItemStack.top();
     }
@@ -909,18 +1053,21 @@ namespace ast
 
     CompileVisitor::CompileVisitor(
         const std::string& programEntryFilePath,
-        const std::string& programTagetFilePath,
+        const std::string& programTargetFilePath,
         const std::string& compileOutputFilePath,
         const bool &needSaveOutput)
-        : programEntryFilePath(programEntryFilePath), programTagetFilePath(programTagetFilePath),
-    compileOutputFilePath(compileOutputFilePath), needSaveOutputToFile(needSaveOutput)
-    {
-        builtin::initializeFullBuiltinEnvironment(*this);
-    }
+        : programEntryFilePath(programEntryFilePath),
+    programTagetFilePath(programTargetFilePath), compileOutputFilePath(compileOutputFilePath),
+    needSaveOutputToFile(needSaveOutput) {}
 
     SymbolTableManager& CompileVisitor::getSymbolTable()
     {
         return symbolTable;
+    }
+
+    RaCodeBuilder& CompileVisitor::getRaCodeBuilder()
+    {
+        return raCodeBuilder;
     }
 
     std::stack<std::shared_ptr<Symbol>>& CompileVisitor::getProcessingSymbolStack()
@@ -963,6 +1110,21 @@ namespace ast
         currentProcessingFilePath = filePath;
     }
 
+    Pos CompileVisitor::currentPos()
+    {
+        return _currentProcessingPos;
+    }
+
+    void CompileVisitor::setCurrentPos(const Pos& pos)
+    {
+        _currentProcessingPos = pos;
+    }
+
+    void CompileVisitor::resetCurrentPos()
+    {
+        _currentProcessingPos = Pos::UNKNOW_POS;
+    }
+
     std::string CompileVisitor::scopeTypeToString(ScopeType scopeType) {
         switch (scopeType) {
         case ScopeType::TEMPORARY: return "temporary";
@@ -977,8 +1139,17 @@ namespace ast
         }
     }
 
+    std::string CompileVisitor::scopeTypeToFormatString(ScopeType scopeType) {
+        return "[ScopeType: " + scopeTypeToString(scopeType) + "]";
+    }
+
     std::string CompileVisitor::curScopeField() {
         return scopeTypeToString(scopeTypeStack.top());
+    }
+
+    CompileVisitor::ScopeType CompileVisitor::curScopeType()
+    {
+        return scopeTypeStack.top();
     }
 
     void CompileVisitor::enterScope(ScopeType scopeType) {
@@ -1015,6 +1186,21 @@ namespace ast
     size_t CompileVisitor::curScopeLevel() const
     {
         return symbolTable.curScopeLevel();
+    }
+
+    void CompileVisitor::enterLoopScope()
+    {
+        loopScopeStack.push(ScopeType::LOOP);
+    }
+
+    void CompileVisitor::exitLoopScope()
+    {
+        loopScopeStack.pop();
+    }
+
+    bool CompileVisitor::isInLoopScope() const
+    {
+        return !loopScopeStack.empty();
     }
 
     std::vector<std::shared_ptr<ExpressionNode>> CompileVisitor::visitParallelNode(
@@ -1058,7 +1244,12 @@ namespace ast
         for (const auto& [_, symbol]: symbolTable.currentScope().getTable()) {
             if (symbol.second->getType() != SymbolType::LABEL)
             {
-                throw std::runtime_error("Symbol is not a label");
+                throw RCCCompilerError::typeMissmatchError(symbol.second->getPos().toString(),
+                    getCodeLine(symbol.second->getPos()),
+                    "Error symbol: " + symbol.second->toString(),
+                    symbolTypeToFormatString(SymbolType::LABEL),
+                    symbolTypeToFormatString(symbol.second->getType()),
+                    {"Please ensure that the labels you use are valid labels."});
             }
             result.insert(std::static_pointer_cast<LabelSymbol>(symbol.second));
         }
@@ -1068,8 +1259,9 @@ namespace ast
 
     bool CompileVisitor::compile()
     {
-        const auto &tokens = lexer::Lexer::tokenize(programTagetFilePath);
-        parser::Parser parser (tokens);
+        const auto &lexer = std::make_shared<lexer::Lexer>(programTagetFilePath);
+        pushLexer(lexer);
+        parser::Parser parser (topLexer()->tokenize());
         const auto &[hasError, programNode] = parser.parse();
         if (hasError) {
             parser.printParserErrors();
@@ -1087,12 +1279,20 @@ namespace ast
                 ""
             });
         }
-        programNode->acceptVisitor(*this);
-        const std::string raCode = raCodeBuilder.buildAll();
-        if (needSaveOutputToFile)
+        try
         {
-            writeFile(compileOutputFilePath, raCode);
+            programNode->acceptVisitor(*this);
+            const std::string raCode = raCodeBuilder.buildAll();
+            if (needSaveOutputToFile)
+            {
+                writeFile(compileOutputFilePath, raCode);
+            }
+        } catch (RCCError &_)
+        {
+            popLexer();
+            throw;
         }
+        popLexer();
         return true;
     }
 
@@ -1183,12 +1383,17 @@ namespace ast
 
     void CompileVisitor::visitConstructorDefinitionNode(ConstructorDefinitionNode &node) {
         // 仅仅记录此构造函数，编译推迟到记录结束后进行
-        enterScope(ScopeType::FUNCTION);
         const auto &topSymbol = topProcessingSymbol();
-        if (topSymbol->getType() != SymbolType::CLASS)
+        if (!topSymbol || topSymbol->getType() != SymbolType::CLASS)
         {
-            throw std::runtime_error("Constructor definition must be in a class.");
+            throw RCCCompilerError::scopeError(node.getPos().toString(), getCodeLine(node.getPos()),
+                                               scopeTypeToFormatString(ScopeType::CLASS),
+                                               scopeTypeToFormatString(scopeTypeStack.top()),
+                                               {"The constructor of a class can only appear within the scope of the class."
+                                               "Processing symbol: " + topSymbol->toString()},
+                                               {"Please check if this constructor is within the scope of a class."});
         }
+        enterScope(ScopeType::FUNCTION);
         const auto &classSymbol = std::static_pointer_cast<ClassSymbol>(topSymbol);
         const auto &paramItems = visitParallelNode(std::static_pointer_cast<ParenRangerNode>(node.getParamNode())->getRangerNode());
         std::vector<std::shared_ptr<ParameterSymbol>> paramSymbols {};
@@ -1196,14 +1401,9 @@ namespace ast
         for (const auto &item: paramItems)
         {
             auto paramType = ParamType::PARAM_POSITIONAL;
-            if (item->getRealType() != NodeType::IDENTIFIER &&
-                item->getRealType() != NodeType::ASSIGNMENT &&
-                item->getRealType() != NodeType::UNARY)
-            {
-                throw std::runtime_error("Ctor call parameter must be an identifier or an assignment or a unary.");
-            }
             auto param = item;
             std::optional<OpItem> defaultValue = std::nullopt;
+            bool isValidNodeType = false;
             if (item->getRealType() == NodeType::ASSIGNMENT)
             {
                 const auto &[ident, value] =
@@ -1212,6 +1412,7 @@ namespace ast
                 value->acceptVisitor(*this);
                 defaultValue = rPopOpItem();
                 paramType = ParamType::PARAM_KEYWORD;
+                isValidNodeType = true;
             } else if (item->getRealType() == NodeType::UNARY)
             {
                 if (const auto &unaryParam =
@@ -1220,14 +1421,33 @@ namespace ast
                 {
                     param = unaryParam->getRightNode();
                     paramType = ParamType::PARAM_VAR_LEN_POSITIONAL;
+                    isValidNodeType = true;
                 } else if (unaryParam->getOpToken().getType() == TokenType::TOKEN_DOUBLE_STAR)
                 {
                     param = unaryParam->getRightNode();
                     paramType = ParamType::PARAM_VAR_LEN_KEYWORD;
-                } else
-                {
-                    throw std::runtime_error("Ctor call parameter must be an identifier or an assignment or a unary.");
+                    isValidNodeType = true;
                 }
+            } else if (item->getRealType() == NodeType::IDENTIFIER)
+            {
+                isValidNodeType = true;
+            }
+            if (!isValidNodeType)
+            {
+                throw RCCCompilerError::typeMissmatchError(item->getPos().toString(), getCodeLine(item->getPos()),
+                    "Error node: " + item->toString(),
+                    getListFormatString({getNodeTypeFormatName(NodeType::IDENTIFIER),
+                        getNodeTypeFormatName(NodeType::ASSIGNMENT), getNodeTypeFormatName(NodeType::UNARY)}),
+                        getNodeTypeFormatName(item->getRealType()), {
+                            "The node types of the parameter node only include the following four types: "
+                            + getListFormatString(
+                                {getNodeTypeFormatName(NodeType::IDENTIFIER),
+                                getNodeTypeFormatName(NodeType::ASSIGNMENT),
+                                getNodeTypeFormatName(NodeType::UNARY)}),
+                            getNodeTypeFormatName(NodeType::IDENTIFIER) + " param form: `arg: any`.",
+                            getNodeTypeFormatName(NodeType::ASSIGNMENT) + " param form: `arg: any = default_value`.",
+                            getNodeTypeFormatName(NodeType::UNARY) + " param form: `*args` or `**kwargs`."
+                        });
             }
             const auto &paramNode = std::static_pointer_cast<IdentifierNode>(param);
             paramNode->acceptVisitor(*this);
@@ -1246,7 +1466,15 @@ namespace ast
             {
                 if (!checkTypeMatch(paramSymbol, defaultValue.value()))
                 {
-                    throw std::runtime_error("Function call parameter type mismatch.");
+                    const auto &[fst, snd] = getTypesFromOpItem(defaultValue.value());
+                    throw RCCCompilerError::typeMissmatchError(paramSymbol->getPos().toString(),
+                        getCodeLine(paramSymbol->getPos()),
+                        std::vector{
+                            "Error symbol: " + paramSymbol->toString(),
+                            "Type mismatched value: " + defaultValue.value().toString()
+                        }, paramSymbol->getTypeLabel()->toString(),
+                        fst ? fst->toString() : snd ? snd->toString() : RCC_UNKNOWN_CONST,
+                        {"You can try using the `any` type to set the parameter types more loosely."});
                 }
                 paramSymbol->setDefaultValue(defaultValue.value().getRaVal(symbolTable));
             }
@@ -1305,12 +1533,17 @@ namespace ast
     {
         std::stringstream code{};
         const auto &node = std::static_pointer_cast<ConstructorDefinitionNode>(ctorSymbol->getDefinitionNode());
-        enterScope(ScopeType::FUNCTION);
         const auto &topSymbol = topProcessingSymbol();
         if (topSymbol->getType() != SymbolType::CLASS)
         {
-            throw std::runtime_error("Constructor can only be defined in class scope");
+            throw RCCCompilerError::scopeError(ctorSymbol->getPos().toString(), getCodeLine(ctorSymbol->getPos()),
+                                               scopeTypeToFormatString(ScopeType::CLASS),
+                                               scopeTypeToFormatString(scopeTypeStack.top()),
+                                               {"The constructor of a class can only appear within the scope of the class."
+                                               "Processing symbol: " + topSymbol->toString()},
+                                               {"Please check if this constructor is within the scope of a class."});
         }
+        enterScope(ScopeType::FUNCTION);
         const auto &classSymbol = std::static_pointer_cast<ClassSymbol>(topSymbol);
         const auto &thisFieldSymbol = getThisFieldSymbol(classSymbol);
         symbolTable.insert(thisFieldSymbol);
@@ -1406,7 +1639,10 @@ namespace ast
                 const auto &functionSymbol = std::static_pointer_cast<FunctionSymbol>(member);
                 if (functionSymbol->getFunctionType() != FunctionType::METHOD)
                 {
-                    throw std::runtime_error("Function type error. The function type of a class member function should be METHOD.");
+                    throw RCCCompilerError::typeMissmatchError(member->getPos().toString(), getCodeLine(member->getPos()),
+                        "Error symbol: " + functionSymbol->toString(), functionTypeToFormatString(FunctionType::METHOD),
+                        functionTypeToFormatString(functionSymbol->getFunctionType()),
+                        {"The type of a class's member function must be of the " + functionTypeToFormatString(FunctionType::METHOD) + "."});
                 }
                 functionSymbol->setScopeLevel(curScopeLevel());
                 symbolTable.insert(functionSymbol);
@@ -1487,10 +1723,21 @@ namespace ast
     }
 
     std::shared_ptr<FunctionSymbol> CompileVisitor::getCtorSymbol(
-    const std::shared_ptr<ClassSymbol>& classSymbol,
-    const std::queue<OpItem>& posArgs,
-    const std::unordered_map<std::string, OpItem>& namedArgs) const
+        const std::shared_ptr<ClassSymbol>& classSymbol,
+        const std::queue<OpItem>& posArgs,
+        const std::unordered_map<std::string, OpItem>& namedArgs,
+        const Pos& ctorCallPos,
+        const std::vector<OpItem>& orderedArgs) const
     {
+        const auto &argTypeStrings = [orderedArgs]
+        {
+           std::vector<std::string> typeStrs = {};
+            for (const auto &arg: orderedArgs)
+            {
+                typeStrs.push_back(arg.getTypeLabel()->toString());
+            }
+            return typeStrs;
+        }();
         // 将队列转换为向量以便索引访问
         std::vector<OpItem> posArgsVec;
         std::queue<OpItem> tempQueue = posArgs; // 复制队列
@@ -1544,7 +1791,22 @@ namespace ast
                     break;
                 case ParamType::NO_PARAM:
                 default:
-                    throw std::runtime_error("unexpected param type");
+                    const auto &paramTypes = getListFormatString({
+                            paramTypeToFormatString(ParamType::PARAM_POSITIONAL),
+                            paramTypeToFormatString(ParamType::PARAM_KEYWORD),
+                            paramTypeToFormatString(ParamType::PARAM_VAR_LEN_POSITIONAL),
+                            paramTypeToFormatString(ParamType::PARAM_VAR_LEN_KEYWORD)
+                        });
+                    throw RCCCompilerError::typeMissmatchError(param->getPos().toString(), getCodeLine(param->getPos()),
+                        "Error symbol: " + param->toString(),
+                        paramTypes,
+                        paramTypeToFormatString(param->getParamType()), {
+                            "There are four types of formal parameters: " + paramTypes,
+                            paramTypeToFormatString(ParamType::PARAM_POSITIONAL) + " param form: `arg: any`",
+                            paramTypeToFormatString(ParamType::PARAM_KEYWORD) + " param form: `arg: any = default_value`",
+                            paramTypeToFormatString(ParamType::PARAM_VAR_LEN_POSITIONAL) + " param form: `*args`",
+                            paramTypeToFormatString(ParamType::PARAM_VAR_LEN_KEYWORD) + " param form: `**kwargs`"
+                        });
                 }
                 if (!matchedParam) {
                     matched = false;
@@ -1556,7 +1818,18 @@ namespace ast
                 return funcSymbol;
             }
         }
-        throw std::runtime_error("no matching ctor found for class: '" + classSymbol->getVal() + "'");
+        throw RCCCompilerError::symbolNotFoundError(
+            ctorCallPos.toString(),
+            getCodeLine(ctorCallPos),
+            classSymbol->getVal(),
+            std::vector<std::string>{
+                "No constructor matching the argument types of this call was found.",
+                "Formal parameter type list: " + getListFormatString(argTypeStrings)
+            },
+            {
+                "Ensure that the constructor you call has been defined and the types of the passed"
+                " parameters match the definition of the constructor."
+            });
     }
 
     void CompileVisitor::visitFunctionCallNode(FunctionCallNode &node) {
@@ -1605,7 +1878,7 @@ namespace ast
         if (TypeLabelSymbol::isCustomType(customTypeVid))
         {
             const auto &classSymbol = TypeLabelSymbol::getCustomClassSymbol(customTypeVid);
-            funcSymbol = getCtorSymbol(classSymbol, posArgs, namedArgs);
+            funcSymbol = getCtorSymbol(classSymbol, posArgs, namedArgs, node.getPos(), orderedArgs);
         }
         else if (const auto& [fst, snd] =
             symbolTable.find(funcNameOpItem.getVal());
@@ -1629,7 +1902,8 @@ namespace ast
             if (const auto &funcNameSymbol = getSymbolFromOpItem(funcNameOpItem);
                 !funcNameSymbol)
             {
-                throw std::runtime_error("Function '" + funcNameOpItem.getVal() + "' not found.");
+                throw RCCCompilerError::symbolNotFoundError(node.getPos().toString(), getCodeLine(node.getPos()),
+                    funcNameOpItem.toString(), "", {});
             }
             else if (const auto &funcType = getTypeLabelFromSymbol(funcNameSymbol);
                 funcType->is("func"))
@@ -1641,14 +1915,21 @@ namespace ast
                 raCodeBuilder << ri::IVOK(funcNameSymbol->getRaVal(), halfProcessedArgs, topOpRaVal());
             } else
             {
-                throw std::runtime_error("Invalid function type: " + funcType->toString());
+                throw RCCCompilerError::typeMissmatchError(node.getPos().toString(), getCodeLine(node.getPos()),
+                    "It is not clear whether the called function has a return value.",
+                    getListFormatString({"func", "funi"}), funcType->getVal(), {
+                    "Please ensure that the called function can clearly indicate whether there is a return value."});
             }
             return;
         }
         const auto &parameters = funcSymbol->getParameters();
         if (node.getRightNode()->getRealType() != NodeType::RANGER)
         {
-            throw std::runtime_error("Function call node's right node must be ranger node.");
+            throw RCCCompilerError::typeMissmatchError(node.getRightNode()->getPos().toString(), getCodeLine(node.getRightNode()->getPos()),
+                "The type of the right node of the " + getNodeTypeFormatName(NodeType::CALL) + " must be the "
+                + getNodeTypeFormatName(NodeType::RANGER) + ".",
+                getNodeTypeFormatName(NodeType::RANGER), getNodeTypeFormatName(node.getRightNode()->getRealType()),
+                {});
         }
         for (const auto &param : parameters)
         {
@@ -1662,7 +1943,15 @@ namespace ast
                 {
                     if (!checkTypeMatch(param, posArgs.front()))
                     {
-                        throw std::runtime_error("Type mismatch.");
+                        const auto &[fst, snd] = getTypesFromOpItem(posArgs.front());
+                        throw RCCCompilerError::typeMissmatchError(node.getPos().toString(),
+                            getCodeLine(node.getPos()),
+                            std::vector{
+                                "Error symbol: " + param->toString(),
+                                "Type mismatched value: " + posArgs.front().toString()
+                            }, param->getTypeLabel()->toString(),
+                            fst ? fst->toString() : snd ? snd->toString() : RCC_UNKNOWN_CONST,
+                            {"You can try using the `any` type to set the parameter types more loosely."});
                     }
                     fullProcessedArgs.push_back(posArgs.front().getRaVal(symbolTable));
                     posArgs.pop();
@@ -1671,7 +1960,33 @@ namespace ast
                     fullProcessedArgs.push_back(param->getDefaultValue().value());
                 } else
                 {
-                    throw std::runtime_error("Not enough arguments.");
+                    throw RCCCompilerError::argumentError(node.getPosStr(), getCodeLine(node.getPos()),
+                        {
+                            "The number of arguments passed when calling the function does not match.",
+                            "Function position: " + funcSymbol->getPos().toString(),
+                            "                 | " + getCodeLine(funcSymbol->getPos()),
+                            "Function params: " + getListFormatString([parameters]
+                            {
+                                StringVector result{};
+                                for (const auto &item : parameters)
+                                {
+                                    result.push_back(item->toString());
+                                }
+                                return result;
+                            }()),
+                            "Arguments passed: " + getListFormatString([orderedArgs]
+                            {
+                                StringVector result{};
+                                for (const auto &item : orderedArgs)
+                                {
+                                    result.push_back(item.toString());
+                                }
+                                return result;
+                            }()),
+                            "Missing param: " + param->toString()
+                        }, {
+                            "Please ensure that the number of parameters passed in when calling the function matches."
+                        });
                 }
             } else if (param->getParamType() == ParamType::PARAM_VAR_LEN_POSITIONAL)
             {
@@ -1683,7 +1998,15 @@ namespace ast
                     // 先检查类型匹配
                     if (!checkTypeMatch(param, argItem))
                     {
-                        throw std::runtime_error("Type mismatch.");
+                        const auto &[fst, snd] = getTypesFromOpItem(argItem);
+                        throw RCCCompilerError::typeMissmatchError(node.getPos().toString(),
+                            getCodeLine(node.getPos()),
+                            std::vector{
+                                "Error symbol: " + param->toString(),
+                                "Type mismatched value: " + argItem.toString()
+                            }, param->getTypeLabel()->toString(),
+                            fst ? fst->toString() : snd ? snd->toString() : RCC_UNKNOWN_CONST,
+                            {"You can try using the `any` type to set the parameter types more loosely."});
                     }
                     // 根据不同类型处理参数
                     std::string item;
@@ -1692,16 +2015,21 @@ namespace ast
                     case OpItemType::IDENTIFIER:
                         {
                             const auto& argSymbol = getSymbolFromOpItem(argItem);
-                            if (!argSymbol) {
-                                throw std::runtime_error("Invalid argument '" + argItem.getVal() + "'.");
-                            }
+                            checkExists(argItem, node.getPos());
                             item = argSymbol->getRaVal();
                         } break;
                     case OpItemType::LITERAL_VALUE:
                         {
                             item = raVal(argItem);
                         } break;
-                    default: throw std::runtime_error("Invalid argument '" + argItem.getVal() + "'.");
+                    default: throw RCCCompilerError::typeMissmatchError(node.getPos().toString(), getCodeLine(node.getPos()),
+                        "The type of the parameter operation item passed to the function call is incorrect.",
+                        getListFormatString({
+                            opItemTypeToFormatString(OpItemType::IDENTIFIER),
+                            opItemTypeToFormatString(OpItemType::LITERAL_VALUE)
+                        }), opItemTypeToFormatString(argItem.getType()), {
+                            "Please ensure that the types of the arguments passed to the function call are legal."
+                        });
                     }
                     items.push_back(std::move(item));
                     posArgs.pop();
@@ -1722,7 +2050,15 @@ namespace ast
                 {
                     if (!checkTypeMatch(param, opItem))
                     {
-                        throw std::runtime_error("Type mismatch.");
+                        const auto &[fst, snd] = getTypesFromOpItem(opItem);
+                        throw RCCCompilerError::typeMissmatchError(node.getPos().toString(),
+                            getCodeLine(node.getPos()),
+                            std::vector{
+                                "Error symbol: " + param->toString(),
+                                "Type mismatched value: " + opItem.toString()
+                            }, param->getTypeLabel()->toString(),
+                            fst ? fst->toString() : snd ? snd->toString() : RCC_UNKNOWN_CONST,
+                            {"You can try using the `any` type to set the parameter types more loosely."});
                     }
                     pushTemOpVarItemWithRecord(node.getPos());
                     raCodeBuilder
@@ -1763,20 +2099,51 @@ namespace ast
     }
 
     void CompileVisitor::visitProgramNode(ProgramNode &node) {
-        setCurrentProcessingFilePath(node.getPos().getFilepath());
-        enterScope(ScopeType::PROGRAM);
-        for (auto &statement: node.getStatements()) {
-            statement->acceptVisitor(*this);
+        auto errorPos = Pos::UNKNOW_POS;
+        try
+        {
+            setCurrentProcessingFilePath(node.getPos().getFilepath());
+            setCurrentPos(node.getPos());
+            builtin::initializePureBuiltinEnvironment(*this);
+            enterScope(ScopeType::PROGRAM);
+            for (auto &statement: node.getStatements()) {
+                errorPos = statement->getPos();
+                setCurrentPos(errorPos);
+                statement->acceptVisitor(*this);
+            }
+            exitScope(ScopeType::PROGRAM);
+            setCurrentProcessingFilePath();
+            resetCurrentPos();
+        } catch (RCCError &e)
+        {
+            const auto &errorFilePath = errorPos.getFilepath();
+            if (fileRecord.empty())
+            {
+                fileRecord = errorFilePath;
+            }
+            e.addTraceInfo(RCCError::makeTraceInfo(
+                fileRecord,
+                errorFilePath,
+                getPosStrFromFilePath(errorFilePath),
+                makeFileIdentStr(errorFilePath),
+                listJoin(e.getTraceInfo()),
+                errorPos.toString(),
+                getCodeLine(errorPos),
+                getPosStrFromFilePath(errorFilePath),
+                makeFileIdentStr(errorFilePath)));
+            if (fileRecord != errorFilePath)
+            {
+                fileRecord = errorFilePath;
+            }
+            throw;
         }
-        exitScope(ScopeType::PROGRAM);
-        setCurrentProcessingFilePath();
     }
 
     void CompileVisitor::visitInfixNode(InfixExpressionNode &node)
     {
         node.getLeftNode()->acceptVisitor(*this);
         const auto &left = rPopOpItem();
-        checkExists(left);
+        checkExists(left, node.getLeftNode()->getPos());
         const auto &[leftTypeLabel, leftValueType] = getTypesFromOpItem(left);
         node.getRightNode()->acceptVisitor(*this);
         const auto &right = rPopOpItem();
@@ -1795,12 +2162,19 @@ namespace ast
                 } else if (leftValueType->is("int") && rightValueType->is("int"))
                 {
                     resultValueType = TypeLabelSymbol::intTypeSymbol(node.getPos(), symbolTable.curScopeLevel());
-                } else if (leftValueType->is("float") || rightValueType->is("float"))
+                } else if ((leftTypeLabel->is("int") || leftTypeLabel->is("float")) &&
+                        (rightTypeLabel->is("int") || rightTypeLabel->is("float")) &&
+                        (leftTypeLabel->is("float") || rightTypeLabel->is("float")))
                 {
                     resultValueType = TypeLabelSymbol::floatTypeSymbol(node.getPos(), symbolTable.curScopeLevel());
                 } else
                 {
-                    throw std::runtime_error("Type mismatch.");
+                    throw RCCCompilerError::typeMissmatchError(node.getPos().toString(), getCodeLine(node.getPos()),
+                        "This error is of type mismatch in addition operation operands",
+                        getListFormatString({
+                            "(any, any)", "(str, str)", "(int, int)", "(float | int, float | int)"
+                        }), "(" + leftTypeLabel->getVal() + ", " + rightTypeLabel->getVal() + ")",
+                        {});
                 }
                 pushTemOpVarItemWithRecord(node.getPos(), resultValueType);
                 raCodeBuilder << ri::ADD(raVal(left), raVal(right), topOpRaVal());
@@ -1842,7 +2216,9 @@ namespace ast
                     << ri::CREL(topOpRaVal(), it->second, topOpRaVal());
                 } else
                 {
-                    throw std::runtime_error("Incorrect relational operator");
+                    throw RCCCompilerError::symbolNotFoundError(node.getPos().toString(), getCodeLine(node.getPos()),
+                        node.getOpToken().toString(), "No logical relation operation corresponding to this symbol was found.",
+                        {"Please ensure that the logical relational operators used are legal."});
                 }
             } break;
         case NodeType::ARGUMENT_ASSIGNMENT:
@@ -1882,11 +2258,23 @@ namespace ast
                     << ri::TP_GET_FIELD(left.getRaVal(symbolTable), "\"" + StringManager::escape(memberSymbol->getRaVal()) + "\"", topOpRaVal());
                 } else
                 {
-                    throw std::runtime_error("Available member was not found in '" + classSymbol->getVal() + "': '" + right.getVal() + "'");
+                    throw RCCCompilerError::symbolNotFoundError(node.getPos().toString(), getCodeLine(node.getPos()),
+                        memberSymbol ? memberSymbol->toString() : left.toString(),
+                        StringVector{
+                            "The member symbol was not found when accessing the member attributes of the parent symbol.",
+                            "Parent symbol: " + leftReferencedSymbol->toString()
+                        },
+                        {
+                            "Please ensure that the member symbol to be accessed already exists."
+                        });
                 }
             } break;
         default:
-            pass("ToDo: process this infix node type '" + getNodeTypeName(node.getInfixType()) + "'");
+            {
+                throw RCCCompilerError::compilerError(node.getPos().toString(), getCodeLine(node.getPos()),
+                    "[void CompileVisitor::visitInfixNode] switch (node.getInfixType())  // " + getNodeTypeFormatName(node.getInfixType()),
+                    "The compilation function of this infix expression type has not been implemented yet.");
+            }
         }
     }
 
@@ -1895,13 +2283,13 @@ namespace ast
 
     }
 
-    void CompileVisitor::visitExpressionStatementNode(ExpressionStatementNode &node) {
+    void CompileVisitor::visitExpressionStatementNode(ExpressionStatementNode &node)
+    {
+        setCurrentPos(node.getPos());
         annotatePos(node.getPos());
         node.getExpression()->acceptVisitor(*this);
-        while (hasNextOpItem())
-        {
-            popOpItem();
-        }
+        while (hasNextOpItem()) popOpItem();
+        resetCurrentPos();
     }
 
     void CompileVisitor::visitPrefixExpressionNode(PrefixExpressionNode &node) {
@@ -1934,9 +2322,39 @@ namespace ast
     }
 
     void CompileVisitor::visitBlockRangerNode(BlockRangerNode &node) {
-        for (const auto &statement: node.getBodyExpressions()) {
-            annotatePos(statement->getPos());
-            statement->acceptVisitor(*this);
+        auto errorPos = Pos::UNKNOW_POS;
+        try
+        {
+            for (const auto &statement: node.getBodyExpressions())
+            {
+                errorPos = statement->getPos();
+                setCurrentPos(statement->getPos());
+                annotatePos(statement->getPos());
+                statement->acceptVisitor(*this);
+                resetCurrentPos();
+            }
+        } catch (RCCError &e)
+        {
+            const auto &errorFilePath = errorPos.getFilepath();
+            if (fileRecord.empty())
+            {
+                fileRecord = errorFilePath;
+            }
+            e.addTraceInfo(RCCError::makeTraceInfo(
+                fileRecord,
+                errorFilePath,
+                getPosStrFromFilePath(errorFilePath),
+                makeFileIdentStr(errorFilePath),
+                listJoin(e.getTraceInfo()),
+                errorPos.toString(),
+                getCodeLine(errorPos),
+                node.getPosStr(),
+                getCodeLine(node.getPos())));
+            if (fileRecord != errorFilePath)
+            {
+                fileRecord = errorFilePath;
+            }
+            throw;
         }
     }
 
@@ -1945,7 +2363,11 @@ namespace ast
         enterScope(ScopeType::FUNCTION);
         if (node.getCallNode()->getRealType() != NodeType::CALL)
         {
-            throw std::runtime_error("FunctionCallNode::acceptVisitor: node.getCallNode() is not call type.");
+            throw RCCCompilerError::compilerError(node.getPos().toString(), getCodeLine(node.getPos()),
+                 "[void CompileVisitor::visitFunctionDefinitionNode] node.getCallNode()->getRealType() !="
+                 " NodeType::CALL  // true, " + getNodeTypeName(node.getCallNode()->getRealType()),
+                 "There is a type error in the function call node, which may be caused by an error in the parser"
+                 " when constructing the function call node.");
         }
         const auto &callNode = std::static_pointer_cast<FunctionCallNode>(
             node.getCallNode());
@@ -1965,14 +2387,9 @@ namespace ast
         for (const auto &item: paramItems)
         {
             auto paramType = ParamType::PARAM_POSITIONAL;
-            if (item->getRealType() != NodeType::IDENTIFIER &&
-                item->getRealType() != NodeType::ASSIGNMENT &&
-                item->getRealType() != NodeType::UNARY)
-            {
-                throw std::runtime_error("Function call parameter must be an identifier or an assignment or a unary.");
-            }
             auto param = item;
             std::optional<OpItem> defaultValue = std::nullopt;
+            bool isValidItem = false;
             if (item->getRealType() == NodeType::ASSIGNMENT)
             {
                 const auto &[ident, value] =
@@ -1981,6 +2398,7 @@ namespace ast
                 value->acceptVisitor(*this);
                 defaultValue = rPopOpItem();
                 paramType = ParamType::PARAM_KEYWORD;
+                isValidItem = true;
             } else if (item->getRealType() == NodeType::UNARY)
             {
                 if (const auto &unaryParam =
@@ -1989,14 +2407,33 @@ namespace ast
                 {
                     param = unaryParam->getRightNode();
                     paramType = ParamType::PARAM_VAR_LEN_POSITIONAL;
+                    isValidItem = true;
                 } else if (unaryParam->getOpToken().getType() == TokenType::TOKEN_DOUBLE_STAR)
                 {
                     param = unaryParam->getRightNode();
                     paramType = ParamType::PARAM_VAR_LEN_KEYWORD;
-                } else
-                {
-                    throw std::runtime_error("Function call parameter must be an identifier or an assignment or a unary.");
+                    isValidItem = true;
                 }
+            } else if (item->getRealType() == NodeType::IDENTIFIER)
+            {
+                isValidItem = true;
+            }
+            if (!isValidItem)
+            {
+                throw RCCCompilerError::typeMissmatchError(item->getPos().toString(), getCodeLine(item->getPos()),
+                    "Error node: " + item->toString(),
+                    getListFormatString({getNodeTypeFormatName(NodeType::IDENTIFIER),
+                        getNodeTypeFormatName(NodeType::ASSIGNMENT), getNodeTypeFormatName(NodeType::UNARY)}),
+                        getNodeTypeFormatName(item->getRealType()), {
+                            "The node types of the parameter node only include the following four types: "
+                            + getListFormatString(
+                                {getNodeTypeFormatName(NodeType::IDENTIFIER),
+                                getNodeTypeFormatName(NodeType::ASSIGNMENT),
+                                getNodeTypeFormatName(NodeType::UNARY)}),
+                            getNodeTypeFormatName(NodeType::IDENTIFIER) + " param form: `arg: any`.",
+                            getNodeTypeFormatName(NodeType::ASSIGNMENT) + " param form: `arg: any = default_value`.",
+                            getNodeTypeFormatName(NodeType::UNARY) + " param form: `*args` or `**kwargs`."
+                        });
             }
             const auto &tempParamNode = std::static_pointer_cast<IdentifierNode>(param);
             tempParamNode->acceptVisitor(*this);
@@ -2015,7 +2452,15 @@ namespace ast
             {
                 if (!checkTypeMatch(paramSymbol, defaultValue.value()))
                 {
-                    throw std::runtime_error("Function call parameter type mismatch.");
+                    const auto &[fst, snd] = getTypesFromOpItem(defaultValue.value());
+                    throw RCCCompilerError::typeMissmatchError(paramSymbol->getPos().toString(),
+                        getCodeLine(paramSymbol->getPos()),
+                        std::vector{
+                            "Error symbol: " + paramSymbol->toString(),
+                            "Type mismatched value: " + defaultValue.value().toString()
+                        }, paramSymbol->getTypeLabel()->toString(),
+                        fst ? fst->toString() : snd ? snd->toString() : RCC_UNKNOWN_CONST,
+                        {"You can try using the `any` type to set the parameter types more loosely."});
                 }
                 paramSymbol->setDefaultValue(defaultValue.value().getRaVal(symbolTable));
             }
@@ -2062,7 +2507,28 @@ namespace ast
                     const auto & [fst, snd] = symbolTable.find(funcNameOpItem.getVal());
                     if (fst < 0 || snd->getType() != SymbolType::FUNCTION)
                     {
-                        throw std::runtime_error("Function '" + funcNameOpItem.getVal() + "' not found in '" + classSymbol->getVal() + "'");
+                        throw RCCCompilerError::symbolNotFoundError(node.getPos().toString(), getCodeLine(node.getPos()),
+                            funcNameOpItem.toString(),
+                            StringVector{
+                                "This function symbol was not found in the member properties of the class.",
+                                "Class symbol: " + classSymbol->toString(),
+                                "Class member attributes: " + getListFormatString([classSymbol]
+                                {
+                                    StringVector memberNames{};
+                                    for (const auto &member : *classSymbol->getMembers())
+                                    {
+                                        memberNames.push_back(member->getVal());
+                                    }
+                                    for (const auto &member : *classSymbol->getStaticMembers())
+                                    {
+                                        memberNames.push_back(member->getVal());
+                                    }
+                                    return memberNames;
+                                }())
+                            },
+                            {
+                                "Please ensure that the class member attributes being called have indeed been defined."
+                            });
                     }
                     functionSymbol = std::static_pointer_cast<FunctionSymbol>(snd);
                 }
@@ -2070,10 +2536,7 @@ namespace ast
         }
         if (classSymbol)
         {
-            if (functionSymbol->getLabelMarkManager().isLifeCycleLabelMarked(LifeCycleLabel::STATIC))
-            {
-                pass();
-            } else
+            if (!functionSymbol->getLabelMarkManager().isLifeCycleLabelMarked(LifeCycleLabel::STATIC))
             {
                 const auto thisFieldSymbol = getThisFieldSymbol(classSymbol);
                 paramIdents.insert(paramIdents.begin(), thisFieldSymbol->getRaVal());
@@ -2098,7 +2561,16 @@ namespace ast
         {
             if (functionSymbol->getReturnType()->isNot("any"))
             {
-                throw std::runtime_error("Function '" + funcNameOpItem.getVal() + "' must return a value.");
+                throw RCCCompilerError::semanticError(node.getPos().toString(), getCodeLine(node.getPos()),
+                    StringVector{
+                        "A necessary return statement is missing when defining a function with a return value.",
+                        "Defining function symbol: " + functionSymbol->toString(),
+                        "Return type: " + functionSymbol->getReturnType()->toString()
+                    },
+                    {
+                        "When the return type of a function with a return value is not `any`,"
+                        " the `ret` keyword must be used to return a value that matches the return type."
+                    });
             }
             raCodeBuilder << ri::RET("null");
         }
@@ -2120,7 +2592,15 @@ namespace ast
             {
                 if (snd->getType() != SymbolType::CLASS)
                 {
-                    throw std::runtime_error("'" + label + "' is an invalid custom type label.");
+                    throw RCCCompilerError::typeMissmatchError(node.getPosStr(), getCodeLine(node.getPos()),
+                        StringVector{
+                            "There is an error in the symbol type of the custom type label.",
+                            "Error label: " + label
+                        }, symbolTypeToFormatString(SymbolType::CLASS),
+                        symbolTypeToFormatString(snd->getType()), {
+                            "Please ensure that the symbol type of the custom type label is " +
+                                symbolTypeToFormatString(SymbolType::CLASS)
+                        });
                 }
                 symbolTable.insert(std::make_shared<TypeLabelSymbol>(node.getPos(),
                     label, symbolTable.curScopeLevel(), snd->getRaVal()));
@@ -2163,6 +2643,7 @@ namespace ast
     }
 
     void CompileVisitor::visitLoopNode(LoopNode &node) {
+        enterLoopScope();
         switch (node.getLoopType())
         {
         case LoopType::WHILE:
@@ -2188,6 +2669,7 @@ namespace ast
         default:
             pass("To process other loop type node: " + getNodeTypeName(node.getRealType()));
         }
+        exitLoopScope();
     }
 
     void CompileVisitor::visitForLoopNode(ForLoopNode &node) {
@@ -2205,19 +2687,32 @@ namespace ast
             const auto &funcSymbol = std::static_pointer_cast<FunctionSymbol>(processionSymbol);
             if (!builtin::isBuiltinFunction(funcSymbol->getVal()))
             {
-                throw std::runtime_error("Non-built-in function cannot be encapsulated: '" + funcSymbol->getVal() + "'");
+                throw RCCCompilerError::semanticError(node.getPosStr(), getCodeLine(node.getPos()),
+                    StringVector{
+                        "Misuse of the `encapsulated` keyword for ordinary functions",
+                        "Defining function: " + funcSymbol->toString()
+                    },
+                    {"The `encapsulated` keyword can only be used for built-in symbol's definition."});
             }
             funcSymbol->setBuiltInType(TypeOfBuiltin::BUILTIN);
         }
         raCodeBuilder
-        << ri::PASS("This function is encapsulated.");
+        << ri::PASS("The implementation is encapsulated.");
     }
 
     void CompileVisitor::visitReturnExpressionNode(ReturnExpressionNode &node)
     {
         if (topProcessingSymbolType() != SymbolType::FUNCTION)
         {
-            throw std::runtime_error("Return expression node must be in function.");
+            throw RCCCompilerError::semanticError(node.getPosStr(), getCodeLine(node.getPos()),
+                StringVector{
+                    "Using the `ret` return statement outside of a function scope is incorrect.",
+                    "Procession symbol: " + topProcessingSymbol()->toString(),
+                    "Current scope field: " + scopeTypeToFormatString(scopeTypeStack.top())
+                },
+                {
+                    "The return statement with the `ret` keyword can only be used within the function scope."
+                });
         }
         const auto& funcSymbol = std::static_pointer_cast<FunctionSymbol>(topProcessingSymbol());
         funcSymbol->setHasReturned(true);
@@ -2225,21 +2720,53 @@ namespace ast
         {
             if (funcSymbol->getReturnType()->isNot("any"))
             {
-                throw std::runtime_error("Functions with a return value type must have a return value.");
+                throw RCCCompilerError::semanticError(
+                    node.getPosStr(),
+                    getCodeLine(node.getPos()),
+                    StringVector{
+                        "Functions with a return value type must have a return value."
+                        "Procession symbol: " + topProcessingSymbol()->toString(),
+                    },
+                    {
+                        "Add a return statement with the appropriate return value type",
+                        "Or change the function return type to 'any' if appropriate"
+                    }
+                );
             }
             raCodeBuilder << ri::RET("null");
             return;
         }
         if (!funcSymbol->hasReturnValue() && node.getReturnNode())
         {
-            throw std::runtime_error("Functions with a return type of void are not allowed to have a return value.");
+            throw RCCCompilerError::semanticError(
+                node.getPosStr(),
+                getCodeLine(node.getPos()),
+                StringVector{
+                    "Functions with a return type of void are not allowed to have a return value.",
+                    "Procession symbol: " + topProcessingSymbol()->toString()
+                },
+                {
+                    "Remove the return value from the return statement",
+                    "Or change the function return type to match the return value"
+                }
+            );
         }
         if (node.getReturnNode()) {
             node.getReturnNode()->acceptVisitor(*this);
             const auto &returnVal = rPopOpItem();
             if (!checkTypeMatch(funcSymbol->getReturnType(), returnVal))
             {
-                throw std::runtime_error("Return value type does not match function return value type.");
+                throw RCCCompilerError::typeMissmatchError(
+                    node.getPosStr(),
+                    getCodeLine(node.getPos()),
+                    "Return value type does not match function return value type.",
+                    funcSymbol->getReturnType()->toString(),
+                    opItemTypeToFormatString(returnVal.getType()),
+                    {
+                        "Change the return value to match the function's return type: " + funcSymbol->getReturnType()->toString(),
+                        "Or modify the function return type to match the return value type: " + opItemTypeToFormatString(returnVal.getType())
+                    }
+                );
             }
             processTypeAutoChange(funcSymbol, returnVal);
             raCodeBuilder
@@ -2250,8 +2777,26 @@ namespace ast
         }
     }
 
-    void CompileVisitor::visitBreakExpressionNode(BreakExpressionNode &node) {
-        pass("To visit " + getNodeTypeName(node.getRealType()) + " type node.");
+    void CompileVisitor::visitBreakExpressionNode(BreakExpressionNode &node)
+    {
+        if (!isInLoopScope())
+        {
+            throw RCCCompilerError::semanticError(
+                node.getPosStr(),
+                getCodeLine(node.getPos()),
+                StringVector{
+                    "Invalid use of break statement",
+                    "The break statement can only be used inside loop scopes (for, while).",
+                    "Current scope type: " + scopeTypeToFormatString(curScopeType()),
+                    "Break statements are used to exit the nearest enclosing loop."
+                },
+                {
+                    "Move the break statement inside a loop structure",
+                    "If you intended to exit a function, use 'ret' instead"
+                }
+            );
+        }
+        raCodeBuilder << ri::EXIT("LOOP");
     }
 
     void CompileVisitor::visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode &node) {
@@ -2265,14 +2810,9 @@ namespace ast
                 const auto &item: paramItems)
             {
                 auto paramType = ParamType::PARAM_POSITIONAL;
-                if (item->getRealType() != NodeType::IDENTIFIER &&
-                    item->getRealType() != NodeType::ASSIGNMENT &&
-                    item->getRealType() != NodeType::UNARY)
-                {
-                    throw std::runtime_error("Function call parameter must be an identifier or an assignment or a unary.");
-                }
                 auto param = item;
                 std::optional<OpItem> defaultValue = std::nullopt;
+                bool isValidItem = false;
                 if (item->getRealType() == NodeType::ASSIGNMENT)
                 {
                     const auto &[ident, value] =
@@ -2281,6 +2821,7 @@ namespace ast
                     value->acceptVisitor(*this);
                     defaultValue = rPopOpItem();
                     paramType = ParamType::PARAM_KEYWORD;
+                    isValidItem = true;
                 } else if (item->getRealType() == NodeType::UNARY)
                 {
                     if (const auto &unaryParam =
@@ -2289,14 +2830,33 @@ namespace ast
                     {
                         param = unaryParam->getRightNode();
                         paramType = ParamType::PARAM_VAR_LEN_POSITIONAL;
+                        isValidItem = true;
                     } else if (unaryParam->getOpToken().getType() == TokenType::TOKEN_DOUBLE_STAR)
                     {
                         param = unaryParam->getRightNode();
                         paramType = ParamType::PARAM_VAR_LEN_KEYWORD;
-                    } else
-                    {
-                        throw std::runtime_error("Function call parameter must be an identifier or an assignment or a unary.");
+                        isValidItem = true;
                     }
+                } else if (item->getRealType() == NodeType::IDENTIFIER)
+                {
+                    isValidItem = true;
+                }
+                if (!isValidItem)
+                {
+                    throw RCCCompilerError::typeMissmatchError(item->getPos().toString(), getCodeLine(item->getPos()),
+                    "Error node: " + item->toString(),
+                    getListFormatString({getNodeTypeFormatName(NodeType::IDENTIFIER),
+                        getNodeTypeFormatName(NodeType::ASSIGNMENT), getNodeTypeFormatName(NodeType::UNARY)}),
+                        getNodeTypeFormatName(item->getRealType()), {
+                            "The node types of the parameter node only include the following four types: "
+                            + getListFormatString(
+                                {getNodeTypeFormatName(NodeType::IDENTIFIER),
+                                getNodeTypeFormatName(NodeType::ASSIGNMENT),
+                                getNodeTypeFormatName(NodeType::UNARY)}),
+                            getNodeTypeFormatName(NodeType::IDENTIFIER) + " param form: `arg: any`.",
+                            getNodeTypeFormatName(NodeType::ASSIGNMENT) + " param form: `arg: any = default_value`.",
+                            getNodeTypeFormatName(NodeType::UNARY) + " param form: `*args` or `**kwargs`."
+                        });
                 }
                 const auto &tempParamNode = std::static_pointer_cast<IdentifierNode>(param);
                 tempParamNode->acceptVisitor(*this);
@@ -2315,7 +2875,15 @@ namespace ast
                 {
                     if (!checkTypeMatch(paramSymbol, defaultValue.value()))
                     {
-                        throw std::runtime_error("Function call parameter type mismatch.");
+                        const auto &[fst, snd] = getTypesFromOpItem(defaultValue.value());
+                        throw RCCCompilerError::typeMissmatchError(paramSymbol->getPos().toString(),
+                            getCodeLine(paramSymbol->getPos()),
+                            std::vector{
+                                "Error symbol: " + paramSymbol->toString(),
+                                "Type mismatched value: " + defaultValue.value().toString()
+                            }, paramSymbol->getTypeLabel()->toString(),
+                            fst ? fst->toString() : snd ? snd->toString() : RCC_UNKNOWN_CONST,
+                            {"You can try using the `any` type to set the parameter types more loosely."});
                     }
                     paramSymbol->setDefaultValue(defaultValue.value().getRaVal(symbolTable));
                 }
@@ -2361,7 +2929,18 @@ namespace ast
         {
             if (functionSymbol->getReturnType()->isNot("any"))
             {
-                throw std::runtime_error("Anonymous function at " + node.getPos().toString() + " must return a value.");
+                throw RCCCompilerError::semanticError(
+                    node.getPosStr(),
+                    getCodeLine(node.getPos()),
+                    StringVector{
+                        "An anonymous function with a return type other than `any` must have a return statement.",
+                        "Return type: " + functionSymbol->getReturnType()->toString()
+                    },
+                    {
+                        "Add a return statement with the appropriate return value type",
+                        "Or change the function return type to 'any' if appropriate"
+                    }
+                );
             }
             raCodeBuilder << ri::RET("null");
         }
@@ -2383,7 +2962,17 @@ namespace ast
         for (const auto & itemNodes = visitParallelNode(node.getBodyNode());
             const auto &itemNode: itemNodes) {
             if (itemNode->getRealType() != NodeType::PAIR) {
-                throw std::runtime_error("The wrong data type is in the dictionary.");
+                throw RCCCompilerError::typeMissmatchError(
+                    itemNode->getPosStr(),
+                    getCodeLine(itemNode->getPos()),
+                    "The wrong data type is in the dictionary.",
+                    getNodeTypeFormatName(NodeType::PAIR),
+                    getNodeTypeFormatName(itemNode->getRealType()),
+                    {
+                        "Only " + getNodeTypeFormatName(NodeType::PAIR) + " nodes are allowed in dictionaries",
+                        "Check the data structure being added to the dictionary"
+                    }
+                );
             }
             itemNode->acceptVisitor(*this);
             dictItems.push_back(rPopOpItemRaVal());
@@ -2410,10 +2999,40 @@ namespace ast
     }
 
     void CompileVisitor::visitBracketExpressionNode(BracketExpressionNode &node) {
-        for (const auto & itemNodes= visitParallelNode(node.getBodyNode());
-            const auto &itemNode: itemNodes) {
-            itemNode->acceptVisitor(*this);
+        Pos errorPos = Pos::UNKNOW_POS;
+        try
+        {
+            for (const auto & itemNodes= visitParallelNode(node.getBodyNode());
+                const auto &itemNode: itemNodes)
+            {
+                errorPos = itemNode->getPos();
+                setCurrentPos(itemNode->getPos());
+                itemNode->acceptVisitor(*this);
+                resetCurrentPos();
             }
+        } catch (RCCError &e)
+        {
+            const auto &errorFilePath = errorPos.getFilepath();
+            if (fileRecord.empty())
+            {
+                fileRecord = errorFilePath;
+            }
+            e.addTraceInfo(RCCError::makeTraceInfo(
+                fileRecord,
+                errorFilePath,
+                getPosStrFromFilePath(errorFilePath),
+                makeFileIdentStr(errorFilePath),
+                listJoin(e.getTraceInfo()),
+                errorPos.toString(),
+                getCodeLine(errorPos),
+                node.getPos().toString(),
+                getCodeLine(node.getPos())));
+            if (fileRecord != errorFilePath)
+            {
+                fileRecord = errorFilePath;
+            }
+            throw;
+        }
     }
 
     void CompileVisitor::visitIndexExpressionNode(IndexExpressionNode &node)
@@ -2439,7 +3058,17 @@ namespace ast
                     indexItem.getRaVal(symbolTable), topOpRaVal());
             } else
             {
-                throw std::runtime_error("The wrong data type is in the index expression.");
+                throw RCCCompilerError::typeMissmatchError(
+                    node.getPosStr(),
+                    getCodeLine(node.getPos()),
+                    "The wrong data type is in the index expression.",
+                    "iterable type (list, dict, str, series, etc.)",
+                    targetValueType->toString(),
+                    {
+                        "Only iterable types can be used with index expressions",
+                        "Check the variable type being indexed"
+                    }
+                );
             }
         } else if (targetTypeLabel->isIterable())
         {
@@ -2449,7 +3078,17 @@ namespace ast
                 indexItem.getRaVal(symbolTable), topOpRaVal());
         } else
         {
-            throw std::runtime_error("The wrong data type is in the index expression.");
+            throw RCCCompilerError::typeMissmatchError(
+                    node.getPosStr(),
+                    getCodeLine(node.getPos()),
+                    "The wrong data type is in the index expression.",
+                    "iterable type (list, dict, str, series, etc.)",
+                    targetValueType->toString(),
+                    {
+                        "Only iterable types can be used with index expressions",
+                        "Check the variable type being indexed"
+                    }
+                );
         }
     }
 
@@ -2490,7 +3129,21 @@ namespace ast
                 const auto &value = values[i].value();
                 if (!checkTypeMatch(symbol->getTypeLabel(), value.getTypeLabel()))
                 {
-                    throw std::runtime_error("The value type is not the same as the variable type.");
+                    throw RCCCompilerError::typeMissmatchError(
+                        node.getPosStr(),
+                        getCodeLine(node.getPos()),
+                        StringVector{
+                            "The value type is not the same as the variable type.",
+                            "Processing variable: " + symbol->toString(),
+                            "Processing value: " + value.toString()
+                        },
+                        symbol->getTypeLabel()->toString(),
+                        value.getTypeLabel()->toString(),
+                        {
+                            "Change the value to match the variable type: " + symbol->getTypeLabel()->toString(),
+                            "Or modify the variable declaration to match the value type: " + value.getTypeLabel()->toString()
+                        }
+                    );
                 }
                 processTypeAutoChange(symbol, value);
                 const auto &raValue = value.getRaVal(symbolTable);
@@ -2530,7 +3183,21 @@ namespace ast
             const auto &valueItem = rPopOpItem();
             if (!checkTypeMatch(identSymbol->getTypeLabel(), valueItem.getTypeLabel()))
             {
-                throw std::runtime_error("The value type is not the same as the variable type.");
+                throw RCCCompilerError::typeMissmatchError(
+                        node.getPosStr(),
+                        getCodeLine(node.getPos()),
+                        StringVector{
+                            "The value type is not the same as the variable type.",
+                            "Processing variable: " + identSymbol->toString(),
+                            "Processing value: " + valueItem.toString()
+                        },
+                        identSymbol->getTypeLabel()->toString(),
+                        valueItem.getTypeLabel()->toString(),
+                        {
+                            "Change the value to match the variable type: " + identSymbol->getTypeLabel()->toString(),
+                            "Or modify the variable declaration to match the value type: " + valueItem.getTypeLabel()->toString()
+                        }
+                    );
             }
             if (valueItem.getType() == OpItemType::IDENTIFIER)
             {
@@ -2557,8 +3224,19 @@ namespace ast
             {
                 raCodeBuilder << ri::PUT(value, identSymbol->getRaVal());
             }
-        } else {
-            throw std::runtime_error("Identifier '" + identItem.getVal() + "' not found.");
+        } else
+        {
+            throw RCCCompilerError::symbolNotFoundError(
+                node.getPosStr(),
+                getCodeLine(node.getPos()),
+                identItem.getVal(),
+                "Identifier not found in current scope",
+                {
+                    "Check if the identifier is spelled correctly",
+                    "Ensure the identifier is declared before use",
+                    "Verify the identifier is in the current scope"
+                }
+            );
         }
     }
 }

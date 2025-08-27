@@ -21,7 +21,7 @@ namespace builtin
     extern std::unordered_map<std::string, std::pair<bool, BuiltinFunc>> pureBuiltinFunctionMap;
     extern std::unordered_map<std::string, BuiltinFunc> builtinFunctionMap;
 
-    void initializeFullBuiltinEnvironment(ast::CompileVisitor &visitor);
+    void initializePureBuiltinEnvironment(ast::CompileVisitor &visitor);
 
     bool isPureBuiltinFunction(const std::string &funcName);
     bool isBuiltinFunction(const std::string &funcName);

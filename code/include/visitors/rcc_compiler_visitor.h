@@ -8,6 +8,7 @@
 #include <queue>
 
 #include "rcc_base_visitor.h"
+#include "../analyzer/rcc_lexer.h"
 #include "../components/ri/rcc_ri.h"
 
 namespace ast {
@@ -57,6 +58,9 @@ namespace ast {
             LITERAL_VALUE,    // 字面量值
             SET_LABEL         // 集合标签
         };
+
+        static std::string opItemTypeToString(const OpItemType &type);
+        static std::string opItemTypeToFormatString(const OpItemType &type);
 
         // 内置类型枚举
         enum BuiltinType : int {
@@ -164,6 +168,7 @@ namespace ast {
 
             bool is(const OpItemType &opItemType) const;
             bool isNot(const OpItemType &opItemType) const;
+            std::string toString() const override;
 
             // Getter方法
             [[nodiscard]] std::string getVal() const;
@@ -188,10 +193,13 @@ namespace ast {
         static size_t _setId;          // 集合标签ID计数器
         static std::unordered_map<std::string,
             std::shared_ptr<symbol::ClassSymbol>> extensionMap;  // 扩展类映射
+        static std::stack<std::shared_ptr<lexer::Lexer>> _lexers;    // 词法分析器
+        static Pos _currentProcessingPos;                            // 当前正在处理的位置信息
+        static std::string fileRecord;
 
         // ========================== 成员属性 ==========================
-        RaCodeBuilder raCodeBuilder{};                          // RA代码构建器
-        symbol::SymbolTableManager symbolTable;                 // 符号表管理器
+        RaCodeBuilder raCodeBuilder{};                               // RA代码构建器
+        symbol::SymbolTableManager symbolTable{};                    // 符号表管理器
 
         std::string programEntryFilePath;                       // 程序入口文件路径
         std::string programTagetFilePath;                       // 程序目标文件路径
@@ -203,6 +211,7 @@ namespace ast {
         std::stack<std::shared_ptr<symbol::Symbol>> processingSymbolStack{};  // 符号处理栈
         std::stack<std::shared_ptr<OpItem>> opItemStack{};                    // 操作数栈
         std::stack<ScopeType> scopeTypeStack{};                               // 作用域类型栈
+        std::stack<ScopeType> loopScopeStack{};                               // 循环作用域栈
 
     public:
         // ======================= constructor ========================
@@ -214,6 +223,7 @@ namespace ast {
 
         // ====================== getter & setter =====================
         [[nodiscard]] symbol::SymbolTableManager &getSymbolTable();
+        [[nodiscard]] RaCodeBuilder &getRaCodeBuilder();
         [[nodiscard]] std::stack<std::shared_ptr<symbol::Symbol>> &getProcessingSymbolStack();
         [[nodiscard]] std::stack<std::shared_ptr<OpItem>> &getOpItemStack();
         [[nodiscard]] std::stack<ScopeType> &getScopeTypeStack();
@@ -222,17 +232,25 @@ namespace ast {
         [[nodiscard]] std::string getCompileOutputFilePath() const;
         [[nodiscard]] std::string getCurrentProcessingFilePath() const;
         void setCurrentProcessingFilePath(const std::string &filePath = "");
+        [[nodiscard]] static Pos currentPos();
+        static void setCurrentPos(const Pos &pos);
+        static void resetCurrentPos();
 
         // ========================== 公共方法 ==========================
         // 作用域管理
         static std::string scopeTypeToString(ScopeType scopeType);  // 作用域类型转字符串
+        static std::string scopeTypeToFormatString(ScopeType scopeType);
         [[nodiscard]] std::string curScopeField();                  // 获取当前作用域字段
+        [[nodiscard]] ScopeType curScopeType();                     // 获取当前作用域字段
         void enterScope(ScopeType scopeType);                       // 进入作用域
         void enterScope(size_t scopeLevel);                         // 进入指定层级作用域
         void enterTopScope();                                       // 进入顶层作用域
         void enterGlobalScope();                                    // 进入全局作用域
         void exitScope(ScopeType scopeType);                        // 退出作用域
         size_t curScopeLevel() const;                               // 获取当前作用域层级
+        void enterLoopScope();                                      // 进入循环作用域
+        void exitLoopScope();                                       // 退出循环作用域
+        [[nodiscard]] bool isInLoopScope() const;                         // 是否在循环作用域中
 
         // 类型检查与转换
         [[nodiscard]] static bool checkTypeMatch(
@@ -308,6 +326,11 @@ namespace ast {
         VarID getThisFieldVarID(const Pos& pos);
         std::shared_ptr<symbol::VariableSymbol> getThisFieldSymbol(const std::shared_ptr<symbol::ClassSymbol>& classSymbol);
 
+        // 词法分析器管理方法
+        static void pushLexer(const std::shared_ptr<lexer::Lexer> &lexer);
+        static void popLexer();
+        static std::shared_ptr<lexer::Lexer> topLexer();
+
         // 工具方法
         [[nodiscard]] std::shared_ptr<symbol::Symbol> getSymbolFromOpItem(
             const OpItem &opItem) const;                                       // 从操作数获取符号
@@ -327,13 +350,23 @@ namespace ast {
         bool checkSymbolExists(const OpItem &opItem) const;
         bool checkSymbolExists(const std::shared_ptr<OpItem> &opItem) const;
         bool checkSymbolExists(const std::shared_ptr<symbol::Symbol>& processingSymbol) const;
-        void checkExists(const OpItem &opItem) const;
-        void checkExists(const std::shared_ptr<OpItem> &opItem) const;
+        void checkExists(const OpItem &opItem, const Pos& pos) const;
+        void checkExists(const std::shared_ptr<OpItem> &opItem, const Pos& pos) const;
         void checkExists(const std::shared_ptr<symbol::Symbol>& processingSymbol) const;
+        static std::string getListFormatString(const std::vector<std::string> &list);
+        static std::string getCodeLine(const Pos &pos);
 
         bool compile();
 
         std::string getCompileResult();
+
+        // ===================== Node visitor ==========================
+
+        void visitProgramNode(ProgramNode &node) override;
+
+        void visitBlockRangerNode(BlockRangerNode &node) override;
+
+        void visitBracketExpressionNode(BracketExpressionNode &node) override;
 
         void visitLiteralNode(LiteralNode &node) override;
 
@@ -374,11 +407,10 @@ namespace ast {
         std::shared_ptr<symbol::FunctionSymbol> getCtorSymbol(
             const std::shared_ptr<symbol::ClassSymbol> &classSymbol,
             const std::queue<OpItem> &posArgs,
-            const std::unordered_map<std::string, OpItem> &namedArgs) const;
+            const std::unordered_map<std::string, OpItem> &namedArgs, const Pos& ctorCallPos, const std::vector<OpItem>&
+            orderedArgs) const;
 
         void visitFunctionCallNode(FunctionCallNode &node) override;
-
-        void visitProgramNode(ProgramNode &node) override;
 
         void visitInfixNode(InfixExpressionNode &node) override;
 
@@ -391,8 +423,6 @@ namespace ast {
         void visitPostfixNode(PostfixExpressionNode &node) override;
 
         void visitParenRangerNode(ParenRangerNode &node) override;
-
-        void visitBlockRangerNode(BlockRangerNode &node) override;
 
         void visitFunctionDefinitionNode(FunctionDefinitionNode &node) override;
 
@@ -421,8 +451,6 @@ namespace ast {
         void visitDictionaryExpressionNode(DictionaryExpressionNode &node) override;
 
         void visitListExpressionNode(ListExpressionNode &node) override;
-
-        void visitBracketExpressionNode(BracketExpressionNode &node) override;
 
         void visitIndexExpressionNode(IndexExpressionNode &node) override;
 

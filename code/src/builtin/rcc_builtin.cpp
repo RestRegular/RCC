@@ -9,11 +9,12 @@ namespace builtin
 {
     using namespace utils;
 
-    void initializeFullBuiltinEnvironment(ast::CompileVisitor& visitor)
+    void initializePureBuiltinEnvironment(ast::CompileVisitor& visitor)
     {
         visitor.enterGlobalScope();
         const auto &argsId = ast::CompileVisitor::VarID("args", Pos::UNKNOW_POS.getFileField(), visitor.curScopeField());
         const auto &kwargsId = ast::CompileVisitor::VarID("kwargs", Pos::UNKNOW_POS.getFileField(), visitor.curScopeField());
+        const bool &isProgramEntry = checkPathEqual(visitor.getProgramEntryFilePath(), visitor.getCurrentProcessingFilePath());
         for (const auto& [funcName, funcPair] : pureBuiltinFunctionMap)
         {
             const auto &funcId = ast::CompileVisitor::VarID(funcName, Pos::UNKNOW_POS.getFileField(), visitor.curScopeField());
@@ -38,6 +39,17 @@ namespace builtin
                     argsParam, kwargsParam
                 }, 0, symbol::TypeOfBuiltin::PURE_BUILTIN,
                 symbol::FunctionType::FUNCTION, nullptr));
+            if (isProgramEntry) {
+                visitor.getRaCodeBuilder()
+               << (funcPair.first ?
+               ri::FUNI(funcId.getVid(), {}).toRACode() :
+               ri::FUNC(funcId.getVid(), {}).toRACode())
+               << ri::ANNOTATION(base::StringVector{
+                   "This is a pure-built-in function: `" + funcName + "`",
+               })
+               << ri::PASS("Function implementation is encapsulated.")
+               << ri::END(funcId.getVid());
+            }
         }
     }
 
@@ -81,14 +93,14 @@ namespace builtin
         }
         const auto &importedFilePath = getAbsolutePath(StringManager::getInstance().unescape(originalArgs[0]),
             getFileDirFromPath(visitor.getProgramTargetFilePath()));
-        const auto &anyTypeSymbol = symbol::TypeLabelSymbol::anyTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel());
+        const auto &clasTypeSymbol = symbol::TypeLabelSymbol::clasTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel());
         std::shared_ptr<symbol::ClassSymbol> extensionSymbol;
         std::string raCode = "";
         if (const auto &registeredExtension = visitor.getRegisteredExtension(importedFilePath))
         {
             extensionSymbol = registeredExtension;
-            visitor.pushOpItem(ast::CompileVisitor::OpItemType::IDENTIFIER, anyTypeSymbol,
-                extensionSymbol->getVal(), extensionSymbol->getRaVal(), extensionSymbol);
+            visitor.pushOpItem(ast::CompileVisitor::OpItemType::IDENTIFIER, clasTypeSymbol,
+                extensionSymbol->getVal(), extensionSymbol->getRaVal(), extensionSymbol, clasTypeSymbol);
         } else
         {
             if (auto importVisitor = ast::CompileVisitor(visitor.getProgramEntryFilePath(), importedFilePath, "", false);
@@ -154,7 +166,7 @@ namespace builtin
                 symbol::TypeLabelSymbol::createCustomType(extensionSymbol->getVal(), extensionSymbol->getRaVal(), extensionSymbol);
                 visitor.registerExtension(importedFilePath, extensionSymbol);
                 visitor.pushIdentItem(
-                    tempVarId, anyTypeSymbol, anyTypeSymbol, extensionSymbol);
+                    tempVarId, clasTypeSymbol, clasTypeSymbol, extensionSymbol);
             } else
             {
                 throw std::runtime_error("Failure to import file: '" + importedFilePath + "'");
@@ -238,6 +250,11 @@ namespace builtin
         return raCode;
     }
 
+    BuiltinFuncRetType rcc_unpack(ast::CompileVisitor &visitor, const std::vector<std::string> &processedArgs, const std::vector<std::string> &originalArgs)
+    {
+        return "";
+    }
+
     BuiltinFuncRetType rcc_entry(ast::CompileVisitor &visitor, const std::vector<std::string> &processedArgs, const std::vector<std::string> &originalArgs)
     {
         if (processedArgs.size() < 1)
@@ -288,6 +305,8 @@ namespace builtin
 
     std::unordered_map<std::string, std::pair<bool, BuiltinFunc>> pureBuiltinFunctionMap = {
         // full-built-in functions
+        // true: has return value
+        // false: no return value
         {"import", {true, rcc_import}},
         {"export", {false, rcc_export}},
     };
@@ -300,5 +319,6 @@ namespace builtin
         {"type", rcc_type},
         {"setType", rcc_setType},
         {"entry", rcc_entry},
+        {"unpack", rcc_unpack}
     };
 }

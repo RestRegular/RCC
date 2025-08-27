@@ -38,7 +38,9 @@ namespace ast {
 
         ~Node() override = default;
 
-        [[nodiscard]] virtual utils::Pos getPos() const;
+        [[nodiscard]] virtual Pos getPos() const;
+
+        [[nodiscard]] std::string getPosStr() const;
 
         virtual void acceptVisitor(Visitor &visitor) = 0;
 
@@ -304,6 +306,7 @@ namespace ast {
             const std::vector<std::shared_ptr<ExpressionNode>> &bodyExpressions);
         void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::vector<std::shared_ptr<ExpressionNode>> getBodyExpressions() const;
+        [[nodiscard]] Pos getPos() const override;
     };
 
     class BracketExpressionNode final : public RangerNode {
@@ -315,6 +318,7 @@ namespace ast {
             const std::shared_ptr<ExpressionNode> &bodyNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
         void acceptVisitor(Visitor &visitor) override;
+        [[nodiscard]] Pos getPos() const override;
     };
 
     class IndexExpressionNode final : public PostfixExpressionNode {
@@ -587,9 +591,9 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
     };
 
-    class EncapsulatedExpressionNode: public ExpressionNode {
+    class EncapsulatedExpressionNode final : public ExpressionNode {
     public:
-        EncapsulatedExpressionNode(const Token &mainToken_);
+        explicit EncapsulatedExpressionNode(const Token &mainToken_);
         void acceptVisitor(Visitor &visitor) override;
     };
 
@@ -611,7 +615,7 @@ namespace ast {
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
     };
 
-    class ClassDeclarationNode : public ExpressionNode {
+    class ClassDeclarationNode final : public ExpressionNode {
         std::shared_ptr<ExpressionNode> nameNode;
     public:
         explicit ClassDeclarationNode(
@@ -636,7 +640,7 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
     };
 
-    class ProgramNode : public StatementNode {
+    class ProgramNode final : public StatementNode {
         std::vector<std::shared_ptr<StatementNode>> statements;
     public:
         explicit ProgramNode(const Token &mainToken, std::vector<std::shared_ptr<StatementNode>> statements);

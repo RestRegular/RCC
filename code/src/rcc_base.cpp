@@ -146,10 +146,12 @@ namespace base {
     }
 
     std::string getErrorTypeName(const ErrorType &error_type) {
-        switch (error_type) {
-            case ErrorType::SYNTAX_ERROR: return "SyntaxError";
-            case ErrorType::PARSER_ERROR: return "ParserError";
-            default: return "UndefinedError";
+        switch (error_type)
+        {
+        case ErrorType::SYNTAX_ERROR: return "SyntaxError";
+        case ErrorType::PARSER_ERROR: return "ParserError";
+        case ErrorType::COMPILER_ERROR: return "CompilerError";
+        default: return "UndefinedError";
         }
     }
 
@@ -208,7 +210,7 @@ namespace base {
         oss << getErrorTitle();
 
         if (!trace_info.empty()) {
-            oss << " [ Trace Back ]\n" << trace_info << "\n";
+            oss << " [ Trace Back ]\n" << utils::listJoin(trace_info) << "\n";
         }
 
         if (!error_line.empty()) {
@@ -230,9 +232,12 @@ namespace base {
         std::ostringstream oss;
         oss << std::string(spaceSize, ' ') << "[ Info ] : ";
         for (size_t i = 0; i < error_info.size(); ++i) {
-            oss << utils::StringManager::wrapText(error_info[i], 80, spaceSize + 10, "", "~ ");
-            if (i < error_info.size() - 1) {
-                oss << "\n" << std::string(spaceSize + 9, ' ') << "- ";
+            if (!error_info[i].empty() && error_info[i] != RCC_UNKNOWN_CONST) {
+                oss << utils::StringManager::wrapText(error_info[i], 80, spaceSize + 10, "", "~ ", true);
+                if (i < error_info.size() - 1 &&
+                    !error_info[i + 1].empty() && error_info[i + 1] != RCC_UNKNOWN_CONST) {
+                    oss << "\n" << std::string(spaceSize + 9, ' ') << "- ";
+                }
             }
         }
         oss << "\n\n";
@@ -246,8 +251,41 @@ namespace base {
         return oss.str();
     }
 
+    std::string scopeLeaderRecord = "";
+
+    std::string RCCError::makeTraceInfo(const std::string &file_record_, const std::string &error_pos_filepath,
+                                     const std::string &utils_getPosStrFromFilePath,
+                                     const std::string &makeFileIdentiFromPath, const std::string &trace_info,
+                                     const std::string &error_pos_str, const std::string &raw_code,
+                                     const std::string &scope_leader_pos, const std::string &scope_leader_code) {
+        std::stringstream ss;
+        if (!scope_leader_pos.empty() && !scope_leader_code.empty())
+        {
+            ss << std::string(7, ' ') << "| " << utils::StringManager::wrapText(scope_leader_pos, 80, 17, "", "~ ")
+               << "\n";
+            ss << std::string(7, ' ') << "v " << utils::StringManager::wrapText(scope_leader_code, 80, 15, "", "| ~ ")
+               << "\n";
+        }
+        if (!error_pos_str.empty() && !raw_code.empty() && scopeLeaderRecord != raw_code)
+        {
+            ss << std::string(15, ' ') << "| " << utils::StringManager::wrapText(error_pos_str, 80, 9, "", "~ ")
+               << "\n";
+            ss << std::string(15, ' ')
+               << (trace_info.empty() ? "->" : "v ") << utils::StringManager::wrapText(raw_code, 80, 7, "", "| ~ ")
+               << "\n";
+        }
+        scopeLeaderRecord = scope_leader_code;
+        return ss.str();
+    }
+
+    std::list<std::string> RCCError::getTraceInfo() const
+    {
+        return trace_info;
+    }
+
+
     void RCCError::addTraceInfo(const std::string &traceInfo) {
-        this->trace_info += traceInfo;
+        this->trace_info.push_front(traceInfo);
     }
 
     std::string RCCError::briefString() const {
@@ -364,5 +402,158 @@ namespace base {
                               {"This error is caused by a syntax error.",
                               "Syntax error: " + syntaxErrorMsg,
                               "Details: " + errorDetailMsg});
+    }
+
+    RCCCompilerError::RCCCompilerError(std::string error_position, std::string error_line, StringVector error_info,
+        StringVector repair_tips)
+            : RCCError(ErrorType::COMPILER_ERROR, std::move(error_position), std::move(error_line),
+                std::move(error_info), std::move(repair_tips)) {}
+
+    RCCCompilerError RCCCompilerError::typeMissmatchError(const std::string& error_position,
+                                                          const std::string& error_line, const std::string& error_info, const std::string& expected_type,
+                                                          const std::string& actual_type, const std::vector<std::string>& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, {
+            "This error is caused by a type missmatch.",
+            error_info,
+            "Expected type: " + expected_type,
+            "Actual type: " + actual_type
+        }, [repair_tips]
+        {
+            StringVector tips {"Please check if the type restrictions meet expectations."};
+            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::typeMissmatchError(const std::string& error_position,
+        const std::string& error_line, const StringVector& error_infos, const std::string& expected_type,
+        const std::string& actual_type, const std::vector<std::string>& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, [error_infos, expected_type, actual_type]
+        {
+            StringVector result = {"This error is caused by a type missmatch."};
+            result.insert(result.end(), error_infos.begin(), error_infos.end());
+            result.push_back("Expected type: " + expected_type);
+            result.push_back("Actual type: " + actual_type);
+            return result;
+        }(), [repair_tips]
+        {
+            StringVector tips {"Please check if the type restrictions meet expectations."};
+            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::compilerError(const std::string& error_position, const std::string& error_line,
+                                                     const std::string& rcc_error_code, const std::string& error_info)
+    {
+        return RCCCompilerError(error_position, error_line, {
+            "This error occurs inside the compiler.",
+            error_info,
+            "Error code in compiler: " + rcc_error_code
+        }, {
+            "If you encounter this error, you are welcome to report it to the Rio team! Please contact us on https://github.com/RestRegular/Rio."
+        });
+    }
+
+    RCCCompilerError RCCCompilerError::symbolNotFoundError(const std::string& error_position,
+        const std::string& error_line, const std::string& symbol_name, const std::string& error_info,
+        const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, {
+            "This error is caused by a symbol not found.",
+            "Non-existent symbol: " + symbol_name,
+            error_info
+        }, [repair_tips]
+        {
+            StringVector tips {"Please check if the symbol exists."};
+            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::symbolNotFoundError(const std::string& error_position,
+        const std::string& error_line, const std::string& symbol_name, const StringVector& error_infos,
+        const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, [error_infos, symbol_name]
+        {
+            StringVector result = {
+                "This error is caused by a symbol not found.",
+                "Non-existent symbol: " + symbol_name
+            };
+            if (!error_infos.empty()) result.insert(result.end(), error_infos.begin(), error_infos.end());
+            return result;
+        }(), [repair_tips]
+        {
+            StringVector tips {"Please check if the symbol exists."};
+            if (!repair_tips.empty()) tips.insert(tips.begin(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::scopeError(const std::string& error_position, const std::string& error_line,
+                                                  const std::string& expected_scope_field, const std::string& actual_scope_field, const StringVector& error_infos,
+                                                  const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, [error_infos, expected_scope_field, actual_scope_field]{
+            StringVector infos = {"This error is caused by a scope error."};
+            infos.insert(infos.end(), error_infos.begin(), error_infos.end());
+            infos.push_back("Expected scope field: " + expected_scope_field);
+            infos.push_back("Actual scope field: " + actual_scope_field);
+            return infos;
+        }(), [repair_tips]
+        {
+            StringVector tips {"Please check if the scope field meets expectations."};
+            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::argumentError(const std::string& error_position, const std::string& error_line,
+        const StringVector& error_infos, const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, [error_infos]
+        {
+            StringVector result = {"This error is caused by an argument error."};
+            if (!error_infos.empty()) result.insert(result.end(), error_infos.begin(), error_infos.end());
+            return result;
+        }(), [repair_tips]
+        {
+            StringVector tips {"Please check if the arguments meet expectations."};
+            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::semanticError(const std::string& error_position, const std::string& error_line,
+        const std::string& error_info, const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, {
+            "This error is caused by a semantic error.",
+            error_info
+        }, [repair_tips]
+        {
+            StringVector tips {"Please check if the semantic of code meets expectations."};
+            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::semanticError(const std::string& error_position, const std::string& error_line,
+        const StringVector& error_infos, const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, [error_infos]
+        {
+            StringVector result{"This error is caused by a semantic error."};
+            if (!error_infos.empty()) result.insert(result.end(), error_infos.begin(), error_infos.end());
+            return result;
+        }(), [repair_tips]
+        {
+            StringVector result{"Please check if the semantic of code meets expectations."};
+            if (!repair_tips.empty()) result.insert(result.end(), repair_tips.begin(), repair_tips.end());
+            return result;
+        }());
     }
 }

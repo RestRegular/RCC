@@ -10,6 +10,7 @@
 #include <ranges>
 
 #include "rcc_symbol.h"
+#include "rcc_symbol.h"
 #include "../../analyzer/rcc_ast_components.h"
 #include "../../lib/rcc_utils.h"
 
@@ -38,12 +39,17 @@ namespace symbol {
     extern std::unordered_map<std::string, LabelType> labelTypeMap;
 
     std::string symbolTypeToString(const SymbolType &type);
+    std::string symbolTypeToFormatString(const SymbolType &type);
     std::string labelTypeToString(const LabelType &type);
     std::string builtinTypeLabelToString(const BuiltinTypeLabel &label);
     std::string permissionLabelToString(const PermissionLabel &label);
     std::string objectOrientedLabelToString(const ObjectOrientedLabel &label);
     std::string restrictionLabelToString(const RestrictionLabel &label);
     std::string lifeCycleLabelToString(const LifeCycleLabel &label);
+    std::string functionTypeToString(const FunctionType &type);
+    std::string functionTypeToFormatString(const FunctionType &type);
+    std::string paramTypeToString(const ParamType &type);
+    std::string paramTypeToFormatString(const ParamType &type);
 
     LabelType getLabelTypeByName(const std::string &name);
     PermissionLabel getPermissionLabelByName(const std::string &name);
@@ -301,6 +307,7 @@ namespace symbol {
         void setFunctionType(const FunctionType &funcType);
         void setClassName(const std::shared_ptr<ClassSymbol> &classSymbol);
         void setBuiltInType(const TypeOfBuiltin& type);
+        std::string toString() const override;
 
         // ======================== 其他原有方法（保持不变） ========================
         [[nodiscard]] std::unordered_set<std::shared_ptr<LabelSymbol>> getLabels() const;
