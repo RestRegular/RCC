@@ -245,4 +245,8 @@ namespace lexer {
         return tokens;
     }
 
+    void enableDebugMode(bool cond)
+    {
+
+    }
 }

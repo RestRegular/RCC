@@ -7,7 +7,8 @@
 
 namespace parser {
     std::pair<bool, std::shared_ptr<ProgramNode>> Parser::parse() {
-        return {hasError(), buildProgram()};
+        const auto &result = buildProgram();
+        return {hasError(), result};
     }
 
     Parser::Parser(std::queue<std::shared_ptr<Token>> tokens)

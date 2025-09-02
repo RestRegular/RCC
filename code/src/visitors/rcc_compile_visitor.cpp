@@ -1110,6 +1110,11 @@ namespace ast
         currentProcessingFilePath = filePath;
     }
 
+    void CompileVisitor::enableDebugMode(bool cond)
+    {
+
+    }
+
     Pos CompileVisitor::currentPos()
     {
         return _currentProcessingPos;
@@ -1285,7 +1290,10 @@ namespace ast
             const std::string raCode = raCodeBuilder.buildAll();
             if (needSaveOutputToFile)
             {
-                writeFile(compileOutputFilePath, raCode);
+                if (!writeFile(compileOutputFilePath, raCode))
+                {
+                    throw std::runtime_error("Can not write file: " + compileOutputFilePath);
+                }
             }
         } catch (RCCError &_)
         {
@@ -2259,7 +2267,7 @@ namespace ast
                 } else
                 {
                     throw RCCCompilerError::symbolNotFoundError(node.getPos().toString(), getCodeLine(node.getPos()),
-                        memberSymbol ? memberSymbol->toString() : left.toString(),
+                        memberSymbol ? memberSymbol->toString() : right.toString(),
                         StringVector{
                             "The member symbol was not found when accessing the member attributes of the parent symbol.",
                             "Parent symbol: " + leftReferencedSymbol->toString()

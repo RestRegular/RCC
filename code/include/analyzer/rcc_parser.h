@@ -152,6 +152,7 @@ namespace parser {
 
     };
 
+    void enableDebugMode(bool cond);
 } // analyzer
 
 #endif //RCC_RCC_PARSER_H

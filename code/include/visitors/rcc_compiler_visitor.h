@@ -232,6 +232,7 @@ namespace ast {
         [[nodiscard]] std::string getCompileOutputFilePath() const;
         [[nodiscard]] std::string getCurrentProcessingFilePath() const;
         void setCurrentProcessingFilePath(const std::string &filePath = "");
+        static void enableDebugMode(bool cond);
         [[nodiscard]] static Pos currentPos();
         static void setCurrentPos(const Pos &pos);
         static void resetCurrentPos();

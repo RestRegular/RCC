@@ -558,4 +558,9 @@ namespace parser {
         }
         return std::make_shared<BracketExpressionNode>(beginToken, currentToken(), indexNode);
     }
+
+    void enableDebugMode(bool cond)
+    {
+
+    }
 }

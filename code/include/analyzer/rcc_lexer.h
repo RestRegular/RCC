@@ -30,6 +30,7 @@ namespace lexer {
         std::queue<std::shared_ptr<core::Token>> tokenize();
     };
 
+    void enableDebugMode(bool cond);
 } // lexer
 
 #endif //RCC_RCC_LEXER_H
