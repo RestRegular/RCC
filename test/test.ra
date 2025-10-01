@@ -1,8 +1,8 @@
-; Rio Program & compiled by RCC(Rio Compiler Collection) v1.0.0
+; Rio Program & compiled by RCC(Rio Compiler Collection) v1.5.0
 ~ Source file: .\test\test.rio:1:1
 ~ Target file: .\test\test.ra:1:1
 ~ Author: @RestRegular
-~ Time: 2025-09-02 02:53:14
+~ Time: 2025-10-02 01:19:20
 
 FUNC: vid2
 ; This is a pure-built-in function: `export`
@@ -15,64 +15,43 @@ END: vid3
 ; .\test\test.rio:1:1, line 1
 ALLOT: vid5
 TP_SET: tp-list, vid5
-ITER_APND: "./lib/lib.rio", vid5
 ALLOT: vid6
-TP_SET: tp-dict, vid6
-; D:\ClionProjects\RCC\test\lib\lib.rio:43:1, line 43
-FUNC: vid11, vid12, vid13
-; D:\ClionProjects\RCC\test\lib\lib.rio:50:5, line 50, column 5
+PAIR_SET: "prog", "prog", vid6
+ALLOT: vid7
+TP_SET: tp-dict, vid7
+ITER_APND: vid6, vid7
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\prog.rio:16:1, line 16
+FUNC: vid13, vid14, vid15, vid16
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\prog.rio:34:5, line 34, column 5
 PASS: ; The implementation is encapsulated.
-END: vid11
-; D:\ClionProjects\RCC\test\lib\lib.rio:53:1, line 53
-FUNI: vid14, vid15
-; D:\ClionProjects\RCC\test\lib\lib.rio:60:5, line 60, column 5
-PASS: ; The implementation is encapsulated.
-END: vid14
-; D:\ClionProjects\RCC\test\lib\lib.rio:63:1, line 63
-FUNI: vid16, vid17
-; D:\ClionProjects\RCC\test\lib\lib.rio:70:5, line 70, column 5
-PASS: ; The implementation is encapsulated.
-END: vid16
-; D:\ClionProjects\RCC\test\lib\lib.rio:73:1, line 73
-FUNI: vid18, vid19
-; D:\ClionProjects\RCC\test\lib\lib.rio:80:6, line 80, column 6
-PASS: ; The implementation is encapsulated.
-END: vid18
-; D:\ClionProjects\RCC\test\lib\lib.rio:83:1, line 83
-FUNC: vid20, vid21, vid22
-; D:\ClionProjects\RCC\test\lib\lib.rio:90:6, line 90, column 6
-PASS: ; The implementation is encapsulated.
-END: vid20
-; D:\ClionProjects\RCC\test\lib\lib.rio:93:1, line 93
-FUNI: vid23, vid24
-; D:\ClionProjects\RCC\test\lib\lib.rio:99:5, line 99, column 5
-PASS: ; The implementation is encapsulated.
-END: vid23
-; D:\ClionProjects\RCC\test\lib\lib.rio:102:1, line 102
-FUNC: vid25, vid26, vid27, vid28
-; D:\ClionProjects\RCC\test\lib\lib.rio:117:5, line 117, column 5
-PASS: ; The implementation is encapsulated.
-END: vid25
-; D:\ClionProjects\RCC\test\lib\lib.rio:120:1, line 120
-ALLOT: vid29
-TP_SET: tp-list, vid29
-ITER_APND: vid11, vid16, vid14, vid18, vid20, vid25, vid29
-ALLOT: vid30
-TP_SET: tp-dict, vid30
-TP_DEF: vid31
-TP_ADD_TP_FIELD: vid31, "vid25", vid25
-TP_ADD_TP_FIELD: vid31, "vid20", vid20
-TP_ADD_TP_FIELD: vid31, "vid18", vid18
-TP_ADD_TP_FIELD: vid31, "vid16", vid16
-TP_ADD_TP_FIELD: vid31, "vid11", vid11
-TP_ADD_TP_FIELD: vid31, "vid14", vid14
-ALLOT: vid32
-TP_GET_FIELD: vid31, "vid11", vid32
-ALLOT: vid4
-; No need to set 'tp-func' type.
-PUT: vid32, vid4
+END: vid13
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\prog.rio:37:1, line 37
+ALLOT: vid17
+TP_SET: tp-list, vid17
+ITER_APND: vid13, vid17
+ALLOT: vid18
+TP_SET: tp-dict, vid18
+TP_DEF: vid8
+TP_ADD_TP_FIELD: vid8, "vid13", vid13
 ; .\test\test.rio:3:1, line 3
-ALLOT: vid33
-TP_SET: tp-list, vid33
-ITER_APND: "Hello world!ÄãºÃ£¬ÊÀ½ç£¡", vid33
-SOUT: s-l, s-unpack, vid33, "\n"
+FUNC: vid21, vid19, vid20
+; .\test\test.rio:4:5, line 4, column 5
+FUNC: vid22, vid19, vid23
+; .\test\test.rio:5:9, line 5, column 9
+PASS: ; The implementation is encapsulated.
+END: vid22
+; .\test\test.rio:7:5, line 7, column 5
+ALLOT: vid24
+TP_SET: tp-list, vid24
+ITER_APND: "Hello world!", vid24
+SOUT: s-l, s-unpack, vid24, "\n"
+END: vid21
+ALLOT: vid25
+PUT: vid21, vid25
+ALLOT: vid27
+TP_GET_FIELD: vid8, "vid13", vid27
+ALLOT: vid28
+TP_SET: tp-list, vid28
+ALLOT: vid29
+TP_SET: tp-dict, vid29
+CALL: vid25, vid28, vid29

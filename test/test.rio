@@ -1,3 +1,8 @@
-var sout: func = import("./lib/lib.rio").sout
+import(prog="prog")
 
-sout("Hello world!ÄãºÃ£¬ÊÀ½ç£¡")
+prog.entry((*args, **kwargs): void -> {
+    fun sout(*args, end="\n"): void {
+        encapsulated
+    }
+    sout("Hello world!")
+})

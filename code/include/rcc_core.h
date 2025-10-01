@@ -30,11 +30,11 @@ namespace core {
     std::string getTokenTypeName(const TokenType& type);
 
     // ¿‡∂®“Â
-    class Token: utils::Object {
+    class Token final : utils::Object {
         utils::Pos pos;
         std::string value;
         TokenType type;
-        [[nodiscard]] TokenType parseType() const;
+        [[nodiscard]] TokenType parseType();
     public:
         Token();
         explicit Token(const utils::Pos &pos, std::string content);
@@ -148,8 +148,6 @@ namespace core {
         TOKEN_RBRACKET,
         TOKEN_RBRACE,
         TOKEN_UNTIL,
-        TOKEN_ITER,
-        TOKEN_RASM,
         TOKEN_RETURN,
         TOKEN_SLASH,
         TOKEN_SLASH_ASSIGN,
@@ -158,7 +156,6 @@ namespace core {
         TOKEN_STRING,
         TOKEN_STAR,
         TOKEN_STAR_ASSIGN,
-        TOKEN_SUPER,
         TOKEN_TRY,
         TOKEN_TRUE,
         TOKEN_TILDE,

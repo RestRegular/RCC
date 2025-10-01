@@ -1,0 +1,50 @@
+{
+  "validate": true,
+  "version": {
+    "vs_desc": "本次更新修复了函数调用参数类型错误，新增类继承和super函数，重构相关函数以优化扩展、复用与可读性。",
+    "change_type": [
+      "feat",
+      "fix",
+      "ref",
+      "opt"
+    ]
+  },
+  "update_log": {
+    "author": "RestRegular",
+    "log_contents": [
+      "修复了函数调用时获取传入参数的操作项数据类型不准确的错误。",
+      "新增了类继承功能。",
+      "移除了 `super` 关键字，将其更改为内置函数 `super`，`super` 支持自动调用直接继承的父类的构造函数并将自身派生为当前子类。",
+      "重构了 `CompileVisitor::visitFunctionCallNode` 函数，将它的功能模块化，优化了它的扩展、复用和可读性。",
+      "重构了内置函数的调用传递参数为单个结构体 `struct CallInfos {...}`，增强了内置函数对参数的处理细粒度。"
+    ]
+  },
+  "annotation": {
+    "annotations": [
+      "Please ensure that the value of the 'validate' field is true."
+    ],
+    "increment_types": [
+      "major",
+      "minor",
+      "patch"
+    ],
+    "change_types": [
+      "Breaking",
+      "break",
+      "Feature",
+      "feat",
+      "BugFix",
+      "fix",
+      "Optimize",
+      "opt",
+      "Deprecate",
+      "depr",
+      "Refactor",
+      "ref",
+      "Docs",
+      "doc",
+      "Test",
+      "test"
+    ]
+  }
+}

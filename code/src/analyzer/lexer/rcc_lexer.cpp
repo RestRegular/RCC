@@ -11,7 +11,7 @@
 
 namespace lexer {
     Lexer::Lexer(const std::string& filepath, const std::string &dirpath)
-        : _filepath(dirpath.empty() ? filepath : utils::getAbsolutePath(filepath, dirpath)){
+        : _filepath(dirpath.empty() ? utils::getAbsolutePath(filepath, utils::getWindowsDefaultDir()) : utils::getAbsolutePath(filepath, dirpath)){
         _filecode = utils::readFile(filepath);
         splitCodeToLines();
     }
@@ -35,10 +35,15 @@ namespace lexer {
         {
             return "";
         }
-        if (pos.getLine() >= _lines.size()) {
+        if (_lines.empty() || pos.getLine() > _lines.size()) {
             return "";
         }
         return _lines[pos.getLine() - 1];
+    }
+
+    std::string Lexer::getFilepath() const
+    {
+        return _filepath;
     }
 
     void Lexer::splitCodeToLines()
@@ -68,7 +73,7 @@ namespace lexer {
         bool needEscape = false;
         auto commentType = core::CommentType::NONE;
         static std::unordered_set operatorChars {
-                ' ', '\n', '+', '-', '*', '/', '%', '(', ')',
+                ' ', '\n', '\r', '+', '-', '*', '/', '%', '(', ')',
                 '[', ']', '{', '}', ':', ';', ',', '.', '=',
                 '<', '>', '&', '!', '|', '?', '~', '^', '@'
         };
@@ -78,14 +83,13 @@ namespace lexer {
             column ++;
 
             // 处理转义字符
-            if (needEscape) {
-                if (utils::StringManager::needEscape(c)) {
-                    t << c;
-                    needEscape = false;
-                    continue;
-                }
-                throw base::RCCSyntaxError::illegalEscapeCharError(
-                        utils::Pos(row, column, 1, _filepath).getFilePosStr(), RCC_UNKNOWN_CONST, c);
+            if (needEscape)
+            {
+                t << c;
+                needEscape = false;
+                continue;
+                // throw base::RCCSyntaxError::illegalEscapeCharError(
+                //         utils::Pos(row, column, 1, _filepath).getFilePosStr(), RCC_UNKNOWN_CONST, c);
             }
 
             // 处理操作符字符
@@ -129,7 +133,8 @@ namespace lexer {
                             tempTokens.emplace_back(std::make_shared<core::Token>(utils::Pos(row, column, 1, _filepath), "\n"));
                         }
                     } else if (c != ' ' && commentType == core::CommentType::NONE) {
-                        if (c != '\n' || tempTokens.empty() || tempTokens.back()->getValue() != "\n") {
+                        if ((c != '\n' && c != '\r') || tempTokens.empty() || (tempTokens.back()->getValue() != "\n" &&
+                            tempTokens.back()->getValue() != "\r")) {
                             tempTokens.emplace_back(std::make_shared<core::Token>(utils::Pos(row, column, 1, _filepath), std::string(1, c)));
                         }
                     }
@@ -174,7 +179,7 @@ namespace lexer {
                     }
 
                     // 处理换行符
-                    if (c == '\n') {
+                    if (c == '\n' || c == '\r') {
                         if (commentType == core::CommentType::SINGLE_LINE_COMMENT) {
                             t.str("");
                             t.clear();
@@ -199,12 +204,12 @@ namespace lexer {
 
             // 处理字符串
             if (quoteStack.empty()) {
-                if (c != ' ' && c != '\n' && c != '\t' && commentType == core::CommentType::NONE) {
+                if (c != ' ' && c != '\n' && c != '\r' && c != '\t' && commentType == core::CommentType::NONE) {
                     t << c;
                 }
             }
             else {
-                if (c == '\n' || c == '\t') {
+                if (c == '\n' || c == '\t' || c == '\r') {
                     throw base::RCCSyntaxError::undefinedExpressionError(
                             utils::Pos(row, column, 0, _filepath).toString(), RCC_UNKNOWN_CONST);
                 }
@@ -212,7 +217,7 @@ namespace lexer {
             }
 
             // 引号匹配
-            if (c == '"' || c == '\'') {
+            if ((c == '"' || c == '\'') && commentType == core::CommentType::NONE) {
                 if (quoteStack.empty()) {
                     quoteStack.push(core::Token(utils::Pos(row, column, 1, _filepath), std::string{c}));
                 } else if (quoteStack.top().getValue()[0] == c) {
@@ -233,7 +238,7 @@ namespace lexer {
         }
 
         // 确保 token 列表最后一个是 '\n'
-        if (tempTokens.empty() || tempTokens.back()->getValue() != "\n") {
+        if (tempTokens.empty() || (tempTokens.back()->getValue() != "\n" && tempTokens.back()->getValue() != "\r")) {
             tempTokens.emplace_back(std::make_shared<core::Token>(utils::Pos(row, column + 1, 1, _filepath), "\n"));
         }
 

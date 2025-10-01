@@ -6,19 +6,12 @@
 #define RCC_BUILTIN_H
 
 #include <unordered_map>
-#include <functional>
-#include "../visitors/rcc_compiler_visitor.h"
+#include "./rcc_builtin_core.h"
 
 namespace builtin
 {
-    typedef std::string BuiltinFuncRetType;
 
-    typedef std::function<BuiltinFuncRetType(
-        ast::CompileVisitor &visitor,
-        const std::vector<std::string> &,
-        const std::vector<std::string> &)> BuiltinFunc;
-
-    extern std::unordered_map<std::string, std::pair<bool, BuiltinFunc>> pureBuiltinFunctionMap;
+    extern std::unordered_map<std::string, PureBuiltinFunction> pureBuiltinFunctionMap;
     extern std::unordered_map<std::string, BuiltinFunc> builtinFunctionMap;
 
     void initializePureBuiltinEnvironment(ast::CompileVisitor &visitor);
@@ -28,9 +21,8 @@ namespace builtin
     bool isBuiltin(const std::string &funcName);
 
     BuiltinFuncRetType callBuiltinFunction(
-        ast::CompileVisitor &visitor, const std::string &funcName,
-        const std::vector<std::string> &processedArgs,
-        const std::vector<std::string> &originalArgs);
+        ast::CompileVisitor &visitor, const std::string &funcName, const CallInfos& callInfos);
+
 }
 
 #endif //RCC_BUILTIN_H

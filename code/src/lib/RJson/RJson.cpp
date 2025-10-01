@@ -253,7 +253,7 @@ namespace rjson {
 
     std::string RJValue::getStringValue() const {
         if (rjValue.valueType == RJType::RJ_STRING) {
-            return StringManager::getInstance().unescape(toJsonString());
+            return StringManager::unescape(toJsonString());
         }
         throw RJsonError(ErrorType::PARSER_ERROR, "unknown", "",
                 {"Value is not a string"},

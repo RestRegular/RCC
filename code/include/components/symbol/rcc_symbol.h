@@ -11,6 +11,7 @@
 
 #include "rcc_symbol.h"
 #include "rcc_symbol.h"
+#include "rcc_symbol.h"
 #include "../../analyzer/rcc_ast_components.h"
 #include "../../lib/rcc_utils.h"
 
@@ -83,7 +84,7 @@ namespace symbol {
         std::string toString() const override;
 
         bool equalWith(const Symbol &other) const;
-        bool equalWith(const std::shared_ptr<Symbol> &other) const;
+        virtual bool equalWith(const std::shared_ptr<Symbol> &other) const;
 
         virtual std::shared_ptr<Symbol> transform(
             const std::string &value, const std::string &raValue, const size_t &scopeLevel = -1)const = 0;
@@ -122,6 +123,7 @@ namespace symbol {
         [[nodiscard]] static bool isBuiltInType(const std::string &name);
         [[nodiscard]] static bool isCustomType(const std::string &uid);
         static void createCustomType(const std::string &name, const std::string &uid, const std::shared_ptr<ClassSymbol> &classSymbol);
+        static void createCustomType(const std::shared_ptr<ClassSymbol> &classSymbol);
         static void deleteCustomType(const std::string &uid);
         static std::shared_ptr<ClassSymbol> getCustomClassSymbol(const std::string &uid);
         static std::shared_ptr<TypeLabelSymbol> getCustomTypeLabelSymbol(const std::string &uid, const size_t &scopeLevel);
@@ -129,9 +131,11 @@ namespace symbol {
         [[nodiscard]] bool is(const std::string &name) const;
         [[nodiscard]] bool isNot(const std::string &name) const;
         [[nodiscard]] bool isCustomType() const;
+        [[nodiscard]] std::shared_ptr<ClassSymbol> getCustomClassSymbol() const;
         [[nodiscard]] bool isIterable() const;
+        bool equalWith(const std::shared_ptr<Symbol>& other) const override;
         std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
-            const size_t& scopeLevel = -1) const override;
+                                          const size_t& scopeLevel = -1) const override;
 
         [[nodiscard]] static std::shared_ptr<TypeLabelSymbol> intTypeSymbol(const utils::Pos &pos, const size_t &scopeLevel);
         [[nodiscard]] static std::shared_ptr<TypeLabelSymbol> floatTypeSymbol(const utils::Pos &pos, const size_t &scopeLevel);
@@ -185,6 +189,7 @@ namespace symbol {
 
         void displayResult();
         std::optional<PermissionLabel> getPermissionLabelMark() const;
+        std::unordered_set<std::string> getTypeLabelMarks() const;
     private:
         void markPermissionLabel(const PermissionLabel &permissionLabel);
         void markObjectOrientedLabel(const ObjectOrientedLabel &objectOrientedLabel);
@@ -225,11 +230,13 @@ namespace symbol {
         [[nodiscard]] LabelMarkManager getLabelMarkManager() const;
         std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
             const size_t& scopeLevel = -1) const override;
+        std::string toString() const override;
     };
 
     class VariableSymbol final : public ParameterSymbol {
-        std::shared_ptr<ClassSymbol> className;
+        std::shared_ptr<ClassSymbol> classSymbol;
         std::shared_ptr<Symbol> referencedSymbol;
+        std::shared_ptr<ast::ExpressionNode> defaultValueNode;
     public:
         explicit VariableSymbol(const utils::Pos &pos,
             const std::string &varName,
@@ -238,10 +245,11 @@ namespace symbol {
             const size_t &scopeLevel,
             const bool &bindValueTypeToTypeLabel = false,
             const std::shared_ptr<TypeLabelSymbol> &valueType = nullptr,
-            const std::shared_ptr<ClassSymbol> &className = nullptr,
-            const std::shared_ptr<Symbol> &referencedSymbol = nullptr);
-        [[nodiscard]] std::shared_ptr<ClassSymbol> getClassName() const;
-        void setClassName(const std::shared_ptr<ClassSymbol> &classSymbol);
+            const std::shared_ptr<ClassSymbol> &classSymbol = nullptr,
+            const std::shared_ptr<Symbol> &referencedSymbol = nullptr,
+            const std::shared_ptr<ast::ExpressionNode> &defaultValueNode = nullptr);
+        [[nodiscard]] std::shared_ptr<ClassSymbol> getClassSymbol() const;
+        void setClassSymbol(const std::shared_ptr<ClassSymbol> &classSymbol_);
 
         static std::shared_ptr<VariableSymbol> paramSymbolToVarSymbol(
             const std::shared_ptr<ParameterSymbol> &paramSymbol, const size_t &scopeLevel);
@@ -250,6 +258,8 @@ namespace symbol {
         PermissionLabel getPermissionLabel() const;
         std::shared_ptr<Symbol> getReferencedSymbol() const;
         void setReferencedSymbol(const std::shared_ptr<Symbol> &refSymbol);
+        std::string toString() const override;
+        std::shared_ptr<ast::ExpressionNode> getDefaultValueNode() const;
     };
 
     enum class TypeOfBuiltin: int {
@@ -266,7 +276,7 @@ namespace symbol {
         // 其他原有成员
         std::unordered_set<std::shared_ptr<LabelSymbol>> labels;
         TypeOfBuiltin builtinType;
-        std::shared_ptr<ClassSymbol> className;
+        std::shared_ptr<ClassSymbol> classSymbol;
         std::vector<std::shared_ptr<ParameterSymbol>> parameters;
         std::shared_ptr<ast::ExpressionNode> definitionNode;
         FunctionType functionType;
@@ -305,7 +315,7 @@ namespace symbol {
         void setHasReturned(bool hasReturned);
 
         void setFunctionType(const FunctionType &funcType);
-        void setClassName(const std::shared_ptr<ClassSymbol> &classSymbol);
+        void setClassSymbol(const std::shared_ptr<ClassSymbol> &symbol);
         void setBuiltInType(const TypeOfBuiltin& type);
         std::string toString() const override;
 
@@ -313,14 +323,15 @@ namespace symbol {
         [[nodiscard]] std::unordered_set<std::shared_ptr<LabelSymbol>> getLabels() const;
         [[nodiscard]] std::vector<std::shared_ptr<ParameterSymbol>> getParameters() const;
         [[nodiscard]] TypeOfBuiltin getBuiltInType() const;
-        [[nodiscard]] std::shared_ptr<ClassSymbol> getClassName() const;
+        [[nodiscard]] std::shared_ptr<ClassSymbol> getClassSymbol() const;
         [[nodiscard]] std::shared_ptr<ast::ExpressionNode> getDefinitionNode() const;
         [[nodiscard]] LabelMarkManager &getLabelMarkManager();
         [[nodiscard]] FunctionType getFunctionType() const;
         [[nodiscard]] PermissionLabel getPermissionLabel() const;
         std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
             const size_t& scopeLevel = -1) const override;
-        bool isBuiltinType(const TypeOfBuiltin &type) const;
+        bool is(const TypeOfBuiltin &type) const;
+        [[nodiscard]] std::shared_ptr<TypeLabelSymbol> getFunctionTypeLabel() const;
     };
 
     class ClassSymbol final : public Symbol {
@@ -339,6 +350,7 @@ namespace symbol {
             const std::string &nameID,
             const std::unordered_set<std::shared_ptr<LabelSymbol>> &labels,
             size_t scopeLevel,
+            const SymbolTableManager &symbolTable,
             std::vector<std::shared_ptr<ClassSymbol>> baseClasses = {},
             const std::vector<std::shared_ptr<ClassSymbol>>& derivedClasses = {});
         ClassSymbol(
@@ -348,7 +360,11 @@ namespace symbol {
             const LabelMarkManager &labelMarkManager,
             size_t scopeLevel,
             std::vector<std::shared_ptr<ClassSymbol>> baseClasses = {},
-            const std::vector<std::shared_ptr<ClassSymbol>>& derivedClasses = {});
+            const std::vector<std::shared_ptr<ClassSymbol>>& derivedClasses = {},
+            const std::shared_ptr<SymbolTable> &constructors = {},
+            const std::shared_ptr<SymbolTable> &staticMembers = {},
+            const bool &collectionFinished = true,
+            const PermissionLabel &visitPermission = {});
 
         [[nodiscard]] std::vector<std::shared_ptr<ClassSymbol>> &getBaseClasses();
         [[nodiscard]] std::vector<std::shared_ptr<ClassSymbol>> &getDerivedClasses();
@@ -356,13 +372,17 @@ namespace symbol {
         [[nodiscard]] std::shared_ptr<SymbolTable> &getStaticMembers();
         [[nodiscard]] std::shared_ptr<SymbolTable> &getConstructors();
 
-        void addMember(const std::shared_ptr<Symbol> &symbol) const;
-        void addDerivedClass(const std::shared_ptr<ClassSymbol> &classSymbol);
-        void addBaseClass(const std::shared_ptr<ClassSymbol> &classSymbol);
+        void addMember(const std::shared_ptr<Symbol> &symbol, const bool& sysDefined) const;
+        void _addDerivedClass(const std::shared_ptr<ClassSymbol> &classSymbol);
+        void _addBaseClass(const std::shared_ptr<ClassSymbol> &classSymbol);
+        void setDerivedClasses(const std::shared_ptr<ClassSymbol> &classSymbol);
+        void setBaseClasses(const std::shared_ptr<ClassSymbol> &classSymbol);
+        bool hasInheritClass() const;
+        std::shared_ptr<ClassSymbol> getDirectlyInheritedClassSymbol() const;
 
         [[nodiscard]] bool hasMember(const std::string &name) const;
-        std::shared_ptr<Symbol> findMemberSymbol(const std::string &name) const;
-        std::shared_ptr<Symbol> findMemberSymbolInPermission(const std::string &name) const;
+        std::pair<std::shared_ptr<Symbol>, LifeCycleLabel> findMemberSymbol(const std::string& name) const;
+        std::pair<std::shared_ptr<Symbol>, LifeCycleLabel> findMemberSymbolInPermission(const std::string& name) const;
 
         std::shared_ptr<TypeLabelSymbol> getClassTypeLabelSymbol(const utils::Pos &pos) const;
         [[nodiscard]] LabelMarkManager &getLabelMarkManager();
@@ -377,14 +397,17 @@ namespace symbol {
         PermissionLabel getVisitPermission() const;
         std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
             const size_t& scopeLevel = -1) const override;
+        std::string toString() const override;
     };
 
     class SymbolTable final: public utils::Object {
         std::unordered_map<std::string, std::pair<int, std::shared_ptr<Symbol>>> table{};
         std::vector<std::string> nameIndex{};
+        std::vector<std::string> sysDefinitionRecord{};
     public:
         SymbolTable(){}
-        std::shared_ptr<Symbol> insert(const std::shared_ptr<Symbol> &symbol);
+        std::shared_ptr<Symbol> insertByName(const std::shared_ptr<Symbol> &symbol, const bool& sysDefined);
+        std::shared_ptr<Symbol> insertByRID(const std::shared_ptr<Symbol>& symbol, const bool& sysDefined);
         std::shared_ptr<Symbol> find(const std::string &name) const;
         [[nodiscard]] bool contains(const std::string &name) const;
         [[nodiscard]] std::unordered_map<std::string, std::pair<int, std::shared_ptr<Symbol>>> getTable() const;
@@ -466,33 +489,51 @@ namespace symbol {
     };
 
     class SymbolTableManager final : public utils::Object {
-        std::vector<std::shared_ptr<SymbolTable>> scopes;
+        std::vector<std::pair<std::shared_ptr<SymbolTable>,
+            std::shared_ptr<SymbolTable>>> scopes; // first: val -> Symbol, second: raVal -> Symbol
         size_t currentScopeLevel_; // 0 为全局作用域
     public:
         SymbolTableManager();
-
-        [[nodiscard]] SymbolTable &currentScope() const;
+        [[nodiscard]] SymbolTable &currentNameMapScope() const;
+        SymbolTable& currentRIDMapScope() const;
         void enterScope();
         void enterScope(size_t scopeLevel);
         void enterTopScope();
         void enterGlobalScope();
         void exitScope();
-        void insert(const std::shared_ptr<Symbol> &symbol) const;
-        void remove(const std::string &name) const;
-        [[nodiscard]] std::pair<long long int, std::shared_ptr<Symbol>> find(const std::string &name) const;
+        void insert(const std::shared_ptr<Symbol> &symbol, const bool &systemDefined) const;
+        void removeByName(const std::string &name, const std::optional<size_t>& specifiedLevel = std::nullopt) const;
+        void removeByRID(const std::string& rid, const std::optional<size_t>& specifiedLevel = std::nullopt) const;
+        [[nodiscard]] std::pair<long long int, std::shared_ptr<Symbol>> findByName(const std::string &name, const std::optional<size_t>& specifiedLevel = std::nullopt) const;
+        std::pair<long long int, std::shared_ptr<Symbol>> findByRID(const std::string& rid) const;
         [[nodiscard]] std::shared_ptr<Symbol> findInCurrentScope(const std::string &name) const;
-        [[nodiscard]] bool contains(const std::string &name) const;
+        [[nodiscard]] bool containsName(const std::string &name) const;
         [[nodiscard]] bool currentScopeContains(const std::string &name) const;
         [[nodiscard]] size_t curScopeLevel() const;
 
-        [[nodiscard]] std::pair<long long int, std::shared_ptr<VariableSymbol>> findVariableSymbol(const std::string &name) const;
+        [[nodiscard]] std::pair<long long int, std::shared_ptr<VariableSymbol>> findVariableSymbolByName(const std::string &name) const;
+        std::pair<long long int, std::shared_ptr<VariableSymbol>> findVariableSymbolByRID(const std::string& rid) const;
 
         template <typename ST>
-        [[nodiscard]] std::pair<long long int, std::shared_ptr<ST>> findAndTransform(const std::string &name, const SymbolType &type) const
+        [[nodiscard]] std::pair<long long int, std::shared_ptr<ST>> findByNameAndTransform(const std::string &name, const SymbolType &type) const
         {
             for (size_t i = currentScopeLevel_; i > 0; --i) {
-                const auto &scope = scopes[i];
+                const auto &scope = scopes[i].first;
                 if (const auto &it = scope->find(name)) {
+                    if (it->getType() == type) {
+                        return {i, std::static_pointer_cast<ST>(it)};
+                    }
+                }
+            }
+            return {-1, nullptr};
+        }
+
+        template <typename ST>
+        [[nodiscard]] std::pair<long long int, std::shared_ptr<ST>> findByRIDAndTransform(const std::string &rid, const SymbolType &type) const
+        {
+            for (size_t i = currentScopeLevel_; i > 0; --i) {
+                const auto &scope = scopes[i].second;
+                if (const auto &it = scope->find(rid)) {
                     if (it->getType() == type) {
                         return {i, std::static_pointer_cast<ST>(it)};
                     }
@@ -568,6 +609,7 @@ namespace symbol {
         STATIC = 0,   // 对应 "static"
         GLOBAL,       // 对应 "global"
         ORDINARY,     // 对应 "ordinary"
+        INSTANCE,     // 对应 "instance"
         COUNT
     };
 

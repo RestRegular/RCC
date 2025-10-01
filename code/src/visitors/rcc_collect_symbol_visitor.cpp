@@ -50,7 +50,7 @@ namespace ast {
             for (const auto &label: node.getLabels()) {
                 label->acceptVisitor(labelVisitor);
             }
-            for (const auto &label: labelVisitor.getSymbolTable().currentScope()) {
+            for (const auto &label: labelVisitor.getSymbolTable().currentNameMapScope()) {
                 if (label->getType() == SymbolType::LABEL) {
                     labels.insert(std::static_pointer_cast<LabelSymbol>(label));
 

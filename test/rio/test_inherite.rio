@@ -1,0 +1,51 @@
+import(io="io", ds="ds", dt="datatype", ll="lowlevel", prog="prog")
+
+class Object {
+    var _id: int static private = 0,
+        id: int private
+    ctor () {
+        this._id += 1
+        this.id = this._id
+    }
+    fun toString(): str virtual {
+        ret "[Object: " + this.id + "]"
+    }
+}
+
+class Person: Object {
+    var name: str private, age: int private, sex: bool private, job: str private
+    ctor(name: str, age: int, sex: bool, job: str) {
+        super()
+        this.name = name
+        this.age = age
+        this.sex = sex
+        this.job = job
+    }
+    fun toString(): str overwrite {
+        var sexStr: str
+        if this.sex {
+            sexStr = "male"
+        } else {
+            sexStr = "female"
+        }
+        ret "[Person: (" + ds.joins(sexStr, this.age, this.job, sep=", ") + ") " + this.name + "]"
+    }
+}
+
+class Student: Person {
+    ctor(name: str, age: int, sex: bool) {
+        super(name, age, sex, "student")
+    }
+    // fun greet(): str {
+    //     ret "Hello! My name is " + this.name + ", nice to meet you!"
+    // }
+}
+
+fun main(*args, **kwargs): void {
+    var o: Object = Object()
+    var p: Person = Person("Alice", 18, false, "student")
+    // dt.setType(p, "str")
+    io.print(o.toString(), p, ll.id(Person), dt.type(p))
+}
+
+prog.entry(main)

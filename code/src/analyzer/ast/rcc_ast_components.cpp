@@ -452,7 +452,7 @@ namespace ast {
 
     StringLiteralNode::StringLiteralNode(const Token& token)
     : LiteralNode(token, NodeType::STRING),
-    value(StringManager::getInstance().unescape(token.getValue())) {}
+    value(StringManager::unescape(token.getValue())) {}
 
     Pos StringLiteralNode::getPos() const {
         return LiteralNode::getPos();

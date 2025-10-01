@@ -27,6 +27,8 @@ namespace lexer {
 
         std::string getCodeLine(const utils::Pos &pos) const;
 
+        std::string getFilepath() const;
+
         std::queue<std::shared_ptr<core::Token>> tokenize();
     };
 

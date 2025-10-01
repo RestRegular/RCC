@@ -58,6 +58,11 @@ namespace ri {
         return raCode;
     }
 
+    std::vector<std::string> PARALLEL::getIdents() const
+    {
+        return idents;
+    }
+
     ALLOT::ALLOT(const std::vector<std::string> &idents)
         : PARALLEL("ALLOT", idents) {}
 
@@ -72,6 +77,26 @@ namespace ri {
             idents.push_back(target);
             return idents;
         }()) {}
+
+    std::string ITER_APND::toRACode() const
+    {
+        if (getIdents().size() == 1)
+        {
+            return ANNOTATION("To generate an empty list does not need to use the [ITER_APND] ri.").toRACode();
+        }
+        std::string code{"ITER_APND: "};
+        const auto &idents = getIdents();
+        for (int i = 0; i < idents.size(); i++)
+        {
+            code += idents[i];
+            if (i != idents.size() - 1)
+            {
+                code += ", ";
+            }
+        }
+        code += "\n";
+        return code;
+    }
 
     FUNC::FUNC(const std::string& ident, std::vector<std::string> params)
         : PARALLEL("FUNC", [&]() mutable
@@ -166,6 +191,9 @@ namespace ri {
 
     TP_NEW::TP_NEW(const std::string& ident, const std::string& lvalue)
         : BINARY("TP_NEW", ident, lvalue) {}
+
+    TP_DERIVE::TP_DERIVE(const std::string& inst, const std::string& derivedType)
+        : BINARY("TP_DERIVE", inst, derivedType) {}
 
     ITER_SIZE::ITER_SIZE(const std::string& ident, const std::string& lvalue)
         : BINARY("ITER_SIZE", ident, lvalue) {}

@@ -31,7 +31,6 @@ namespace core {
             {"true", TokenType::TOKEN_TRUE},
             {"false", TokenType::TOKEN_FALSE},
             {"null", TokenType::TOKEN_NULL},
-            {"super", TokenType::TOKEN_SUPER},
             {"class", TokenType::TOKEN_CLASS},
             {"fun", TokenType::TOKEN_FUNCTION},
             {"if", TokenType::TOKEN_IF},
@@ -45,9 +44,7 @@ namespace core {
             {"try", TokenType::TOKEN_TRY},
             {"repeat", TokenType::TOKEN_REPEAT},
             {"until", TokenType::TOKEN_UNTIL},
-            {"iter", TokenType::TOKEN_ITER},
             {"ctor", TokenType::TOKEN_CTOR},
-            {"rasm", TokenType::TOKEN_RASM},
             {"pass", TokenType::TOKEN_PASS},
             {"link", TokenType::TOKEN_LINK},
             {"var", TokenType::TOKEN_VAR},
@@ -99,13 +96,15 @@ namespace core {
             {",", TokenType::TOKEN_COMMA},
             {"->", TokenType::TOKEN_INDICATOR},
             {"\n", TokenType::TOKEN_NEWLINE},
+            {"\r", TokenType::TOKEN_NEWLINE},
     };
 
     TokenType Token::getType() const {
         return type;
     }
 
-    TokenType Token::parseType() const {
+    TokenType Token::parseType()
+    {
         // 处理空值情况
         if (value.empty()) {
             return TokenType::TOKEN_UNDEFINED;
@@ -120,7 +119,9 @@ namespace core {
         if (utils::StringManager::isCharFormat(value)) {
             return TokenType::TOKEN_CHAR;
         }
-        if (utils::StringManager::isStringFormat(value)) {
+        if (const auto &[res, str] = utils::StringManager::isStringFormat(value);
+            res) {
+            value = str;
             return TokenType::TOKEN_STRING;
         }
         if (utils::isNumber(value)) {
@@ -295,7 +296,6 @@ namespace core {
             case TokenType::TOKEN_STRING: return "TOKEN_STRING";
             case TokenType::TOKEN_STAR: return "TOKEN_STAR";
             case TokenType::TOKEN_STAR_ASSIGN: return "TOKEN_STAR_ASSIGN";
-            case TokenType::TOKEN_SUPER: return "TOKEN_SUPER";
             case TokenType::TOKEN_TRY: return "TOKEN_TRY";
             case TokenType::TOKEN_TRUE: return "TOKEN_TRUE";
             case TokenType::TOKEN_TILDE: return "TOKEN_TILDE";
@@ -310,8 +310,6 @@ namespace core {
             case TokenType::TOKEN_PASS: return "TOKEN_PASS";
             case TokenType::TOKEN_REPEAT: return "TOKEN_REPEAT";
             case TokenType::TOKEN_UNTIL: return "TOKEN_UNTIL";
-            case TokenType::TOKEN_ITER: return "TOKEN_ITER";
-            case TokenType::TOKEN_RASM: return "TOKEN_RASM";
             case TokenType::TOKEN_VAR: return "TOKEN_VAR";
             case TokenType::TOKEN_RANGER: return "TOKEN_RANGER";
             case TokenType::TOKEN_RPAREN: return "TOKEN_RPAREN";

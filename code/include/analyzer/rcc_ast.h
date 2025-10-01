@@ -148,7 +148,6 @@ namespace ast {
         RANGER, // 表示范围节点
         RETURN, // return返回语句节点
         STRING, // 字符串字面量节点
-        SUPER, // super关键字节点（通常用于继承上下文）
         TERNARY, // 三元条件表达式节点
         UNARY, // 一元表达式节点
         UNDEFINED, // 未定义值节点

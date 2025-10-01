@@ -77,11 +77,11 @@ namespace utils {
         static std::vector<std::string> split(const std::string &content, char delimiter = ',');
         std::string processQuotedString(std::string_view input);
         void registerEscapeHandler(char escapeChar, std::function<std::string(void)> handler);
-        std::string unescape(const std::string &input);
-        void unescape_nret(std::string &input);
+        static std::string unescape(const std::string &input);
+        static void unescape_nret(std::string &input);
         static std::string parseStringFormat(const std::string &input);
         static void parseStringFormat_nret(std::string &result);
-        static bool isStringFormat(const std::string &str);
+        static std::pair<bool, std::string> isStringFormat(const std::string& str);
         static bool isStrictValidStringFormat(const std::string &str);
         static bool isCharFormat(const std::string &str);
         static void trim(std::string &str);
@@ -190,10 +190,10 @@ namespace utils {
         [[nodiscard]] std::string formatString(size_t indent, size_t level) const override;
         void serialize(std::ostream& out, const SerializationProfile &profile) const;
         void deserialize(std::istream& in, const SerializationProfile &profile);
-        void setLine(size_t line);
-        void setColumn(size_t column);
-        void setOffset(size_t offset);
-        void setFilepath(const std::string &filepath);
+        void setLine(size_t line_);
+        void setColumn(size_t column_);
+        void setOffset(size_t offset_);
+        void setFilepath(const std::string &filepath_);
     protected:
         size_t line{0};
         size_t column{0};
@@ -409,6 +409,9 @@ namespace utils {
     // FNV-1a π˛œ£À„∑® µœ÷
     uint64_t hashToCode(const std::string& str);
     std::string hashToStr(const std::string& str);
+
+    // === System ===
+    std::string getSystemUserName();
 } // utils
 
 #endif //RCC_RA_UTILS_H

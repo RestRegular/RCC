@@ -498,13 +498,27 @@ namespace parser {
 
     ExpressionNodePtr Parser::buildForExpression() {
         const auto& forToken = currentToken();
-        next();
-        const auto expression = buildExpression(Precedence::LOWEST);
-        if (!validateForRangeExpression(expression, forToken)) {
+        if (!expectedNextTokenAndConsume(TokenType::TOKEN_LPAREN))
+        {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LPAREN);
             return nullptr;
         }
-        const auto parenNode = std::static_pointer_cast<ParenRangerNode>(expression);
-        const auto braceNode = std::static_pointer_cast<BlockRangerNode>(parenNode->getRangerNode());
+        if (!expectedNextTokenAndConsume(TokenType::TOKEN_LBRACE))
+        {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LBRACE);
+            return nullptr;
+        }
+        const auto expression = buildBraceExpression();
+        if (!expectedNextTokenAndConsume(TokenType::TOKEN_RPAREN))
+        {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_RPAREN);
+            return nullptr;
+        }
+        if (!validateForRangeExpression(expression, forToken))
+        {
+            return nullptr;
+        }
+        const auto braceNode = std::static_pointer_cast<BlockRangerNode>(expression);
         const auto& expressions = braceNode->getBodyExpressions();
         if (expressions.size() != 3) {
             recordSyntaxError(forToken, braceNode->getRangerStartToken(),
@@ -521,26 +535,14 @@ namespace parser {
         return std::make_shared<ForLoopNode>(forToken, initNode, conditionNode, updateNode, bodyNode);
     }
 
-    bool Parser::validateForRangeExpression(ExpressionNodePtr expr, const Token& forToken) {
+    bool Parser::validateForRangeExpression(const ExpressionNodePtr& expr, const Token& forToken) {
         if (!expr || expr->getType() != NodeType::RANGER) {
             recordSyntaxError(forToken, expr ? expr->getMainToken() : forToken,
                 "For loop requires a range expression after 'for' keyword");
             return false;
         }
-        auto exprNode = std::static_pointer_cast<RangerNode>(expr);
-        if (exprNode->getRangerType() != NodeType::PAREN) {
-            recordSyntaxError(forToken, expr->getMainToken(),
-                "For loop requires parentheses around the loop control structure");
-            return false;
-        }
-        auto rangerNode = std::static_pointer_cast<ParenRangerNode>(exprNode)->getRangerNode();
-        if (rangerNode->getType() != NodeType::RANGER) {
-            recordSyntaxError(forToken, exprNode->getRangerStartToken(),
-                "For loop requires a range expression inside parentheses");
-            return false;
-        }
-        auto blockNode = std::static_pointer_cast<RangerNode>(rangerNode);
-        if (blockNode->getRangerType() != NodeType::BLOCK) {
+        if (const auto blockNode = std::static_pointer_cast<RangerNode>(expr);
+            blockNode->getRangerType() != NodeType::BLOCK) {
             recordSyntaxError(forToken, blockNode->getRangerStartToken(),
                 "For loop requires a block expression inside parentheses");
             return false;

@@ -147,7 +147,7 @@ namespace parser {
         ExpressionNodePtr buildIndexExpression(const ExpressionNodePtr &left);
 
         // Óï¾ä¹¹½¨¸¨Öúº¯Êý
-        bool validateForRangeExpression(ExpressionNodePtr expr, const Token& forToken);
+        bool validateForRangeExpression(const ExpressionNodePtr& expr, const Token& forToken);
         ExpressionNodePtr buildBracketExpression();
 
     };

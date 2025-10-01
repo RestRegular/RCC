@@ -10,12 +10,23 @@
 #include <random>
 #include <utility>
 #include <set>
-#include <windows.h>
 #include <chrono>
 #include <functional>
 #include "../../include/lib/rcc_utils.h"
 #include "../../include/rcc_base.h"
 #include "../../include/lib/newrcc.h"
+
+#ifdef _WIN32
+
+#include <windows.h>
+#include <lmaccess.h>
+
+#elif __linux__
+
+#include <pwd.h>
+#inclue <unistd.h>
+
+#endif
 
 namespace utils
 {
@@ -141,7 +152,7 @@ namespace utils
     }
 
     std::string getWindowsDefaultDir() {
-        std::filesystem::path current_path = std::filesystem::current_path();
+        const std::filesystem::path current_path = std::filesystem::current_path();
         return current_path.string();
     }
 
@@ -299,11 +310,11 @@ namespace utils
     }
 
     // 解析字符串格式
-    std::string parseStringFormat(const std::string &result) {
-        if (isStringFormat(result)) {
-            return result.substr(1, result.size() - 2);
+    std::string parseStringFormat(const std::string &str) {
+        if (isStringFormat(str)) {
+            return str.substr(1, str.size() - 2);
         }
-        return result;
+        return str;
     }
 
     // 解析字符串格式，不返回结果
@@ -432,27 +443,89 @@ namespace utils
     }
 
     void StringManager::parseStringFormat_nret(std::string &result) {
-        if (isStringFormat(result)) {
-            result = result.substr(1, result.length() - 2);
+        if (const auto &[res, str] = isStringFormat(result);
+            res) {
+            result = unescape(std::string{result.begin() + 1, result.end() - 1});
         }
     }
 
-    std::string StringManager::unescape(const std::string &input) {
+    std::string StringManager::unescape(const std::string &input)
+    {
         std::string result;
-        result.reserve(input.length());
-        bool inQuotes = false;
-        for (size_t i = 0; i < input.length(); ++i) {
-            char c = input[i];
-            if (c == '"' && (i == 0 || input[i - 1] != '\\')) {
-                inQuotes = !inQuotes;
+        std::istringstream iss(input);
+        char c;
+        while (iss.get(c))
+        {
+            if (c != '\\') {
                 result += c;
-            } else if (inQuotes && c == '\\') {
-                result += handleEscapeSequence(input, i);
-            } else {
+                continue;
+            }
+            // 处理转义字符
+            if (!iss.get(c)) {
+                // 字符串以反斜杠结尾，直接添加
+                result += '\\';
+                break;
+            }
+            switch (c) {
+            case 'a':  result += '\a'; break; // 响铃
+            case 'b':  result += '\b'; break; // 退格
+            case 'f':  result += '\f'; break; // 换页
+            case 'n':  result += '\n'; break; // 换行
+            case 'r':  result += '\r'; break; // 回车
+            case 't':  result += '\t'; break; // 水平制表
+            case 'v':  result += '\v'; break; // 垂直制表
+            case '\\': result += '\\'; break; // 反斜杠
+            case '"':  result += '"';  break; // 双引号
+            case '\'': result += '\''; break; // 单引号
+                // 处理八进制转义 \0ooo (1-3位数字)
+            case '0': {
+                    std::string octStr;
+                    octStr += '0'; // 已经读取的'0'
+                    // 最多再读2位八进制数字
+                    for (int i = 0; i < 2; ++i) {
+                        if (char next = static_cast<char>(iss.peek());
+                            next >= '0' && next <= '7') {
+                            iss.get(next);
+                            octStr += next;
+                            } else {
+                                break;
+                            }
+                    }
+                    // 转换为字符
+                    char octChar = static_cast<char>(std::stoi(octStr, nullptr, 8));
+                    result += octChar;
+                    break;
+            } // 处理十六进制转义 \xhh (1-2位数字)
+            case 'x': {
+                    std::string hexStr;
+                    // 读取1-2位十六进制数字
+                    for (int i = 0; i < 2; ++i) {
+                        if (char next = static_cast<char>(iss.peek());
+                            isxdigit(static_cast<unsigned char>(next))) {
+                            iss.get(next);
+                            hexStr += next;
+                            } else {
+                                break;
+                            }
+                    }
+
+                    if (hexStr.empty()) {
+                        // 没有有效的十六进制数字，将\x原样添加
+                        result += "\\x";
+                    } else {
+                        // 转换为字符
+                        char hexChar = static_cast<char>(std::stoi(hexStr, nullptr, 16));
+                        result += hexChar;
+                    }
+                    break;
+            } // 未知转义序列，原样保留
+            default:
+                result += '\\';
                 result += c;
+                break;
             }
         }
-        parseStringFormat_nret(result);
+
         return result;
     }
 
@@ -461,12 +534,16 @@ namespace utils
         input = std::move(result);
     }
 
-    inline bool StringManager::isStringFormat(const std::string &str) {
-        return str.size() >= 2 && str.front() == '"' && str.back() == '"';
+    inline std::pair<bool, std::string> StringManager::isStringFormat(const std::string& str) {
+        if (str.size() >= 2 && str.front() == '"' && str.back() == '"')
+        {
+            return {true, "\"" + escape(std::string{str.begin() + 1, str.end() - 1}) + "\""};
+        }
+        return {false, ""};
     }
 
     bool StringManager::isStrictValidStringFormat(const std::string &str) {
-        if (!isStringFormat(str)) return false;
+        if (!isStringFormat(str).first) return false;
         const auto &strContent = str.substr(1, str.size() - 2);
         for (size_t i = 0; i < strContent.size(); ++i) {
             const auto &c = strContent[i];
@@ -530,27 +607,28 @@ namespace utils
 
     std::string StringManager::escape(const std::string &input) {
         std::string result;
-        result.reserve(input.size() * 2); // 预留足够的空间，避免频繁分配内存
-        for (const char c: input) {
+        for (const char c : input) {
             switch (c) {
-            case '\n':
-                result.append("\\n");
-                break;  // 换行符
-            case '\t':
-                result.append("\\t");
-                break;  // 制表符
-            case '\r':
-                result.append("\\r");
-                break;  // 回车符
-            case '\"':
-                result.append("\\\"");
-                break; // 双引号
-            case '\\':
-                result.append("\\\\");
-                break; // 反斜杠
+            case '\a': result += "\\a"; break;
+            case '\b': result += "\\b"; break;
+            case '\f': result += "\\f"; break;
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            case '\t': result += "\\t"; break;
+            case '\v': result += "\\v"; break;
+            case '\\': result += "\\\\"; break;
+            case '"':  result += "\\\""; break;
+            case '\'': result += "\\'"; break;
             default:
-                result.push_back(c);
-                break;        // 其他字符直接追加
+                // 非打印字符用十六进制表示
+                if (isprint(static_cast<unsigned char>(c))) {
+                    result += c;
+                } else {
+                    char buf[5];
+                    std::snprintf(buf, sizeof(buf), "\\x%02X",
+                                 static_cast<unsigned char>(c));
+                    result += buf;
+                }
             }
         }
         return result;
@@ -817,20 +895,20 @@ namespace utils
         }
     }
 
-    void Pos::setLine(size_t line) {
-        this->line = line;
+    void Pos::setLine(size_t line_) {
+        this->line = line_;
     }
 
-    void Pos::setColumn(size_t column) {
-        this->column = column;
+    void Pos::setColumn(size_t column_) {
+        this->column = column_;
     }
 
-    void Pos::setOffset(size_t offset) {
-        this->offset = offset;
+    void Pos::setOffset(size_t offset_) {
+        this->offset = offset_;
     }
 
-    void Pos::setFilepath(const std::string &filepath) {
-        this->filepath = filepath;
+    void Pos::setFilepath(const std::string &filepath_) {
+        this->filepath = filepath_;
     }
 
     std::string Pos::briefString() const {
@@ -890,9 +968,9 @@ namespace utils
 
     // Arg具体实现
     Arg::Arg(Pos pos, const std::string &value) : pos(std::move(pos)) {
-        this->type = utils::getArgType(value);
+        this->type = getArgType(value);
         if (this->type == ArgType::string){
-            this->value = std::move(utils::StringManager::getInstance().unescape(value));
+            this->value = std::move(StringManager::unescape(value));
         } else {
             this->value = value;
         }
@@ -1663,7 +1741,6 @@ namespace utils
     {
         // 获取当前系统时间点
         auto now = std::chrono::system_clock::now();
-
         switch (format)
         {
         case TimeFormat::ISO:
@@ -1674,8 +1751,7 @@ namespace utils
                 std::stringstream ss;
                 ss << std::put_time(&local_time, "%Y-%m-%d");
                 return ss.str();
-            } break;
-
+            }
         case TimeFormat::ISO_WITH_TIME:
             {
                 std::time_t now_time = std::chrono::system_clock::to_time_t(now);
@@ -1684,8 +1760,7 @@ namespace utils
                 std::stringstream ss;
                 ss << std::put_time(&local_time, "%Y-%m-%d %H:%M:%S");
                 return ss.str();
-            } break;
-
+            }
         case TimeFormat::US:
             {
                 std::time_t now_time = std::chrono::system_clock::to_time_t(now);
@@ -1694,8 +1769,7 @@ namespace utils
                 std::stringstream ss;
                 ss << std::put_time(&local_time, "%m/%d/%Y");
                 return ss.str();
-            } break;
-
+            }
         case TimeFormat::US_WITH_TIME:
             {
                 std::time_t now_time = std::chrono::system_clock::to_time_t(now);
@@ -1704,8 +1778,7 @@ namespace utils
                 std::stringstream ss;
                 ss << std::put_time(&local_time, "%m/%d/%Y %H:%M:%S");
                 return ss.str();
-            } break;
-
+            }
         case TimeFormat::European:
             {
                 std::time_t now_time = std::chrono::system_clock::to_time_t(now);
@@ -1714,8 +1787,7 @@ namespace utils
                 std::stringstream ss;
                 ss << std::put_time(&local_time, "%d/%m/%Y");
                 return ss.str();
-            } break;
-
+            }
         case TimeFormat::European_WITH_TIME:
             {
                 std::time_t now_time = std::chrono::system_clock::to_time_t(now);
@@ -1724,23 +1796,20 @@ namespace utils
                 std::stringstream ss;
                 ss << std::put_time(&local_time, "%d/%m/%Y %H:%M:%S");
                 return ss.str();
-            } break;
-
+            }
         case TimeFormat::Timestamp:
             {
                 // 秒级时间戳
                 auto now_epoch = std::chrono::system_clock::to_time_t(now);
                 return std::to_string(now_epoch);
-            } break;
-
+            }
         case TimeFormat::TimestampMS:
             {
                 // 毫秒级时间戳
                 auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
                 auto value = now_ms.time_since_epoch().count();
                 return std::to_string(value);
-            } break;
-
+            }
         default:
             return "";
         }
@@ -1858,4 +1927,23 @@ namespace utils
         const auto &fileName = getFileFromPath(filepath);
         return getObjectFormatString("File", fileName);
     }
+
+    std::string getSystemUserName()
+    {
+#ifdef _WIN32
+        char username[UNLEN + 1];
+        DWORD username_len = UNLEN + 1;
+        if (GetUserNameA(username, &username_len)) {
+            return std::string(username);
+        }
+        return "unknown";
+#elif __linux__
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) {
+            return std::string(pw->pw_name);
+        }
+        return "Unknown";
+#endif
+    }
+
 } // utils

@@ -12,15 +12,16 @@ namespace base {
 
     const StringSet KEYWORDS = {
             "var", "fun", "if", "else", "elif", "for", "while", "until",
-            "repeat", "ret", "break", "class", "iter", "super",
+            "repeat", "ret", "break", "class",
             "pass", "ctor", "encapsulated", "try", "catch", "finally", "throw",
-            "rasm", "link"
+            "link"
     };
 
     const StringSet OPERATORS = {
-            "+", "-", "*", "/", "%", "^", "=", "+=", "-=", "*=", "/=", "%=",
-            "^=", "==", "!=", ">", "<", ">=", "<=", "&&", "||", "!", ".", "?",
-            "->", ".*", "**", "~", "++", "--", "\\", "&"
+           "+", "-", "*", "/", "%", "^", "=", "+=", "-=", "*=", "/=", "%=",
+            // "^=",
+           "==", "!=", ">", "<", ">=", "<=", "&&", "||", "!", ".", "?",
+           "->", ".*", "**", "~", "++", "--", "\\", "&"
     };
 
     const StringSet ARITHMETIC_OPERATORS = {
@@ -554,6 +555,24 @@ namespace base {
             StringVector result{"Please check if the semantic of code meets expectations."};
             if (!repair_tips.empty()) result.insert(result.end(), repair_tips.begin(), repair_tips.end());
             return result;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::recursiveImportError(const std::string& error_position,
+        const std::string& error_line, const std::string& file_path, const std::string& error_info,
+        const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, [file_path, error_info]
+        {
+            StringVector result = {"This error is caused by a recursive import error."};
+            result.push_back("Recursive import detected: " + file_path);
+            result.push_back(error_info);
+            return result;
+        }(), [repair_tips]
+        {
+            StringVector tips {"Please check if the import file is imported recursively."};
+            if (!repair_tips.empty())tips.insert (tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
         }());
     }
 }

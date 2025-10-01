@@ -3,6 +3,13 @@ project(RCC)
 
 set(CMAKE_CXX_STANDARD 20)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++")
+
 add_executable(RCC code/src/rcc_main.cpp
         code/src/analyzer/lexer/rcc_lexer.cpp
         code/include/analyzer/rcc_lexer.h
@@ -39,11 +46,32 @@ add_executable(RCC code/src/rcc_main.cpp
         code/src/lib/RLogSystem/rlog_system.cpp
         code/include/components/ri/rcc_ri.h
         code/src/components/ri/rcc_ri.cpp
-        code/include/visitors/rcc_compiler_visitor.h
+        code/include/visitors/rcc_compile_visitor.h
         code/include/visitors/rcc_collect_symbol_visitor.h
         code/include/visitors/rcc_json_visitor.h
         code/include/visitors/rcc_print_visitor.h
         code/include/visitors/rcc_visitors.h
         code/include/builtin/rcc_builtin.h
         code/src/builtin/rcc_builtin.cpp
+        code/include/rcc_version.h
+        code/include/builtin/functions/rcc_builtin_import.h
+        code/include/builtin/rcc_builtin_core.h
+        code/src/builtin/functions/rcc_builtin_import.cpp
+        code/include/builtin/functions/rcc_builtin_functions.h
+        code/include/builtin/functions/rcc_builtin_export.h
+        code/src/builtin/functions/rcc_builtin_export.cpp
+        code/include/builtin/functions/rcc_builtin_io_functions.h
+        code/include/builtin/functions/rcc_builtin_ds_functions.h
+        code/src/builtin/functions/rcc_builtin_ds_functions.cpp
+        code/include/builtin/functions/rcc_builtin_prog_functions.h
+        code/src/builtin/functions/rcc_builtin_prog_functions.cpp
+        code/include/builtin/functions/rcc_builtin_datatype_functions.h
+        code/src/builtin/functions/rcc_builtin_datatype_functions.cpp
+        code/src/builtin/functions/rcc_builtin_io_functions.cpp
+        code/include/builtin/functions/rcc_builtin_lowlevel_functions.h
+        code/src/builtin/functions/rcc_builtin_lowlevel_functions.cpp
+        code/src/builtin/functions/rcc_builtin_super.cpp
+        code/include/builtin/functions/rcc_builtin_super.h
+        code/src/builtin/rcc_builtin_core.cpp
+        code/src/visitors/rcc_function_call_compiler.cpp
 )

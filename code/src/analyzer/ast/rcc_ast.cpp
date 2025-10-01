@@ -56,7 +56,6 @@ namespace ast {
             case NodeType::PROGRAM: return "PROGRAM";
             case NodeType::RETURN: return "RETURN";
             case NodeType::STRING: return "STRING";
-            case NodeType::SUPER: return "SUPER";
             case NodeType::TERNARY: return "TERNARY";
             case NodeType::UNDEFINED: return "UNDEFINED";
             case NodeType::UNKNOWN: return "UNKNOWN";

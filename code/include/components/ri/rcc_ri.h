@@ -53,6 +53,8 @@ namespace ri {
     public:
         explicit PARALLEL(const std::string &opRI, const std::vector<std::string> &idents);
         [[nodiscard]] std::string toRACode() const override;
+
+        [[nodiscard]] std::vector<std::string> getIdents() const;
     };
 
     class ALLOT final : public PARALLEL {
@@ -73,6 +75,7 @@ namespace ri {
     class ITER_APND final: public PARALLEL {
     public:
         explicit ITER_APND(std::vector<std::string> idents, const std::string &target);
+        [[nodiscard]] std::string toRACode() const override;
     };
 
     class FUNC final: public PARALLEL
@@ -169,6 +172,12 @@ namespace ri {
     class TP_NEW final : public BINARY {
     public:
         explicit TP_NEW(const std::string &ident, const std::string &lvalue);
+    };
+
+    class TP_DERIVE final : public BINARY
+    {
+    public:
+        explicit TP_DERIVE(const std::string &inst, const std::string &derivedType);
     };
 
     class ITER_SIZE final : public BINARY {

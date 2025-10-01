@@ -147,7 +147,8 @@ int main(int argc, char *argv[]) {
 
         // 处理版本选项
         if (__version_option__) {
-            std::cout << "RCC(Rio Compiler Collection) v1.0.0" << std::endl;
+            std::cout << "RCC(Rio Compiler Collection) " RCC_VERSION << std::endl;
+            std::cout << "Published on " << std::string(__DATE__) << " at " << std::string(__TIME__) << std::endl;
             std::cout << "Copyright (C) 2025 RestRegular" << std::endl;
             return 0;
         }
