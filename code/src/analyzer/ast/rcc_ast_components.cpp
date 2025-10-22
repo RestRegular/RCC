@@ -592,12 +592,22 @@ namespace ast {
     LabelNode::LabelNode(const Token &token)
         : ExpressionNode(token, NodeType::LABEL), label(token.getValue()) {}
 
+    void LabelNode::appendLabelDesNode(const std::shared_ptr<ListExpressionNode>& labelDesNode)
+    {
+        labelDesNodes.push_back(labelDesNode);
+    }
+
     void LabelNode::acceptVisitor(Visitor &visitor) {
         visitor.visitLabelNode(*this);
     }
 
     std::string LabelNode::getLabel() const {
         return label;
+    }
+
+    std::vector<std::shared_ptr<ListExpressionNode>> LabelNode::getLabelDesNodes() const
+    {
+        return labelDesNodes;
     }
 
     RangerNode::RangerNode(NodeType rangerType_,

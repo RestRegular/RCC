@@ -20,16 +20,21 @@ namespace builtin
         for (const auto& [funcName, pureBuiltinFunc] : pureBuiltinFunctionMap)
         {
             const auto &funcId = ast::CompileVisitor::VarID(funcName, Pos::UNKNOW_POS.getFileField(), visitor.curScopeField(), visitor.curScopeLevel());
-            visitor.getSymbolTable().insert(std::make_shared<symbol::FunctionSymbol>(
-                nullptr, Pos::UNKNOW_POS, funcName, funcId.getVid(),
-                std::unordered_set<std::shared_ptr<symbol::LabelSymbol>>{
-                    pureBuiltinFunc.hasReturnValue() ?
-                    symbol::TypeLabelSymbol::anyTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel()) :
-                    symbol::TypeLabelSymbol::voidTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel())
-                },
-                pureBuiltinFunc.getParams(),
-                0, symbol::TypeOfBuiltin::PURE_BUILTIN,
-                symbol::FunctionType::FUNCTION, nullptr), true);
+            const auto &funcSymbol = std::make_shared<symbol::FunctionSymbol>(
+                            nullptr, Pos::UNKNOW_POS, funcName, funcId.getVid(),
+                            std::unordered_set<std::shared_ptr<symbol::LabelSymbol>>{
+                                pureBuiltinFunc.hasReturnValue() ?
+                                symbol::TypeLabelSymbol::anyTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel()) :
+                                symbol::TypeLabelSymbol::voidTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel())
+                            },
+                            pureBuiltinFunc.getParams(), pureBuiltinFunc.getSignature(),
+                            0, symbol::TypeOfBuiltin::PURE_BUILTIN,
+                            symbol::FunctionType::FUNCTION, nullptr);
+            const auto &signature = funcSymbol->hasReturnValue() ?
+                symbol::TypeLabelSymbol::funcTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel()) :
+                symbol::TypeLabelSymbol::funiTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel());
+
+            visitor.getSymbolTable().insert(funcSymbol, true);
             if (isProgramEntry) {
                 visitor.getRaCodeBuilder()
                << (pureBuiltinFunc.hasReturnValue() ?
@@ -85,13 +90,28 @@ namespace builtin
 
     std::unordered_map<std::string, BuiltinFunc> builtinFunctionMap = {
         // built-in functions
+        // io.rio
         {"sout", rcc_sout},
-        {"size", rcc_size},
         {"sin", rcc_sin},
+
+        // ds.rio
+        {"size", rcc_size},
+        {"copy", rcc_copy},
+        {"listRemove", rcc_listRemove},
+        {"dictRemove", rcc_dictRemove},
+        {"dictKeys", rcc_dictKeys},
+        {"dictValues", rcc_dictValues},
+
+        // datatype.rio
         {"type", rcc_type},
         {"setType", rcc_setType},
         {"checkType", rcc_check_type},
+
+        // prog.rio
         {"entry", rcc_entry},
+        {"breakpoint", rcc_breakpoint},
+
+        // lowlevel.rio
         {"id", rcc_id},
         {"rasm", rcc_rasm}
     };

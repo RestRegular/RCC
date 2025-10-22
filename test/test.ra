@@ -1,57 +1,865 @@
-; Rio Program & compiled by RCC(Rio Compiler Collection) v1.5.0
-~ Source file: .\test\test.rio:1:1
-~ Target file: .\test\test.ra:1:1
+; Rio Program & compiled by RCC(Rio Compiler Collection) v1.12.3
+~ Source file: D:\ClionProjects\RCC\test\test.rio:1:1
+~ Target file: D:\ClionProjects\RCC\test\test.ra:1:1
 ~ Author: @RestRegular
-~ Time: 2025-10-02 01:19:20
+~ Time: 2025-10-22 10:14:32
 
-FUNC: vid2
+FUNC: vid6
+; This is a pure-built-in function: `super`
+PASS: ; Function implementation is encapsulated.
+END: vid6
+FUNC: vid7
 ; This is a pure-built-in function: `export`
 PASS: ; Function implementation is encapsulated.
-END: vid2
-FUNI: vid3
+END: vid7
+FUNI: vid8
 ; This is a pure-built-in function: `import`
 PASS: ; Function implementation is encapsulated.
-END: vid3
-; .\test\test.rio:1:1, line 1
-ALLOT: vid5
-TP_SET: tp-list, vid5
-ALLOT: vid6
-PAIR_SET: "prog", "prog", vid6
-ALLOT: vid7
-TP_SET: tp-dict, vid7
-ITER_APND: vid6, vid7
-; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\prog.rio:16:1, line 16
-FUNC: vid13, vid14, vid15, vid16
-; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\prog.rio:34:5, line 34, column 5
-PASS: ; The implementation is encapsulated.
-END: vid13
-; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\prog.rio:37:1, line 37
-ALLOT: vid17
-TP_SET: tp-list, vid17
-ITER_APND: vid13, vid17
+END: vid8
+; D:\ClionProjects\RCC\test\test.rio:1:1, line 1
+ALLOT: vid10
+TP_SET: tp-list, vid10
+ALLOT: vid11
+PAIR_SET: "io", "io", vid11
+ALLOT: vid12
+TP_SET: tp-dict, vid12
+ITER_APND: vid11, vid12
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\io.rio:16:1, line 16
 ALLOT: vid18
-TP_SET: tp-dict, vid18
-TP_DEF: vid8
-TP_ADD_TP_FIELD: vid8, "vid13", vid13
-; .\test\test.rio:3:1, line 3
-FUNC: vid21, vid19, vid20
-; .\test\test.rio:4:5, line 4, column 5
-FUNC: vid22, vid19, vid23
-; .\test\test.rio:5:9, line 5, column 9
-PASS: ; The implementation is encapsulated.
-END: vid22
-; .\test\test.rio:7:5, line 7, column 5
-ALLOT: vid24
-TP_SET: tp-list, vid24
-ITER_APND: "Hello world!", vid24
-SOUT: s-l, s-unpack, vid24, "\n"
-END: vid21
-ALLOT: vid25
-PUT: vid21, vid25
+TP_SET: tp-list, vid18
+ALLOT: vid19
+PAIR_SET: "ds", "ds", vid19
+ALLOT: vid20
+TP_SET: tp-dict, vid20
+ITER_APND: vid19, vid20
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:16:1, line 16
+ALLOT: vid26
+TP_SET: tp-list, vid26
 ALLOT: vid27
-TP_GET_FIELD: vid8, "vid13", vid27
+PAIR_SET: "dt", "datatype", vid27
 ALLOT: vid28
-TP_SET: tp-list, vid28
-ALLOT: vid29
-TP_SET: tp-dict, vid29
-CALL: vid25, vid28, vid29
+TP_SET: tp-dict, vid28
+ITER_APND: vid27, vid28
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:16:1, line 16
+FUNI: vid34, vid35
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:30:6, line 30, column 6
+PASS: ; The implementation is encapsulated.
+END: vid34
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:33:1, line 33
+FUNC: vid37, vid38, vid39
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:46:6, line 46, column 6
+PASS: ; The implementation is encapsulated.
+END: vid37
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:49:1, line 49
+TP_DEF: vid40
+ALLOT: vid53
+TP_GET: 0, vid53
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:50:9, line 50, column 9
+TP_ADD_TP_FIELD: vid40, "vid41", vid53
+ALLOT: vid54
+TP_GET: 0.01, vid54
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:51:9, line 51, column 9
+TP_ADD_TP_FIELD: vid40, "vid42", vid54
+ALLOT: vid55
+TP_GET: "", vid55
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:52:9, line 52, column 9
+TP_ADD_TP_FIELD: vid40, "vid43", vid55
+FUNI: vid56
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:54:13, line 54, column 13
+ALLOT: vid57
+; No need to set 'tp-any' type.
+PUT: " ", vid57
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:55:13, line 55, column 13
+TP_SET: tp-char, vid57
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:56:13, line 56, column 13
+ALLOT: vid58
+TP_GET: vid57, vid58
+RET: vid58
+END: vid56
+ALLOT: vid59
+PUT: vid56, vid59
+ALLOT: vid60
+IVOK: vid56, vid60
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:53:9, line 53, column 9
+TP_ADD_TP_FIELD: vid40, "vid44", vid60
+ALLOT: vid61
+TP_GET: true, vid61
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:58:9, line 58, column 9
+TP_ADD_TP_FIELD: vid40, "vid45", vid61
+ALLOT: vid62
+TP_SET: tp-list, vid62
+; To generate an empty list does not need to use the [ITER_APND] ri.
+ALLOT: vid63
+TP_GET: vid62, vid63
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:59:9, line 59, column 9
+TP_ADD_TP_FIELD: vid40, "vid46", vid63
+ALLOT: vid64
+TP_SET: tp-dict, vid64
+; To generate an empty list does not need to use the [ITER_APND] ri.
+ALLOT: vid65
+TP_GET: vid64, vid65
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:60:9, line 60, column 9
+TP_ADD_TP_FIELD: vid40, "vid47", vid65
+ALLOT: vid66
+TP_GET: null, vid66
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:61:9, line 61, column 9
+TP_ADD_TP_FIELD: vid40, "vid48", vid66
+ALLOT: vid67
+TP_GET: vid37, vid67
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:62:9, line 62, column 9
+TP_ADD_TP_FIELD: vid40, "vid49", vid67
+ALLOT: vid68
+TP_GET: vid34, vid68
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:63:9, line 63, column 9
+TP_ADD_TP_FIELD: vid40, "vid50", vid68
+FUNI: vid69
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:65:13, line 65, column 13
+ALLOT: vid71
+TP_SET: tp-list, vid71
+; To generate an empty list does not need to use the [ITER_APND] ri.
+ALLOT: vid70
+; No need to set 'tp-any' type.
+PUT: vid71, vid70
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:66:13, line 66, column 13
+TP_SET: tp-series, vid70
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:67:13, line 67, column 13
+ALLOT: vid72
+TP_GET: vid70, vid72
+RET: vid72
+END: vid69
+ALLOT: vid73
+PUT: vid69, vid73
+ALLOT: vid74
+IVOK: vid69, vid74
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:64:9, line 64, column 9
+TP_ADD_TP_FIELD: vid40, "vid51", vid74
+ALLOT: vid76
+TP_GET_FIELD: vid40, "vid46", vid76
+ALLOT: vid78
+TP_GET_FIELD: vid40, "vid47", vid78
+ALLOT: vid80
+TP_GET_FIELD: vid40, "vid43", vid80
+ALLOT: vid82
+TP_GET_FIELD: vid40, "vid51", vid82
+ALLOT: vid83
+TP_SET: tp-list, vid83
+ITER_APND: vid76, vid78, vid80, vid82, vid83
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:70:9, line 70, column 9
+TP_ADD_TP_FIELD: vid40, "vid52", vid83
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:75:1, line 75
+FUNI: vid85, vid86, vid87
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:86:5, line 86, column 5
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:86:5, line 86, column 5
+ALLOT: vid89
+TP_GET: vid87, vid89
+ALLOT: vid91
+TP_GET_FIELD: vid40, "vid46", vid91
+ALLOT: vid92
+CMP: vid89, vid91, vid92
+CREL: vid92, RE, vid92
+JF: vid92, sid93
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:87:9, line 87, column 9
+FUNI: vid95, vid96
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:88:13, line 88, column 13
+PASS: ; The implementation is encapsulated.
+END: vid95
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:90:9, line 90, column 9
+ALLOT: vid98
+ITER_SIZE: vid87, vid98
+ALLOT: vid100
+TP_GET: vid86, vid100
+ALLOT: vid97, vid99
+TP_SET: tp-int, vid97
+PUT: vid98, vid97
+TP_SET: tp-str, vid99
+PUT: vid100, vid99
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:92:9, line 92, column 9
+ALLOT: vid101
+TP_SET: tp-int, vid101
+PUT: 0, vid101
+ALLOT: vid102
+CMP: true, false, vid102
+UNTIL: vid102, RE
+ALLOT: vid103
+CMP: vid101, vid97, vid103
+CREL: vid103, RL, vid103
+JT: vid103, sid104
+EXIT: UNTIL
+SET: sid104
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:93:13, line 93, column 13
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:93:13, line 93, column 13
+ALLOT: vid106
+ITER_GET: vid87, vid101, vid106
+ALLOT: vid107
+CMP: vid99, vid106, vid107
+CREL: vid107, RE, vid107
+JF: vid107, sid108
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:94:17, line 94, column 17
+RET: true
+JMP: sid105
+SET: sid108
+SET: sid105
+ADD: vid101, 1, vid101
+END: UNTIL
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:97:9, line 97, column 9
+RET: false
+JMP: sid88
+SET: sid93
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:98:7, line 98, column 7
+ALLOT: vid109
+TP_GET: vid87, vid109
+ALLOT: vid111
+TP_GET_FIELD: vid40, "vid43", vid111
+ALLOT: vid112
+CMP: vid109, vid111, vid112
+CREL: vid112, RE, vid112
+JF: vid112, sid113
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:99:9, line 99, column 9
+ALLOT: vid114
+TP_GET: vid86, vid114
+ALLOT: vid115
+CMP: vid114, vid87, vid115
+CREL: vid115, RE, vid115
+RET: vid115
+JMP: sid88
+SET: sid113
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:100:7, line 100, column 7
+JF: true, sid116
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:101:9, line 101, column 9
+RET: false
+JMP: sid88
+SET: sid116
+SET: sid88
+END: vid85
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:105:1, line 105
+FUNI: vid118, vid119
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:106:5, line 106, column 5
+FUNI: vid121, vid119
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:107:9, line 107, column 9
+PASS: ; The implementation is encapsulated.
+END: vid121
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:109:5, line 109, column 5
+ALLOT: vid124
+TP_GET_FIELD: vid40, "vid52", vid124
+ALLOT: vid125
+ITER_SIZE: vid124, vid125
+ALLOT: vid122
+TP_SET: tp-int, vid122
+PUT: vid125, vid122
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:110:5, line 110, column 5
+ALLOT: vid127
+TP_GET: vid119, vid127
+ALLOT: vid126
+TP_SET: tp-str, vid126
+PUT: vid127, vid126
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:111:5, line 111, column 5
+ALLOT: vid128
+TP_SET: tp-bool, vid128
+PUT: false, vid128
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:112:5, line 112, column 5
+ALLOT: vid129
+; No need to set 'tp-any' type.
+PUT: 0, vid129
+ALLOT: vid130
+CMP: true, false, vid130
+UNTIL: vid130, RE
+ALLOT: vid131
+CMP: vid129, vid122, vid131
+CREL: vid131, RL, vid131
+JT: vid131, sid132
+EXIT: UNTIL
+SET: sid132
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:113:9, line 113, column 9
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:113:9, line 113, column 9
+ALLOT: vid135
+TP_GET_FIELD: vid40, "vid52", vid135
+ALLOT: vid136
+ITER_GET: vid135, vid129, vid136
+ALLOT: vid137
+CMP: vid126, vid136, vid137
+CREL: vid137, RE, vid137
+JF: vid137, sid138
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:114:20, line 114, column 20
+PUT: true, vid128
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:115:13, line 115, column 13
+EXIT: LOOP
+JMP: sid133
+SET: sid138
+SET: sid133
+ADD: vid129, 1, vid129
+END: UNTIL
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:118:5, line 118, column 5
+RET: vid128
+END: vid118
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\datatype.rio:121:1, line 121
+ALLOT: vid139
+TP_SET: tp-list, vid139
+ITER_APND: vid34, vid37, vid85, vid118, vid40, vid139
+ALLOT: vid140
+TP_SET: tp-dict, vid140
+TP_DEF: vid29
+TP_ADD_TP_FIELD: vid29, "vid40", vid40
+TP_ADD_TP_FIELD: vid29, "vid118", vid118
+TP_ADD_TP_FIELD: vid29, "vid85", vid85
+TP_ADD_TP_FIELD: vid29, "vid37", vid37
+TP_ADD_TP_FIELD: vid29, "vid34", vid34
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:18:1, line 18
+FUNI: vid142, vid143
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:30:5, line 30, column 5
+PASS: ; The implementation is encapsulated.
+END: vid142
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:33:1, line 33
+FUNI: vid145, vid146
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:45:5, line 45, column 5
+PASS: ; The implementation is encapsulated.
+END: vid145
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:48:1, line 48
+FUNI: vid148, vid149
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:61:7, line 61, column 7
+ALLOT: vid151
+TP_GET_FIELD: vid29, "vid37", vid151
+TP_SET: tp-series, vid149
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:62:5, line 62, column 5
+RET: vid149
+END: vid148
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:65:1, line 65
+FUNI: vid153, vid154
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:76:5, line 76, column 5
+ALLOT: vid155
+ITER_SIZE: vid154, vid155
+ALLOT: vid156
+CMP: vid155, 0, vid156
+CREL: vid156, RE, vid156
+RET: vid156
+END: vid153
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:79:1, line 79
+FUNI: vid158, vid159
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:91:5, line 91, column 5
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:91:5, line 91, column 5
+ALLOT: vid161
+IVOK: vid153, vid159, vid161
+JF: vid161, sid162
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:92:9, line 92, column 9
+RET: null
+JMP: sid160
+SET: sid162
+SET: sid160
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:94:5, line 94, column 5
+ALLOT: vid163
+ITER_SIZE: vid159, vid163
+ALLOT: vid164
+OPP: 1, vid164
+ADD: vid163, vid164, vid164
+ALLOT: vid165
+ITER_GET: vid159, vid164, vid165
+RET: vid165
+END: vid158
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:97:1, line 97
+FUNI: vid167, vid168, vid169
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:108:5, line 108, column 5
+ALLOT: vid170
+TP_SET: tp-str, vid170
+PUT: "", vid170
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:109:5, line 109, column 5
+ALLOT: vid171
+TP_SET: tp-int, vid171
+PUT: 0, vid171
+ALLOT: vid172
+CMP: true, false, vid172
+UNTIL: vid172, RE
+ALLOT: vid173
+CMP: vid171, vid169, vid173
+CREL: vid173, RL, vid173
+JT: vid173, sid174
+EXIT: UNTIL
+SET: sid174
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:110:16, line 110, column 16
+ADD: vid170, vid168, vid170
+ADD: vid171, 1, vid171
+END: UNTIL
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:112:5, line 112, column 5
+RET: vid170
+END: vid167
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:115:1, line 115
+FUNI: vid176, vid177, vid178
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:127:5, line 127, column 5
+ALLOT: vid180
+TP_SET: tp-list, vid180
+; To generate an empty list does not need to use the [ITER_APND] ri.
+ALLOT: vid179
+TP_SET: tp-list, vid179
+PUT: vid180, vid179
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:128:5, line 128, column 5
+ALLOT: vid181
+TP_SET: tp-int, vid181
+PUT: 0, vid181
+ALLOT: vid182
+CMP: true, false, vid182
+UNTIL: vid182, RE
+ALLOT: vid183
+CMP: vid181, vid178, vid183
+CREL: vid183, RL, vid183
+JT: vid183, sid184
+EXIT: UNTIL
+SET: sid184
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:129:16, line 129, column 16
+ADD: vid179, vid181, vid179
+ADD: vid181, 1, vid181
+END: UNTIL
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:131:5, line 131, column 5
+RET: vid179
+END: vid176
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:134:1, line 134
+FUNC: vid186, vid187, vid188
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:147:5, line 147, column 5
+ALLOT: vid189
+TP_SET: tp-int, vid189
+PUT: 0, vid189
+ALLOT: vid190
+CMP: true, false, vid190
+UNTIL: vid190, RE
+ALLOT: vid191
+CMP: vid189, vid187, vid191
+CREL: vid191, RL, vid191
+JT: vid191, sid192
+EXIT: UNTIL
+SET: sid192
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:148:9, line 148, column 9
+ALLOT: vid193
+CMP: vid189, 0, vid193
+CREL: vid193, RE, vid193
+ALLOT: vid194
+OPP: 1, vid194
+ADD: vid187, vid194, vid194
+ALLOT: vid195
+CMP: vid189, vid194, vid195
+CREL: vid195, RE, vid195
+ALLOT: vid199
+IVOK: vid188, vid189, vid193, vid195, vid199
+ADD: vid189, 1, vid189
+END: UNTIL
+END: vid186
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:152:1, line 152
+FUNC: vid201, vid202, vid203, vid204, vid205
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:169:5, line 169, column 5
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:169:5, line 169, column 5
+ALLOT: vid207
+CMP: vid205, 0, vid207
+CREL: vid207, RE, vid207
+JF: vid207, sid208
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:170:9, line 170, column 9
+FUNC: vid210, vid211, vid203
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:171:13, line 171, column 13
+PASS: ; The implementation is encapsulated.
+END: vid210
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:173:9, line 173, column 9
+ALLOT: vid212
+TP_SET: tp-list, vid212
+ITER_APND: "The sep cannot be 0", vid212
+SOUT: s-l, s-unpack, vid212, "\n"
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:174:9, line 174, column 9
+RET: ;
+JMP: sid206
+SET: sid208
+SET: sid206
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:176:5, line 176, column 5
+ALLOT: vid214
+CMP: vid205, 0, vid214
+CREL: vid214, RG, vid214
+ALLOT: vid213
+TP_SET: tp-bool, vid213
+PUT: vid214, vid213
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:177:5, line 177, column 5
+ALLOT: vid215
+TP_SET: tp-int, vid215
+PUT: 0, vid215
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:178:5, line 178, column 5
+ALLOT: vid216
+TP_SET: tp-int, vid216
+PUT: vid202, vid216
+ALLOT: vid217
+CMP: true, false, vid217
+UNTIL: vid217, RE
+ALLOT: vid218
+CMP: vid216, vid203, vid218
+CREL: vid218, RL, vid218
+JT: vid218, sid219
+EXIT: UNTIL
+SET: sid219
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:179:14, line 179, column 14
+ALLOT: vid220
+ADD: vid216, vid205, vid220
+PUT: vid220, vid215
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:180:9, line 180, column 9
+ALLOT: vid221
+; No need to set 'tp-any' type.
+PUT: false, vid221
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:181:9, line 181, column 9
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:181:9, line 181, column 9
+ALLOT: vid223
+CMP: vid215, vid203, vid223
+CREL: vid223, RG, vid223
+ALLOT: vid224
+CMP: vid213, vid223, vid224
+CREL: vid224, AND, vid224
+ALLOT: vid225
+CMP: vid213, false, vid225
+CREL: vid225, RE, vid225
+ALLOT: vid226
+CMP: vid215, vid203, vid226
+CREL: vid226, RL, vid226
+ALLOT: vid227
+CMP: vid225, vid226, vid227
+CREL: vid227, AND, vid227
+ALLOT: vid228
+CMP: vid224, vid227, vid228
+CREL: vid228, OR, vid228
+JF: vid228, sid229
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:183:19, line 183, column 19
+PUT: true, vid221
+JMP: sid222
+SET: sid229
+SET: sid222
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:185:9, line 185, column 9
+ALLOT: vid230
+CMP: vid216, vid202, vid230
+CREL: vid230, RE, vid230
+ALLOT: vid231
+IVOK: vid204, vid216, vid230, vid221, vid231
+ADD: vid216, vid205, vid216
+END: UNTIL
+END: vid201
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:189:1, line 189
+FUNC: vid233, vid234, vid235, vid236
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:205:5, line 205, column 5
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:205:5, line 205, column 5
+ALLOT: vid239
+TP_GET_FIELD: vid29, "vid118", vid239
+ALLOT: vid240
+IVOK: vid118, vid234, vid240
+JF: vid240, sid241
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:206:9, line 206, column 9
+ALLOT: vid243
+ITER_SIZE: vid234, vid243
+ALLOT: vid242
+TP_SET: tp-int, vid242
+PUT: vid243, vid242
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:207:9, line 207, column 9
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:207:9, line 207, column 9
+JF: vid236, sid245
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:208:13, line 208, column 13
+ALLOT: vid247
+OPP: 1, vid247
+ADD: vid242, vid247, vid247
+ALLOT: vid246
+; No need to set 'tp-any' type.
+PUT: vid247, vid246
+ALLOT: vid248
+CMP: true, false, vid248
+UNTIL: vid248, RE
+ALLOT: vid249
+CMP: vid246, 0, vid249
+CREL: vid249, RGE, vid249
+JT: vid249, sid250
+EXIT: UNTIL
+SET: sid250
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:209:17, line 209, column 17
+ALLOT: vid251
+ITER_GET: vid234, vid246, vid251
+ALLOT: vid253
+OPP: 1, vid253
+ADD: vid242, vid253, vid253
+ALLOT: vid254
+CMP: vid246, vid253, vid254
+CREL: vid254, RE, vid254
+ALLOT: vid256
+CMP: vid246, 0, vid256
+CREL: vid256, RE, vid256
+ALLOT: vid261
+PAIR_SET: "isEnd", vid256, vid261
+ALLOT: vid262
+PAIR_SET: "isStart", vid254, vid262
+ALLOT: vid263
+TP_SET: tp-dict, vid263
+ITER_APND: vid261, vid262, vid263
+ALLOT: vid264
+IVOK: vid235, vid251, vid246, vid242, vid263, vid264
+ADD: vid246, -1, vid246
+END: UNTIL
+JMP: sid244
+SET: sid245
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:212:11, line 212, column 11
+JF: true, sid265
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:213:13, line 213, column 13
+ALLOT: vid266
+; No need to set 'tp-any' type.
+PUT: 0, vid266
+ALLOT: vid267
+CMP: true, false, vid267
+UNTIL: vid267, RE
+ALLOT: vid268
+CMP: vid266, vid242, vid268
+CREL: vid268, RL, vid268
+JT: vid268, sid269
+EXIT: UNTIL
+SET: sid269
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:214:17, line 214, column 17
+ALLOT: vid270
+ITER_GET: vid234, vid266, vid270
+ALLOT: vid272
+CMP: vid266, 0, vid272
+CREL: vid272, RE, vid272
+ALLOT: vid274
+OPP: 1, vid274
+ADD: vid242, vid274, vid274
+ALLOT: vid275
+CMP: vid266, vid274, vid275
+CREL: vid275, RE, vid275
+ALLOT: vid280
+PAIR_SET: "isEnd", vid275, vid280
+ALLOT: vid281
+PAIR_SET: "isStart", vid272, vid281
+ALLOT: vid282
+TP_SET: tp-dict, vid282
+ITER_APND: vid280, vid281, vid282
+ALLOT: vid283
+IVOK: vid235, vid270, vid266, vid242, vid282, vid283
+ADD: vid266, 1, vid266
+END: UNTIL
+JMP: sid244
+SET: sid265
+SET: sid244
+JMP: sid237
+SET: sid241
+SET: sid237
+END: vid233
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:221:1, line 221
+FUNI: vid285, vid286, vid287
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:233:5, line 233, column 5
+ALLOT: vid288
+TP_SET: tp-str, vid288
+PUT: "", vid288
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:234:5, line 234, column 5
+FUNI: vid293, vid289, vid290, vid291, vid292
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:235:16, line 235, column 16
+ADD: vid288, vid289, vid288
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:236:9, line 236, column 9
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:236:9, line 236, column 9
+ALLOT: vid295
+OPP: 1, vid295
+ADD: vid291, vid295, vid295
+ALLOT: vid296
+CMP: vid290, vid295, vid296
+CREL: vid296, RL, vid296
+JF: vid296, sid297
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:237:20, line 237, column 20
+ADD: vid288, vid287, vid288
+JMP: sid294
+SET: sid297
+SET: sid294
+RET: null
+END: vid293
+ALLOT: vid298
+PUT: vid293, vid298
+CALL: vid233, vid286, vid298, false
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:240:5, line 240, column 5
+RET: vid288
+END: vid285
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:243:1, line 243
+FUNI: vid300, vid301, vid302
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:255:5, line 255, column 5
+ALLOT: vid303
+IVOK: vid285, vid301, vid302, vid303
+RET: vid303
+END: vid300
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:258:1, line 258
+FUNC: vid305, vid306, vid307
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:272:5, line 272, column 5
+PASS: ; The implementation is encapsulated.
+END: vid305
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:275:1, line 275
+FUNC: vid309, vid310, vid311
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:287:5, line 287, column 5
+PASS: ; The implementation is encapsulated.
+END: vid309
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:290:1, line 290
+FUNC: vid313, vid314, vid315
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:305:5, line 305, column 5
+ALLOT: vid318
+TP_GET_FIELD: vid29, "vid34", vid318
+ALLOT: vid319
+TP_GET: vid314, vid319
+ALLOT: vid316
+; No need to set 'tp-any' type.
+PUT: vid319, vid316
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:306:5, line 306, column 5
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:306:5, line 306, column 5
+ALLOT: vid322
+TP_GET_FIELD: vid29, "vid118", vid322
+ALLOT: vid323
+IVOK: vid118, vid314, vid323
+JF: vid323, sid324
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:307:9, line 307, column 9
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:307:9, line 307, column 9
+ALLOT: vid327
+TP_GET_FIELD: vid29, "vid40", vid327
+ALLOT: vid329
+TP_GET_FIELD: vid327, "vid46", vid329
+ALLOT: vid330
+CMP: vid316, vid329, vid330
+CREL: vid330, RE, vid330
+ALLOT: vid332
+TP_GET_FIELD: vid29, "vid40", vid332
+ALLOT: vid334
+TP_GET_FIELD: vid332, "vid43", vid334
+ALLOT: vid335
+CMP: vid316, vid334, vid335
+CREL: vid335, RE, vid335
+ALLOT: vid336
+CMP: vid330, vid335, vid336
+CREL: vid336, OR, vid336
+JF: vid336, sid337
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:308:13, line 308, column 13
+ITER_DEL: vid314, vid315
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:309:13, line 309, column 13
+RET: ;
+JMP: sid325
+SET: sid337
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:310:11, line 310, column 11
+ALLOT: vid339
+TP_GET_FIELD: vid29, "vid40", vid339
+ALLOT: vid341
+TP_GET_FIELD: vid339, "vid47", vid341
+ALLOT: vid342
+CMP: vid316, vid341, vid342
+CREL: vid342, RE, vid342
+JF: vid342, sid343
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:311:13, line 311, column 13
+DICT_DEL: vid314, vid315
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:312:13, line 312, column 13
+RET: ;
+JMP: sid325
+SET: sid343
+SET: sid325
+JMP: sid320
+SET: sid324
+SET: sid320
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:315:5, line 315, column 5
+FUNC: vid345, vid346, vid347
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:316:9, line 316, column 9
+PASS: ; The implementation is encapsulated.
+END: vid345
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:318:5, line 318, column 5
+ALLOT: vid348
+TP_SET: tp-list, vid348
+ITER_APND: "Invalid iterable data type: ", vid316, vid348
+SOUT: s-l, s-unpack, vid348, "\n"
+END: vid313
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:321:1, line 321
+FUNI: vid350, vid351
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:334:5, line 334, column 5
+PASS: ; The implementation is encapsulated.
+END: vid350
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:337:1, line 337
+FUNI: vid353, vid354
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:350:5, line 350, column 5
+PASS: ; The implementation is encapsulated.
+END: vid353
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:353:1, line 353
+FUNI: vid356, vid357, vid358
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:368:5, line 368, column 5
+ALLOT: vid359
+TP_SET: tp-bool, vid359
+PUT: false, vid359
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:369:5, line 369, column 5
+FUNI: vid362, vid360, vid361, vid361, vid361
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:370:9, line 370, column 9
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:370:9, line 370, column 9
+ALLOT: vid364
+CMP: vid360, vid358, vid364
+CREL: vid364, RE, vid364
+JF: vid364, sid365
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:371:20, line 371, column 20
+PUT: true, vid359
+JMP: sid363
+SET: sid365
+SET: sid363
+RET: null
+END: vid362
+ALLOT: vid366
+PUT: vid362, vid366
+CALL: vid233, vid357, vid366, false
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:374:5, line 374, column 5
+RET: vid359
+END: vid356
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\ds.rio:377:1, line 377
+ALLOT: vid367
+TP_SET: tp-list, vid367
+ITER_APND: vid142, vid145, vid148, vid153, vid158, vid167, vid176, vid186, vid201, vid285, vid300, vid233, vid305, vid309, vid313, vid350, vid353, vid356, vid367
+ALLOT: vid368
+TP_SET: tp-dict, vid368
+TP_DEF: vid21
+TP_ADD_TP_FIELD: vid21, "vid350", vid350
+TP_ADD_TP_FIELD: vid21, "vid313", vid313
+TP_ADD_TP_FIELD: vid21, "vid309", vid309
+TP_ADD_TP_FIELD: vid21, "vid305", vid305
+TP_ADD_TP_FIELD: vid21, "vid233", vid233
+TP_ADD_TP_FIELD: vid21, "vid300", vid300
+TP_ADD_TP_FIELD: vid21, "vid356", vid356
+TP_ADD_TP_FIELD: vid21, "vid142", vid142
+TP_ADD_TP_FIELD: vid21, "vid148", vid148
+TP_ADD_TP_FIELD: vid21, "vid145", vid145
+TP_ADD_TP_FIELD: vid21, "vid153", vid153
+TP_ADD_TP_FIELD: vid21, "vid353", vid353
+TP_ADD_TP_FIELD: vid21, "vid201", vid201
+TP_ADD_TP_FIELD: vid21, "vid167", vid167
+TP_ADD_TP_FIELD: vid21, "vid176", vid176
+TP_ADD_TP_FIELD: vid21, "vid186", vid186
+TP_ADD_TP_FIELD: vid21, "vid158", vid158
+TP_ADD_TP_FIELD: vid21, "vid285", vid285
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\io.rio:18:1, line 18
+FUNC: vid370, vid371, vid372
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\io.rio:30:5, line 30, column 5
+PASS: ; The implementation is encapsulated.
+END: vid370
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\io.rio:33:1, line 33
+FUNC: vid374, vid375, vid376, vid377
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\io.rio:46:5, line 46, column 5
+ALLOT: vid379
+TP_GET_FIELD: vid21, "vid285", vid379
+ALLOT: vid380
+IVOK: vid285, vid375, vid377, vid380
+ALLOT: vid381
+TP_SET: tp-list, vid381
+ITER_APND: vid380, vid381
+SOUT: s-l, s-unpack, vid381, vid376
+END: vid374
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\io.rio:49:1, line 49
+FUNI: vid383, vid384
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\io.rio:61:5, line 61, column 5
+PASS: ; The implementation is encapsulated.
+END: vid383
+; D:\ClionProjects\RCC\cmake-build-debug\bin\Lib\builtin\io.rio:64:1, line 64
+ALLOT: vid385
+TP_SET: tp-list, vid385
+ITER_APND: vid370, vid374, vid383, vid385
+ALLOT: vid386
+TP_SET: tp-dict, vid386
+TP_DEF: vid13
+TP_ADD_TP_FIELD: vid13, "vid383", vid383
+TP_ADD_TP_FIELD: vid13, "vid370", vid370
+TP_ADD_TP_FIELD: vid13, "vid374", vid374
+; D:\ClionProjects\RCC\test\test.rio:3:1, line 3
+ALLOT: vid388
+TP_SET: tp-dict, vid388
+; To generate an empty list does not need to use the [ITER_APND] ri.
+ALLOT: vid387
+TP_SET: tp-dict, vid387
+PUT: vid388, vid387
+; D:\ClionProjects\RCC\test\test.rio:5:1, line 5
+ALLOT: vid390
+TP_GET_FIELD: vid13, "vid370", vid390
+ALLOT: vid391
+TP_SET: tp-list, vid391
+ITER_APND: vid387, vid391
+SOUT: s-l, s-unpack, vid391, "\n"

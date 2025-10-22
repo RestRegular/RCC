@@ -140,10 +140,9 @@ namespace core {
         TOKEN_PASS,
         TOKEN_PLUS,
         TOKEN_PLUS_ASSIGN,
-        Token_PROGRAM,
+        TOKEN_PROGRAM,
         TOKEN_QUESTION,
         TOKEN_RANGER,
-        TOKEN_REPEAT,
         TOKEN_RPAREN,
         TOKEN_RBRACKET,
         TOKEN_RBRACE,
@@ -163,6 +162,7 @@ namespace core {
         TOKEN_UNKNOWN,
         TOKEN_VAR,
         TOKEN_WHILE,
+        TOKEN_SKIP_NEWLINE,
     };
     enum class StatementType {
         VAR_DEF, // Complete

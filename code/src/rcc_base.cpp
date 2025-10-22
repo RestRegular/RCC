@@ -6,15 +6,16 @@
 
 #include "../include/rcc_base.h"
 
+#include "../include/lib/RJson/RJson_error.h"
+
 namespace base {
 
     std::stack<std::string> PROGRAM_WORKING_DIRECTORY_STACK{};
 
     const StringSet KEYWORDS = {
             "var", "fun", "if", "else", "elif", "for", "while", "until",
-            "repeat", "ret", "break", "class",
-            "pass", "ctor", "encapsulated", "try", "catch", "finally", "throw",
-            "link"
+            "ret", "break", "class", "pass", "ctor", "encapsulated", "try",
+            "catch", "finally", "throw", "link"
     };
 
     const StringSet OPERATORS = {
@@ -134,7 +135,8 @@ namespace base {
 
     const StringSet GROUP_SIGNS = {
             "+=", "-=", "*=", "/=", "==", ">=", "<=",
-            "->", "//", "/*", "*/", "||", "&&", "!=", "**", ".*", "++", "--"
+            "->", "//", "/*", "*/", "||", "&&", "!=",
+            "**", "++", "--", "..", ".*"
     };
 
     const StringMap RELATION_MAP = {
@@ -254,11 +256,10 @@ namespace base {
 
     std::string scopeLeaderRecord = "";
 
-    std::string RCCError::makeTraceInfo(const std::string &file_record_, const std::string &error_pos_filepath,
-                                     const std::string &utils_getPosStrFromFilePath,
-                                     const std::string &makeFileIdentiFromPath, const std::string &trace_info,
-                                     const std::string &error_pos_str, const std::string &raw_code,
-                                     const std::string &scope_leader_pos, const std::string &scope_leader_code) {
+    std::string RCCError::makeTraceInfo(
+        const std::string& trace_info,
+        const std::string& error_pos_str, const std::string& raw_code,
+        const std::string& scope_leader_pos, const std::string& scope_leader_code) {
         std::stringstream ss;
         if (!scope_leader_pos.empty() && !scope_leader_code.empty())
         {
@@ -405,10 +406,35 @@ namespace base {
                               "Details: " + errorDetailMsg});
     }
 
+    RCCParserError RCCParserError::parserError(const std::string& error_position, const std::string& parserErrorMsg,
+        const std::string& errorDetailMsg)
+    {
+        return RCCParserError(error_position, RCC_UNKNOWN_CONST,
+                              {"This error is caused by a parser error.",
+                              "Parser error: " + parserErrorMsg,
+                              "Details: " + errorDetailMsg});
+    }
+
     RCCCompilerError::RCCCompilerError(std::string error_position, std::string error_line, StringVector error_info,
-        StringVector repair_tips)
+                                       StringVector repair_tips)
             : RCCError(ErrorType::COMPILER_ERROR, std::move(error_position), std::move(error_line),
                 std::move(error_info), std::move(repair_tips)) {}
+
+    RCCCompilerError RCCCompilerError::labelDesError(const std::string& error_position, const std::string& error_line,
+        const StringVector& error_infos, const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, [error_infos]
+        {
+            std::vector<std::string> infos {
+                "This error is caused by a label description error."
+            };
+            for (const auto &info: error_infos)
+            {
+                infos.push_back(info);
+            }
+            return infos;
+        }(), repair_tips);
+    }
 
     RCCCompilerError RCCCompilerError::typeMissmatchError(const std::string& error_position,
                                                           const std::string& error_line, const std::string& error_info, const std::string& expected_type,
@@ -474,9 +500,31 @@ namespace base {
         }());
     }
 
+    RCCCompilerError RCCCompilerError::symbolDuplicateError(const std::string& error_position,
+                                                            const std::string& error_line, const std::string& symbol_name, const StringVector& error_infos,
+                                                            const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, [error_infos, symbol_name]() -> StringVector {
+            StringVector infos {
+                "This error is caused by redefining an already existing symbol.",
+                "Existent symbol: " + symbol_name
+            };
+            for (const auto &info : error_infos)
+            {
+                infos.push_back(info);
+            }
+            return infos;
+        }(), [repair_tips]
+        {
+            StringVector tips {"Please come up with a new name for the newly defined symbol."};
+            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
     RCCCompilerError RCCCompilerError::symbolNotFoundError(const std::string& error_position,
-        const std::string& error_line, const std::string& symbol_name, const StringVector& error_infos,
-        const StringVector& repair_tips)
+                                                           const std::string& error_line, const std::string& symbol_name, const StringVector& error_infos,
+                                                           const StringVector& repair_tips)
     {
         return RCCCompilerError(error_position, error_line, [error_infos, symbol_name]
         {

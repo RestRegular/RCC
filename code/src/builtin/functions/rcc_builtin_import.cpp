@@ -204,6 +204,9 @@ namespace builtin
     }
 
     const PureBuiltinFunction IMPORT (true, "import",
-        {getPosVarArgsParam("args"), getKeywordVarArgsParam("kwargs")}, rcc_import);
+        {
+            getPosVarArgsParam("args"),
+            getKeywordVarArgsParam("kwargs")
+        }, rcc_import);
 
 }

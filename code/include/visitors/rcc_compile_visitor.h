@@ -191,7 +191,7 @@ namespace ast
             // Getter方法
             [[nodiscard]] std::string getVal() const;
             [[nodiscard]] OpItemType getType() const;
-            [[nodiscard]] std::string getRaVal(const symbol::SymbolTableManager& table) const;
+            [[nodiscard]] std::string getRaVal(const symbol::SymbolTableManager& table, const bool &needSearch = true) const;
             [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getTypeLabel() const;
             [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getValueType() const;
             [[nodiscard]] std::shared_ptr<symbol::Symbol> getBelonging() const;
@@ -261,7 +261,7 @@ namespace ast
         // 作用域管理
         static std::string scopeTypeToString(ScopeType scopeType); // 作用域类型转字符串
         static std::string scopeTypeToFormatString(ScopeType scopeType);
-        [[nodiscard]] std::string curScopeField(); // 获取当前作用域字段
+        [[nodiscard]] std::string curScopeField() const; // 获取当前作用域字段
         [[nodiscard]] ScopeType curScopeType(); // 获取当前作用域字段
         void enterScope(ScopeType scopeType); // 进入作用域
         void enterScope(size_t scopeLevel); // 进入指定层级作用域
@@ -276,7 +276,8 @@ namespace ast
         // 类型检查与转换
         [[nodiscard]] static bool checkTypeMatch(
             const std::shared_ptr<symbol::TypeLabelSymbol>& leftTypeSymbol,
-            const std::shared_ptr<symbol::TypeLabelSymbol>& rightTypeSymbol); // 检查类型匹配
+            const std::shared_ptr<symbol::TypeLabelSymbol>& rightTypeSymbol,
+            const bool& restrict = true); // 检查类型匹配
         [[nodiscard]] static bool checkTypeMatch(
             const std::shared_ptr<symbol::Symbol>& leftSymbol,
             const std::shared_ptr<symbol::Symbol>& rightSymbol); // 检查符号类型匹配
@@ -295,6 +296,8 @@ namespace ast
             const std::shared_ptr<ExpressionNode>& node); // 访问并行节点
         std::unordered_set<std::shared_ptr<symbol::LabelSymbol>> processLabelNodes(
             const std::vector<std::shared_ptr<LabelNode>>& labels); // 处理标签节点
+        std::vector<std::shared_ptr<symbol::LabelSymbol>> processLabelNodesOnOrder(
+            const std::vector<std::shared_ptr<LabelNode>>& labels);
 
         // 符号栈操作
         void pushNewProcessingSymbol(const std::shared_ptr<symbol::Symbol>& symbol); // 压入新符号
@@ -342,7 +345,7 @@ namespace ast
             const Pos& pos,
             const std::shared_ptr<symbol::TypeLabelSymbol>& valueType = nullptr,
             const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr,
-            const bool& sysDefined = {}); // 生成并压入临时变量操作数
+            const bool& sysDefined = {}, const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel = nullptr); // 生成并压入临时变量操作数
         OpItem pushTemOpSetItem(const Pos& pos); // 生成并压入临时集合操作数
         OpItem newTemOpSetItem(const Pos& pos); // 生成临时集合操作数（不压栈）
         VarID getThisFieldVarID(const Pos& pos);
@@ -365,6 +368,8 @@ namespace ast
             const Pos& pos, const BuiltinType& type) const; // 获取内置类型符号
         [[nodiscard]] std::pair<std::shared_ptr<symbol::TypeLabelSymbol>, std::shared_ptr<symbol::TypeLabelSymbol>>
         getTypesFromOpItem(const OpItem& opItem) const;
+        [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol>
+        getDefiniteTypeLabelSymbolFromOpItem(const OpItem &opItem) const;
         static std::string formatAttrField(const std::string& field); // 格式化属性字段
         void annotatePos(const Pos& pos);
         static std::shared_ptr<symbol::Symbol> getReferenceTargetSymbol(const OpItem& opItem);
@@ -406,6 +411,29 @@ namespace ast
                                                                       const std::vector<std::pair<std::string, OpItem>>&
                                                                       orderedArgs,
                                                                       const FunctionCallNode& node) const;
+        static std::vector<std::shared_ptr<symbol::LabelSymbol>> extractParamTableLabelDes(
+            const std::vector<std::shared_ptr<symbol::ParameterSymbol>>& params);
+        void handleFuncTypeLabel(const std::shared_ptr<symbol::VariableSymbol>& varSymbol,
+                                 const std::shared_ptr<symbol::LabelSymbol>& typeLabel,
+                                 std::shared_ptr<symbol::FunctionSymbol>& funcSymbol) const;
+        void handleFuniTypeLabel(const std::shared_ptr<symbol::VariableSymbol>& varSymbol,
+                                 const std::shared_ptr<symbol::LabelSymbol>& typeLabel,
+                                 std::shared_ptr<symbol::FunctionSymbol>& funcSymbol) const;
+        std::vector<std::shared_ptr<symbol::ParameterSymbol>> createParameters(
+            const std::vector<std::shared_ptr<symbol::LabelSymbol>>& desList,
+            const std::shared_ptr<symbol::VariableSymbol>& varSymbol) const;
+        static symbol::ParamType getParamTypeFromLabel(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel);
+        void handleFuniReturnType(const std::vector<std::shared_ptr<symbol::LabelSymbol>>& secondDes,
+                                  std::shared_ptr<symbol::TypeLabelSymbol>& returnType) const;
+        void throwRCCLabelDesError(const std::shared_ptr<symbol::VariableSymbol>& varSymbol,
+                                   const std::shared_ptr<symbol::LabelSymbol>& typeLabel, size_t currentCount,
+                                   const std::string& expected) const;
+        void throwRCCLabelDesError(const std::shared_ptr<symbol::VariableSymbol>& varSymbol,
+                                   const std::shared_ptr<symbol::LabelSymbol>& typeLabel, size_t currentCount,
+                                   size_t expected) const;
+        void throwRCCTypeMissmatchError(const std::shared_ptr<symbol::LabelSymbol>& des,
+                                        const std::shared_ptr<symbol::LabelSymbol>& typeLabel,
+                                        symbol::LabelType expectedType) const;
 
         // 当找不到 funcSymbol 时的处理（会在内部生成 CALL/IVOK 等并返回 true 表示已处理）
         void handleNoFuncSymbolCase(const OpItem& funcNameOpItem,
@@ -433,6 +461,11 @@ namespace ast
         void visitProgramNode(ProgramNode& node) override;
 
         void visitBlockRangerNode(BlockRangerNode& node) override;
+
+        void processFunctionParams(const std::vector<std::shared_ptr<ExpressionNode>>& paramItems,
+                                   std::vector<std::shared_ptr<symbol::ParameterSymbol>> &paramSymbols,
+                                   std::vector<std::string> &paramIdents,
+                                   std::vector<std::shared_ptr<symbol::LabelSymbol>> &paramLabelDes);
 
         void visitBracketExpressionNode(BracketExpressionNode& node) override;
 
@@ -473,12 +506,6 @@ namespace ast
 
         void classifyFuncArgs(
             const FunctionCallNode& node, std::queue<OpItem>& posArgs,
-            std::unordered_map<std::string, OpItem>& namedArgs,
-            std::vector<std::pair<std::string, OpItem>>& orderedArgs);
-
-        void classifyFuncArgs(
-            const std::vector<std::pair<std::string, std::string>> &originalArgs,
-            std::queue<OpItem> &posArgs,
             std::unordered_map<std::string, OpItem>& namedArgs,
             std::vector<std::pair<std::string, OpItem>>& orderedArgs);
 

@@ -49,7 +49,7 @@ void initializeArgumentParser() {
     argParser.addOption<std::string>("output", &__output_file_path__,
         "", "指定输出文件路径", {"o", "out"});
     argParser.addOption<std::string>("working-dir", &__working_directory__,
-                                    "", "指定工作目录", {"wd"});
+                                    getWindowsDefaultDir(), "指定工作目录", {"wd"});
 
     // 调试与日志选项
     argParser.addFlag("lexer-debug", &__lexer_debug__, false, true,
@@ -111,8 +111,10 @@ void processCompilation() {
     const auto start_time = std::chrono::high_resolution_clock::now();
 
     // 执行编译
+    __input_file_path__ = getAbsolutePath(__input_file_path__, __working_directory__);
+    __output_file_path__ = getAbsolutePath(__output_file_path__, __working_directory__);
     ast::CompileVisitor visitor(__input_file_path__,
-                               __working_directory__.empty() ? __input_file_path__ : __working_directory__,
+                               __input_file_path__,
                                __output_file_path__);
     // visitor.setOptimizationLevel(__optimization_level__);
     // visitor.setVerbose(__verbose__);
@@ -120,18 +122,20 @@ void processCompilation() {
     if (visitor.compile())
     {
         // 输出编译结果
-        std::cout << "编译成功，结果已保存至：" << __output_file_path__ << std::endl;
+        std::cout << "Compilation succeeded!\nOutput is saved to: " << __output_file_path__ << std::endl;
     }
     // 输出时间信息
     if (__time_info__) {
         const auto end_time = std::chrono::high_resolution_clock::now();
         const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        std::cout << "编译耗时: " << duration.count() << "ms" << std::endl;
+        std::cout << "Compilation Time: " << duration.count() << "ms" << std::endl;
     }
 }
 
 int main(int argc, char *argv[]) {
     try {
+        setDeveloperModel(true);
+
         initializeArgumentParser();
         argParser.parse(argc, argv);
 
@@ -160,10 +164,10 @@ int main(int argc, char *argv[]) {
         std::cerr << rccError.toString() << std::endl;
         return 1;
     } catch (const error::RJsonError &rjsonError) {
-        std::cerr << "JSON错误: " << rjsonError.toString() << std::endl;
+        std::cerr << "JSON Error: " << rjsonError.toString() << std::endl;
         return 1;
     } catch (const std::exception &e) {
-        std::cerr << "错误: " << e.what() << std::endl;
+        std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
 

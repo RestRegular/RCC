@@ -18,6 +18,17 @@ namespace builtin
             processingSymbol && processingSymbol->is(symbol::SymbolType::CLASS))
         {
             const auto &dirInheritClassSymbol = std::static_pointer_cast<symbol::ClassSymbol>(processingSymbol)->getDirectlyInheritedClassSymbol();
+            if (!dirInheritClassSymbol)
+            {
+                throw base::RCCCompilerError::semanticError(callInfos.callPos.toString(),
+                    visitor.getCodeLine(visitor.currentPos()),
+                    "This error is caused by 'super' builtin function called within a class that doesn't have any superclass relationship defined.",
+                    {
+                        "Please check the class inheritance relationship.",
+                        "Remove the 'super' call if this class should not inherit from any parent class.",
+                        "Or change the class definition to 'class ClassName: ParentClass { ... }' if inheritance is intended."
+                    });
+            }
             const auto ctorSymbol = visitor.getCtorSymbol(dirInheritClassSymbol, callInfos.posArgsOpItems, callInfos.namedArgOpItems, callInfos.callPos, callInfos.orderedArgOpItems);
             if (const auto &[level, symbol] = visitor.getSymbolTable().findByName("this");
                 level >= 0 && symbol && symbol->is(symbol::SymbolType::VARIABLE))

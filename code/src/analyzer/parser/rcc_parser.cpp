@@ -7,8 +7,18 @@
 
 namespace parser {
     std::pair<bool, std::shared_ptr<ProgramNode>> Parser::parse() {
-        const auto &result = buildProgram();
-        return {hasError(), result};
+        try
+        {
+            const auto &result = buildProgram();
+            return {hasError(), result};
+        } catch (const std::exception &)
+        {
+            if (hasError())
+            {
+                printParserErrors();
+            }
+            throw;
+        }
     }
 
     Parser::Parser(std::queue<std::shared_ptr<Token>> tokens)
@@ -64,6 +74,8 @@ namespace parser {
         {TokenType::TOKEN_RETURN, &Parser::buildReturnExpression},
         // 退出循环语句
         {TokenType::TOKEN_BREAK, &Parser::buildBreakExpression},
+        // 跳过新行
+        {TokenType::TOKEN_SKIP_NEWLINE, &Parser::skipNewLineExpression},
     };
 
     std::map<TokenType, InfixExpressionBuilder> Parser::infixExpressionBuilders {
@@ -130,7 +142,16 @@ namespace parser {
             {TokenType::TOKEN_LBRACKET, Precedence::INDEX}
     };
 
-    const Token &Parser::currentToken() const {
+    const Token &Parser::currentToken()
+    {
+        if (!_current_token)
+        {
+            appendErrorMsg(RCCParserError::parserError(
+                previousToken().getPosString(),
+                "Current processing token is nullptr.",
+                "Next token is " + nextToken().toString()));
+            throw std::runtime_error("Encountered parser error");
+        }
         return *_current_token;
     }
 
@@ -143,7 +164,7 @@ namespace parser {
         *_tempTokens.front();
     }
 
-    bool Parser::isAtEnd() const {
+    bool Parser::isAtEnd() {
         return currentTokenIs(TokenType::TOKEN_STREAM_END);
     }
 
@@ -172,7 +193,7 @@ namespace parser {
         } else {
             _next_token = nullptr;
         }
-        return currentToken();
+        return _current_token ? currentToken() : *_current_token;
     }
 
     void Parser::consumeNext() {
@@ -203,12 +224,22 @@ namespace parser {
         return previousToken().getType() == type;
     }
 
-    bool Parser::currentTokenIs(TokenType type) const {
+    bool Parser::currentTokenIs(TokenType type) {
         return currentToken().getType() == type;
     }
 
     bool Parser::nextTokenIs(TokenType type) const {
         return nextToken().getType() == type;
+    }
+
+    void Parser::skipCurrentNewLineToken()
+    {
+        while (currentTokenIs(TokenType::TOKEN_NEWLINE)) next();
+    }
+
+    void Parser::skipNextNewLineToken()
+    {
+        while (nextTokenIs(TokenType::TOKEN_NEWLINE)) next();
     }
 
     // 检查下一个 token 的类型，如果是，则消耗当前 token ，否则记录错误
@@ -240,7 +271,8 @@ namespace parser {
         errorMsgs.emplace_back(error.briefString());
     }
 
-    Precedence Parser::currentTokenPrecedence() const {
+    Precedence Parser::currentTokenPrecedence()
+    {
         if (const auto it = precedenceMap.find(currentToken().getType());
             it != precedenceMap.end()) {
             return it->second;
@@ -323,16 +355,15 @@ namespace parser {
     }
 
     std::shared_ptr<ProgramNode> Parser::buildProgram() {
-        if (!currentTokenIs(TokenType::Token_PROGRAM)) {
-            recordUnexpectedTokenTypeError(currentToken(), TokenType::Token_PROGRAM);
+        if (!currentTokenIs(TokenType::TOKEN_PROGRAM)) {
+            recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_PROGRAM);
         }
         const auto &programToken = currentToken();
         next();
         std::vector<std::shared_ptr<StatementNode>> statementNodes;
         while (hasNext()) {
             if (!currentTokenIs(TokenType::TOKEN_NEWLINE)){
-                auto statement = buildStatement();
-                if (statement) {
+                if (auto statement = buildStatement()) {
                     statementNodes.emplace_back(statement);
                 }
             }

@@ -32,6 +32,13 @@ namespace ri {
         [[nodiscard]] std::string toRACode() const override;
     };
 
+    class BREAKPOINT final : public RI
+    {
+    public:
+        explicit BREAKPOINT();
+        [[nodiscard]] std::string toRACode() const override;
+    };
+
     class FLAG: public RI
     {
         std::string opRI;
@@ -226,6 +233,30 @@ namespace ri {
     {
     public:
         explicit TP_GET(const std::string &rvalue, const std::string &lvalue);
+    };
+
+    class ITER_DEL final: public BINARY
+    {
+    public:
+        explicit ITER_DEL(const std::string &iterData, const std::string &index);
+    };
+
+    class DICT_KEYS final: public BINARY
+    {
+    public:
+        explicit DICT_KEYS(const std::string &dictData, const std::string &lvalue);
+    };
+
+    class DICT_VALUES final: public BINARY
+    {
+    public:
+        explicit DICT_VALUES(const std::string &dictData, const std::string &lvalue);
+    };
+
+    class DICT_DEL final: public BINARY
+    {
+    public:
+        explicit DICT_DEL(const std::string &dictData, const std::string &key);
     };
 
     class TERNARY: public RI {

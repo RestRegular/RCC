@@ -2,18 +2,14 @@
 // Created by RestRegular on 2025/10/1.
 //
 
-// rcc_function_call_compiler.cpp
-// 将 visitFunctionCallNode 的逻辑按职责拆分到多个私有 helper 中，便于维护和测试。
-// 请将此文件加入构建系统（CMakeLists.txt / Makefile / VS project）。
-
 #include <queue>
 #include <unordered_map>
 #include <vector>
 #include <string>
 
-#include "../../include/visitors/rcc_compile_visitor.h"
-#include "../../include/components/symbol/rcc_symbol.h"
-#include "../../include/builtin/rcc_builtin.h"
+#include "../../../include/visitors/rcc_compile_visitor.h"
+#include "../../../include/components/symbol/rcc_symbol.h"
+#include "../../../include/builtin/rcc_builtin.h"
 
 namespace ast
 {
@@ -172,10 +168,29 @@ namespace ast
             }
             else if (symbol->is(SymbolType::VARIABLE))
             {
-                if (const auto& refSymbol = getReferenceTargetSymbol(std::static_pointer_cast<VariableSymbol>(symbol));
+                const auto& varSymbol = std::static_pointer_cast<VariableSymbol>(symbol);
+                // 处理变量引用的符号是函数的情况
+                if (const auto& refSymbol = getReferenceTargetSymbol(varSymbol);
                     refSymbol && refSymbol->is(SymbolType::FUNCTION))
                 {
                     funcSymbol = std::static_pointer_cast<FunctionSymbol>(refSymbol);
+                }
+                // 处理类型标签为"func"、"funi"、"any"的变量
+                else
+                {
+                    const auto& typeLabel = varSymbol->getTypeLabel();
+                    if (typeLabel->is("func"))
+                    {
+                        handleFuncTypeLabel(varSymbol, typeLabel, funcSymbol);
+                    }
+                    else if (typeLabel->is("funi"))
+                    {
+                        handleFuniTypeLabel(varSymbol, typeLabel, funcSymbol);
+                    }
+                    else if (typeLabel->is("any"))
+                    {
+                        pass();
+                    }
                 }
             }
             return funcSymbol;
@@ -199,6 +214,187 @@ namespace ast
         }
 
         return funcSymbol;
+    }
+
+    // 提取参数表的标签描述
+    std::vector<std::shared_ptr<LabelSymbol>> CompileVisitor::extractParamTableLabelDes(
+        const std::vector<std::shared_ptr<ParameterSymbol>>& params)
+    {
+        std::vector<std::shared_ptr<LabelSymbol>> paramLabelDes{};
+        for (const auto& param : params)
+        {
+            paramLabelDes.push_back(param->getTypeLabel());
+        }
+        return paramLabelDes;
+    }
+
+    // 提取的辅助函数：处理"func"类型标签
+    void CompileVisitor::handleFuncTypeLabel(const std::shared_ptr<VariableSymbol>& varSymbol,
+                                             const std::shared_ptr<LabelSymbol>& typeLabel,
+                                             std::shared_ptr<FunctionSymbol>& funcSymbol) const
+    {
+        const auto& labelDesS = typeLabel->getLabelDesS();
+        if (labelDesS.empty())
+        {
+            return;
+        }
+        if (labelDesS.size() != 1)
+        {
+            throwRCCLabelDesError(varSymbol, typeLabel, labelDesS.size(), 1);
+            return;
+        }
+
+        auto params = createParameters(labelDesS[0], varSymbol);
+        const auto& signature = TypeLabelSymbol::funcTypeSymbol(Pos::UNKNOW_POS, curScopeLevel());
+        signature->appendLabelDes(extractParamTableLabelDes(params));
+        funcSymbol = std::make_shared<FunctionSymbol>(
+            nullptr, varSymbol->getPos(), varSymbol->getVal(),
+            varSymbol->getRaVal(),
+            std::unordered_set<std::shared_ptr<LabelSymbol>>{
+                TypeLabelSymbol::voidTypeSymbol(Pos::UNKNOW_POS, curScopeLevel())
+            }, params, signature, curScopeLevel(), TypeOfBuiltin::ORDINARY,
+            FunctionType::FUNCTION, nullptr);
+    }
+
+    // 提取的辅助函数：处理"funi"类型标签
+    void CompileVisitor::handleFuniTypeLabel(const std::shared_ptr<VariableSymbol>& varSymbol,
+                                             const std::shared_ptr<LabelSymbol>& typeLabel,
+                                             std::shared_ptr<FunctionSymbol>& funcSymbol) const
+    {
+        auto returnType = TypeLabelSymbol::anyTypeSymbol(Pos::UNKNOW_POS, curScopeLevel());
+        const auto& labelDesS = typeLabel->getLabelDesS();
+
+        if (labelDesS.empty())
+        {
+            return;
+        }
+        if (labelDesS.size() > 2)
+        {
+            throwRCCLabelDesError(varSymbol, typeLabel, labelDesS.size(), "0 ~ 2");
+            return;
+        }
+        if (labelDesS.size() == 2)
+        {
+            handleFuniReturnType(labelDesS[1], returnType);
+        }
+
+        auto params = createParameters(labelDesS[0], varSymbol);
+        const auto& signature = TypeLabelSymbol::funiTypeSymbol(Pos::UNKNOW_POS, curScopeLevel());
+        signature->appendLabelDes(extractParamTableLabelDes(params));
+        signature->appendLabelDes({returnType});
+        funcSymbol = std::make_shared<FunctionSymbol>(
+            nullptr, varSymbol->getPos(), varSymbol->getVal(),
+            varSymbol->getRaVal(),
+            std::unordered_set<std::shared_ptr<LabelSymbol>>{returnType},
+            params, signature, curScopeLevel(), TypeOfBuiltin::ORDINARY,
+            FunctionType::FUNCTION, nullptr);
+    }
+
+    // 提取的辅助函数：创建参数列表
+    std::vector<std::shared_ptr<ParameterSymbol>> CompileVisitor::createParameters(
+        const std::vector<std::shared_ptr<LabelSymbol>>& desList,
+        const std::shared_ptr<VariableSymbol>& varSymbol) const
+    {
+        std::vector<std::shared_ptr<ParameterSymbol>> params;
+        int paramIndex = 0;
+
+        for (const auto& des : desList)
+        {
+            if (des->getLabelType() != LabelType::TYPE_LABEL)
+            {
+                throwRCCTypeMissmatchError(des, varSymbol->getTypeLabel(), LabelType::TYPE_LABEL);
+            }
+
+            const auto& typeLabel = std::static_pointer_cast<TypeLabelSymbol>(des);
+            auto paramType = getParamTypeFromLabel(typeLabel);
+
+            VarID paramVarID{
+                "autoParam" + std::to_string(paramIndex), currentPos().getFileField(),
+                curScopeField(), curScopeLevel()
+            };
+
+            params.push_back(std::make_shared<ParameterSymbol>(
+                paramType, typeLabel->getPos(), paramVarID.getNameField(), paramVarID.getVid(),
+                std::unordered_set<std::shared_ptr<LabelSymbol>>{
+                    paramType == ParamType::PARAM_POSITIONAL
+                        ? typeLabel
+                        : TypeLabelSymbol::anyTypeSymbol(Pos::UNKNOW_POS, curScopeLevel())
+                }, std::nullopt, curScopeLevel()));
+            paramIndex++;
+        }
+        return params;
+    }
+
+    // 提取的辅助函数：获取参数类型
+    ParamType CompileVisitor::getParamTypeFromLabel(const std::shared_ptr<TypeLabelSymbol>& typeLabel)
+    {
+        if (typeLabel->getVal() == "..")
+            return ParamType::PARAM_VAR_LEN_POSITIONAL;
+        if (typeLabel->getVal() == ".*")
+            return ParamType::PARAM_VAR_LEN_KEYWORD;
+        return ParamType::PARAM_POSITIONAL;
+    }
+
+    // 提取的辅助函数：处理funi返回类型
+    void CompileVisitor::handleFuniReturnType(const std::vector<std::shared_ptr<LabelSymbol>>& secondDes,
+                                              std::shared_ptr<TypeLabelSymbol>& returnType) const
+    {
+        if (secondDes.size() != 1)
+        {
+            throw RCCCompilerError::labelDesError(
+                "", getCodeLine(currentPos()),
+                {
+                    "The number of the description part of the main label is wrong.",
+                    "Expected number of description parts: 1",
+                    "The current number of description parts: " + std::to_string(secondDes.size())
+                }, {"Make sure that the number of labels is correct."});
+        }
+
+        const auto& returnTypeLabel = secondDes[0];
+        if (returnTypeLabel->getLabelType() != LabelType::TYPE_LABEL)
+        {
+            throwRCCTypeMissmatchError(returnTypeLabel, nullptr, LabelType::TYPE_LABEL);
+        }
+        returnType = std::static_pointer_cast<TypeLabelSymbol>(returnTypeLabel);
+    }
+
+    // 提取的辅助函数：抛出标签描述错误
+    void CompileVisitor::throwRCCLabelDesError(const std::shared_ptr<VariableSymbol>& varSymbol,
+                                               const std::shared_ptr<LabelSymbol>& typeLabel,
+                                               size_t currentCount, const std::string& expected) const
+    {
+        throw RCCCompilerError::labelDesError(
+            typeLabel->getPos().toString(), getCodeLine(currentPos()),
+            {
+                "The number of the description of the main label is wrong.",
+                "Main label: " + typeLabel->toString(),
+                "Expected number of descriptions: " + expected,
+                "The current number of descriptions: " + std::to_string(currentCount)
+            }, {"Make sure that the number of labels is correct."});
+    }
+
+    // 重载：处理整数预期值
+    void CompileVisitor::throwRCCLabelDesError(const std::shared_ptr<VariableSymbol>& varSymbol,
+                                               const std::shared_ptr<LabelSymbol>& typeLabel,
+                                               size_t currentCount, size_t expected) const
+    {
+        throwRCCLabelDesError(varSymbol, typeLabel, currentCount, std::to_string(expected));
+    }
+
+    // 提取的辅助函数：抛出类型不匹配错误
+    void CompileVisitor::throwRCCTypeMissmatchError(const std::shared_ptr<LabelSymbol>& des,
+                                                    const std::shared_ptr<LabelSymbol>& typeLabel,
+                                                    LabelType expectedType) const
+    {
+        std::string labelStr = typeLabel ? typeLabel->toString() : "";
+        throw RCCCompilerError::typeMissmatchError(
+            des->getPos().toString(), getCodeLine(des->getPos()),
+            {
+                "The label description of " + labelStr +
+                " must be " + labelTypeToString(expectedType) + "."
+            },
+            labelTypeToString(expectedType), labelTypeToString(des->getLabelType()),
+            {});
     }
 
     // ---------- helper: 当找不到 funcSymbol 时的处理（复制原逻辑） ----------
@@ -246,7 +442,7 @@ namespace ast
                                            const Pos& callPos)
     {
         for (const auto& parameters = funcSymbol->getParameters();
-            const auto& param : parameters)
+             const auto& param : parameters)
         {
             if (param->getParamType() == ParamType::PARAM_POSITIONAL || param->getParamType() ==
                 ParamType::PARAM_KEYWORD)
@@ -261,22 +457,36 @@ namespace ast
                 {
                     if (!checkTypeMatch(param, posArgs.front()))
                     {
+                        const auto& frontArgSymbol = getSymbolFromOpItem(posArgs.front());
                         const auto& [fst, snd] = getTypesFromOpItem(posArgs.front());
-                        throw RCCCompilerError::typeMissmatchError(callPos.toString(),
-                                                                   getCodeLine(callPos),
-                                                                   std::vector{
-                                                                       "Error symbol: " + param->toString(),
-                                                                       "Type mismatched value: " + posArgs.front().
-                                                                       toString()
-                                                                   }, param->getTypeLabel()->toString(),
-                                                                   fst
-                                                                       ? fst->toString()
-                                                                       : snd
-                                                                       ? snd->toString()
-                                                                       : RCC_UNKNOWN_CONST,
-                                                                   {
-                                                                       "You can try using the `any` type to set the parameter types more loosely."
-                                                                   });
+                        throw RCCCompilerError::typeMissmatchError(
+                            frontArgSymbol ? frontArgSymbol->getPos().toString() : callPos.toString(),
+                            getCodeLine(callPos),
+                            std::vector{
+                                "Function position: " + (
+                                    builtin::isPureBuiltinFunction(
+                                        funcSymbol->getVal())
+                                        ? "'" + funcSymbol->getVal() +
+                                        "' is a pure built-in function, and its position cannot be viewed."
+                                        : funcSymbol->getPos().toString()),
+                                "                 | " + (
+                                    builtin::isPureBuiltinFunction(
+                                        funcSymbol->getVal())
+                                        ? "The definition of pure built-in function cannot be viewed."
+                                        : getCodeLine(funcSymbol->getPos())),
+                                "Error param symbol: " + param->toString(),
+                                "Type mismatched arg: " + (frontArgSymbol
+                                                               ? frontArgSymbol->toString()
+                                                               : posArgs.front().toString())
+                            }, param->getTypeLabel()->toString(),
+                            fst
+                                ? fst->toString()
+                                : snd
+                                ? snd->toString()
+                                : RCC_UNKNOWN_CONST,
+                            {
+                                "You can try using the `any` type to set the parameter types more loosely."
+                            });
                     }
                     fullProcessedArgs.push_back(posArgs.front().getRaVal(symbolTable));
                     posArgs.pop();
@@ -300,25 +510,18 @@ namespace ast
                                                                   builtin::isPureBuiltinFunction(funcSymbol->getVal())
                                                                       ? "The definition of pure built-in function cannot be viewed."
                                                                       : getCodeLine(funcSymbol->getPos())),
-                                                              "Function params: " + getListFormatString([parameters]
-                                                              {
-                                                                  StringVector result{};
-                                                                  for (const auto& item : parameters)
+                                                              "Function signature: " + funcSymbol->getSignatureString(),
+                                                              "In-passed arguments: " + getListFormatString(
+                                                                  [orderedArgs]
                                                                   {
-                                                                      result.push_back(item->toString());
-                                                                  }
-                                                                  return result;
-                                                              }()),
-                                                              "Arguments passed: " + getListFormatString([orderedArgs]
-                                                              {
-                                                                  StringVector result{};
-                                                                  for (const auto& item : orderedArgs |
-                                                                       std::views::values)
-                                                                  {
-                                                                      result.push_back(item.toString());
-                                                                  }
-                                                                  return result;
-                                                              }()),
+                                                                      StringVector result{};
+                                                                      for (const auto& item : orderedArgs |
+                                                                           std::views::values)
+                                                                      {
+                                                                          result.push_back(item.toString());
+                                                                      }
+                                                                      return result;
+                                                                  }()),
                                                               "Missing param: " + param->toString()
                                                           }, {
                                                               "Please ensure that the number of parameters passed in when calling the function matches."
@@ -360,7 +563,9 @@ namespace ast
                         {
                             const auto& argSymbol = getSymbolFromOpItem(argItem);
                             checkExists(argItem, callPos);
-                            item = argSymbol->getRaVal();
+                            item = argItem.getBelonging() ?
+                                raVal(argItem) :
+                                argSymbol->getRaVal();
                             if (argSymbol->is(SymbolType::VARIABLE))
                             {
                                 if (const auto& varSymbol = std::static_pointer_cast<VariableSymbol>(argSymbol);

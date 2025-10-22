@@ -33,6 +33,7 @@ namespace builtin
         std::string _name;
         std::vector<std::shared_ptr<symbol::ParameterSymbol>> _params;
         BuiltinFunc _call;
+        std::shared_ptr<symbol::TypeLabelSymbol> signature;
     public:
         PureBuiltinFunction(
             const bool &hasReturnValue, const std::string &name,
@@ -41,6 +42,7 @@ namespace builtin
 
         [[nodiscard]] bool hasReturnValue() const;
         [[nodiscard]] std::string getName() const;
+        [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getSignature() const;
         [[nodiscard]] std::vector<std::shared_ptr<symbol::ParameterSymbol>> getParams() const;
         [[nodiscard]] BuiltinFuncRetType call(ast::CompileVisitor &visitor,
                              const CallInfos &callInfos) const;

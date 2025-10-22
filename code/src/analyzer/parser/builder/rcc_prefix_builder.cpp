@@ -149,10 +149,14 @@ namespace parser {
             next();
             if (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)) {
                 const auto &colonToken = currentToken();
-                std::vector<std::shared_ptr<LabelNode> > labels{};
+                std::vector<std::shared_ptr<LabelNode>> labels{};
                 while (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)) {
                     next();
-                    labels.push_back(std::make_shared<LabelNode>(currentToken()));
+                    if (const auto &labelNode = buildLabelExpression();
+                        labelNode->getType() == NodeType::LABEL)
+                    {
+                        labels.push_back(std::static_pointer_cast<LabelNode>(labelNode));
+                    }
                 }
                 return std::make_shared<IdentifierNode>(nameToken, colonToken,
                                                         labels);
@@ -228,6 +232,7 @@ namespace parser {
 
             next(); // 移动到下一个标记
         }
+        if (hasError()) return nullptr;
         return std::make_shared<ConditionNode>(branchNodes);
     }
 
@@ -237,7 +242,20 @@ namespace parser {
     }
 
     ExpressionNodePtr Parser::buildLabelExpression() {
-        return std::make_shared<LabelNode>(currentToken());
+        if (currentTokenIs(TokenType::TOKEN_LABEL) || currentTokenIs(TokenType::TOKEN_IDENTIFIER))
+        {
+            const auto &labelNode = std::make_shared<LabelNode>(currentToken());
+            while (nextTokenIs(TokenType::TOKEN_LBRACKET))
+            {
+                next();
+                if (const auto &labelDesNode = buildListExpression())
+                {
+                    labelNode->appendLabelDesNode(std::static_pointer_cast<ListExpressionNode>(labelDesNode));
+                }
+            }
+            return labelNode;
+        }
+        return nullptr;
     }
 
     std::unordered_map<TokenType, std::pair<TokenType, NodeType>> rangerExpressionTypeMap = {
@@ -248,8 +266,8 @@ namespace parser {
 
     ExpressionNodePtr Parser::buildRangerExpression() {
         const Token& beginToken = currentToken();
-        const auto &it = rangerExpressionTypeMap.find(beginToken.getType());
-        if (it == rangerExpressionTypeMap.end()) {
+        if (const auto &it = rangerExpressionTypeMap.find(beginToken.getType());
+            it == rangerExpressionTypeMap.end()) {
             recordUnexpectedTokenTypeError(beginToken,
                 getTokenTypeName(TokenType::TOKEN_LPAREN)
                 + " or " + getTokenTypeName(TokenType::TOKEN_LBRACE)
@@ -260,7 +278,9 @@ namespace parser {
         if (currentTokenIs(TokenType::TOKEN_LPAREN)) {
             if (!nextTokenIs(TokenType::TOKEN_RPAREN)) {
                 next(); // 跳过左括号
+                skipCurrentNewLineToken();
                 rangerNode = buildExpression(Precedence::LOWEST);
+                skipNextNewLineToken();
                 if (!nextTokenIs(TokenType::TOKEN_RPAREN)) {
                     recordUnclosedExpressionError(beginToken, nextToken(), TokenType::TOKEN_RPAREN);
                     return nullptr;
@@ -412,10 +432,14 @@ namespace parser {
     ExpressionNodePtr Parser::buildDictionaryExpression() {
         const auto &beginToken = currentToken();
         next();
-        while (currentTokenIs(TokenType::TOKEN_NEWLINE)) next();
+        skipCurrentNewLineToken();
+        if (currentTokenIs(TokenType::TOKEN_RBRACE))
+        {
+            return std::make_shared<DictionaryExpressionNode>(beginToken, currentToken(), nullptr);
+        }
         auto bodyNode = buildExpression(currentTokenPrecedence());
         next();
-        while (currentTokenIs(TokenType::TOKEN_NEWLINE)) next();
+        skipCurrentNewLineToken();
         if (!currentTokenIs(TokenType::TOKEN_RBRACE)) {
             recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_RBRACE);
             return nullptr;
@@ -426,14 +450,14 @@ namespace parser {
     ExpressionNodePtr Parser::buildListExpression() {
         const auto &beginToken = currentToken();
         next();
-        while (currentTokenIs(TokenType::TOKEN_NEWLINE)) next();
+        skipCurrentNewLineToken();
         ExpressionNodePtr bodyNode = nullptr;
         if (!currentTokenIs(TokenType::TOKEN_RBRACKET))
         {
             bodyNode = buildExpression(currentTokenPrecedence());
             next();
         }
-        while (currentTokenIs(TokenType::TOKEN_NEWLINE)) next();
+        skipCurrentNewLineToken();
         if (!currentTokenIs(TokenType::TOKEN_RBRACKET)) {
             recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_RBRACKET);
             return nullptr;
@@ -494,6 +518,20 @@ namespace parser {
 
         processExpressionNode(expression);
         return std::make_shared<VariableDefinitionNode>(varToken, varDefs);
+    }
+
+    ExpressionNodePtr Parser::skipNewLineExpression()
+    {
+        next();
+        skipCurrentNewLineToken();
+        const auto &mainToken = currentToken();
+        if (const auto &prefixBuilder = prefixExpressionBuilders.find(currentToken().getType());
+            prefixBuilder != prefixExpressionBuilders.end())
+        {
+            return prefixBuilder->second(this);
+        }
+        recordPrefixBuilderNotFoundError(mainToken, mainToken.getType());
+        return nullptr;
     }
 
     ExpressionNodePtr Parser::buildForExpression() {

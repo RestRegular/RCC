@@ -55,4 +55,8 @@ namespace builtin
         throw std::runtime_error("Non-existent symbol: '" + calledFuncName + "'");
     }
 
+    BuiltinFuncRetType rcc_breakpoint(ast::CompileVisitor& visitor, const CallInfos& callInfos)
+    {
+        return ri::BREAKPOINT().toRACode();
+    }
 }

@@ -296,6 +296,15 @@ namespace symbol {
         return toString() == other->toString();
     }
 
+    std::shared_ptr<utils::Object> Symbol::copySymbolPtr(const std::shared_ptr<Symbol>& symbolPtr)
+    {
+        if (symbolPtr)
+        {
+            return symbolPtr->copySelf();
+        }
+        return nullptr;
+    }
+
     LabelSymbol::LabelSymbol(const utils::Pos &pos,
                              const std::string &name, const std::string &raValue,
                              const size_t &scopeLevel, const LabelType &labelType)
@@ -311,12 +320,81 @@ namespace symbol {
         return labelType;
     }
 
+    std::vector<LabelSymbol::LabelDes> LabelSymbol::getLabelDesS() const
+    {
+        return labelDesS;
+    }
+
+    void LabelSymbol::appendLabelDes(const LabelDes& labelDes)
+    {
+        labelDesS.push_back(labelDes);
+    }
+
+    void LabelSymbol::appendLastLabelDes(const LabelDes& labelDes)
+    {
+        appendLabelDes(labelDes);
+        handleLabelDesRecorded();
+    }
+
+    void LabelSymbol::handleLabelDesRecorded()
+    {
+        if (getVal() == "funi" && labelDesS.size() == 1)
+        {
+            appendLabelDes({TypeLabelSymbol::anyTypeSymbol(utils::Pos::UNKNOW_POS, 0)});
+        }
+    }
+
     bool LabelSymbol::isBuiltIn() const {
         return isBuiltIn_;
     }
 
     std::string LabelSymbol::toString() const {
-        return "[Label(" + labelTypeToString(labelType) + "): " + getVal() + "]";
+        std::string result = "[<" + labelTypeToString(labelType) + "_LABEL> " + getVal();
+        if (!labelDesS.empty()) {
+            std::string desStr;
+            for (const auto& desS : labelDesS) {
+                desStr += "[";
+                bool isFirst = true;
+                for (const auto& des : desS) {
+                    if (!isFirst) {
+                        desStr += ", ";
+                    }
+                    desStr += des->briefString();
+                    isFirst = false;
+                }
+                desStr += "]";
+            }
+            result += desStr;
+        }
+        result += "]";
+        return result;
+    }
+
+    std::string LabelSymbol::briefString() const {
+        std::string result = getVal();
+        if (!labelDesS.empty()) {
+            std::string desStr;
+            for (const auto& desS : labelDesS) {
+                desStr += "[";
+                bool isFirst = true;
+                for (const auto& des : desS) {
+                    if (!isFirst) {
+                        desStr += ", ";
+                    }
+                    desStr += des->getVal();
+                    isFirst = false;
+                }
+                desStr += "]";
+            }
+            result += desStr;
+        }
+        return result;
+    }
+
+    std::shared_ptr<utils::Object> LabelSymbol::copySelf() const
+    {
+        return std::make_shared<LabelSymbol>(
+            getPos(), getVal(), getRaVal(), getScopeLevel(), getLabelType());
     }
 
     std::shared_ptr<Symbol> LabelSymbol::transform(
@@ -327,23 +405,33 @@ namespace symbol {
             getLabelType());
     }
 
+    std::unordered_set<std::string> TypeLabelSymbol::builtInTypes = {
+        "int", "float", "char", "str", "bool", "void", "nul",
+        "list", "func", "funi", "dict", "series", "any", "flag",
+        "clas", "..", ".*"
+    };
+    std::unordered_map<std::string, std::string> TypeLabelSymbol::builtInTypeRaCodeMap = {
+        {"..", "tp-args"},
+        {".*", "tp-kwargs"},
+        {"nul", "tp-null"}
+    };
+    std::unordered_map<std::string, std::string> TypeLabelSymbol::customTypeMap = {};
+
     std::string TypeLabelSymbol::getTypeLabelRaCode(
         const std::string &name, const std::string &raValue) {
+        if (const auto &it = builtInTypeRaCodeMap.find(name);
+            it != builtInTypeRaCodeMap.end())
+        {
+            return it->second;
+        }
         if (builtInTypes.contains(name)) {
-            return "tp-" + (name == "nul" ? "null" : name);
+            return "tp-" + name;
         }
         if (customTypeMap.contains(raValue)) {
             return raValue;
         }
         return "tp-any";
     }
-
-    std::unordered_set<std::string> TypeLabelSymbol::builtInTypes = {
-        "int", "float", "char", "str", "bool", "void", "nul",
-        "list", "func", "funi", "dict", "series", "any", "flag",
-        "clas"
-    };
-    std::unordered_map<std::string, std::string> TypeLabelSymbol::customTypeMap = {};
 
     std::unordered_map<std::string, std::shared_ptr<ClassSymbol>> TypeLabelSymbol::customClassSymbolMap = {};
 
@@ -461,14 +549,49 @@ namespace symbol {
             isCustomType() && otherTypeLabelSymbol->isCustomType())
         {
             return getCustomClassSymbol()->equalWith(otherTypeLabelSymbol->getCustomClassSymbol());
+        } else
+        {
+            if ((isNot("any") && otherTypeLabelSymbol->isNot("any") &&
+                getVal() != otherTypeLabelSymbol->getVal()) ||
+                getLabelDesS().size() != otherTypeLabelSymbol->getLabelDesS().size())
+            {
+                return false;
+            }
+            for (int i = 0; i < getLabelDesS().size(); i ++)
+            {
+                auto thisLabelDesS = getLabelDesS()[i];
+                auto otherLabelDesS = otherTypeLabelSymbol->getLabelDesS()[i];
+                for (int o = 0; o < thisLabelDesS.size(); o ++)
+                {
+                    if (!thisLabelDesS[o]->equalWith(otherLabelDesS[o]))
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
-        return Symbol::equalWith(other);
+    }
+
+    bool TypeLabelSymbol::relatedTo(const std::shared_ptr<TypeLabelSymbol>& other) const
+    {
+        if (equalWith(other)) return true;
+        if (!isCustomType() && !other->isCustomType()) return false;
+        const auto &selfClassSymbol = getCustomClassSymbol();
+        const auto &otherClassSymbol = other->getCustomClassSymbol();
+        return selfClassSymbol->relatedTo(otherClassSymbol);
     }
 
     std::shared_ptr<Symbol> TypeLabelSymbol::transform(const std::string& value, const std::string& raValue,
                                                        const size_t& scopeLevel) const
     {
         return std::make_shared<TypeLabelSymbol>(getPos(), value, scopeLevel, raValue);
+    }
+
+    std::shared_ptr<utils::Object> TypeLabelSymbol::copySelf() const
+    {
+        return std::make_shared<TypeLabelSymbol>(
+            getPos(), getVal(), getScopeLevel(), getRaVal());
     }
 
     std::shared_ptr<TypeLabelSymbol> TypeLabelSymbol::intTypeSymbol(const utils::Pos &pos, const size_t &scopeLevel) {
@@ -535,6 +658,17 @@ namespace symbol {
     std::shared_ptr<TypeLabelSymbol> TypeLabelSymbol::clasTypeSymbol(const utils::Pos& pos, const size_t& scopeLevel)
     {
         return std::make_shared<TypeLabelSymbol>(pos, "clas", scopeLevel);
+    }
+
+    std::shared_ptr<TypeLabelSymbol> TypeLabelSymbol::varArgTypeSymbol(const utils::Pos& pos, const size_t& scopeLevel)
+    {
+        return std::make_shared<TypeLabelSymbol>(pos, "..", scopeLevel);
+    }
+
+    std::shared_ptr<TypeLabelSymbol> TypeLabelSymbol::kwVarArgTypeSymbol(const utils::Pos& pos,
+        const size_t& scopeLevel)
+    {
+        return std::make_shared<TypeLabelSymbol>(pos, ".*", scopeLevel);
     }
 
     std::shared_ptr<TypeLabelSymbol> TypeLabelSymbol::getTypeLabelSymbolByStr(const std::string& str,
@@ -831,15 +965,23 @@ namespace symbol {
 
     void ParameterSymbol::setValueType(const std::shared_ptr<TypeLabelSymbol>& labelSymbol)
     {
-        if (typeLabel->is("any") || labelSymbol->is("any") || typeLabel->equalWith(labelSymbol))
+        if (typeLabel->is("any") || labelSymbol->is("any") ||
+            typeLabel->equalWith(labelSymbol) || typeLabel->relatedTo(labelSymbol))
         {
             this->valueType = labelSymbol;
         } else
         {
-            throw std::runtime_error("ParameterSymbol::setValueType: "
-                "type label '" + typeLabel->toString()
-                + "' is not equal with value type '"
-                + labelSymbol->toString() + "'");
+            const auto &currentPos = ast::CompileVisitor::currentPos();
+            throw base::RCCCompilerError::typeMissmatchError(
+                currentPos.toString(),
+                ast::CompileVisitor::getCodeLine(currentPos),
+                "This error is caused by changing a symbol's type to mismatched target type.",
+                ast::CompileVisitor::getListFormatString({
+                    "any", typeLabel->toString()
+                }), labelSymbol->toString(),
+                {
+                    "Check the target type is correct, avoid modifying the symbol's type to an unrelated or mismatched type."
+                });
         }
     }
 
@@ -868,7 +1010,20 @@ namespace symbol {
 
     std::string ParameterSymbol::toString() const
     {
-        return "[Parameter(" + paramTypeToString(paramType) + "): " + getVal() + "(" + getRaVal() + ") @ " + std::to_string(getScopeLevel()) + "]";
+        return "[<Param> " + getVal() + ": " + getTypeLabel()->briefString() +
+            (getDefaultValue().has_value() ? " = " + getDefaultValue().value() : "") + "]";
+    }
+
+    std::shared_ptr<utils::Object> ParameterSymbol::copySelf() const
+    {
+        std::unordered_set<std::shared_ptr<LabelSymbol>> labels_ = {};
+        for (const auto &l: labels)
+        {
+            labels_.insert(std::static_pointer_cast<LabelSymbol>(l->copySelf()));
+        }
+        return std::make_shared<ParameterSymbol>(
+            paramType, getPos(), getVal(), getRaVal(), labels_, defaultValue, getScopeLevel(),
+            getType(), std::static_pointer_cast<TypeLabelSymbol>(copySymbolPtr(getValueType())));
     }
 
     VariableSymbol::VariableSymbol(const utils::Pos &pos,
@@ -943,19 +1098,35 @@ namespace symbol {
         return defaultValueNode;
     }
 
+    std::shared_ptr<utils::Object> VariableSymbol::copySelf() const
+    {
+        std::unordered_set<std::shared_ptr<LabelSymbol>> labels_ = {};
+        for (const auto &l: getLabels())
+        {
+            labels_.insert(std::static_pointer_cast<LabelSymbol>(copySymbolPtr(l)));
+        }
+        return std::make_shared<VariableSymbol>(
+            getPos(), getVal(), getRaVal(), labels_, getScopeLevel(), false,
+            std::static_pointer_cast<TypeLabelSymbol>(copySymbolPtr(getValueType())),
+            std::static_pointer_cast<ClassSymbol>(copySymbolPtr(getClassSymbol())),
+            std::static_pointer_cast<Symbol>(copySymbolPtr(getReferencedSymbol())),
+            getDefaultValueNode());
+    }
+
     FunctionSymbol::FunctionSymbol(
         const std::shared_ptr<ast::ExpressionNode> &definitionNode,
         const utils::Pos &pos, const std::string &name,
         const std::string &nameID,
         const std::unordered_set<std::shared_ptr<LabelSymbol>> &labels,
         const std::vector<std::shared_ptr<ParameterSymbol>> &parameters,
+        const std::shared_ptr<TypeLabelSymbol> &signature,
         size_t scopeLevel, const TypeOfBuiltin &builtinType,
         const FunctionType &functionType,
         const std::shared_ptr<ClassSymbol> &className)
         : Symbol(pos, SymbolType::FUNCTION, name, nameID, scopeLevel),
           labels(labels), builtinType(builtinType),
-          classSymbol(className), parameters(parameters),
-          definitionNode(definitionNode), functionType(functionType)
+          classSymbol(className), parameters(parameters), definitionNode(definitionNode),
+          functionType(functionType), signature(signature)
     {
         for (const auto &label: labels)
         {
@@ -1035,21 +1206,43 @@ namespace symbol {
         this->builtinType = type;
     }
 
-    std::string FunctionSymbol::toString() const
+    void FunctionSymbol::setSignature(const std::shared_ptr<TypeLabelSymbol>& signature_)
     {
-        std::string args = "(";
+        signature = signature_;
+        if (hasReturnValue() && signature->getLabelDesS().size() == 1)
+        {
+            signature->appendLabelDes({getReturnType()});
+        }
+    }
+
+    std::shared_ptr<TypeLabelSymbol> FunctionSymbol::getSignature() const
+    {
+        return signature;
+    }
+
+    std::string FunctionSymbol::getSignatureString() const
+    {
+        std::string paramSignature = "(";
         for (int i = 0;
              const auto &param: parameters)
         {
-            args += param->getVal();
+            paramSignature += param->getVal() + ": " + param->getTypeLabel()->briefString() +
+                (param->getDefaultValue().has_value() ?
+                    " = " + param->getDefaultValue().value() : "");
             if (i != parameters.size() - 1)
             {
-                args += ", ";
+                paramSignature += ", ";
             }
             i++;
         }
-        args += ")";
-        return "[Function(" + getRaVal() + ")" + ": " + getVal() + args + ": " + returnType->getVal() + "]";
+        paramSignature += ")";
+        return getVal() + paramSignature + ": " + (hasReturnValue() ?
+            getReturnType()->briefString() : "void");
+    }
+
+    std::string FunctionSymbol::toString() const
+    {
+        return "[<Function> " + getSignatureString() + "]";
     }
 
     std::unordered_set<std::shared_ptr<LabelSymbol>> FunctionSymbol::getLabels() const {
@@ -1094,7 +1287,7 @@ namespace symbol {
     {
         return std::make_shared<FunctionSymbol>(
             getDefinitionNode(), getPos(), value, raValue, labels, parameters,
-            scopeLevel, builtinType, functionType, classSymbol);
+            signature, scopeLevel, builtinType, functionType, classSymbol);
     }
 
     bool FunctionSymbol::is(const TypeOfBuiltin& type) const
@@ -1109,6 +1302,25 @@ namespace symbol {
             return TypeLabelSymbol::funiTypeSymbol(utils::Pos::UNKNOW_POS, getScopeLevel());
         }
         return TypeLabelSymbol::funcTypeSymbol(utils::Pos::UNKNOW_POS, getScopeLevel());
+    }
+
+    std::shared_ptr<utils::Object> FunctionSymbol::copySelf() const
+    {
+        std::unordered_set<std::shared_ptr<LabelSymbol>> labels_ = {};
+        for (const auto &l: getLabels())
+        {
+            labels_.insert(std::static_pointer_cast<LabelSymbol>(copySymbolPtr(l)));
+        }
+        std::vector<std::shared_ptr<ParameterSymbol>> params = {};
+        for (const auto &p: getParameters())
+        {
+            params.push_back(std::static_pointer_cast<ParameterSymbol>(copySymbolPtr(p)));
+        }
+        return std::make_shared<FunctionSymbol>(
+            definitionNode, getPos(), getVal(), getRaVal(), labels_,
+            params, std::static_pointer_cast<TypeLabelSymbol>(copySymbolPtr(signature)),
+            getScopeLevel(), getBuiltInType(), getFunctionType(),
+            std::static_pointer_cast<ClassSymbol>(copySymbolPtr(getClassSymbol())));
     }
 
     ClassSymbol::ClassSymbol(
@@ -1392,10 +1604,58 @@ namespace symbol {
         return "[Class(" + getRaVal() + "): " + getVal() + "]";
     }
 
+    std::shared_ptr<utils::Object> ClassSymbol::copySelf() const
+    {
+        std::vector<std::shared_ptr<ClassSymbol>> baseClasses_ = {};
+        for (const auto &bc: baseClasses)
+        {
+            baseClasses_.push_back(std::static_pointer_cast<ClassSymbol>(copySymbolPtr(bc)));
+        }
+        std::vector<std::shared_ptr<ClassSymbol>> deriveClasses_ = {};
+        for (const auto &dc: derivedClasses)
+        {
+            deriveClasses_.push_back(std::static_pointer_cast<ClassSymbol>(copySymbolPtr(dc)));
+        }
+        return std::make_shared<ClassSymbol>(getPos(), getVal(), getRaVal(), labelMarkManager,
+            getScopeLevel(), baseClasses_, deriveClasses_,
+            constructors,
+            staticMembers,
+            collectionFinished, visitPermission);
+    }
+
+    bool ClassSymbol::relatedTo(const std::shared_ptr<ClassSymbol>& other) const
+    {
+        if (equalWith(other)) return true;
+        for (const auto &bc: baseClasses)
+        {
+            if (bc->equalWith(other))
+            {
+                return true;
+            }
+        }
+        for (const auto &dc: derivedClasses)
+        {
+            if (dc->equalWith(other))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool ClassSymbol::isSupperClassOf(const std::shared_ptr<ClassSymbol>& other, const bool &restrict) const
+    {
+        if (!restrict && equalWith(other)) return true;
+        for (const auto &dc: derivedClasses)
+        {
+            if (dc->equalWith(other)) return true;
+        }
+        return false;
+    }
+
     std::shared_ptr<Symbol> SymbolTable::insertByName(const std::shared_ptr<Symbol> &symbol, const bool& sysDefined) {
         const std::string symbolName = symbol->getVal();
-        if (const auto & it = table.find(symbolName);
-            it != table.end()) {
+        if (symbolName != "_" && table.contains(symbolName)) {
             throw std::runtime_error("Symbol " + symbolName + " already exists");
         }
         table[symbolName] = {nameIndex.size(), symbol};
@@ -1409,8 +1669,7 @@ namespace symbol {
 
     std::shared_ptr<Symbol> SymbolTable::insertByRID(const std::shared_ptr<Symbol> &symbol, const bool& sysDefined) {
         const std::string rid = symbol->getRaVal();
-        if (const auto & it = table.find(rid);
-            it != table.end()) {
+        if (symbol->getVal() != "_" && table.contains(rid)) {
             throw std::runtime_error("Symbol " + rid + " already exists");
         }
         table[rid] = {nameIndex.size(), symbol};
@@ -1452,18 +1711,43 @@ namespace symbol {
         }
     }
 
+    std::shared_ptr<utils::Object> SymbolTable::copySelf() const
+    {
+        const auto &copied = std::make_shared<SymbolTable>();
+        for (const auto &s : *this)
+        {
+            copied->insertByName(std::static_pointer_cast<Symbol>(Symbol::copySymbolPtr(s)),
+                std::ranges::find(sysDefinitionRecord, s->getRaVal())
+                != sysDefinitionRecord.end());
+        }
+        return copied;
+    }
+
+    void SymbolTableManager::appendScope(const std::shared_ptr<SymbolTable>& nameScope,
+        const std::shared_ptr<SymbolTable>& idScope)
+    {
+        scopes.push_back({nameScope, idScope});
+    }
+
     SymbolTableManager::SymbolTableManager() {
         scopes.push_back({std::make_shared<SymbolTable>(),
             std::make_shared<SymbolTable>()});
         currentScopeLevel_ = 0; // 全局作用域
     }
 
-    SymbolTable &SymbolTableManager::currentNameMapScope() const {
+    SymbolTable &SymbolTableManager::currentNameMapScope() const
+    {
         return *scopes[currentScopeLevel_].first;
     }
 
-    SymbolTable &SymbolTableManager::currentRIDMapScope() const {
+    SymbolTable &SymbolTableManager::currentRIDMapScope() const
+    {
         return *scopes[currentScopeLevel_].second;
+    }
+
+    std::pair<SymbolTable, SymbolTable> SymbolTableManager::currentScopeCopied() const
+    {
+        return {currentNameMapScope(), currentRIDMapScope()};
     }
 
     void SymbolTableManager::enterScope() {
@@ -1576,6 +1860,18 @@ namespace symbol {
 
     size_t SymbolTableManager::curScopeLevel() const {
         return currentScopeLevel_;
+    }
+
+    std::shared_ptr<utils::Object> SymbolTableManager::copySelf() const
+    {
+        const auto &stm = std::make_shared<SymbolTableManager>();
+        for (const auto &[nameScope,
+            idScope]: scopes)
+        {
+            stm->appendScope(nameScope, idScope);
+        }
+        stm->currentScopeLevel_ = currentScopeLevel_;
+        return stm;
     }
 
     std::pair<long long int, std::shared_ptr<VariableSymbol>>

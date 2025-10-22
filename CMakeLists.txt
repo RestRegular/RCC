@@ -73,5 +73,6 @@ add_executable(RCC code/src/rcc_main.cpp
         code/src/builtin/functions/rcc_builtin_super.cpp
         code/include/builtin/functions/rcc_builtin_super.h
         code/src/builtin/rcc_builtin_core.cpp
-        code/src/visitors/rcc_function_call_compiler.cpp
+        code/src/visitors/tools/rcc_function_call_compiler.cpp
+        code/include/external/rcc_compile_interface.h
 )

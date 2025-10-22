@@ -202,13 +202,14 @@ namespace lexer {
                 continue;
             }
 
-            // 处理字符串
             if (quoteStack.empty()) {
                 if (c != ' ' && c != '\n' && c != '\r' && c != '\t' && commentType == core::CommentType::NONE) {
                     t << c;
+                    if (!groupSign.empty()) groupSign.clear();
                 }
             }
             else {
+                // 处理字符串
                 if (c == '\n' || c == '\t' || c == '\r') {
                     throw base::RCCSyntaxError::undefinedExpressionError(
                             utils::Pos(row, column, 0, _filepath).toString(), RCC_UNKNOWN_CONST);

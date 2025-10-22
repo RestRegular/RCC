@@ -12,6 +12,8 @@ namespace builtin
 
     BuiltinFuncRetType rcc_entry(ast::CompileVisitor &visitor, const CallInfos& callInfos);
 
+    BuiltinFuncRetType rcc_breakpoint(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
 }
 
 #endif //RCC_RCC_BUILTIN_PROG_FUNCTIONS_H

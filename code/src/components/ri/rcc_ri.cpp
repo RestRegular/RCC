@@ -31,6 +31,13 @@ namespace ri {
         return "; " + comment + "\n";
     }
 
+    BREAKPOINT::BREAKPOINT() {}
+
+    std::string BREAKPOINT::toRACode() const
+    {
+        return "BREAKPOINT: ;\n";
+    }
+
 
     FLAG::FLAG(const std::string& opRI, const std::string &comment)
         : opRI(opRI), comment(comment) {}
@@ -234,6 +241,18 @@ namespace ri {
 
     TP_GET::TP_GET(const std::string& rvalue, const std::string& lvalue)
         : BINARY("TP_GET", rvalue, lvalue) {}
+
+    ITER_DEL::ITER_DEL(const std::string& iterData, const std::string& index)
+        : BINARY("ITER_DEL", iterData, index) {}
+
+    DICT_KEYS::DICT_KEYS(const std::string& dictData, const std::string& lvalue)
+        : BINARY("DICT_KEYS", dictData, lvalue) {}
+
+    DICT_VALUES::DICT_VALUES(const std::string& dictData, const std::string& lvalue)
+        :BINARY("DICT_VALUES", dictData, lvalue) {}
+
+    DICT_DEL::DICT_DEL(const std::string& dictData, const std::string& key)
+        : BINARY("DICT_DEL", dictData, key) {}
 
     TERNARY::TERNARY(const std::string &op, const std::string &rvalue1, const std::string &rvalue2,
                      const std::string &lvalue)

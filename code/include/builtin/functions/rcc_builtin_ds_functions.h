@@ -12,6 +12,16 @@ namespace builtin
 
     BuiltinFuncRetType rcc_size(ast::CompileVisitor &visitor, const CallInfos& callInfos);
 
+    BuiltinFuncRetType rcc_copy(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
+    BuiltinFuncRetType rcc_listRemove(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
+    BuiltinFuncRetType rcc_dictRemove(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
+    BuiltinFuncRetType rcc_dictKeys(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
+    BuiltinFuncRetType rcc_dictValues(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
 }
 
 #endif //RCC_RCC_BUILTIN_DS_FUNCTIONS_H

@@ -1,8 +1,5 @@
-import(prog="prog")
+import(io="io")
 
-prog.entry((*args, **kwargs): void -> {
-    fun sout(*args, end="\n"): void {
-        encapsulated
-    }
-    sout("Hello world!")
-})
+var a: dict = {}
+
+io.sout(a)

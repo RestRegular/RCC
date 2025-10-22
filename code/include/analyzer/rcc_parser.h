@@ -62,23 +62,25 @@ namespace parser {
         // 运算符优先级映射表
         static std::map<TokenType, Precedence> precedenceMap;
 
-        bool isAtEnd() const;
+        bool isAtEnd();
         void previous();
         const Token &next();
         void consumeNext();
         void reset();
         const Token &previousToken() const;
-        [[nodiscard]] const Token &currentToken() const;
+        [[nodiscard]] const Token &currentToken();
         [[nodiscard]] const Token &nextToken() const;
         [[nodiscard]] bool hasNext() const;
         [[nodiscard]] bool previousTokenIs(TokenType type) const;
-        [[nodiscard]] bool currentTokenIs(TokenType type) const;
+        [[nodiscard]] bool currentTokenIs(TokenType type);
         [[nodiscard]] bool nextTokenIs(TokenType type) const;
+        void skipCurrentNewLineToken();
+        void skipNextNewLineToken();
         bool expectedNextTokenAndConsume(TokenType type);
         void consumeNextIfNextTokenIs(TokenType type);
         bool expectedNextToken(TokenType type);
         void appendErrorMsg(const RCCError &error);
-        [[nodiscard]] Precedence currentTokenPrecedence() const;
+        [[nodiscard]] Precedence currentTokenPrecedence();
         [[nodiscard]] Precedence nextTokenPrecedence() const;
 
         // 临时 Token 相关函数
@@ -133,6 +135,7 @@ namespace parser {
         ExpressionNodePtr buildDictionaryExpression();
         ExpressionNodePtr buildListExpression();
         ExpressionNodePtr buildVariableExpression();
+        ExpressionNodePtr skipNewLineExpression();
 
         // 中缀表达式构建函数
         ExpressionNodePtr buildInfixExpression(const ExpressionNodePtr &left);

@@ -16,6 +16,8 @@
 #include "../../include/lib/RJson/RJson_error.h"
 #include "../../include/visitors/rcc_compile_visitor.h"
 
+#include <any>
+
 namespace ast
 {
     using namespace symbol;
@@ -265,10 +267,21 @@ namespace ast
         return opItemType != this->type;
     }
 
-    std::string CompileVisitor::OpItem::toString() const
-    {
-        return "[OpItem: " + value + "{raVal=" + raValue + ", type=" + typeLabel->toString()
-            + ", valueType=" + valueType->toString() + "}]";
+    std::string CompileVisitor::OpItem::toString() const {
+        std::string result = "[<OpItem> ";
+
+        if (is(OpItemType::LITERAL_VALUE)) {
+            // 字面量类型：[(OpItem) (类型) 值]
+            result += "(" + getTypeLabel()->briefString() + ") " + (value.empty() ? "?" : value);
+        } else {
+            // 非字面量类型：[(OpItem) 名称: 类型 = (值类型) 值]
+            result += value + ": " + getTypeLabel()->briefString()
+                   + " = (" + getValueType()->briefString() + ") "
+                   + (raValue.empty() ? "?" : raValue);
+        }
+
+        result += "]";
+        return result;
     }
 
     std::string CompileVisitor::OpItem::getVal() const
@@ -281,16 +294,19 @@ namespace ast
         return type;
     }
 
-    std::string CompileVisitor::OpItem::getRaVal(const SymbolTableManager& table) const
+    std::string CompileVisitor::OpItem::getRaVal(const SymbolTableManager& table, const bool &needSearch) const
     {
         if (type == OpItemType::LITERAL_VALUE || type == OpItemType::SET_LABEL)
         {
             return value;
         }
-        if (const auto& [level, symbol] = table.findByName(value);
-            level >= 0 && symbol)
+        if (needSearch)
         {
-            return symbol->getRaVal();
+            if (const auto& [level, symbol] = table.findByName(value);
+                level >= 0 && symbol)
+            {
+                return symbol->getRaVal();
+            }
         }
         return raValue;
     }
@@ -379,11 +395,7 @@ namespace ast
         case SymbolType::PARAMETER:
             return std::static_pointer_cast<VariableSymbol>(symbol)->getTypeLabel();
         case SymbolType::FUNCTION:
-            {
-                return std::static_pointer_cast<FunctionSymbol>(symbol)->hasReturnValue()
-                           ? TypeLabelSymbol::funiTypeSymbol(symbol->getPos(), symbol->getScopeLevel())
-                           : TypeLabelSymbol::funcTypeSymbol(symbol->getPos(), symbol->getScopeLevel());
-            }
+            return std::static_pointer_cast<FunctionSymbol>(symbol)->getSignature();
         case SymbolType::CLASS:
             return TypeLabelSymbol::clasTypeSymbol(symbol->getPos(), symbol->getScopeLevel());
         case SymbolType::LABEL:
@@ -419,7 +431,8 @@ namespace ast
 
     // 检查两个TypeLabelSymbol是否匹配
     bool CompileVisitor::checkTypeMatch(const std::shared_ptr<TypeLabelSymbol>& leftTypeSymbol,
-                                        const std::shared_ptr<TypeLabelSymbol>& rightTypeSymbol)
+                                        const std::shared_ptr<TypeLabelSymbol>& rightTypeSymbol,
+                                        const bool& restrict)
     {
         // 空指针检查
         if (!leftTypeSymbol || !rightTypeSymbol)
@@ -430,6 +443,11 @@ namespace ast
 
         // 类型完全匹配
         if (leftTypeSymbol->equalWith(rightTypeSymbol))
+        {
+            return true;
+        }
+
+        if (!restrict && leftTypeSymbol->relatedTo(rightTypeSymbol))
         {
             return true;
         }
@@ -482,18 +500,22 @@ namespace ast
         if (const auto rightType = getTypeLabelFromSymbol(rightSymbol);
             rightType && rightType->isNot("any"))
         {
-            return checkTypeMatch(leftType, rightType);
+            return checkTypeMatch(leftType, rightType, true);
         }
 
         const auto rightValueType = getValueTypeFromSymbol(rightSymbol);
 
         // 检查类型标签是否匹配
-        return checkTypeMatch(leftType, rightValueType);
+        return checkTypeMatch(leftType, rightValueType, true);
     }
 
     // 从OpItem获取符号
     std::shared_ptr<Symbol> CompileVisitor::getSymbolFromOpItem(const OpItem& opItem) const
     {
+        if (opItem.getReferencedSymbol())
+        {
+            return opItem.getReferencedSymbol();
+        }
         if (opItem.getType() == OpItemType::IDENTIFIER)
         {
             if (const auto& [level, symbol] = symbolTable.findByName(opItem.getVal());
@@ -547,7 +569,7 @@ namespace ast
         }
 
         // 检查类型标签匹配
-        return checkTypeMatch(leftTypeLabel, rightOpItem.getValueType());
+        return checkTypeMatch(leftTypeLabel, rightOpItem.getValueType(), true);
     }
 
 
@@ -588,10 +610,12 @@ namespace ast
                     }
 
                     // 类型不匹配则抛出异常
-                    if (targetValueType->isNot("any") && !varSymbol->getTypeLabel()->equalWith(targetValueType))
+                    if (targetValueType->isNot("any") &&
+                        !checkTypeMatch(varSymbol->getTypeLabel(),
+                            targetValueType, false))
                     {
-                        throw RCCCompilerError::typeMissmatchError(sourceSymbol->getPos().toString(),
-                                                                   topLexer()->getCodeLine(sourceSymbol->getPos()),
+                        throw RCCCompilerError::typeMissmatchError(currentPos().toString(),
+                                                                   topLexer()->getCodeLine(currentPos()),
                                                                    "Error symbol: " + varSymbol->toString(),
                                                                    getListFormatString({
                                                                        "any", varSymbol->getTypeLabel()->getVal()
@@ -606,8 +630,8 @@ namespace ast
                 // 源类型和目标类型都不是"any"时，检查是否匹配
                 if (!varSymbol->getTypeLabel()->equalWith(targetTypeLabel))
                 {
-                    throw RCCCompilerError::typeMissmatchError(sourceSymbol->getPos().toString(),
-                                                               topLexer()->getCodeLine(sourceSymbol->getPos()),
+                    throw RCCCompilerError::typeMissmatchError(currentPos().toString(),
+                                                               topLexer()->getCodeLine(currentPos()),
                                                                "Error symbol: " + varSymbol->toString(),
                                                                getListFormatString({
                                                                    "any", varSymbol->getTypeLabel()->getVal()
@@ -692,6 +716,13 @@ namespace ast
                                     ? getValueTypeFromSymbol(symbol)
                                     : opItem.getValueType();
         return {typeLabel, valueType};
+    }
+
+    std::shared_ptr<TypeLabelSymbol> CompileVisitor::getDefiniteTypeLabelSymbolFromOpItem(
+        const OpItem& opItem) const
+    {
+        const auto &[lt, vt] = getTypesFromOpItem(opItem);
+        return lt->is("any") ? vt : lt;
     }
 
     std::string CompileVisitor::formatAttrField(const std::string& field)
@@ -876,6 +907,11 @@ namespace ast
 
     std::string CompileVisitor::getCodeLine(const Pos& pos)
     {
+        if (pos.getFilepath() != topLexerPath())
+        {
+            return getLineFromFile(getAbsolutePath(pos.getFilepath(), getWindowsDefaultDir()),
+                pos.getLine());
+        }
         return topLexer()->getCodeLine(pos);
     }
 
@@ -935,15 +971,16 @@ namespace ast
 
     CompileVisitor::OpItem CompileVisitor::pushTemOpVarItemWithRecord(
         const Pos& pos, const std::shared_ptr<TypeLabelSymbol>& valueType,
-        const std::shared_ptr<Symbol>& referencedSymbol, const bool& sysDefined)
+        const std::shared_ptr<Symbol>& referencedSymbol, const bool& sysDefined,
+        const std::shared_ptr<TypeLabelSymbol>& typeLabel)
     {
+        const auto& anyType = getBuiltinTypeSymbol(pos, B_ANY);
         const auto& tempVarId = VarID(getNewTempVarName(), pos.getFileField(), curScopeField(), curScopeLevel());
-        pushIdentItem(tempVarId, getBuiltinTypeSymbol(pos, B_ANY), valueType, referencedSymbol);
-        const auto& anyType = TypeLabelSymbol::anyTypeSymbol(pos, symbolTable.curScopeLevel());
+        pushIdentItem(tempVarId, typeLabel ? typeLabel : anyType, valueType, referencedSymbol);
         symbolTable.insert(std::make_shared<VariableSymbol>(
                                pos, tempVarId.getNameField(), topOpItem().getRaVal(symbolTable),
                                std::unordered_set<std::shared_ptr<LabelSymbol>>{
-                                   anyType
+                                   typeLabel ? typeLabel : anyType
                                },
                                symbolTable.curScopeLevel(),
                                false,
@@ -1257,7 +1294,7 @@ namespace ast
         return "[ScopeType: " + scopeTypeToString(scopeType) + "]";
     }
 
-    std::string CompileVisitor::curScopeField()
+    std::string CompileVisitor::curScopeField() const
     {
         return scopeTypeToString(scopeTypeStack.top());
     }
@@ -1312,11 +1349,13 @@ namespace ast
 
     void CompileVisitor::enterLoopScope()
     {
+        enterScope(ScopeType::LOOP);
         loopScopeStack.push(ScopeType::LOOP);
     }
 
     void CompileVisitor::exitLoopScope()
     {
+        exitScope(ScopeType::LOOP);
         loopScopeStack.pop();
     }
 
@@ -1381,6 +1420,33 @@ namespace ast
         return result;
     }
 
+    std::vector<std::shared_ptr<LabelSymbol>> CompileVisitor::processLabelNodesOnOrder(
+        const std::vector<std::shared_ptr<LabelNode>>& labels)
+    {
+        std::vector<std::shared_ptr<LabelSymbol>> result{};
+        enterScope(ScopeType::TEMPORARY);
+        for (const auto& label : labels)
+        {
+            label->acceptVisitor(*this);
+            if (const auto &[_, symbol] = symbolTable.findByName(label->getLabel());
+                symbol->is(SymbolType::LABEL))
+            {
+                result.push_back(std::static_pointer_cast<LabelSymbol>(symbol));
+                symbolTable.removeByName(label->getLabel());
+            } else
+            {
+                throw RCCCompilerError::typeMissmatchError(symbol->getPos().toString(),
+                                                           getCodeLine(symbol->getPos()),
+                                                           "Error symbol: " + symbol->toString(),
+                                                           symbolTypeToFormatString(SymbolType::LABEL),
+                                                           symbolTypeToFormatString(symbol->getType()),
+                                                           {"Please ensure that the labels you use are valid labels."});
+            }
+        }
+        exitScope(ScopeType::TEMPORARY);
+        return result;
+    }
+
     bool CompileVisitor::compile()
     {
         const auto& lexer = std::make_shared<lexer::Lexer>(programTagetFilePath);
@@ -1397,8 +1463,8 @@ namespace ast
             raCodeBuilder
                 << ri::ANNOTATION(std::vector<std::string>{
                     RIO_PROGRAM_SIGN " " RCC_VERSION,
-                    "Source file: " + programTagetFilePath + ":1:1",
-                    "Target file: " + compileOutputFilePath + ":1:1",
+                    "Source file: " + getAbsolutePath(processRCCPath(programTagetFilePath), getWindowsDefaultDir()) + ":1:1",
+                    "Target file: " + getAbsolutePath(processRCCPath(compileOutputFilePath), getWindowsDefaultDir()) + ":1:1",
                     "Author: @" + getSystemUserName(),
                     "Time: " + getCurrentTime(TimeFormat::ISO_WITH_TIME),
                     ""
@@ -1559,113 +1625,8 @@ namespace ast
             std::static_pointer_cast<ParenRangerNode>(node.getParamNode())->getRangerNode());
         std::vector<std::shared_ptr<ParameterSymbol>> paramSymbols{};
         std::vector<std::string> paramIdents{};
-        for (const auto& item : paramItems)
-        {
-            auto paramType = ParamType::PARAM_POSITIONAL;
-            auto param = item;
-            std::optional<OpItem> defaultValue = std::nullopt;
-            bool isValidNodeType = false;
-            if (item->getRealType() == NodeType::ASSIGNMENT)
-            {
-                const auto& [ident, value] =
-                    std::static_pointer_cast<AssignmentNode>(item)->getAssignPair();
-                param = ident;
-                value->acceptVisitor(*this);
-                defaultValue = rPopOpItem();
-                paramType = ParamType::PARAM_KEYWORD;
-                isValidNodeType = true;
-            }
-            else if (item->getRealType() == NodeType::UNARY)
-            {
-                if (const auto& unaryParam =
-                        std::static_pointer_cast<UnaryExpressionNode>(item);
-                    unaryParam->getOpToken().getType() == TokenType::TOKEN_STAR)
-                {
-                    param = unaryParam->getRightNode();
-                    paramType = ParamType::PARAM_VAR_LEN_POSITIONAL;
-                    isValidNodeType = true;
-                }
-                else if (unaryParam->getOpToken().getType() == TokenType::TOKEN_DOUBLE_STAR)
-                {
-                    param = unaryParam->getRightNode();
-                    paramType = ParamType::PARAM_VAR_LEN_KEYWORD;
-                    isValidNodeType = true;
-                }
-            }
-            else if (item->getRealType() == NodeType::IDENTIFIER)
-            {
-                isValidNodeType = true;
-            }
-            if (!isValidNodeType)
-            {
-                throw RCCCompilerError::typeMissmatchError(item->getPos().toString(), getCodeLine(item->getPos()),
-                                                           "Error node: " + item->toString(),
-                                                           getListFormatString({
-                                                               getNodeTypeFormatName(NodeType::IDENTIFIER),
-                                                               getNodeTypeFormatName(NodeType::ASSIGNMENT),
-                                                               getNodeTypeFormatName(NodeType::UNARY)
-                                                           }),
-                                                           getNodeTypeFormatName(item->getRealType()), {
-                                                               "The node types of the parameter node only include the following four types: "
-                                                               + getListFormatString(
-                                                                   {
-                                                                       getNodeTypeFormatName(NodeType::IDENTIFIER),
-                                                                       getNodeTypeFormatName(NodeType::ASSIGNMENT),
-                                                                       getNodeTypeFormatName(NodeType::UNARY)
-                                                                   }),
-                                                               getNodeTypeFormatName(NodeType::IDENTIFIER) +
-                                                               " param form: `arg: any`.",
-                                                               getNodeTypeFormatName(NodeType::ASSIGNMENT) +
-                                                               " param form: `arg: any = default_value`.",
-                                                               getNodeTypeFormatName(NodeType::UNARY) +
-                                                               " param form: `*args` or `**kwargs`."
-                                                           });
-            }
-            const auto& paramNode = std::static_pointer_cast<IdentifierNode>(param);
-            paramNode->acceptVisitor(*this);
-            const auto& paramOpItem = rPopOpItem();
-            paramIdents.push_back(paramOpItem.getRaVal(symbolTable));
-            std::unordered_set<std::shared_ptr<LabelSymbol>> labels = processLabelNodes(paramNode->getLabels());
-            const auto& paramSymbol = std::make_shared<ParameterSymbol>(
-                paramType,
-                paramNode->getPos(),
-                paramOpItem.getVal(),
-                paramOpItem.getRaVal(symbolTable),
-                labels,
-                std::nullopt,
-                symbolTable.curScopeLevel());
-            if (defaultValue.has_value())
-            {
-                if (!checkTypeMatch(paramSymbol, defaultValue.value()))
-                {
-                    const auto& [fst, snd] = getTypesFromOpItem(defaultValue.value());
-                    throw RCCCompilerError::typeMissmatchError(paramSymbol->getPos().toString(),
-                                                               getCodeLine(paramSymbol->getPos()),
-                                                               std::vector{
-                                                                   "Error symbol: " + paramSymbol->toString(),
-                                                                   "Type mismatched value: " + defaultValue.value().
-                                                                   toString()
-                                                               }, paramSymbol->getTypeLabel()->toString(),
-                                                               fst
-                                                                   ? fst->toString()
-                                                                   : snd
-                                                                   ? snd->toString()
-                                                                   : RCC_UNKNOWN_CONST,
-                                                               {
-                                                                   "You can try using the `any` type to set the parameter types more loosely."
-                                                               });
-                }
-                paramSymbol->setDefaultValue(defaultValue.value().getRaVal(symbolTable));
-            }
-            paramSymbols.push_back(paramSymbol);
-            symbolTable.insert(std::make_shared<VariableSymbol>(
-                                   item->getPos(),
-                                   paramOpItem.getVal(),
-                                   paramOpItem.getRaVal(symbolTable),
-                                   labels,
-                                   symbolTable.curScopeLevel(),
-                                   true), false);
-        }
+        std::vector<std::shared_ptr<LabelSymbol>> paramLabelDes{};
+        processFunctionParams(paramItems, paramSymbols, paramIdents, paramLabelDes);
         auto getCtorName = [&]
         {
             // 拼接所有参数标识符，用下划线分隔
@@ -1692,10 +1653,15 @@ namespace ast
             node.getPos(),
             funcNameOpItem.getVal(),
             funcNameOpItem.getRaVal(symbolTable),
-            labels,
-            paramSymbols,
+            labels, paramSymbols, nullptr,
             symbolTable.curScopeLevel() - 1,
             TypeOfBuiltin::ORDINARY, FunctionType::CONSTRUCTOR, classSymbol);
+        const auto &signature = functionSymbol->hasReturnValue() ?
+                TypeLabelSymbol::funiTypeSymbol(Pos::UNKNOW_POS, curScopeLevel()) :
+                TypeLabelSymbol::funcTypeSymbol(Pos::UNKNOW_POS, curScopeLevel());
+        signature->appendLabelDes(paramLabelDes);
+        if (functionSymbol->hasReturnValue()) signature->appendLabelDes({functionSymbol->getReturnType()});
+        functionSymbol->setSignature(signature);
         if (!functionSymbol->getReturnType())
         {
             functionSymbol->setReturnType(getBuiltinTypeSymbol(functionSymbol->getPos(), B_ANY));
@@ -1985,11 +1951,18 @@ namespace ast
                     break;
                 case ParamType::PARAM_KEYWORD:
                     {
+                        bool hasNamed = false;
                         if (auto it = tempNamedArgs.find(param->getVal());
                             it != tempNamedArgs.end())
                         {
                             matchedParam = checkTypeMatch(param, it->second);
                             tempNamedArgs.erase(it);
+                            hasNamed = true;
+                        }
+                        if (!hasNamed && posArgIndex < posArgsVec.size())
+                        {
+                            matchedParam = checkTypeMatch(param, posArgsVec[posArgIndex]);
+                            posArgIndex ++;
                         }
                     }
                     break;
@@ -2066,311 +2039,6 @@ namespace ast
         processFunctionCallNode(node);
     }
 
-    // void CompileVisitor::visitFunctionCallNode(FunctionCallNode &node) {
-    //     // 提前处理函数调用的参数
-    //     std::queue<OpItem> posArgs;
-    //     std::unordered_map<std::string, OpItem> namedArgs;
-    //     std::vector<std::pair<std::string, OpItem>> orderedArgs;
-    //     std::vector<std::string> fullProcessedArgs {};
-    //     std::vector<std::pair<std::string, std::string>> originalArgs {};
-    //     std::vector<std::string> halfProcessedArgs {};
-    //     classifyFuncArgs(node, posArgs, namedArgs, orderedArgs);
-    //     for (const auto &[name, argItem]: orderedArgs)
-    //     {
-    //         originalArgs.push_back({name, argItem.getVal()});
-    //         halfProcessedArgs.push_back(raVal(argItem));
-    //     }
-    //     // 查找调用的函数符号
-    //     std::shared_ptr<FunctionSymbol> funcSymbol = nullptr;
-    //     node.getLeftNode()->acceptVisitor(*this);
-    //     const auto &funcNameOpItem = rPopOpItem();
-    //     std::string customTypeVid = funcNameOpItem.getRaVal(symbolTable);
-    //     if (const auto &belongingSymbol = funcNameOpItem.getBelonging())
-    //     {
-    //         if (const auto &referenceSymbol = getReferenceTargetSymbol(funcNameOpItem);
-    //             referenceSymbol && referenceSymbol->is(SymbolType::FUNCTION))
-    //         {
-    //             funcSymbol = std::static_pointer_cast<FunctionSymbol>(referenceSymbol);
-    //             if (!funcSymbol->getLabelMarkManager().isLifeCycleLabelMarked(LifeCycleLabel::STATIC) &&
-    //                 !funcSymbol->getLabelMarkManager().isLifeCycleLabelMarked(LifeCycleLabel::ORDINARY))
-    //             {
-    //                 fullProcessedArgs.push_back(belongingSymbol->getRaVal());
-    //             }
-    //         } else if (referenceSymbol && referenceSymbol->is(SymbolType::CLASS))
-    //         {
-    //             customTypeVid = referenceSymbol->getRaVal();
-    //         } else
-    //         {
-    //             fullProcessedArgs.push_back(belongingSymbol->getRaVal());
-    //         }
-    //     } else if (const auto &reference = getReferenceTargetSymbol(funcNameOpItem))
-    //     {
-    //         if (reference->is(SymbolType::CLASS))
-    //         {
-    //             customTypeVid = reference->getRaVal();
-    //         }
-    //     }
-    //     builtin::CallInfos callInfos {fullProcessedArgs, originalArgs, posArgs, namedArgs, node.getPos(), orderedArgs};
-    //     if (TypeLabelSymbol::isCustomType(customTypeVid))
-    //     {
-    //         const auto &classSymbol = TypeLabelSymbol::getCustomClassSymbol(customTypeVid);
-    //         funcSymbol = getCtorSymbol(classSymbol, posArgs, namedArgs, node.getPos(), orderedArgs);
-    //     }
-    //     else if (const auto &symbol = funcNameOpItem.getReferencedSymbol())
-    //     {
-    //         if (symbol->is(SymbolType::FUNCTION))
-    //         {
-    //             funcSymbol = std::static_pointer_cast<FunctionSymbol>(symbol);
-    //         } else if (symbol->is(SymbolType::VARIABLE))
-    //         {
-    //             if (const auto &refSymbol =
-    //                 getReferenceTargetSymbol(std::static_pointer_cast<VariableSymbol>(symbol));
-    //                 refSymbol && refSymbol->is(SymbolType::FUNCTION))
-    //             {
-    //                 funcSymbol = std::static_pointer_cast<FunctionSymbol>(refSymbol);
-    //             }
-    //         }
-    //     }
-    //     else if (const auto& [fst, snd] =
-    //         symbolTable.findByName(funcNameOpItem.getVal());
-    //         snd)
-    //     {
-    //         if (snd->is(SymbolType::FUNCTION))
-    //         {
-    //             funcSymbol = std::static_pointer_cast<FunctionSymbol>(snd);
-    //         } else if (snd->is(SymbolType::VARIABLE))
-    //         {
-    //             if (const auto &refSymbol =
-    //                 getReferenceTargetSymbol(std::static_pointer_cast<VariableSymbol>(snd));
-    //                 refSymbol && refSymbol->is(SymbolType::FUNCTION))
-    //             {
-    //                 funcSymbol = std::static_pointer_cast<FunctionSymbol>(refSymbol);
-    //             }
-    //         }
-    //     }
-    //     if (!funcSymbol)
-    //     {
-    //         if (const auto &funcNameSymbol = getSymbolFromOpItem(funcNameOpItem);
-    //             !funcNameSymbol)
-    //         {
-    //             throw RCCCompilerError::symbolNotFoundError(node.getPos().toString(), getCodeLine(node.getPos()),
-    //                 funcNameOpItem.toString(), "", {});
-    //         }
-    //         else if (const auto &funcType = getTypeLabelFromSymbol(funcNameSymbol);
-    //             funcType->is("func"))
-    //         {
-    //             raCodeBuilder << ri::CALL(funcNameSymbol->getRaVal(), halfProcessedArgs);
-    //         } else if (funcType->is("funi"))
-    //         {
-    //             pushTemOpVarItemWithRecord(node.getPos(), getBuiltinTypeSymbol(Pos::UNKNOW_POS, B_ANY));
-    //             raCodeBuilder << ri::IVOK(funcNameSymbol->getRaVal(), halfProcessedArgs, topOpRaVal());
-    //         } else
-    //         {
-    //             throw RCCCompilerError::typeMissmatchError(node.getPos().toString(), getCodeLine(node.getPos()),
-    //                 "It is not clear whether the called function has a return value.",
-    //                 getListFormatString({"func", "funi"}), funcType->getVal(), {
-    //                 "Please ensure that the called function can clearly indicate whether there is a return value."});
-    //         }
-    //         return;
-    //     }
-    //     const auto &parameters = funcSymbol->getParameters();
-    //     if (node.getRightNode()->getRealType() != NodeType::RANGER)
-    //     {
-    //         throw RCCCompilerError::typeMissmatchError(node.getRightNode()->getPos().toString(), getCodeLine(node.getRightNode()->getPos()),
-    //             "The type of the right node of the " + getNodeTypeFormatName(NodeType::CALL) + " must be the "
-    //             + getNodeTypeFormatName(NodeType::RANGER) + ".",
-    //             getNodeTypeFormatName(NodeType::RANGER), getNodeTypeFormatName(node.getRightNode()->getRealType()),
-    //             {});
-    //     }
-    //     for (const auto &param : parameters)
-    //     {
-    //         if (param->getParamType() == ParamType::PARAM_POSITIONAL || param->getParamType() == ParamType::PARAM_KEYWORD) {
-    //             if (const auto &it = namedArgs.find(param->getVal());
-    //                it != namedArgs.end())
-    //             {
-    //                 fullProcessedArgs.push_back(it->second.getRaVal(symbolTable));
-    //                 namedArgs.erase(it);
-    //             } else if (posArgs.size() > 0)
-    //             {
-    //                 if (!checkTypeMatch(param, posArgs.front()))
-    //                 {
-    //                     const auto &[fst, snd] = getTypesFromOpItem(posArgs.front());
-    //                     throw RCCCompilerError::typeMissmatchError(node.getPos().toString(),
-    //                         getCodeLine(node.getPos()),
-    //                         std::vector{
-    //                             "Error symbol: " + param->toString(),
-    //                             "Type mismatched value: " + posArgs.front().toString()
-    //                         }, param->getTypeLabel()->toString(),
-    //                         fst ? fst->toString() : snd ? snd->toString() : RCC_UNKNOWN_CONST,
-    //                         {"You can try using the `any` type to set the parameter types more loosely."});
-    //                 }
-    //                 fullProcessedArgs.push_back(posArgs.front().getRaVal(symbolTable));
-    //                 posArgs.pop();
-    //             } else if (param->getDefaultValue().has_value())
-    //             {
-    //                 fullProcessedArgs.push_back(param->getDefaultValue().value());
-    //             } else
-    //             {
-    //                 throw RCCCompilerError::argumentError(node.getPosStr(), getCodeLine(node.getPos()),
-    //                     {
-    //                         "The number of arguments passed when calling the function does not match.",
-    //                         "Function position: " + (builtin::isPureBuiltinFunction(funcSymbol->getVal()) ?
-    //                         "'" + funcSymbol->getVal() + "' is a pure built-in function, and its position cannot be viewed."
-    //                         : funcSymbol->getPos().toString()),
-    //                         "                 | " + (builtin::isPureBuiltinFunction(funcSymbol->getVal()) ?
-    //                             "The definition of pure built-in function cannot be viewed." : getCodeLine(funcSymbol->getPos())),
-    //                         "Function params: " + getListFormatString([parameters]
-    //                         {
-    //                             StringVector result{};
-    //                             for (const auto &item : parameters)
-    //                             {
-    //                                 result.push_back(item->toString());
-    //                             }
-    //                             return result;
-    //                         }()),
-    //                         "Arguments passed: " + getListFormatString([orderedArgs]
-    //                         {
-    //                             StringVector result{};
-    //                             for (const auto& item : orderedArgs | std::views::values)
-    //                             {
-    //                                 result.push_back(item.toString());
-    //                             }
-    //                             return result;
-    //                         }()),
-    //                         "Missing param: " + param->toString()
-    //                     }, {
-    //                         "Please ensure that the number of parameters passed in when calling the function matches."
-    //                     });
-    //             }
-    //         } else if (param->getParamType() == ParamType::PARAM_VAR_LEN_POSITIONAL)
-    //         {
-    //             std::vector<std::string> items;
-    //             items.reserve(posArgs.size());
-    //             bool needAutoPack = true;
-    //             while (!posArgs.empty())
-    //             {
-    //                 const auto& argItem = posArgs.front();
-    //                 // 先检查类型匹配
-    //                 if (!checkTypeMatch(param, argItem))
-    //                 {
-    //                     const auto &[fst, snd] = getTypesFromOpItem(argItem);
-    //                     throw RCCCompilerError::typeMissmatchError(node.getPos().toString(),
-    //                         getCodeLine(node.getPos()),
-    //                         std::vector{
-    //                             "Error symbol: " + param->toString(),
-    //                             "Type mismatched value: " + argItem.toString()
-    //                         }, param->getTypeLabel()->toString(),
-    //                         fst ? fst->toString() : snd ? snd->toString() : RCC_UNKNOWN_CONST,
-    //                         {"You can try using the `any` type to set the parameter types more loosely."});
-    //                 }
-    //                 // 根据不同类型处理参数
-    //                 std::string item;
-    //                 switch (argItem.getType())
-    //                 {
-    //                 case OpItemType::IDENTIFIER:
-    //                     {
-    //                         const auto& argSymbol = getSymbolFromOpItem(argItem);
-    //                         checkExists(argItem, node.getPos());
-    //                         item = argSymbol->getRaVal();
-    //                         if (argSymbol->is(SymbolType::VARIABLE))
-    //                         {
-    //                             if (const auto &varSymbol = std::static_pointer_cast<VariableSymbol>(argSymbol);
-    //                                 varSymbol->getTypeLabel()->is("series") ||
-    //                                 varSymbol->getValueType()->is("series"))
-    //                             {
-    //                                 // 当前的情况是正在处理被调用函数的变长参数，传递的参数是 series 类型的变量
-    //                                 // 在此情况下，编译器会将此变量视为用户手动打包的参数，因此不会进行自动打包，而是直接作为打包后的参数传递给被调用函数的变长参数。
-    //                                 needAutoPack = false;
-    //                                 pushTemOpVarItemWithRecord(Pos::UNKNOW_POS, TypeLabelSymbol::listTypeSymbol(Pos::UNKNOW_POS, curScopeLevel()));
-    //                                 raCodeBuilder
-    //                                 << ri::COPY(raVal(posArgs.front()), topOpRaVal())
-    //                                 << ri::TP_SET(topOpItem().getValueType()->getRaVal(), topOpRaVal());
-    //                             }
-    //                         }
-    //                     } break;
-    //                 case OpItemType::LITERAL_VALUE:
-    //                     {
-    //                         item = raVal(argItem);
-    //                     } break;
-    //                 default: throw RCCCompilerError::typeMissmatchError(node.getPos().toString(), getCodeLine(node.getPos()),
-    //                     "The type of the parameter operation item passed to the function call is incorrect.",
-    //                     getListFormatString({
-    //                         opItemTypeToFormatString(OpItemType::IDENTIFIER),
-    //                         opItemTypeToFormatString(OpItemType::LITERAL_VALUE)
-    //                     }), opItemTypeToFormatString(argItem.getType()), {
-    //                         "Please ensure that the types of the arguments passed to the function call are legal."
-    //                     });
-    //                 }
-    //                 items.push_back(std::move(item));
-    //                 posArgs.pop();
-    //             }
-    //             if (needAutoPack) {
-    //                 pushTemOpVarItemWithRecord(node.getPos());
-    //                 raCodeBuilder
-    //                 << ri::TP_SET(TypeLabelSymbol::listTypeSymbol(node.getPos(), symbolTable.curScopeLevel())->getRaVal(),
-    //                     topOpRaVal());
-    //                 if (!items.empty())
-    //                 {
-    //                     raCodeBuilder << ri::ITER_APND(items, topOpRaVal());
-    //                 }
-    //             }
-    //             fullProcessedArgs.push_back(rPopOpItemRaVal());
-    //         } else if (param->getParamType() == ParamType::PARAM_VAR_LEN_KEYWORD)
-    //         {
-    //             std::vector<std::string> items {};
-    //             for (const auto &[name, opItem]: namedArgs)
-    //             {
-    //                 if (!checkTypeMatch(param, opItem))
-    //                 {
-    //                     const auto &[fst, snd] = getTypesFromOpItem(opItem);
-    //                     throw RCCCompilerError::typeMissmatchError(node.getPos().toString(),
-    //                         getCodeLine(node.getPos()),
-    //                         std::vector{
-    //                             "Error symbol: " + param->toString(),
-    //                             "Type mismatched value: " + opItem.toString()
-    //                         }, param->getTypeLabel()->toString(),
-    //                         fst ? fst->toString() : snd ? snd->toString() : RCC_UNKNOWN_CONST,
-    //                         {"You can try using the `any` type to set the parameter types more loosely."});
-    //                 }
-    //                 pushTemOpVarItemWithRecord(node.getPos());
-    //                 raCodeBuilder
-    //                 << ri::PAIR_SET(StringManager::toStringFormat(name), opItem.getRaVal(symbolTable), topOpRaVal());
-    //                 items.push_back(rPopOpItemRaVal());
-    //             }
-    //             pushTemOpVarItemWithRecord(node.getPos());
-    //             raCodeBuilder
-    //             << ri::TP_SET(TypeLabelSymbol::dictTypeSymbol(node.getPos(), symbolTable.curScopeLevel())->getRaVal(),
-    //                 topOpRaVal());
-    //             if (!items.empty())
-    //             {
-    //                 raCodeBuilder << ri::ITER_APND(items, topOpRaVal());
-    //             }
-    //             fullProcessedArgs.push_back(rPopOpItemRaVal());
-    //         }
-    //     }
-    //     // 检查是否是 builtin function
-    //     if ((funcSymbol->isBuiltinType(TypeOfBuiltin::BUILTIN) ||
-    //         funcSymbol->isBuiltinType(TypeOfBuiltin::PURE_BUILTIN)) &&
-    //         builtin::isBuiltin(funcSymbol->getVal()))
-    //     {
-    //         callInfos.processedArgs = fullProcessedArgs;
-    //         const auto &raCode = builtin::callBuiltinFunction(
-    //             *this, funcSymbol->getVal(), callInfos);
-    //         raCodeBuilder << raCode;
-    //     } else
-    //     {
-    //         if (funcSymbol->hasReturnValue())
-    //         {
-    //             pushTemOpVarItemWithRecord(node.getPos(), funcSymbol->getReturnType());
-    //             raCodeBuilder << ri::IVOK(funcSymbol->getRaVal(), fullProcessedArgs, topOpRaVal());
-    //         } else
-    //         {
-    //             raCodeBuilder
-    //             << ri::CALL(funcSymbol->getRaVal(), fullProcessedArgs);
-    //         }
-    //     }
-    // }
-
     void CompileVisitor::visitProgramNode(ProgramNode& node)
     {
         auto errorPos = Pos::UNKNOW_POS;
@@ -2398,10 +2066,6 @@ namespace ast
                 fileRecord = errorFilePath;
             }
             e.addTraceInfo(RCCError::makeTraceInfo(
-                fileRecord,
-                errorFilePath,
-                getPosStrFromFilePath(errorFilePath),
-                makeFileIdentStr(errorFilePath),
                 listJoin(e.getTraceInfo()),
                 errorPos.toString(),
                 getCodeLine(errorPos),
@@ -2725,9 +2389,9 @@ namespace ast
         {
             for (const auto& statement : node.getBodyExpressions())
             {
-                errorPos = statement->getPos();
-                setCurrentPos(statement->getPos());
-                annotatePos(statement->getPos());
+                errorPos = statement->getMainToken().getPos();
+                setCurrentPos(errorPos);
+                annotatePos(errorPos);
                 statement->acceptVisitor(*this);
                 resetCurrentPos();
             }
@@ -2740,10 +2404,6 @@ namespace ast
                 fileRecord = errorFilePath;
             }
             e.addTraceInfo(RCCError::makeTraceInfo(
-                fileRecord,
-                errorFilePath,
-                getPosStrFromFilePath(errorFilePath),
-                makeFileIdentStr(errorFilePath),
                 listJoin(e.getTraceInfo()),
                 errorPos.toString(),
                 getCodeLine(errorPos),
@@ -2757,55 +2417,14 @@ namespace ast
         }
     }
 
-    void CompileVisitor::visitFunctionDefinitionNode(FunctionDefinitionNode& node)
+    void CompileVisitor::processFunctionParams(const std::vector<std::shared_ptr<ExpressionNode>>& paramItems, std::vector<std::shared_ptr<ParameterSymbol>> &paramSymbols, std::vector<std::string> &paramIdents, std::vector<std::shared_ptr<LabelSymbol>> &paramLabelDes)
     {
-        enterScope(ScopeType::FUNCTION);
-        if (node.getCallNode()->getRealType() != NodeType::CALL)
-        {
-            throw RCCCompilerError::compilerError(node.getPos().toString(), getCodeLine(node.getPos()),
-                                                  "[void CompileVisitor::visitFunctionDefinitionNode] node.getCallNode()->getRealType() !="
-                                                  " NodeType::CALL  // true, " + getNodeTypeName(
-                                                      node.getCallNode()->getRealType()),
-                                                  "There is a type error in the function call node, which may be caused by an error in the parser"
-                                                  " when constructing the function call node.");
-        }
-        const auto& callNode = std::static_pointer_cast<FunctionCallNode>(
-            node.getCallNode());
-        callNode->getLeftNode()->acceptVisitor(*this);
-        const auto& funcId = VarID(rPopOpItemVal(), node.getPos().getFileField(), curScopeField(), curScopeLevel());
-        auto funcNameOpItem = OpItem(OpItemType::IDENTIFIER, TypeLabelSymbol::anyTypeSymbol(callNode->getPos(),
-                                         curScopeLevel()), funcId.getNameField(), funcId.getVid(),
-                                     nullptr, nullptr);
-        if (funcNameOpItem.getReferencedSymbol() && !isProcessingSymbol())
-        {
-            const auto& anyTypeLabel = getBuiltinTypeSymbol(node.getPos(), B_ANY);
-            const auto& funcNameVarID = VarID(funcNameOpItem.getVal(), node.getPos().getFileField(), curScopeField(),
-                                              curScopeLevel());
-            funcNameOpItem = OpItem(
-                OpItemType::IDENTIFIER,
-                anyTypeLabel,
-                funcNameOpItem.getVal(),
-                funcNameVarID.getVid(),
-                anyTypeLabel,
-                nullptr);
-        }
-        std::shared_ptr<ExpressionNode> paramRangerNode = callNode->getRightNode();
-        if (callNode->getRightNode()->getRealType() == NodeType::ANON_FUNCTION_DEFINITION)
-        {
-            const auto& paramNode =
-                std::static_pointer_cast<AnonFunctionDefinitionNode>(callNode->getRightNode());
-            paramRangerNode = paramNode->getParamNode();
-        }
-        const auto& paramNode = std::static_pointer_cast<ParenRangerNode>(paramRangerNode);
-        const auto& paramItems = visitParallelNode(paramNode->getRangerNode());
-        std::vector<std::shared_ptr<ParameterSymbol>> paramSymbols{};
-        std::vector<std::string> paramIdents{};
         for (const auto& item : paramItems)
         {
+            bool isPosVarParam = false, isKWVarParam = false, isValidItem = false;
             auto paramType = ParamType::PARAM_POSITIONAL;
             auto param = item;
             std::optional<OpItem> defaultValue = std::nullopt;
-            bool isValidItem = false;
             if (item->getRealType() == NodeType::ASSIGNMENT)
             {
                 const auto& [ident, value] =
@@ -2825,12 +2444,14 @@ namespace ast
                     param = unaryParam->getRightNode();
                     paramType = ParamType::PARAM_VAR_LEN_POSITIONAL;
                     isValidItem = true;
+                    isPosVarParam = true;
                 }
                 else if (unaryParam->getOpToken().getType() == TokenType::TOKEN_DOUBLE_STAR)
                 {
                     param = unaryParam->getRightNode();
                     paramType = ParamType::PARAM_VAR_LEN_KEYWORD;
                     isValidItem = true;
+                    isKWVarParam = true;
                 }
             }
             else if (item->getRealType() == NodeType::IDENTIFIER)
@@ -2906,23 +2527,77 @@ namespace ast
                                    labels,
                                    symbolTable.curScopeLevel(),
                                    true), false);
+            paramLabelDes.push_back(isPosVarParam ? TypeLabelSymbol::varArgTypeSymbol(Pos::UNKNOW_POS, curScopeLevel()) :
+                                        isKWVarParam ? TypeLabelSymbol::kwVarArgTypeSymbol(Pos::UNKNOW_POS, curScopeLevel()) :
+                                        paramSymbol->getTypeLabel());
         }
+    }
+
+    void CompileVisitor::visitFunctionDefinitionNode(FunctionDefinitionNode& node)
+    {
+        enterScope(ScopeType::FUNCTION);
+        if (node.getCallNode()->getRealType() != NodeType::CALL)
+        {
+            throw RCCCompilerError::compilerError(node.getPos().toString(), getCodeLine(node.getPos()),
+                                                  "[void CompileVisitor::visitFunctionDefinitionNode] node.getCallNode()->getRealType() !="
+                                                  " NodeType::CALL  // true, " + getNodeTypeName(
+                                                      node.getCallNode()->getRealType()),
+                                                  "There is a type error in the function call node, which may be caused by an error in the parser"
+                                                  " when constructing the function call node.");
+        }
+        const auto& callNode = std::static_pointer_cast<FunctionCallNode>(
+            node.getCallNode());
+        callNode->getLeftNode()->acceptVisitor(*this);
+        const auto& funcId = VarID(rPopOpItemVal(), node.getPos().getFileField(), curScopeField(), curScopeLevel());
+        auto funcNameOpItem = OpItem(OpItemType::IDENTIFIER, TypeLabelSymbol::anyTypeSymbol(callNode->getPos(),
+                                         curScopeLevel()), funcId.getNameField(), funcId.getVid(),
+                                     nullptr, nullptr);
+        if (funcNameOpItem.getReferencedSymbol() && !isProcessingSymbol())
+        {
+            const auto& anyTypeLabel = getBuiltinTypeSymbol(node.getPos(), B_ANY);
+            const auto& funcNameVarID = VarID(funcNameOpItem.getVal(), node.getPos().getFileField(), curScopeField(),
+                                              curScopeLevel());
+            funcNameOpItem = OpItem(
+                OpItemType::IDENTIFIER,
+                anyTypeLabel,
+                funcNameOpItem.getVal(),
+                funcNameVarID.getVid(),
+                anyTypeLabel,
+                nullptr);
+        }
+        std::shared_ptr<ExpressionNode> paramRangerNode = callNode->getRightNode();
+        if (callNode->getRightNode()->getRealType() == NodeType::ANON_FUNCTION_DEFINITION)
+        {
+            const auto& paramNode =
+                std::static_pointer_cast<AnonFunctionDefinitionNode>(callNode->getRightNode());
+            paramRangerNode = paramNode->getParamNode();
+        }
+        const auto& paramNode = std::static_pointer_cast<ParenRangerNode>(paramRangerNode);
+        const auto& paramItems = visitParallelNode(paramNode->getRangerNode());
+        std::vector<std::shared_ptr<ParameterSymbol>> paramSymbols{};
+        std::vector<std::string> paramIdents{};
+        std::vector<std::shared_ptr<LabelSymbol>> paramLabelDes {};
+        processFunctionParams(paramItems, paramSymbols, paramIdents, paramLabelDes);
         const auto& labels = processLabelNodes(node.getLabelNodes());
         std::shared_ptr<FunctionSymbol> functionSymbol = nullptr;
         std::shared_ptr<ClassSymbol> classSymbol = nullptr;
         auto createFunctionSymbol = [&](const FunctionType& funcType)
         {
-            return std::make_shared<FunctionSymbol>(
+            const auto &funcSymbol = std::make_shared<FunctionSymbol>(
                 std::make_shared<FunctionDefinitionNode>(node),
-                node.getPos(),
-                funcNameOpItem.getVal(),
-                funcType == FunctionType::METHOD ? funcId.getVid() : funcNameOpItem.getRaVal(symbolTable),
-                labels,
-                paramSymbols,
-                curScopeLevel() - 1,
-                TypeOfBuiltin::ORDINARY,
-                funcType
+                node.getPos(), funcNameOpItem.getVal(),
+                funcType == FunctionType::METHOD ?
+                funcId.getVid() : funcNameOpItem.getRaVal(symbolTable),
+                labels, paramSymbols, nullptr,
+                curScopeLevel() - 1, TypeOfBuiltin::ORDINARY, funcType
             );
+            const auto &signature = funcSymbol->hasReturnValue() ?
+                TypeLabelSymbol::funiTypeSymbol(Pos::UNKNOW_POS, curScopeLevel()) :
+                TypeLabelSymbol::funcTypeSymbol(Pos::UNKNOW_POS, curScopeLevel());
+            signature->appendLabelDes(paramLabelDes);
+            if (funcSymbol->hasReturnValue()) signature->appendLabelDes({funcSymbol->getReturnType()});
+            funcSymbol->setSignature(signature);
+            return funcSymbol;
         };
         if (isProcessingSymbol())
         {
@@ -3025,8 +2700,23 @@ namespace ast
         if (const auto& label = node.getLabel();
             TypeLabelSymbol::isTypeLabel(label))
         {
-            symbolTable.insert(std::make_shared<TypeLabelSymbol>(node.getPos(),
-                                                                 label, symbolTable.curScopeLevel()), false);
+            const auto &labelSymbol = std::make_shared<TypeLabelSymbol>(
+                node.getPos(), label, curScopeLevel());
+            for (const auto &labelDesNodes = node.getLabelDesNodes();
+                const auto &desListNode : labelDesNodes)
+            {
+                std::vector<std::shared_ptr<LabelNode>> desLabelNodes{};
+                for (const auto &labelNode: visitParallelNode(desListNode->getBodyNode()))
+                {
+                    if (labelNode->getType() == NodeType::LABEL)
+                    {
+                        desLabelNodes.push_back(std::static_pointer_cast<LabelNode>(labelNode));
+                    }
+                }
+                labelSymbol->appendLabelDes(processLabelNodesOnOrder(desLabelNodes));
+            }
+            labelSymbol->handleLabelDesRecorded();
+            symbolTable.insert(labelSymbol, true);
             // ToDo: type label
         }
         else
@@ -3095,7 +2785,10 @@ namespace ast
 
     void CompileVisitor::visitConditionNode(ConditionNode& node)
     {
-        enterScope(ScopeType::CONDITION);
+        const auto & [nameMapScope, ridMapScope]
+            = symbolTable.currentScopeCopied();
+        const auto &nameMapScopeRecord = std::static_pointer_cast<SymbolTable>(nameMapScope.copySelf());
+        const auto &ridMapScopeRecord = std::static_pointer_cast<SymbolTable>(ridMapScope.copySelf());
         // 条件语句的结束 SET 标签
         const auto& endSetLabel = std::make_shared<OpItem>(
             OpItemType::SET_LABEL,
@@ -3104,10 +2797,13 @@ namespace ast
         for (const auto& branchNode : node.getBranchNodes())
         {
             pushOpItem(endSetLabel);
+            enterScope(ScopeType::CONDITION);
             branchNode->acceptVisitor(*this);
+            exitScope(ScopeType::CONDITION);
+            symbolTable.currentNameMapScope() = *std::static_pointer_cast<SymbolTable>(nameMapScopeRecord->copySelf());
+            symbolTable.currentRIDMapScope() = *std::static_pointer_cast<SymbolTable>(ridMapScopeRecord->copySelf());
         }
         raCodeBuilder << ri::SET(endSetLabel->getRaVal(symbolTable));
-        exitScope(ScopeType::CONDITION);
     }
 
     void CompileVisitor::visitLoopNode(LoopNode& node)
@@ -3167,7 +2863,7 @@ namespace ast
 
     void CompileVisitor::visitPassExpressionNode(PassExpressionNode& node)
     {
-        pass("To visit " + getNodeTypeName(node.getRealType()) + " type node.");
+        pass();
     }
 
     void CompileVisitor::visitEncapsulatedExpressionNode(EncapsulatedExpressionNode& node)
@@ -3195,12 +2891,12 @@ namespace ast
 
     void CompileVisitor::visitReturnExpressionNode(ReturnExpressionNode& node)
     {
-        if (topProcessingSymbolType() != SymbolType::FUNCTION)
+        if (!isProcessingSymbol() || topProcessingSymbolType() != SymbolType::FUNCTION)
         {
             throw RCCCompilerError::semanticError(node.getPosStr(), getCodeLine(node.getPos()),
                                                   StringVector{
                                                       "Using the `ret` return statement outside of a function scope is incorrect.",
-                                                      "Procession symbol: " + topProcessingSymbol()->toString(),
+                                                      "Procession symbol: " + (isProcessingSymbol() ? topProcessingSymbol()->toString() : "[null]"),
                                                       "Current scope field: " + scopeTypeToFormatString(
                                                           scopeTypeStack.top())
                                                   },
@@ -3256,7 +2952,13 @@ namespace ast
                     getCodeLine(node.getPos()),
                     "Return value type does not match function return value type.",
                     funcSymbol->getReturnType()->toString(),
-                    opItemTypeToFormatString(returnVal.getType()),
+                    [this, returnVal]
+                    {
+                        const auto &[tl, vl] = getTypesFromOpItem(returnVal);
+                        if (tl && tl->isNot("any")) return tl->toString();
+                        if (vl) return vl->toString();
+                        return returnVal.toString();
+                    }(),
                     {
                         "Change the return value to match the function's return type: " + funcSymbol->getReturnType()->
                         toString(),
@@ -3302,117 +3004,12 @@ namespace ast
         enterScope(ScopeType::ANONYMOUS);
         std::vector<std::shared_ptr<ParameterSymbol>> paramSymbols{};
         std::vector<std::string> paramIdents{};
+        std::vector<std::shared_ptr<LabelSymbol>> paramLabelDes{};
         if (node.getParamNode())
         {
             const auto& paramNode = std::static_pointer_cast<ParenRangerNode>(node.getParamNode());
-            for (const auto& paramItems = visitParallelNode(paramNode->getRangerNode());
-                 const auto& item : paramItems)
-            {
-                auto paramType = ParamType::PARAM_POSITIONAL;
-                auto param = item;
-                std::optional<OpItem> defaultValue = std::nullopt;
-                bool isValidItem = false;
-                if (item->getRealType() == NodeType::ASSIGNMENT)
-                {
-                    const auto& [ident, value] =
-                        std::static_pointer_cast<AssignmentNode>(item)->getAssignPair();
-                    param = ident;
-                    value->acceptVisitor(*this);
-                    defaultValue = rPopOpItem();
-                    paramType = ParamType::PARAM_KEYWORD;
-                    isValidItem = true;
-                }
-                else if (item->getRealType() == NodeType::UNARY)
-                {
-                    if (const auto& unaryParam =
-                            std::static_pointer_cast<UnaryExpressionNode>(item);
-                        unaryParam->getOpToken().getType() == TokenType::TOKEN_STAR)
-                    {
-                        param = unaryParam->getRightNode();
-                        paramType = ParamType::PARAM_VAR_LEN_POSITIONAL;
-                        isValidItem = true;
-                    }
-                    else if (unaryParam->getOpToken().getType() == TokenType::TOKEN_DOUBLE_STAR)
-                    {
-                        param = unaryParam->getRightNode();
-                        paramType = ParamType::PARAM_VAR_LEN_KEYWORD;
-                        isValidItem = true;
-                    }
-                }
-                else if (item->getRealType() == NodeType::IDENTIFIER)
-                {
-                    isValidItem = true;
-                }
-                if (!isValidItem)
-                {
-                    throw RCCCompilerError::typeMissmatchError(item->getPos().toString(), getCodeLine(item->getPos()),
-                                                               "Error node: " + item->toString(),
-                                                               getListFormatString({
-                                                                   getNodeTypeFormatName(NodeType::IDENTIFIER),
-                                                                   getNodeTypeFormatName(NodeType::ASSIGNMENT),
-                                                                   getNodeTypeFormatName(NodeType::UNARY)
-                                                               }),
-                                                               getNodeTypeFormatName(item->getRealType()), {
-                                                                   "The node types of the parameter node only include the following four types: "
-                                                                   + getListFormatString(
-                                                                       {
-                                                                           getNodeTypeFormatName(NodeType::IDENTIFIER),
-                                                                           getNodeTypeFormatName(NodeType::ASSIGNMENT),
-                                                                           getNodeTypeFormatName(NodeType::UNARY)
-                                                                       }),
-                                                                   getNodeTypeFormatName(NodeType::IDENTIFIER) +
-                                                                   " param form: `arg: any`.",
-                                                                   getNodeTypeFormatName(NodeType::ASSIGNMENT) +
-                                                                   " param form: `arg: any = default_value`.",
-                                                                   getNodeTypeFormatName(NodeType::UNARY) +
-                                                                   " param form: `*args` or `**kwargs`."
-                                                               });
-                }
-                const auto& tempParamNode = std::static_pointer_cast<IdentifierNode>(param);
-                tempParamNode->acceptVisitor(*this);
-                const auto& paramOpItem = rPopOpItem();
-                paramIdents.push_back(paramOpItem.getRaVal(symbolTable));
-                std::unordered_set<std::shared_ptr<LabelSymbol>> labels = processLabelNodes(tempParamNode->getLabels());
-                const auto& paramSymbol = std::make_shared<ParameterSymbol>(
-                    paramType,
-                    tempParamNode->getPos(),
-                    paramOpItem.getVal(),
-                    paramOpItem.getRaVal(symbolTable),
-                    labels,
-                    std::nullopt,
-                    symbolTable.curScopeLevel());
-                if (defaultValue.has_value())
-                {
-                    if (!checkTypeMatch(paramSymbol, defaultValue.value()))
-                    {
-                        const auto& [fst, snd] = getTypesFromOpItem(defaultValue.value());
-                        throw RCCCompilerError::typeMissmatchError(paramSymbol->getPos().toString(),
-                                                                   getCodeLine(paramSymbol->getPos()),
-                                                                   std::vector{
-                                                                       "Error symbol: " + paramSymbol->toString(),
-                                                                       "Type mismatched value: " + defaultValue.value().
-                                                                       toString()
-                                                                   }, paramSymbol->getTypeLabel()->toString(),
-                                                                   fst
-                                                                       ? fst->toString()
-                                                                       : snd
-                                                                       ? snd->toString()
-                                                                       : RCC_UNKNOWN_CONST,
-                                                                   {
-                                                                       "You can try using the `any` type to set the parameter types more loosely."
-                                                                   });
-                    }
-                    paramSymbol->setDefaultValue(defaultValue.value().getRaVal(symbolTable));
-                }
-                paramSymbols.push_back(paramSymbol);
-                symbolTable.insert(std::make_shared<VariableSymbol>(
-                                       item->getPos(),
-                                       paramOpItem.getVal(),
-                                       paramOpItem.getRaVal(symbolTable),
-                                       labels,
-                                       symbolTable.curScopeLevel(),
-                                       true), false);
-            }
+            const auto& paramItems = visitParallelNode(paramNode->getRangerNode());
+            processFunctionParams(paramItems, paramSymbols, paramIdents, paramLabelDes);
         }
         const auto& labels = processLabelNodes(node.getLabelNodes());
         std::shared_ptr<FunctionSymbol> functionSymbol = nullptr;
@@ -3421,16 +3018,20 @@ namespace ast
         {
             const VarID anonFuncVarID(ANONYMOUS_FUNCTION_PREFIX + getNewTempVarName(), node.getPos().getFileField(),
                                       curScopeField(), curScopeLevel());
-            return std::make_shared<FunctionSymbol>(
+            const auto &funcSymbol = std::make_shared<FunctionSymbol>(
                 std::make_shared<AnonFunctionDefinitionNode>(node),
-                node.getPos(),
-                anonFuncVarID.getNameField(),
-                anonFuncVarID.getVid(),
-                labels,
-                paramSymbols,
-                curScopeLevel() - 1,
+                node.getPos(), anonFuncVarID.getNameField(),
+                anonFuncVarID.getVid(), labels,
+                paramSymbols, nullptr, curScopeLevel() - 1,
                 TypeOfBuiltin::ORDINARY, funcType
             );
+            const auto &signature = funcSymbol->hasReturnValue() ?
+                TypeLabelSymbol::funiTypeSymbol(Pos::UNKNOW_POS, curScopeLevel()) :
+                TypeLabelSymbol::funcTypeSymbol(Pos::UNKNOW_POS, curScopeLevel());
+            signature->appendLabelDes(paramLabelDes);
+            if (funcSymbol->hasReturnValue()) signature->appendLabelDes({funcSymbol->getReturnType()});
+            funcSymbol->setSignature(signature);
+            return funcSymbol;
         };
         functionSymbol = createFunctionSymbol(FunctionType::ANONYMOUS);
         symbolTable.insert(functionSymbol, false);
@@ -3546,10 +3147,6 @@ namespace ast
                 fileRecord = errorFilePath;
             }
             e.addTraceInfo(RCCError::makeTraceInfo(
-                fileRecord,
-                errorFilePath,
-                getPosStrFromFilePath(errorFilePath),
-                makeFileIdentStr(errorFilePath),
                 listJoin(e.getTraceInfo()),
                 errorPos.toString(),
                 getCodeLine(errorPos),
@@ -3632,14 +3229,27 @@ namespace ast
         for (const auto& varDef : node.getVarDefs())
         {
             varDef->getNameNode()->acceptVisitor(*this);
-            const auto& var = rPopOpItem();
+            if (const auto &varRefSymbol = topOpItem().getReferencedSymbol();
+                varRefSymbol && varRefSymbol->getScopeLevel() == curScopeLevel())
+            {
+                throw RCCCompilerError::symbolDuplicateError(varDef->getNameNode()->getPosStr(), getCodeLine(currentPos()),
+                                                             varRefSymbol->toString(), {
+                    "Pre-defined pos: " + varRefSymbol->getPos().toString()
+                }, {});
+            } else if (varRefSymbol)
+            {
+                const auto &anyTypeLabel = getBuiltinTypeSymbol(Pos::UNKNOW_POS, B_ANY);
+                pushIdentItem({rPopOpItem().getVal(), varDef->getNameNode()->getPos().getFileField(), curScopeField(), curScopeLevel()},
+                    anyTypeLabel, anyTypeLabel, nullptr);
+            }
+            auto var = rPopOpItem();
             varIDs.push_back(var);
-            vids.push_back(var.getRaVal(symbolTable));
+            vids.push_back(var.getRaVal(symbolTable, false));
             const auto labels = processLabelNodes(varDef->getLabelNodes());
             symbolTable.insert(std::make_shared<VariableSymbol>(
                                    varDef->getNameNode()->getPos(),
                                    var.getVal(),
-                                   var.getRaVal(symbolTable),
+                                   vids.back(),
                                    labels,
                                    symbolTable.curScopeLevel()), false);
             if (varDef->getValueNode())
@@ -3663,7 +3273,9 @@ namespace ast
             if (values[i].has_value())
             {
                 const auto& value = values[i].value();
-                if (!checkTypeMatch(symbol->getTypeLabel(), value.getTypeLabel()))
+                if (!checkTypeMatch(symbol->getTypeLabel(),
+                                    getDefiniteTypeLabelSymbolFromOpItem(value),
+                                    false))
                 {
                     throw RCCCompilerError::typeMissmatchError(
                         node.getPosStr(),
@@ -3718,7 +3330,7 @@ namespace ast
         {
             std::string value{};
             const auto& valueItem = rPopOpItem();
-            if (!checkTypeMatch(identSymbol->getTypeLabel(), valueItem.getTypeLabel()))
+            if (!checkTypeMatch(identSymbol->getTypeLabel(), valueItem.getTypeLabel(), true))
             {
                 throw RCCCompilerError::typeMissmatchError(
                     node.getPosStr(),

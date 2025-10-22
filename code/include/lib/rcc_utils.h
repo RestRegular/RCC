@@ -10,8 +10,8 @@
 #include <vector>
 #include <unordered_set>
 #include <sstream>
-#include <cstdint>
 #include <list>
+#include <memory>
 
 namespace utils {
 
@@ -30,6 +30,7 @@ namespace utils {
         [[nodiscard]] virtual std::string toJsonString() const;
         [[nodiscard]] virtual std::string hashCode();
         [[nodiscard]] virtual std::string uniqueId();
+        [[nodiscard]] virtual std::shared_ptr<Object> copySelf() const;
         virtual ~Object() = default;
     };
 
@@ -171,6 +172,7 @@ namespace utils {
     std::vector<std::string> readFileToLines(const std::string &path);
     bool writeFile(const std::string &path, const std::string &content);
     bool appendFile(const std::string &path, const std::string &content);
+    std::string getLineFromFile(const std::string& filePath, size_t lineNum);
 
     // === Œª÷√–≈œ¢ ===
     struct Pos : Object {
@@ -194,6 +196,7 @@ namespace utils {
         void setColumn(size_t column_);
         void setOffset(size_t offset_);
         void setFilepath(const std::string &filepath_);
+        bool compare(const Pos &other) const;
     protected:
         size_t line{0};
         size_t column{0};
@@ -402,7 +405,17 @@ namespace utils {
         return vec.empty() ? -1 : vec.size() - 1;
     }
 
+    bool isDeveloperModel();
+
+    void setDeveloperModel(const bool &model = true);
+
     void pass(const std::string &annotation="");
+
+    void passes(const std::vector<std::string> &annotations);
+
+    void interruptWhen(const bool &condition = false, void (*handler) () = nullptr);
+
+    void interruptError(const std::function<void()> &detectCode, void (*handler) () = nullptr);
 
     std::string generateUniqueId(const std::string& str);
 

@@ -10,7 +10,18 @@ namespace builtin
     PureBuiltinFunction::PureBuiltinFunction(const bool& hasReturnValue, const std::string& name,
         const std::vector<std::shared_ptr<symbol::ParameterSymbol>>& params,
         const BuiltinFunc &call)
-            : _hasReturnValue(hasReturnValue), _name(name), _params(params), _call(call) {}
+            : _hasReturnValue(hasReturnValue), _name(name), _params(params), _call(call)
+    {
+        signature = hasReturnValue ?
+        symbol::TypeLabelSymbol::funiTypeSymbol(utils::Pos::UNKNOW_POS, 0) :
+        symbol::TypeLabelSymbol::funcTypeSymbol(utils::Pos::UNKNOW_POS, 0);
+        std::vector<std::shared_ptr<symbol::LabelSymbol>> labelDes {};
+        for (const auto &param: params)
+        {
+            labelDes.push_back(param->getTypeLabel());
+        }
+        signature->appendLastLabelDes(labelDes);
+    }
 
     bool PureBuiltinFunction::hasReturnValue() const
     {
@@ -20,6 +31,11 @@ namespace builtin
     std::string PureBuiltinFunction::getName() const
     {
         return _name;
+    }
+
+    std::shared_ptr<symbol::TypeLabelSymbol> PureBuiltinFunction::getSignature() const
+    {
+        return signature;
     }
 
     std::vector<std::shared_ptr<symbol::ParameterSymbol>> PureBuiltinFunction::getParams() const

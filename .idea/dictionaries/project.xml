@@ -3,12 +3,16 @@
     <words>
       <w>cbegin</w>
       <w>cend</w>
+      <w>cprint</w>
+      <w>ctext</w>
       <w>endlocal</w>
       <w>lowlevel</w>
+      <w>newrcc</w>
       <w>numstr</w>
       <w>optors</w>
       <w>racode</w>
       <w>rerror</w>
+      <w>riover</w>
       <w>rwarn</w>
       <w>setlocal</w>
       <w>sout</w>
