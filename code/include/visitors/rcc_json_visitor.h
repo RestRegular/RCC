@@ -15,7 +15,7 @@ namespace ast {
     public:
         explicit JsonVisitor();
 
-        bool saveJsonToFile(const std::string &filepath, const size_t &indent) const;
+        [[nodiscard]] bool saveJsonToFile(const std::string &filepath, const size_t &indent) const;
 
         [[nodiscard]] std::string getJsonString() const;
 

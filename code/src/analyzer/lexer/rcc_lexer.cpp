@@ -220,7 +220,7 @@ namespace lexer {
             // ÒýºÅÆ¥Åä
             if ((c == '"' || c == '\'') && commentType == core::CommentType::NONE) {
                 if (quoteStack.empty()) {
-                    quoteStack.push(core::Token(utils::Pos(row, column, 1, _filepath), std::string{c}));
+                    quoteStack.emplace(utils::Pos(row, column, 1, _filepath), std::string{c});
                 } else if (quoteStack.top().getValue()[0] == c) {
                     quoteStack.pop();
                 }

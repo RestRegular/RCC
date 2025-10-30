@@ -2,7 +2,7 @@
 // Created by RestRegular on 2025/9/16.
 //
 
-#include "../../../include/builtin/functions/rcc_builtin_prog_functions.h"
+#include "../../../declarations/builtin/functions/rcc_builtin_prog_functions_dec.h"
 
 namespace builtin
 {
@@ -45,8 +45,8 @@ namespace builtin
             if (funcSymbol->hasReturnValue())
             {
                 visitor.pushOpItem(
-                    ast::CompileVisitor::OpItemType::LITERAL_VALUE,
-                    symbol::TypeLabelSymbol::nulTypeSymbol(utils::Pos::UNKNOW_POS, visitor.curScopeLevel()),
+                    ast::OpItemType::LITERAL_VALUE,
+                    symbol::TypeLabelSymbol::nulTypeSymbol(utils::getUnknownPos(), visitor.curScopeLevel()),
                     "null", "null");
                 return "";
             }

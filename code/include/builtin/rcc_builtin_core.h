@@ -5,8 +5,9 @@
 #ifndef RCC_RCC_BUILTIN_CORE_H
 #define RCC_RCC_BUILTIN_CORE_H
 
-#include <functional>
+#include "../../declarations/builtin/rcc_builtin_dec.h"
 #include "../visitors/rcc_compile_visitor.h"
+#include "../interfaces/rcc_builtin_interface.h"
 
 namespace builtin
 {
@@ -14,18 +15,16 @@ namespace builtin
     {
         std::vector<std::string> processedArgs;
         std::vector<std::pair<std::string, std::string>> originalArgs;
-        std::queue<ast::CompileVisitor::OpItem> posArgsOpItems;
-        std::unordered_map<std::string, ast::CompileVisitor::OpItem> namedArgOpItems;
+        std::queue<ast::OpItem> posArgOpItems;
+        std::unordered_map<std::string, ast::OpItem> namedArgOpItems;
         utils::Pos callPos;
-        std::vector<std::pair<std::string, ast::CompileVisitor::OpItem>> orderedArgOpItems;
+        std::vector<std::pair<std::string, ast::OpItem>> orderedArgOpItems;
         std::shared_ptr<ast::FunctionCallNode> callNode;
     };
 
-    typedef std::string BuiltinFuncRetType;
-
-    typedef std::function<BuiltinFuncRetType(
-        ast::CompileVisitor &visitor,
-        const CallInfos &)> BuiltinFunc;
+    void freeCallInfosI(IRCCCallInfos* pCallInfos);
+    IRCCCallInfos* transformCallInfos(const CallInfos& callInfos);
+    CallInfos transformCallInfos(IRCCCallInfos* pCallInfosI);
 
     class PureBuiltinFunction
     {
@@ -36,9 +35,9 @@ namespace builtin
         std::shared_ptr<symbol::TypeLabelSymbol> signature;
     public:
         PureBuiltinFunction(
-            const bool &hasReturnValue, const std::string &name,
+            const bool &hasReturnValue, std::string name,
             const std::vector<std::shared_ptr<symbol::ParameterSymbol>> &params,
-            const BuiltinFunc &call);
+            BuiltinFunc call);
 
         [[nodiscard]] bool hasReturnValue() const;
         [[nodiscard]] std::string getName() const;
@@ -47,13 +46,6 @@ namespace builtin
         [[nodiscard]] BuiltinFuncRetType call(ast::CompileVisitor &visitor,
                              const CallInfos &callInfos) const;
     };
-
-    ast::CompileVisitor::VarID getParamVarId(const std::string &argName);
-    std::shared_ptr<symbol::ParameterSymbol> getPosVarArgsParam(const std::string &argName);
-    std::shared_ptr<symbol::ParameterSymbol> getKeywordVarArgsParam(const std::string &argName);
-    std::shared_ptr<symbol::ParameterSymbol> getPosArgParam(const std::string &argName);
-    std::shared_ptr<symbol::ParameterSymbol> getKeywordArgParam(const std::string &argName, const std::string &defaultValue);
-
 }
 
 #endif //RCC_RCC_BUILTIN_CORE_H

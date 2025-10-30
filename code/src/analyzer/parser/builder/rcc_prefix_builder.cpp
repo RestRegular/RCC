@@ -96,7 +96,7 @@ namespace parser {
             colonToken = std::make_shared<Token>(currentToken());
             while (nextTokenIs(TokenType::TOKEN_LABEL)) {
                 next();
-                labelNodes.push_back(std::make_shared<LabelNode>(currentToken()));
+                labelNodes.push_back(std::static_pointer_cast<LabelNode>(buildLabelExpression()));
             }
         }
         if (nextTokenIs(TokenType::TOKEN_NEWLINE))

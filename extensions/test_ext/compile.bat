@@ -1,0 +1,1 @@
+g++ -shared -DBUILD_DLL .\code\main.cpp -o .\output\test.dll

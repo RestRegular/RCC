@@ -5,79 +5,7 @@
 #ifndef RCC_RCC_AST_H
 #define RCC_RCC_AST_H
 
-#include "../rcc_core.h"
-
 namespace ast {
-    // 枚举类声明
-    enum class NodeType;
-
-    // 类声明
-    // --- 工具类 ---
-
-    // --- 访问器 ---
-    class Visitor;
-    class PrintVisitor;
-    class JsonVisitor;
-    // --- 节点类 ---
-    class Node;
-    class ExpressionNode;
-    class StatementNode;
-    class ExpressionStatementNode;
-    class PrefixExpressionNode;
-    class LiteralNode;
-    class StringLiteralNode;
-    class NumberLiteralNode;
-    class IntegerLiteralNode;
-    class FloatLiteralNode;
-    class BooleanLiteralNode;
-    class CharacterLiteralNode;
-    class PairExpressionNode;
-    class DictionaryExpressionNode;
-    class ListExpressionNode;
-    class RangerNode;
-    class ParenRangerNode;
-    class BlockRangerNode;
-    class IdentifierNode;
-    class LabelNode;
-    class InfixExpressionNode;
-    class UnaryExpressionNode;
-    class PostfixExpressionNode;
-    class BracketExpressionNode;
-    class IndexExpressionNode;
-    class VariableDefinitionNode;
-    class AssignmentNode;
-    class ParameterNode;
-    class ArgumentNode;
-    class FunctionDeclarationNode;
-    class FunctionDefinitionNode;
-    class AnonFunctionDefinitionNode;
-    class ConditionNode;
-    class BranchNode;
-    class LoopNode;
-    class WhileLoopNode;
-    class UntilLoopNode;
-    class ForLoopNode;
-    class PassExpressionNode;
-    class EncapsulatedExpressionNode;
-    class ConstructorDefinitionNode;
-    class ClassDeclarationNode;
-    class ClassDefinitionNode;
-    class FunctionCallNode;
-    class ReturnExpressionNode;
-    class BreakExpressionNode;
-    class ProgramNode;
-    // --- 语法树类 ---
-    class Ast;
-
-    // 函数声明
-    std::string getNodeTypeName(NodeType nodeType);
-    std::string getNodeTypeFormatName(NodeType nodeType);
-
-    // 全局变量声明
-
-    // 类定义
-
-    // 枚举类定义
     enum class NodeType {
         AND, // 逻辑与操作节点
         ANON_FUNCTION_DEFINITION, // 匿名函数定义节点

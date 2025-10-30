@@ -5,7 +5,6 @@
 #ifndef RCC_RCC_LEXER_H
 #define RCC_RCC_LEXER_H
 
-#include <iostream>
 #include <queue>
 #include "../rcc_core.h"
 #include "../lib/rcc_utils.h"
@@ -21,13 +20,13 @@ namespace lexer {
     public:
         explicit Lexer(const std::string &filepath, const std::string &dirpath="");
 
-        std::vector<std::string> getCodeLines() const;
+        [[nodiscard]] std::vector<std::string> getCodeLines() const;
 
-        std::string getCodeLine(const int &rowIndex) const;
+        [[nodiscard]] std::string getCodeLine(const int &rowIndex) const;
 
-        std::string getCodeLine(const utils::Pos &pos) const;
+        [[nodiscard]] std::string getCodeLine(const utils::Pos &pos) const;
 
-        std::string getFilepath() const;
+        [[nodiscard]] std::string getFilepath() const;
 
         std::queue<std::shared_ptr<core::Token>> tokenize();
     };

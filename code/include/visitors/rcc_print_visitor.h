@@ -15,7 +15,7 @@ namespace ast {
         size_t level = 0;
 
     public:
-        explicit PrintVisitor(const size_t &indent);
+        explicit PrintVisitor(const size_t &indent = 4);
 
         void printAllNode() const;
 

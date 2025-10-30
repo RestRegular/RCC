@@ -2,7 +2,7 @@
 // Created by RestRegular on 2025/9/16.
 //
 
-#include "../../../include/builtin/functions/rcc_builtin_datatype_functions.h"
+#include "../../../declarations/builtin/functions/rcc_builtin_datatype_functions_dec.h"
 
 namespace builtin
 {
@@ -13,7 +13,7 @@ namespace builtin
         {
             throw std::runtime_error("Failure to match parameters of the built-in function: 'type'");
         }
-        visitor.pushTemOpVarItemWithRecord(utils::Pos::UNKNOW_POS, symbol::TypeLabelSymbol::strTypeSymbol(utils::Pos::UNKNOW_POS, visitor.getSymbolTable().curScopeLevel()));
+        visitor.pushTemOpVarItemWithRecord(utils::getUnknownPos(), symbol::TypeLabelSymbol::strTypeSymbol(utils::getUnknownPos(), visitor.getSymbolTable().curScopeLevel()));
         const auto &raCode = ri::TP_GET(callInfos.processedArgs[0], visitor.topOpRaVal()).toRACode();
         return raCode;
     }
@@ -30,7 +30,7 @@ namespace builtin
             level >= 0 && symbol && symbol->is(symbol::SymbolType::CLASS))
         {
             const auto &classSymbol = std::static_pointer_cast<symbol::ClassSymbol>(symbol);
-            typeSymbol = classSymbol->getClassTypeLabelSymbol(utils::Pos::UNKNOW_POS);
+            typeSymbol = classSymbol->getClassTypeLabelSymbol(utils::getUnknownPos());
             raCode += ri::ANNOTATION("No need to explicitly set '" + classSymbol->getVal() + "' type .").toRACode();
         } else
         {

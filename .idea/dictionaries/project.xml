@@ -6,16 +6,23 @@
       <w>cprint</w>
       <w>ctext</w>
       <w>endlocal</w>
+      <w>externallib</w>
+      <w>ircc</w>
+      <w>irccp</w>
       <w>lowlevel</w>
       <w>newrcc</w>
+      <w>nominmax</w>
       <w>numstr</w>
       <w>optors</w>
       <w>racode</w>
+      <w>rccdll</w>
       <w>rerror</w>
+      <w>rinterface</w>
       <w>riover</w>
       <w>rwarn</w>
       <w>setlocal</w>
       <w>sout</w>
+      <w>tlsi</w>
       <w>vids</w>
     </words>
   </dictionary>

@@ -4,7 +4,8 @@
 
 #include <filesystem>
 #include "../../include/builtin/rcc_builtin.h"
-#include "../../include/builtin/functions/rcc_builtin_functions.h"
+#include "../../declarations/builtin/functions/rcc_builtin_functions_dec.h"
+#include "../../include/builtin/dll_extension_manager/rcc_dll_extension_manager.h"
 #include "../../include/components/ri/rcc_ri.h"
 
 namespace builtin
@@ -19,21 +20,17 @@ namespace builtin
         const bool &isProgramEntry = checkPathEqual(visitor.getProgramEntryFilePath(), visitor.getCurrentProcessingFilePath());
         for (const auto& [funcName, pureBuiltinFunc] : pureBuiltinFunctionMap)
         {
-            const auto &funcId = ast::CompileVisitor::VarID(funcName, Pos::UNKNOW_POS.getFileField(), visitor.curScopeField(), visitor.curScopeLevel());
+            const auto &funcId = ast::VarID(funcName, getUnknownPos().getFileField(), visitor.curScopeField(), visitor.curScopeLevel());
             const auto &funcSymbol = std::make_shared<symbol::FunctionSymbol>(
-                            nullptr, Pos::UNKNOW_POS, funcName, funcId.getVid(),
+                            nullptr, getUnknownPos(), funcName, funcId.getVid(),
                             std::unordered_set<std::shared_ptr<symbol::LabelSymbol>>{
                                 pureBuiltinFunc.hasReturnValue() ?
-                                symbol::TypeLabelSymbol::anyTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel()) :
-                                symbol::TypeLabelSymbol::voidTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel())
+                                symbol::TypeLabelSymbol::anyTypeSymbol(getUnknownPos(), visitor.curScopeLevel()) :
+                                symbol::TypeLabelSymbol::voidTypeSymbol(getUnknownPos(), visitor.curScopeLevel())
                             },
                             pureBuiltinFunc.getParams(), pureBuiltinFunc.getSignature(),
                             0, symbol::TypeOfBuiltin::PURE_BUILTIN,
                             symbol::FunctionType::FUNCTION, nullptr);
-            const auto &signature = funcSymbol->hasReturnValue() ?
-                symbol::TypeLabelSymbol::funcTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel()) :
-                symbol::TypeLabelSymbol::funiTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel());
-
             visitor.getSymbolTable().insert(funcSymbol, true);
             if (isProgramEntry) {
                 visitor.getRaCodeBuilder()
@@ -56,7 +53,8 @@ namespace builtin
 
     bool isBuiltinFunction(const std::string& funcName)
     {
-        return builtinFunctionMap.contains(funcName);
+        return builtinFunctionMap.contains(funcName) ||
+            rccdll::DLLExtensionManager::hasFunc(funcName);
     }
 
     bool isBuiltin(const std::string& funcName)
@@ -78,7 +76,24 @@ namespace builtin
         {
             return it->second(visitor, callInfos);
         }
+        if (const auto &it = rccdll::DLLExtensionManager::find(funcName))
+        {
+            const auto &callInfosI = transformCallInfos(callInfos);
+            const auto &result = it(callInfosI);
+            freeCallInfosI(callInfosI);
+            return result;
+        }
         throw std::runtime_error("Non-existent built-in function: '" + funcName + "'");
+    }
+
+    void registerExternalPureBuiltinFunction(const std::string& funcName, const PureBuiltinFunction& func)
+    {
+        pureBuiltinFunctionMap.insert({funcName, func});
+    }
+
+    void registerExternalBuiltinFunction(const std::string& funcName, const BuiltinFunc& func)
+    {
+        builtinFunctionMap.insert({funcName, func});
     }
 
     std::unordered_map<std::string, PureBuiltinFunction> pureBuiltinFunctionMap = {
@@ -113,6 +128,8 @@ namespace builtin
 
         // lowlevel.rio
         {"id", rcc_id},
-        {"rasm", rcc_rasm}
+        {"rasm", rcc_rasm},
+        {"bindDllExt", rcc_bindDllExt},
+        {"unbindDllExt", rcc_unbindDllExt}
     };
 }

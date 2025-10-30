@@ -2,7 +2,7 @@
 // Created by RestRegular on 2025/9/16.
 //
 
-#include "../../../include/builtin/functions/rcc_builtin_export.h"
+#include "../../../declarations/builtin/functions/rcc_builtin_export_dec.h"
 
 namespace builtin
 {

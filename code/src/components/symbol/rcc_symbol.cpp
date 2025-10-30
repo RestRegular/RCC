@@ -3,9 +3,13 @@
 //
 
 #include <ranges>
+#include <utility>
+#include <algorithm>
 
 #include "../../../include/rcc_base.h"
 #include "../../../include/components/symbol/rcc_symbol.h"
+
+#include <memory_resource>
 
 #include "../../../include/visitors/rcc_compile_visitor.h"
 
@@ -44,7 +48,7 @@ namespace symbol {
         case BuiltinTypeLabel::STR: return "str";
         case BuiltinTypeLabel::BOOL: return "bool";
         case BuiltinTypeLabel::CHAR: return "char";
-        case BuiltinTypeLabel::VOID: return "void";
+        case BuiltinTypeLabel::VOID_BTL: return "void";
         case BuiltinTypeLabel::NUL: return "nul";
         case BuiltinTypeLabel::ANY: return "any";
         case BuiltinTypeLabel::FUNC: return "func";
@@ -84,7 +88,7 @@ namespace symbol {
     {
         switch (label)
         {
-        case RestrictionLabel::CONST: return "const";
+        case RestrictionLabel::CONST_RL: return "const";
         case RestrictionLabel::QUOTE: return "quote";
         default: return RCC_UNKNOWN_CONST;
         }
@@ -182,7 +186,7 @@ namespace symbol {
         {"global", static_cast<int>(LifeCycleLabel::GLOBAL)},
         {"static", static_cast<int>(LifeCycleLabel::STATIC)},
         {"ordinary", static_cast<int>(LifeCycleLabel::ORDINARY)},
-        {"const", static_cast<int>(RestrictionLabel::CONST)},
+        {"const", static_cast<int>(RestrictionLabel::CONST_RL)},
         {"quote", static_cast<int>(RestrictionLabel::QUOTE)},
     };
 
@@ -236,17 +240,26 @@ namespace symbol {
         }
     }
 
-    Symbol::Symbol(const utils::Pos &pos,
+    Symbol::Symbol(utils::Pos pos,
                    const SymbolType &symbolType,
-                   const std::string &symbolValue,
-                   const std::string &symbolRaValue,
+                   std::string symbolValue,
+                   std::string symbolRaValue,
                    const size_t &scopeLevel)
-        : pos(pos), type(symbolType), value(symbolValue), raValue(symbolRaValue),
+        : pos(std::move(pos)), type(symbolType), value(std::move(symbolValue)), raValue(std::move(symbolRaValue)),
           scopeLevel(scopeLevel){}
+
+    Symbol::~Symbol() {}
+
+    IRCCSymbolInterface::~IRCCSymbolInterface() {}
 
     bool Symbol::is(const SymbolType& symbolType) const
     {
         return type == symbolType;
+    }
+
+    bool Symbol::Is(const SymbolType& tp) const
+    {
+        return is(tp);
     }
 
     bool Symbol::isNot(const SymbolType& symbolType) const
@@ -254,16 +267,42 @@ namespace symbol {
         return type != symbolType;
     }
 
+    bool Symbol::IsNot(const SymbolType& tp) const
+    {
+        return isNot(tp);
+    }
+
     std::string Symbol::getRaVal() const {
         return raValue;
     }
+
+    const char* Symbol::GetVal() const
+    {
+        return getVal().c_str();
+    }
+
+    const char* Symbol::GetRaVal() const
+    {
+        return getRaVal().c_str();
+    }
+
 
     SymbolType Symbol::getType() const {
         return type;
     }
 
+    SymbolType Symbol::GetType() const
+    {
+        return getType();
+    }
+
     std::string Symbol::getVal() const {
         return value;
+    }
+
+    size_t Symbol::GetScopeLevel() const
+    {
+        return getScopeLevel();
     }
 
     size_t Symbol::getScopeLevel() const {
@@ -275,9 +314,19 @@ namespace symbol {
         scopeLevel = level;
     }
 
+    void Symbol::SetScopeLevel(const size_t& level)
+    {
+        setScopeLevel(level);
+    }
+
     utils::Pos Symbol::getPos() const
     {
         return pos;
+    }
+
+    const utils::IRCCPosInterface* Symbol::GetPos() const
+    {
+        return &pos;
     }
 
     std::string Symbol::toString() const
@@ -305,6 +354,41 @@ namespace symbol {
         return nullptr;
     }
 
+    const Symbol* Symbol::TransformToSI() const
+    {
+        return this;
+    }
+
+    const char* Symbol::ToString() const
+    {
+        return toString().c_str();
+    }
+
+    const char* Symbol::BriefString() const
+    {
+        return briefString().c_str();
+    }
+
+    const char* Symbol::ProfessionalString() const
+    {
+        return professionalString().c_str();
+    }
+
+    const char* Symbol::FormatString(const size_t& indent, const size_t& level) const
+    {
+        return formatString(indent, level).c_str();
+    }
+
+    const char* Symbol::ToJsonString() const
+    {
+        return toJsonString().c_str();
+    }
+
+    const utils::IRCCObjectInterface* Symbol::CopySelf()
+    {
+        return copySelf().get();
+    }
+
     LabelSymbol::LabelSymbol(const utils::Pos &pos,
                              const std::string &name, const std::string &raValue,
                              const size_t &scopeLevel, const LabelType &labelType)
@@ -312,12 +396,26 @@ namespace symbol {
           isBuiltIn_(isBuiltInLabel(name)),
           labelType(labelType == LabelType::UNKNOWN_TYPE_LABEL ? getLabelTypeByName(name) : labelType) {}
 
+    LabelSymbol::~LabelSymbol() {}
+
+    IRCCLabelSymbolInterface::~IRCCLabelSymbolInterface() {}
+
     bool LabelSymbol::isBuiltInLabel(const std::string &name) {
         return base::DESCRIBE_LABELS.contains(name);
     }
 
+    bool IRCCLabelSymbolInterface::IsBuiltInLabel(const char* name)
+    {
+        return LabelSymbol::isBuiltInLabel(name);
+    }
+
     LabelType LabelSymbol::getLabelType() const {
         return labelType;
+    }
+
+    LabelType LabelSymbol::GetLabelType() const
+    {
+        return getLabelType();
     }
 
     std::vector<LabelSymbol::LabelDes> LabelSymbol::getLabelDesS() const
@@ -325,9 +423,27 @@ namespace symbol {
         return labelDesS;
     }
 
+    const IRCCLabelSymbolInterface::LabelDesI* LabelSymbol::GetLabelDesIS() const {
+        // 动态生成接口指针数组（注意：这里用 static 避免重复分配，但需确保线程安全和数据同步）
+        static std::vector<LabelDesI> tempArray;
+        tempArray.clear();
+
+        // 遍历内部 shared_ptr 容器，转换为接口指针
+        for (const auto& ldi : m_labelDesIS) {
+            // 若 shared_ptr 非空，转换为接口指针（因 LabelSymbol 继承自接口）
+            if (ldi) {
+                tempArray.push_back(ldi);
+            } else {
+                tempArray.push_back(nullptr);
+            }
+        }
+        return tempArray.empty() ? nullptr : tempArray.data();
+    }
+
     void LabelSymbol::appendLabelDes(const LabelDes& labelDes)
     {
         labelDesS.push_back(labelDes);
+        syncLabelDesIS();
     }
 
     void LabelSymbol::appendLastLabelDes(const LabelDes& labelDes)
@@ -340,12 +456,17 @@ namespace symbol {
     {
         if (getVal() == "funi" && labelDesS.size() == 1)
         {
-            appendLabelDes({TypeLabelSymbol::anyTypeSymbol(utils::Pos::UNKNOW_POS, 0)});
+            appendLabelDes({TypeLabelSymbol::anyTypeSymbol(utils::getUnknownPos(), 0)});
         }
     }
 
     bool LabelSymbol::isBuiltIn() const {
         return isBuiltIn_;
+    }
+
+    bool LabelSymbol::IsBuiltin() const
+    {
+        return isBuiltIn();
     }
 
     std::string LabelSymbol::toString() const {
@@ -368,6 +489,11 @@ namespace symbol {
         }
         result += "]";
         return result;
+    }
+
+    const LabelSymbol* LabelSymbol::TransformToLSI() const
+    {
+        return this;
     }
 
     std::string LabelSymbol::briefString() const {
@@ -397,12 +523,83 @@ namespace symbol {
             getPos(), getVal(), getRaVal(), getScopeLevel(), getLabelType());
     }
 
+    const char* LabelSymbol::ToString() const
+    {
+        return toString().c_str();
+    }
+
+    const char* LabelSymbol::BriefString() const
+    {
+        return briefString().c_str();
+    }
+
+    const utils::IRCCObjectInterface* LabelSymbol::CopySelf()
+    {
+        return copySelf().get();
+    }
+
     std::shared_ptr<Symbol> LabelSymbol::transform(
         const std::string& value, const std::string& raValue, const size_t &scopeLevel) const
     {
         return std::make_shared<LabelSymbol>(
             getPos(), value, raValue, scopeLevel < 0 ? getScopeLevel() : scopeLevel,
             getLabelType());
+    }
+
+    void LabelSymbol::syncLabelDesIS() const
+    {
+        m_labelDesIS.clear();
+        for (const auto& des : labelDesS) {
+            for (const auto& sp : des) {
+                IRCCLabelSymbolInterface* iface = sp.get();
+                m_labelDesIS.push_back(iface);
+            }
+        }
+    }
+
+    bool LabelSymbol::Is(const SymbolType& tp) const
+    {
+        return Symbol::Is(tp);
+    }
+
+    bool LabelSymbol::IsNot(const SymbolType& tp) const
+    {
+        return Symbol::IsNot(tp);
+    }
+
+    const char* LabelSymbol::GetVal() const
+    {
+        return Symbol::GetVal();
+    }
+
+    const char* LabelSymbol::GetRaVal() const
+    {
+        return Symbol::GetRaVal();
+    }
+
+    SymbolType LabelSymbol::GetType() const
+    {
+        return Symbol::GetType();
+    }
+
+    size_t LabelSymbol::GetScopeLevel() const
+    {
+        return Symbol::GetScopeLevel();
+    }
+
+    void LabelSymbol::SetScopeLevel(const size_t& level)
+    {
+        Symbol::SetScopeLevel(level);
+    }
+
+    const utils::IRCCPosInterface* LabelSymbol::GetPos() const
+    {
+        return Symbol::GetPos();
+    }
+
+    const Symbol* LabelSymbol::TransformToSI() const
+    {
+        return Symbol::TransformToSI();
     }
 
     std::unordered_set<std::string> TypeLabelSymbol::builtInTypes = {
@@ -417,8 +614,23 @@ namespace symbol {
     };
     std::unordered_map<std::string, std::string> TypeLabelSymbol::customTypeMap = {};
 
-    std::string TypeLabelSymbol::getTypeLabelRaCode(
+    const char* IRCCTypeLabelSymbolInterface::GetTypeLabelRaCode(
         const std::string &name, const std::string &raValue) {
+        return TypeLabelSymbol::getTypeLabelRaCode(name, raValue).c_str();
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<ClassSymbol>> TypeLabelSymbol::customClassSymbolMap = {};
+
+    TypeLabelSymbol::TypeLabelSymbol(const utils::Pos &pos, const std::string &name,
+                                     const size_t &scopeLevel, const std::string &uid)
+        : LabelSymbol(pos, name, getTypeLabelRaCode(name, uid), scopeLevel, LabelType::TYPE_LABEL) {}
+
+    TypeLabelSymbol::~TypeLabelSymbol() {}
+
+    IRCCTypeLabelSymbolInterface::~IRCCTypeLabelSymbolInterface() {}
+
+    std::string TypeLabelSymbol::getTypeLabelRaCode(const std::string& name, const std::string& raValue)
+    {
         if (const auto &it = builtInTypeRaCodeMap.find(name);
             it != builtInTypeRaCodeMap.end())
         {
@@ -433,22 +645,32 @@ namespace symbol {
         return "tp-any";
     }
 
-    std::unordered_map<std::string, std::shared_ptr<ClassSymbol>> TypeLabelSymbol::customClassSymbolMap = {};
-
-    TypeLabelSymbol::TypeLabelSymbol(const utils::Pos &pos, const std::string &name,
-                                     const size_t &scopeLevel, const std::string &uid)
-        : LabelSymbol(pos, name, getTypeLabelRaCode(name, uid), scopeLevel, LabelType::TYPE_LABEL) {}
-
     bool TypeLabelSymbol::isTypeLabel(const std::string &name) {
         return isBuiltInType(name) || isCustomType(name);
     }
+
+    bool IRCCTypeLabelSymbolInterface::IsTypeLabel(const char* name)
+    {
+        return TypeLabelSymbol::isTypeLabel(name);
+    }
+
 
     bool TypeLabelSymbol::isBuiltInType(const std::string &name) {
         return builtInTypes.contains(name);
     }
 
+    bool IRCCTypeLabelSymbolInterface::IsBuiltInType(const char* name)
+    {
+        return TypeLabelSymbol::isBuiltInType(name);
+    }
+
     bool TypeLabelSymbol::isCustomType(const std::string &uid) {
         return customTypeMap.contains(uid);
+    }
+
+    bool IRCCTypeLabelSymbolInterface::IsCustomType(const char* uid)
+    {
+        return TypeLabelSymbol::isCustomType(uid);
     }
 
     void TypeLabelSymbol::createCustomType(
@@ -506,7 +728,7 @@ namespace symbol {
     std::shared_ptr<TypeLabelSymbol> TypeLabelSymbol::getCustomTypeLabelSymbol(const std::string& uid, const size_t &scopeLevel)
     {
         const auto &classSymbol = getCustomClassSymbol(uid);
-        return std::make_shared<TypeLabelSymbol>(utils::Pos::UNKNOW_POS, classSymbol->getVal(), scopeLevel, classSymbol->getRaVal());
+        return std::make_shared<TypeLabelSymbol>(utils::getUnknownPos(), classSymbol->getVal(), scopeLevel, classSymbol->getRaVal());
     }
 
     bool TypeLabelSymbol::is(const std::string& name) const
@@ -514,14 +736,29 @@ namespace symbol {
         return getVal() == name;
     }
 
+    bool TypeLabelSymbol::Is(const char* name) const
+    {
+        return is(name);
+    }
+
     bool TypeLabelSymbol::isNot(const std::string& name) const
     {
         return getVal() != name;
     }
 
+    bool TypeLabelSymbol::IsNot(const char* name) const
+    {
+        return isNot(name);
+    }
+
     bool TypeLabelSymbol::isCustomType() const
     {
         return isCustomType(getRaVal());
+    }
+
+    bool TypeLabelSymbol::IsCustomType() const
+    {
+        return isCustomType();
     }
 
     std::shared_ptr<ClassSymbol> TypeLabelSymbol::getCustomClassSymbol() const
@@ -561,6 +798,7 @@ namespace symbol {
             {
                 auto thisLabelDesS = getLabelDesS()[i];
                 auto otherLabelDesS = otherTypeLabelSymbol->getLabelDesS()[i];
+                if (thisLabelDesS.size() != otherLabelDesS.size()) return false;
                 for (int o = 0; o < thisLabelDesS.size(); o ++)
                 {
                     if (!thisLabelDesS[o]->equalWith(otherLabelDesS[o]))
@@ -588,10 +826,80 @@ namespace symbol {
         return std::make_shared<TypeLabelSymbol>(getPos(), value, scopeLevel, raValue);
     }
 
+    const LabelSymbol* TypeLabelSymbol::TransformToLSI() const
+    {
+        return LabelSymbol::TransformToLSI();
+    }
+
     std::shared_ptr<utils::Object> TypeLabelSymbol::copySelf() const
     {
         return std::make_shared<TypeLabelSymbol>(
             getPos(), getVal(), getScopeLevel(), getRaVal());
+    }
+
+    bool TypeLabelSymbol::Is(const SymbolType& tp) const
+    {
+        return Symbol::Is(tp);
+    }
+
+    bool TypeLabelSymbol::IsNot(const SymbolType& tp) const
+    {
+        return Symbol::IsNot(tp);
+    }
+
+    const char* TypeLabelSymbol::GetVal() const
+    {
+        return Symbol::GetVal();
+    }
+
+    const char* TypeLabelSymbol::GetRaVal() const
+    {
+        return Symbol::GetRaVal();
+    }
+
+    SymbolType TypeLabelSymbol::GetType() const
+    {
+        return Symbol::GetType();
+    }
+
+    size_t TypeLabelSymbol::GetScopeLevel() const
+    {
+        return Symbol::GetScopeLevel();
+    }
+
+    void TypeLabelSymbol::SetScopeLevel(const size_t& level)
+    {
+        Symbol::SetScopeLevel(level);
+    }
+
+    const utils::IRCCPosInterface* TypeLabelSymbol::GetPos() const
+    {
+        return Symbol::GetPos();
+    }
+
+    const Symbol* TypeLabelSymbol::TransformToSI() const
+    {
+        return Symbol::TransformToSI();
+    }
+
+    LabelType TypeLabelSymbol::GetLabelType() const
+    {
+        return LabelSymbol::GetLabelType();
+    }
+
+    const IRCCLabelSymbolInterface::LabelDesI* TypeLabelSymbol::GetLabelDesIS() const
+    {
+        return LabelSymbol::GetLabelDesIS();
+    }
+
+    bool TypeLabelSymbol::IsBuiltin() const
+    {
+        return LabelSymbol::IsBuiltin();
+    }
+
+    const TypeLabelSymbol* TypeLabelSymbol::TransformToTLSI() const
+    {
+        return this;
     }
 
     std::shared_ptr<TypeLabelSymbol> TypeLabelSymbol::intTypeSymbol(const utils::Pos &pos, const size_t &scopeLevel) {
@@ -674,7 +982,7 @@ namespace symbol {
     std::shared_ptr<TypeLabelSymbol> TypeLabelSymbol::getTypeLabelSymbolByStr(const std::string& str,
                                                                               const size_t& scopeLevel)
     {
-        return std::make_shared<TypeLabelSymbol>(utils::Pos::UNKNOW_POS, str, scopeLevel);
+        return std::make_shared<TypeLabelSymbol>(utils::getUnknownPos(), str, scopeLevel);
     }
 
     void LabelMarkManager::markLabels(const std::unordered_set<std::shared_ptr<LabelSymbol>>& labels)
@@ -917,6 +1225,21 @@ namespace symbol {
         labelMarkManager.markLabels(this->labels);
     }
 
+    ParameterSymbol::~ParameterSymbol() {}
+
+    bool ParameterSymbol::typeIs(const std::string& type) const
+    {
+        return typeLabel->is(type) || valueType->is(type) || typeLabel->is("any") ||
+            valueType->is("any");
+    }
+
+    bool ParameterSymbol::typeIsNot(const std::string& type) const
+    {
+        return !typeIs(type);
+    }
+
+    IRCCParameterSymbolInterface::~IRCCParameterSymbolInterface() {}
+
     std::shared_ptr<TypeLabelSymbol> ParameterSymbol::getTypeLabel() const {
         return typeLabel;
     }
@@ -1026,6 +1349,128 @@ namespace symbol {
             getType(), std::static_pointer_cast<TypeLabelSymbol>(copySymbolPtr(getValueType())));
     }
 
+    IRCCTypeLabelSymbolInterface* ParameterSymbol::GetTypeLabelSymbolI() const
+    {
+        return getTypeLabel().get();
+    }
+
+    IRCCTypeLabelSymbolInterface* ParameterSymbol::GetValueTypeLabelSymbolI() const
+    {
+        return getValueType().get();
+    }
+
+    void ParameterSymbol::SetTypeLabelSymbol(IRCCTypeLabelSymbolInterface* typeLabelI)
+    {
+        setTypeLabel(std::static_pointer_cast<TypeLabelSymbol>(typeLabelI->TransformToTLSI()->copySelf()));
+    }
+
+    void ParameterSymbol::SetValueTypeLabelSymbol(IRCCTypeLabelSymbolInterface* valueTypeI)
+    {
+        setValueType(std::static_pointer_cast<TypeLabelSymbol>(valueTypeI->TransformToTLSI()->copySelf()));
+    }
+
+    IRCCParameterSymbolInterface::Labels ParameterSymbol::GetLabels() const
+    {
+        Labels labels_ (labels.size());
+        size_t i = 0;
+        for (const auto &l: labels)
+        {
+            labels_.labels[i] = l.get();
+            i ++;
+        }
+        return labels_;
+    }
+
+    void ParameterSymbol::FreeLabels(Labels& labels_)
+    {
+        if (labels_.labels)
+        {
+            delete labels_.labels;
+            labels_.labels = nullptr;
+            labels_.count = 0;
+        }
+    }
+
+    void ParameterSymbol::ResetLabels(const Labels& labels_)
+    {
+        std::unordered_set<std::shared_ptr<LabelSymbol>> newLabels {};
+        for (int i = 0; i < labels_.count; i ++)
+        {
+            newLabels.insert(std::static_pointer_cast<LabelSymbol>(labels_.labels[i]->TransformToLSI()->copySelf()));
+        }
+        reSetLabels(newLabels);
+    }
+
+    const char* ParameterSymbol::GetDefaultValue() const
+    {
+        return getDefaultValue().has_value() ? getDefaultValue().value().c_str() : nullptr;
+    }
+
+    void ParameterSymbol::SetDefaultValue(const char* value)
+    {
+        return setDefaultValue(value ? std::optional<std::string>(value) : std::nullopt);
+    }
+
+    ParamType ParameterSymbol::GetParamType() const
+    {
+        return paramType;
+    }
+
+    const ParameterSymbol* ParameterSymbol::TransformToPSI() const
+    {
+        return this;
+    }
+
+    const char* ParameterSymbol::ToString() const
+    {
+        return toString().c_str();
+    }
+
+    bool ParameterSymbol::Is(const SymbolType& tp) const
+    {
+        return Symbol::Is(tp);
+    }
+
+    bool ParameterSymbol::IsNot(const SymbolType& tp) const
+    {
+        return Symbol::IsNot(tp);
+    }
+
+    const char* ParameterSymbol::GetVal() const
+    {
+        return Symbol::GetVal();
+    }
+
+    const char* ParameterSymbol::GetRaVal() const
+    {
+        return Symbol::GetRaVal();
+    }
+
+    SymbolType ParameterSymbol::GetType() const
+    {
+        return Symbol::GetType();
+    }
+
+    size_t ParameterSymbol::GetScopeLevel() const
+    {
+        return Symbol::GetScopeLevel();
+    }
+
+    void ParameterSymbol::SetScopeLevel(const size_t& level)
+    {
+        Symbol::SetScopeLevel(level);
+    }
+
+    const utils::IRCCPosInterface* ParameterSymbol::GetPos() const
+    {
+        return Symbol::GetPos();
+    }
+
+    const Symbol* ParameterSymbol::TransformToSI() const
+    {
+        return Symbol::TransformToSI();
+    }
+
     VariableSymbol::VariableSymbol(const utils::Pos &pos,
                                    const std::string &varName,
                                    const std::string &vid,
@@ -1090,7 +1535,8 @@ namespace symbol {
 
     std::string VariableSymbol::toString() const
     {
-        return "[Variable(" + getVal() + "): " + getTypeLabel()->getVal() + " @ " + std::to_string(getScopeLevel()) + "]";
+        return "[<Variable> " + getVal() + ": " + getTypeLabel()->briefString() +
+            (getDefaultValue().has_value() ? " = " + getDefaultValue().value() : "") + "]";
     }
 
     std::shared_ptr<ast::ExpressionNode> VariableSymbol::getDefaultValueNode() const
@@ -1111,6 +1557,91 @@ namespace symbol {
             std::static_pointer_cast<ClassSymbol>(copySymbolPtr(getClassSymbol())),
             std::static_pointer_cast<Symbol>(copySymbolPtr(getReferencedSymbol())),
             getDefaultValueNode());
+    }
+
+    IRCCTypeLabelSymbolInterface* VariableSymbol::GetTypeLabelSymbolI() const
+    {
+        return ParameterSymbol::GetTypeLabelSymbolI();
+    }
+
+    IRCCTypeLabelSymbolInterface* VariableSymbol::GetValueTypeLabelSymbolI() const
+    {
+        return ParameterSymbol::GetValueTypeLabelSymbolI();
+    }
+
+    void VariableSymbol::SetTypeLabelSymbol(IRCCTypeLabelSymbolInterface* typeLabel)
+    {
+        ParameterSymbol::SetTypeLabelSymbol(typeLabel);
+    }
+
+    void VariableSymbol::SetValueTypeLabelSymbol(IRCCTypeLabelSymbolInterface* valueType)
+    {
+        ParameterSymbol::SetValueTypeLabelSymbol(valueType);
+    }
+
+    IRCCParameterSymbolInterface::Labels VariableSymbol::GetLabels() const
+    {
+        return ParameterSymbol::GetLabels();
+    }
+
+    void VariableSymbol::FreeLabels(Labels& labels)
+    {
+        ParameterSymbol::FreeLabels(labels);
+    }
+
+    void VariableSymbol::ResetLabels(const Labels& labels)
+    {
+        ParameterSymbol::ResetLabels(labels);
+    }
+
+    const char* VariableSymbol::GetDefaultValue() const
+    {
+        return ParameterSymbol::GetDefaultValue();
+    }
+
+    void VariableSymbol::SetDefaultValue(const char* value)
+    {
+        ParameterSymbol::SetDefaultValue(value);
+    }
+
+    ParamType VariableSymbol::GetParamType() const
+    {
+        return ParameterSymbol::GetParamType();
+    }
+
+    const ParameterSymbol* VariableSymbol::TransformToPSI() const
+    {
+        return ParameterSymbol::TransformToPSI();
+    }
+
+    const char* VariableSymbol::ToString() const
+    {
+        return toString().c_str();
+    }
+
+    IRCCClassSymbolInterface* VariableSymbol::GetClassSymbolI() const
+    {
+        return getClassSymbol().get();
+    }
+
+    PermissionLabel VariableSymbol::GetPermissionLabel() const
+    {
+        return getPermissionLabel();
+    }
+
+    IRCCSymbolInterface* VariableSymbol::GetReferencedSymbol() const
+    {
+        return getReferencedSymbol().get();
+    }
+
+    void VariableSymbol::SetReferencedSymbol(const IRCCSymbolInterface* symbolI)
+    {
+        setReferencedSymbol(std::static_pointer_cast<Symbol>(symbolI->TransformToSI()->copySelf()));
+    }
+
+    void VariableSymbol::SetClassSymbol(const IRCCClassSymbolInterface* classSymbolI)
+    {
+        setClassSymbol(std::static_pointer_cast<ClassSymbol>(classSymbolI->TransformToCSI()->copySelf()));
     }
 
     FunctionSymbol::FunctionSymbol(
@@ -1299,9 +1830,9 @@ namespace symbol {
     {
         if (hasReturnValue())
         {
-            return TypeLabelSymbol::funiTypeSymbol(utils::Pos::UNKNOW_POS, getScopeLevel());
+            return TypeLabelSymbol::funiTypeSymbol(utils::getUnknownPos(), getScopeLevel());
         }
-        return TypeLabelSymbol::funcTypeSymbol(utils::Pos::UNKNOW_POS, getScopeLevel());
+        return TypeLabelSymbol::funcTypeSymbol(utils::getUnknownPos(), getScopeLevel());
     }
 
     std::shared_ptr<utils::Object> FunctionSymbol::copySelf() const
@@ -1323,12 +1854,199 @@ namespace symbol {
             std::static_pointer_cast<ClassSymbol>(copySymbolPtr(getClassSymbol())));
     }
 
+    bool FunctionSymbol::Is(const SymbolType& tp) const
+    {
+        return Symbol::Is(tp);
+    }
+
+    bool FunctionSymbol::IsNot(const SymbolType& tp) const
+    {
+        return Symbol::IsNot(tp);
+    }
+
+    const char* FunctionSymbol::GetVal() const
+    {
+        return Symbol::GetVal();
+    }
+
+    const char* FunctionSymbol::GetRaVal() const
+    {
+        return Symbol::GetRaVal();
+    }
+
+    SymbolType FunctionSymbol::GetType() const
+    {
+        return Symbol::GetType();
+    }
+
+    size_t FunctionSymbol::GetScopeLevel() const
+    {
+        return Symbol::GetScopeLevel();
+    }
+
+    void FunctionSymbol::SetScopeLevel(const size_t& level)
+    {
+        Symbol::SetScopeLevel(level);
+    }
+
+    const utils::IRCCPosInterface* FunctionSymbol::GetPos() const
+    {
+        return Symbol::GetPos();
+    }
+
+    const Symbol* FunctionSymbol::TransformToSI() const
+    {
+        return Symbol::TransformToSI();
+    }
+
+    IRCCTypeLabelSymbolInterface* FunctionSymbol::GetReturnTypeLabelI() const
+    {
+        return getReturnType().get();
+    }
+
+    void FunctionSymbol::SetReturnType(const IRCCTypeLabelSymbolInterface* typeSymbolI)
+    {
+        setReturnType(std::static_pointer_cast<TypeLabelSymbol>(typeSymbolI->TransformToTLSI()->copySelf()));
+    }
+
+    void FunctionSymbol::ReSetReturnType(const IRCCTypeLabelSymbolInterface* typeSymbolI)
+    {
+        reSetReturnType(std::static_pointer_cast<TypeLabelSymbol>(typeSymbolI->TransformToTLSI()->copySelf()));
+    }
+
+    bool FunctionSymbol::HasReturnValue() const
+    {
+        return hasReturnValue();
+    }
+
+    bool FunctionSymbol::HasSetReturnType() const
+    {
+        return hasSetReturnType();
+    }
+
+    bool FunctionSymbol::HasReturned() const
+    {
+        return hasReturned();
+    }
+
+    void FunctionSymbol::SetHasReturned(const bool& hasReturned)
+    {
+        setHasReturned(hasReturned);
+    }
+
+    void FunctionSymbol::SetFunctionType(const FunctionType& funcType)
+    {
+        setFunctionType(funcType);
+    }
+
+    void FunctionSymbol::SetClassSymbol(const IRCCClassSymbolInterface* classSymbolI)
+    {
+        setClassSymbol(std::static_pointer_cast<ClassSymbol>(classSymbolI->TransformToCSI()->copySelf()));
+    }
+
+    void FunctionSymbol::SetBuiltInType(const TypeOfBuiltin& type)
+    {
+        setBuiltInType(type);
+    }
+
+    void FunctionSymbol::SetSignature(const IRCCTypeLabelSymbolInterface* signatureSymbolI)
+    {
+        setSignature(std::static_pointer_cast<TypeLabelSymbol>(signatureSymbolI->TransformToTLSI()->copySelf()));
+    }
+
+    IRCCTypeLabelSymbolInterface* FunctionSymbol::GetSignatureSymbolI() const
+    {
+        return getSignature().get();
+    }
+
+    const char* FunctionSymbol::GetSignatureString() const
+    {
+        return getSignatureString().c_str();
+    }
+
+    IRCCFunctionSymbolInterface::Labels FunctionSymbol::GetLabels() const
+    {
+        Labels labels(getLabels().size());
+        size_t i = 0;
+        for (const auto &l: getLabels())
+        {
+            labels.labels[i] = l.get();
+            i ++;
+        }
+        return labels;
+    }
+
+    IRCCFunctionSymbolInterface::ParamSymbols FunctionSymbol::GetParamSymbols() const
+    {
+        ParamSymbols paramSymbols (parameters.size());
+        for (size_t i = 0; i < paramSymbols.count; i ++)
+        {
+            paramSymbols.paramSymbols[i] = parameters[i].get();
+        }
+        return paramSymbols;
+    }
+
+    TypeOfBuiltin FunctionSymbol::GetBuiltInType() const
+    {
+        return getBuiltInType();
+    }
+
+    IRCCClassSymbolInterface* FunctionSymbol::GetClassSymbolI() const
+    {
+        return getClassSymbol().get();
+    }
+
+    FunctionType FunctionSymbol::GetFunctionType() const
+    {
+        return getFunctionType();
+    }
+
+    PermissionLabel FunctionSymbol::GetPermissionLabel() const
+    {
+        return getPermissionLabel();
+    }
+
+    const FunctionSymbol* FunctionSymbol::TransformToFSI() const
+    {
+        return this;
+    }
+
+    bool FunctionSymbol::Is(const TypeOfBuiltin& type) const
+    {
+        return is(type);
+    }
+
+    IRCCTypeLabelSymbolInterface* FunctionSymbol::GetFunctionTypeLabelSymbolI() const
+    {
+        return getFunctionTypeLabel().get();
+    }
+
+    void FunctionSymbol::FreeLabels(Labels& labels_)
+    {
+        if (labels_.labels)
+        {
+            delete labels_.labels;
+            labels_.labels = nullptr;
+            labels_.count = 0;
+        }
+    }
+
+    void FunctionSymbol::FreeParamSymbols(ParamSymbols& paramSymbols)
+    {
+        if (paramSymbols.paramSymbols)
+        {
+            delete paramSymbols.paramSymbols;
+            paramSymbols.paramSymbols = nullptr;
+            paramSymbols.count = 0;
+        }
+    }
+
     ClassSymbol::ClassSymbol(
         const utils::Pos &pos,
         const std::string &name,
         const std::string &nameID,
         const std::unordered_set<std::shared_ptr<LabelSymbol>> &labels,
-        size_t scopeLevel,
+        const size_t scopeLevel,
         const SymbolTableManager &symbolTable,
         std::vector<std::shared_ptr<ClassSymbol>> baseClasses,
         const std::vector<std::shared_ptr<ClassSymbol>>& derivedClasses)
@@ -1361,8 +2079,8 @@ namespace symbol {
         const utils::Pos &pos,
         const std::string &name,
         const std::string &nameID,
-        const LabelMarkManager &labelMarkManager,
-        size_t scopeLevel,
+        LabelMarkManager labelMarkManager,
+        const size_t scopeLevel,
         std::vector<std::shared_ptr<ClassSymbol>> baseClasses,
         const std::vector<std::shared_ptr<ClassSymbol>>& derivedClasses,
         const std::shared_ptr<SymbolTable> &constructors,
@@ -1372,19 +2090,61 @@ namespace symbol {
         : Symbol(pos, SymbolType::CLASS, name, nameID, scopeLevel),
           baseClasses(std::move(baseClasses)), derivedClasses(derivedClasses),
           staticMembers(staticMembers), constructors(constructors),
-          labelMarkManager(labelMarkManager), collectionFinished(collectionFinished),
-          visitPermission(visitPermission) {}
+          labelMarkManager(std::move(labelMarkManager)), collectionFinished(collectionFinished),
+          visitPermission(visitPermission), scope_level_(scopeLevel) {}
+
+    ClassSymbol::~ClassSymbol() {}
+
+    IRCCVariableSymbolInterface::~IRCCVariableSymbolInterface() {}
+
+    IRCCFunctionSymbolInterface::~IRCCFunctionSymbolInterface() {}
+
+    IRCCClassSymbolInterface::~IRCCClassSymbolInterface() {}
 
     std::vector<std::shared_ptr<ClassSymbol>> &ClassSymbol::getBaseClasses() {
         return baseClasses;
+    }
+
+    IRCCClassSymbolInterface::Classes ClassSymbol::GetBaseClasses()
+    {
+        Classes result(baseClasses.size());
+        for (size_t i = 0; i < result.count; ++i) {
+            result.classes[i] = baseClasses[i].get();
+        }
+        return result;
+    }
+
+    void ClassSymbol::FreeClasses(Classes& classes)
+    {
+        if (classes.classes)
+        {
+            delete classes.classes;
+            classes.classes = nullptr;
+            classes.count = 0;
+        }
     }
 
     std::vector<std::shared_ptr<ClassSymbol>> &ClassSymbol::getDerivedClasses() {
         return derivedClasses;
     }
 
+    IRCCClassSymbolInterface::Classes ClassSymbol::GetDeriveClasses()
+    {
+        Classes result (derivedClasses.size());
+        for (size_t i = 0; i < result.count; i ++)
+        {
+            result.classes[i] = derivedClasses[i].get();
+        }
+        return result;
+    }
+
     std::shared_ptr<SymbolTable> &ClassSymbol::getMembers() {
         return members;
+    }
+
+    IRCCSymbolTableInterface* ClassSymbol::GetMembers() const
+    {
+        return members.get();
     }
 
     std::shared_ptr<SymbolTable>& ClassSymbol::getStaticMembers()
@@ -1392,9 +2152,19 @@ namespace symbol {
         return staticMembers;
     }
 
+    IRCCSymbolTableInterface* ClassSymbol::GetStaticMembers() const
+    {
+        return staticMembers.get();
+    }
+
     std::shared_ptr<SymbolTable>& ClassSymbol::getConstructors()
     {
         return constructors;
+    }
+
+    IRCCSymbolTableInterface* ClassSymbol::GetConstructors() const
+    {
+        return constructors.get();
     }
 
     void ClassSymbol::addMember(const std::shared_ptr<Symbol>& symbol, const bool& sysDefined) const
@@ -1625,40 +2395,181 @@ namespace symbol {
 
     bool ClassSymbol::relatedTo(const std::shared_ptr<ClassSymbol>& other) const
     {
-        if (equalWith(other)) return true;
-        for (const auto &bc: baseClasses)
+        bool result = false;
+        if (equalWith(other) ||
+            std::ranges::any_of(baseClasses.begin(), baseClasses.end(),
+                [other](const auto &bc)
         {
-            if (bc->equalWith(other))
+            return bc->equalWith(other);
+        })) {
+            result = true;
+        } else {
+            result = std::ranges::any_of(derivedClasses.begin(), derivedClasses.end(),
+                [other](const auto &dc)
             {
-                return true;
-            }
+                return dc->equalWith(other);
+            });
         }
-        for (const auto &dc: derivedClasses)
-        {
-            if (dc->equalWith(other))
-            {
-                return true;
-            }
-        }
-        return false;
+        return result;
     }
+
 
     bool ClassSymbol::isSupperClassOf(const std::shared_ptr<ClassSymbol>& other, const bool &restrict) const
     {
         if (!restrict && equalWith(other)) return true;
-        for (const auto &dc: derivedClasses)
+        return std::ranges::any_of(derivedClasses.begin(), derivedClasses.end(), [other](const auto &dc)
         {
-            if (dc->equalWith(other)) return true;
-        }
-        return false;
+            return dc->equalWith(other);
+        });
     }
+
+    void ClassSymbol::AddMember(const IRCCSymbolInterface* symbolI) const
+    {
+        addMember(std::static_pointer_cast<ClassSymbol>(symbolI->TransformToSI()->copySelf()), true);
+    }
+
+    void ClassSymbol::SetDerivedClasses(const IRCCClassSymbolInterface* classSymbolI)
+    {
+        setDerivedClasses(std::static_pointer_cast<ClassSymbol>(classSymbolI->TransformToCSI()->copySelf()));
+    }
+
+    void ClassSymbol::SetBaseClasses(const IRCCClassSymbolInterface* classSymbolI)
+    {
+        setBaseClasses(std::static_pointer_cast<ClassSymbol>(classSymbolI->TransformToCSI()->copySelf()));
+    }
+
+    bool ClassSymbol::HasInheritClass() const
+    {
+        return hasInheritClass();
+    }
+
+    IRCCClassSymbolInterface* ClassSymbol::GetDirectlyInheritedClassSymbolI() const
+    {
+        return getDirectlyInheritedClassSymbol().get();
+    }
+
+    bool ClassSymbol::HasMember(const char* name) const
+    {
+        return hasMember(name);
+    }
+
+    IRCCClassSymbolInterface::MemberSymbolResult ClassSymbol::FindMemberSymbolI(const char* name) const
+    {
+        const auto &[symbol, lifeCycleLabel] = findMemberSymbol(name);
+        return MemberSymbolResult(symbol.get(), lifeCycleLabel);
+    }
+
+    IRCCClassSymbolInterface::MemberSymbolResult ClassSymbol::FindMemberSymbolIInPermission(const char* name) const
+    {
+        const auto &[symbol, lifeCycleLabel] = findMemberSymbolInPermission(name);
+        return MemberSymbolResult(symbol.get(), lifeCycleLabel);
+    }
+
+    IRCCTypeLabelSymbolInterface* ClassSymbol::GetClassTypeLabelSymbolI(const utils::IRCCPosInterface* posI) const
+    {
+        return getClassTypeLabelSymbol(*posI->TransformToPI()).get();
+    }
+
+    void ClassSymbol::SetCollectionFinished()
+    {
+        setCollectionFinished();
+    }
+
+    void ClassSymbol::SetVisitPermission(const PermissionLabel& permission)
+    {
+        setVisitPermission(permission);
+    }
+
+    void ClassSymbol::SetDefaultVisitPermission()
+    {
+        setDefaultVisitPermission();
+    }
+
+    PermissionLabel ClassSymbol::GetDefaultVisitPermission() const
+    {
+        return getDefaultVisitPermission();
+    }
+
+    bool ClassSymbol::HasCollectionFinished() const
+    {
+        return hasCollectionFinished();
+    }
+
+    PermissionLabel ClassSymbol::GetVisitPermission() const
+    {
+        return getVisitPermission();
+    }
+
+    const ClassSymbol* ClassSymbol::TransformToCSI() const
+    {
+        return this;
+    }
+
+    bool ClassSymbol::RelatedTo(const IRCCClassSymbolInterface* otherI) const
+    {
+        return relatedTo(std::static_pointer_cast<ClassSymbol>(otherI->TransformToCSI()->copySelf()));
+    }
+
+    bool ClassSymbol::IsSupperClassOf(const IRCCClassSymbolInterface* otherI, const bool& restrict) const
+    {
+        return isSupperClassOf(std::static_pointer_cast<ClassSymbol>(otherI->TransformToCSI()->copySelf()));
+    }
+
+    bool ClassSymbol::Is(const SymbolType& tp) const
+    {
+        return Symbol::Is(tp);
+    }
+
+    bool ClassSymbol::IsNot(const SymbolType& tp) const
+    {
+        return Symbol::IsNot(tp);
+    }
+
+    const char* ClassSymbol::GetVal() const
+    {
+        return Symbol::GetVal();
+    }
+
+    const char* ClassSymbol::GetRaVal() const
+    {
+        return Symbol::GetRaVal();
+    }
+
+    SymbolType ClassSymbol::GetType() const
+    {
+        return Symbol::GetType();
+    }
+
+    size_t ClassSymbol::GetScopeLevel() const
+    {
+        return Symbol::GetScopeLevel();
+    }
+
+    void ClassSymbol::SetScopeLevel(const size_t& level)
+    {
+        Symbol::SetScopeLevel(level);
+    }
+
+    const utils::IRCCPosInterface* ClassSymbol::GetPos() const
+    {
+        return Symbol::GetPos();
+    }
+
+    const Symbol* ClassSymbol::TransformToSI() const
+    {
+        return Symbol::TransformToSI();
+    }
+
+    SymbolTable::~SymbolTable() {}
+
+    IRCCSymbolTableInterface::~IRCCSymbolTableInterface() {}
 
     std::shared_ptr<Symbol> SymbolTable::insertByName(const std::shared_ptr<Symbol> &symbol, const bool& sysDefined) {
         const std::string symbolName = symbol->getVal();
         if (symbolName != "_" && table.contains(symbolName)) {
             throw std::runtime_error("Symbol " + symbolName + " already exists");
         }
-        table[symbolName] = {nameIndex.size(), symbol};
+        table[symbolName] = {static_cast<int>(nameIndex.size()), symbol};
         nameIndex.push_back(symbolName);
         if (sysDefined)
         {
@@ -1667,12 +2578,18 @@ namespace symbol {
         return symbol;
     }
 
+    void SymbolTable::InsertByName(IRCCSymbolInterface* symbolI)
+    {
+        const auto &symbol = std::static_pointer_cast<Symbol>(symbolI->TransformToSI()->copySelf());
+        insertByName(symbol, true);
+    }
+
     std::shared_ptr<Symbol> SymbolTable::insertByRID(const std::shared_ptr<Symbol> &symbol, const bool& sysDefined) {
         const std::string rid = symbol->getRaVal();
         if (symbol->getVal() != "_" && table.contains(rid)) {
             throw std::runtime_error("Symbol " + rid + " already exists");
         }
-        table[rid] = {nameIndex.size(), symbol};
+        table[rid] = {static_cast<int>(nameIndex.size()), symbol};
         nameIndex.push_back(rid);
         if (sysDefined)
         {
@@ -1686,8 +2603,19 @@ namespace symbol {
         return it != table.end() ? it->second.second : nullptr;
     }
 
+    IRCCSymbolInterface* SymbolTable::Find(const char* name)
+    {
+        const auto &res = find(name);
+        return res ? res.get() : nullptr;
+    }
+
     bool SymbolTable::contains(const std::string &name) const {
         return table.contains(name);
+    }
+
+    bool SymbolTable::Contains(const char* name)
+    {
+        return contains(name);
     }
 
     std::unordered_map<std::string, std::pair<int, std::shared_ptr<Symbol>>> SymbolTable::getTable() const {
@@ -1711,6 +2639,11 @@ namespace symbol {
         }
     }
 
+    void SymbolTable::Remove(const char* name)
+    {
+        remove(name);
+    }
+
     std::shared_ptr<utils::Object> SymbolTable::copySelf() const
     {
         const auto &copied = std::make_shared<SymbolTable>();
@@ -1726,23 +2659,37 @@ namespace symbol {
     void SymbolTableManager::appendScope(const std::shared_ptr<SymbolTable>& nameScope,
         const std::shared_ptr<SymbolTable>& idScope)
     {
-        scopes.push_back({nameScope, idScope});
+        scopes.emplace_back(nameScope, idScope);
     }
 
     SymbolTableManager::SymbolTableManager() {
-        scopes.push_back({std::make_shared<SymbolTable>(),
-            std::make_shared<SymbolTable>()});
+        scopes.emplace_back(std::make_shared<SymbolTable>(),
+            std::make_shared<SymbolTable>());
         currentScopeLevel_ = 0; // 全局作用域
     }
+
+    SymbolTableManager::~SymbolTableManager() {}
+
+    IRCCSymbolTableManagerInterface::~IRCCSymbolTableManagerInterface() {}
 
     SymbolTable &SymbolTableManager::currentNameMapScope() const
     {
         return *scopes[currentScopeLevel_].first;
     }
 
+    IRCCSymbolTableInterface* SymbolTableManager::CurrentNameMapScope() const
+    {
+        return &currentNameMapScope();
+    }
+
     SymbolTable &SymbolTableManager::currentRIDMapScope() const
     {
         return *scopes[currentScopeLevel_].second;
+    }
+
+    IRCCSymbolTableInterface* SymbolTableManager::CurrentRIDMapScope() const
+    {
+        return &currentRIDMapScope();
     }
 
     std::pair<SymbolTable, SymbolTable> SymbolTableManager::currentScopeCopied() const
@@ -1751,10 +2698,15 @@ namespace symbol {
     }
 
     void SymbolTableManager::enterScope() {
-        scopes.insert(scopes.begin() + currentScopeLevel_ + 1,
+        scopes.insert(scopes.begin() + static_cast<int>(currentScopeLevel_) + 1,
                       {std::make_shared<SymbolTable>(),
                           std::make_shared<SymbolTable>()});
         currentScopeLevel_++;
+    }
+
+    void SymbolTableManager::EnterScope()
+    {
+        enterScope();
     }
 
     void SymbolTableManager::enterScope(size_t scopeLevel) {
@@ -1781,7 +2733,7 @@ namespace symbol {
                     TypeLabelSymbol::deleteCustomType(symbol->getRaVal());
                 }
             }
-            scopes.erase(scopes.begin() + currentScopeLevel_);
+            scopes.erase(scopes.begin() + static_cast<int>(currentScopeLevel_));
             currentScopeLevel_--;
         }
         else {
@@ -1822,7 +2774,8 @@ namespace symbol {
     }
 
     std::pair<long long int, std::shared_ptr<Symbol>> SymbolTableManager::findByName(const std::string &name, const std::optional<size_t>& specifiedLevel) const {
-        for (int i = specifiedLevel.has_value() ? specifiedLevel.value() : currentScopeLevel_; i >= 0; --i) {
+        for (int i = static_cast<int>(specifiedLevel.has_value()
+            ? specifiedLevel.value() : currentScopeLevel_); i >= 0; --i) {
             const auto &scope = scopes[i].first;
             if (const auto &it = scope->find(name)) {
                 return {i, it};
@@ -1832,7 +2785,7 @@ namespace symbol {
     }
 
     std::pair<long long int, std::shared_ptr<Symbol>> SymbolTableManager::findByRID(const std::string &rid) const {
-        for (int i = currentScopeLevel_; i >= 0; --i) {
+        for (int i = static_cast<int>(currentScopeLevel_); i >= 0; --i) {
             const auto &scope = scopes[i].second;
             if (const auto &it = scope->find(rid)) {
                 return {i, it};
@@ -1846,12 +2799,11 @@ namespace symbol {
     }
 
     bool SymbolTableManager::containsName(const std::string &name) const {
-        for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
-            if (it->first->contains(name)) {
-                return true;
-            }
-        }
-        return false;
+        return std::ranges::any_of(scopes.rbegin(), scopes.rend(),
+            [name](const auto &it)
+        {
+            return it.first->contains(name);
+        });
     }
 
     bool SymbolTableManager::currentScopeContains(const std::string &name) const {
@@ -1874,9 +2826,74 @@ namespace symbol {
         return stm;
     }
 
+    void SymbolTableManager::EnterScope(const size_t& scopeLevel)
+    {
+        enterScope(scopeLevel);
+    }
+
+    void SymbolTableManager::EnterTopScope()
+    {
+        enterScope();
+    }
+
+    void SymbolTableManager::EnterGlobalScope()
+    {
+        enterGlobalScope();
+    }
+
+    void SymbolTableManager::ExitScope()
+    {
+        exitScope();
+    }
+
+    void SymbolTableManager::Insert(IRCCSymbolInterface* symbolI) const
+    {
+        insert(std::static_pointer_cast<Symbol>(symbolI->TransformToSI()->copySelf()), true);
+    }
+
+    void SymbolTableManager::RemoveByName(const char* name, const size_t* specifiedLevel) const
+    {
+        removeByName(name, specifiedLevel ? std::optional(*specifiedLevel) : std::nullopt);
+    }
+
+    void SymbolTableManager::RemoveByRID(const char* rid, const size_t* specifiedLevel) const
+    {
+        removeByRID(rid, specifiedLevel ? std::optional(*specifiedLevel) : std::nullopt);
+    }
+
+    IRCCSymbolInterface* SymbolTableManager::FindByName(const char* name, const size_t* specifiedLevel) const
+    {
+        return findByName(name, specifiedLevel ? std::optional(*specifiedLevel) : std::nullopt).second.get();
+    }
+
+    IRCCSymbolInterface* SymbolTableManager::FindByRID(const char* rid) const
+    {
+        return findByRID(rid).second.get();
+    }
+
+    IRCCSymbolInterface* SymbolTableManager::FindInCurrentScope(const char* name) const
+    {
+        return findInCurrentScope(name).get();
+    }
+
+    bool SymbolTableManager::ContainsName(const char* name) const
+    {
+        return containsName(name);
+    }
+
+    bool SymbolTableManager::CurrentScopeContains(const char* name) const
+    {
+        return currentScopeContains(name);
+    }
+
+    size_t SymbolTableManager::CurScopeLevel() const
+    {
+        return curScopeLevel();
+    }
+
     std::pair<long long int, std::shared_ptr<VariableSymbol>>
     SymbolTableManager::findVariableSymbolByName(const std::string &name) const {
-        for (int i = currentScopeLevel_; i >= 0; --i) {
+        for (int i = static_cast<int>(currentScopeLevel_); i >= 0; --i) {
             const auto &scope = scopes[i].first;
             if (const auto &it = scope->find(name)) {
                 if (it->getType() == SymbolType::VARIABLE) {
@@ -1889,7 +2906,7 @@ namespace symbol {
 
     std::pair<long long int, std::shared_ptr<VariableSymbol>>
     SymbolTableManager::findVariableSymbolByRID(const std::string &rid) const {
-        for (int i = currentScopeLevel_; i >= 0; --i) {
+        for (int i = static_cast<int>(currentScopeLevel_); i >= 0; --i) {
             const auto &scope = scopes[i].second;
             if (const auto &it = scope->find(rid)) {
                 if (it->getType() == SymbolType::VARIABLE) {

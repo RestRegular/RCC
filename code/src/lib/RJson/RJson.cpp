@@ -697,8 +697,8 @@ namespace rjson {
 
     rj::RJsonBuilder::RJsonBuilder(const std::vector<RJValue> &values)
         : type(RJType::RJ_LIST) {
-        for (auto &value: values) {
-            append(value);
+        for (auto &value_: values) {
+            append(value_);
         }
     }
 

@@ -98,7 +98,7 @@ namespace ast
         // 遍历 orderedArgs，保持原始值和半处理值（raVal）
         for (const auto& [name, argItem] : orderedArgs)
         {
-            originalArgs.push_back({name, argItem.getVal()});
+            originalArgs.emplace_back(name, argItem.getVal());
             halfProcessedArgs.push_back(raVal(argItem));
         }
     }
@@ -245,13 +245,13 @@ namespace ast
         }
 
         auto params = createParameters(labelDesS[0], varSymbol);
-        const auto& signature = TypeLabelSymbol::funcTypeSymbol(Pos::UNKNOW_POS, curScopeLevel());
+        const auto& signature = TypeLabelSymbol::funcTypeSymbol(getUnknownPos(), curScopeLevel());
         signature->appendLabelDes(extractParamTableLabelDes(params));
         funcSymbol = std::make_shared<FunctionSymbol>(
             nullptr, varSymbol->getPos(), varSymbol->getVal(),
             varSymbol->getRaVal(),
             std::unordered_set<std::shared_ptr<LabelSymbol>>{
-                TypeLabelSymbol::voidTypeSymbol(Pos::UNKNOW_POS, curScopeLevel())
+                TypeLabelSymbol::voidTypeSymbol(getUnknownPos(), curScopeLevel())
             }, params, signature, curScopeLevel(), TypeOfBuiltin::ORDINARY,
             FunctionType::FUNCTION, nullptr);
     }
@@ -261,7 +261,7 @@ namespace ast
                                              const std::shared_ptr<LabelSymbol>& typeLabel,
                                              std::shared_ptr<FunctionSymbol>& funcSymbol) const
     {
-        auto returnType = TypeLabelSymbol::anyTypeSymbol(Pos::UNKNOW_POS, curScopeLevel());
+        auto returnType = TypeLabelSymbol::anyTypeSymbol(getUnknownPos(), curScopeLevel());
         const auto& labelDesS = typeLabel->getLabelDesS();
 
         if (labelDesS.empty())
@@ -279,7 +279,7 @@ namespace ast
         }
 
         auto params = createParameters(labelDesS[0], varSymbol);
-        const auto& signature = TypeLabelSymbol::funiTypeSymbol(Pos::UNKNOW_POS, curScopeLevel());
+        const auto& signature = TypeLabelSymbol::funiTypeSymbol(getUnknownPos(), curScopeLevel());
         signature->appendLabelDes(extractParamTableLabelDes(params));
         signature->appendLabelDes({returnType});
         funcSymbol = std::make_shared<FunctionSymbol>(
@@ -318,7 +318,7 @@ namespace ast
                 std::unordered_set<std::shared_ptr<LabelSymbol>>{
                     paramType == ParamType::PARAM_POSITIONAL
                         ? typeLabel
-                        : TypeLabelSymbol::anyTypeSymbol(Pos::UNKNOW_POS, curScopeLevel())
+                        : TypeLabelSymbol::anyTypeSymbol(getUnknownPos(), curScopeLevel())
                 }, std::nullopt, curScopeLevel()));
             paramIndex++;
         }
@@ -337,7 +337,7 @@ namespace ast
 
     // 提取的辅助函数：处理funi返回类型
     void CompileVisitor::handleFuniReturnType(const std::vector<std::shared_ptr<LabelSymbol>>& secondDes,
-                                              std::shared_ptr<TypeLabelSymbol>& returnType) const
+                                              std::shared_ptr<TypeLabelSymbol>& returnType)
     {
         if (secondDes.size() != 1)
         {
@@ -361,7 +361,7 @@ namespace ast
     // 提取的辅助函数：抛出标签描述错误
     void CompileVisitor::throwRCCLabelDesError(const std::shared_ptr<VariableSymbol>& varSymbol,
                                                const std::shared_ptr<LabelSymbol>& typeLabel,
-                                               size_t currentCount, const std::string& expected) const
+                                               const size_t currentCount, const std::string& expected)
     {
         throw RCCCompilerError::labelDesError(
             typeLabel->getPos().toString(), getCodeLine(currentPos()),
@@ -376,7 +376,7 @@ namespace ast
     // 重载：处理整数预期值
     void CompileVisitor::throwRCCLabelDesError(const std::shared_ptr<VariableSymbol>& varSymbol,
                                                const std::shared_ptr<LabelSymbol>& typeLabel,
-                                               size_t currentCount, size_t expected) const
+                                               const size_t currentCount, const size_t expected)
     {
         throwRCCLabelDesError(varSymbol, typeLabel, currentCount, std::to_string(expected));
     }
@@ -384,7 +384,7 @@ namespace ast
     // 提取的辅助函数：抛出类型不匹配错误
     void CompileVisitor::throwRCCTypeMissmatchError(const std::shared_ptr<LabelSymbol>& des,
                                                     const std::shared_ptr<LabelSymbol>& typeLabel,
-                                                    LabelType expectedType) const
+                                                    const LabelType expectedType)
     {
         std::string labelStr = typeLabel ? typeLabel->toString() : "";
         throw RCCCompilerError::typeMissmatchError(
@@ -419,7 +419,7 @@ namespace ast
         else if (funcType->is("funi"))
         {
             // funi 类型，调用并推入临时以获得返回值
-            pushTemOpVarItemWithRecord(node.getPos(), getBuiltinTypeSymbol(Pos::UNKNOW_POS, B_ANY));
+            pushTemOpVarItemWithRecord(node.getPos(), getBuiltinTypeSymbol(getUnknownPos(), BuiltinType::B_ANY));
             raCodeBuilder << ri::IVOK(funcNameSymbol->getRaVal(), halfProcessedArgs, topOpRaVal());
         }
         else
@@ -453,14 +453,14 @@ namespace ast
                     fullProcessedArgs.push_back(it->second.getRaVal(symbolTable));
                     namedArgs.erase(it);
                 }
-                else if (posArgs.size() > 0)
+                else if (!posArgs.empty())
                 {
                     if (!checkTypeMatch(param, posArgs.front()))
                     {
                         const auto& frontArgSymbol = getSymbolFromOpItem(posArgs.front());
                         const auto& [fst, snd] = getTypesFromOpItem(posArgs.front());
                         throw RCCCompilerError::typeMissmatchError(
-                            frontArgSymbol ? frontArgSymbol->getPos().toString() : callPos.toString(),
+                            posArgs.front().getPos().toString(),
                             getCodeLine(callPos),
                             std::vector{
                                 "Function position: " + (
@@ -540,7 +540,7 @@ namespace ast
                     if (!checkTypeMatch(param, argItem))
                     {
                         const auto& [fst, snd] = getTypesFromOpItem(argItem);
-                        throw RCCCompilerError::typeMissmatchError(callPos.toString(),
+                        throw RCCCompilerError::typeMissmatchError(argItem.getPos().toString(),
                                                                    getCodeLine(callPos),
                                                                    std::vector{
                                                                        "Error symbol: " + param->toString(),
@@ -574,9 +574,9 @@ namespace ast
                                 {
                                     // 如果传入的是 series 类型变量，则视为用户手动打包，不进行自动打包
                                     needAutoPack = false;
-                                    pushTemOpVarItemWithRecord(Pos::UNKNOW_POS,
+                                    pushTemOpVarItemWithRecord(getUnknownPos(),
                                                                TypeLabelSymbol::listTypeSymbol(
-                                                                   Pos::UNKNOW_POS, curScopeLevel()));
+                                                                   getUnknownPos(), curScopeLevel()));
                                     raCodeBuilder
                                         << ri::COPY(raVal(posArgs.front()), topOpRaVal())
                                         << ri::TP_SET(topOpItem().getValueType()->getRaVal(), topOpRaVal());
@@ -590,7 +590,7 @@ namespace ast
                         }
                         break;
                     default:
-                        throw RCCCompilerError::typeMissmatchError(callPos.toString(), getCodeLine(callPos),
+                        throw RCCCompilerError::typeMissmatchError(argItem.getPos().toString(), getCodeLine(callPos),
                                                                    "The type of the parameter operation item passed to the function call is incorrect.",
                                                                    getListFormatString({
                                                                        opItemTypeToFormatString(OpItemType::IDENTIFIER),
@@ -625,7 +625,7 @@ namespace ast
                     if (!checkTypeMatch(param, opItem))
                     {
                         const auto& [fst, snd] = getTypesFromOpItem(opItem);
-                        throw RCCCompilerError::typeMissmatchError(callPos.toString(),
+                        throw RCCCompilerError::typeMissmatchError(opItem.getPos().toString(),
                                                                    getCodeLine(callPos),
                                                                    std::vector{
                                                                        "Error symbol: " + param->toString(),
@@ -672,7 +672,7 @@ namespace ast
             // 交给 builtin::callBuiltinFunction 处理
             auto callInfosCopy = callInfos;
             callInfosCopy.processedArgs = callInfos.processedArgs;
-            const auto& raCode = builtin::callBuiltinFunction(*this, funcSymbol->getVal(), callInfosCopy);
+            const auto& raCode = callBuiltinFunction(*this, funcSymbol->getVal(), callInfosCopy);
             raCodeBuilder << raCode;
         }
         else

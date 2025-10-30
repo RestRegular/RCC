@@ -7,27 +7,9 @@
 
 #include "./lib/rcc_utils.h"
 #include "lib/RJson/RJson.h"
+#include "../declarations/rcc_core_dec.h"
 
 namespace core {
-    // 枚举类声明
-    enum class Precedence;
-    enum class CommentType;
-    enum class TokenType;
-    enum class StatementType;
-    enum class ExpressionType;
-    enum class BlockType;
-    enum class SubscriptType;
-    enum class CallExpressionType;
-    // enum class FunctionType;
-    enum class CondBranchType;
-    enum class LoopType;
-
-    // 类声明
-    class Token;
-    class Statement;
-
-    // 函数声明
-    std::string getTokenTypeName(const TokenType& type);
 
     // 类定义
     class Token final : utils::Object {
@@ -51,9 +33,9 @@ namespace core {
         [[nodiscard]] std::string professionalString() const override;
         [[nodiscard]] std::string formatString(size_t indent, size_t level) const override;
         void acceptRJsonBuilder(rjson::rj::RJsonBuilder& builder) const;
-        rjson::RJValue toRJson() const;
-        rjson::RJPair toRJPair() const;
-        rjson::RJValue toRJValue() const;
+        [[nodiscard]] rjson::RJValue toRJson() const;
+        [[nodiscard]] rjson::RJPair toRJPair() const;
+        [[nodiscard]] rjson::RJValue toRJValue() const;
     };
 
     // 枚举类定义

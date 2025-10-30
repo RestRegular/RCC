@@ -32,7 +32,7 @@ namespace rlog {
         NONE = 0,
         MESSAGE,
         WARNING,
-        ERROR,
+        ERROR_LM,
         ALL
     };
 

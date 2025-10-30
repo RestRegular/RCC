@@ -7,9 +7,10 @@
 
 #include <queue>
 
-#include "rcc_base_visitor.h"
 #include "../analyzer/rcc_lexer.h"
 #include "../components/ri/rcc_ri.h"
+#include "../components/symbol/rcc_symbol.h"
+#include "../interfaces/rcc_compile_interface.h"
 
 namespace builtin
 {
@@ -18,8 +19,6 @@ namespace builtin
 
 namespace ast
 {
-#define ANONYMOUS_FUNCTION_PREFIX "anon_func_"
-
     class RaCodeBuilder
     {
         std::stack<std::stringstream> raCodeStack{};
@@ -38,175 +37,153 @@ namespace ast
         RaCodeBuilder& buildCurScope(RaCodeBuilder& builder);
         RaCodeBuilder& operator>>(std::string& target);
         RaCodeBuilder& operator>>(RaCodeBuilder& builder);
-        std::string getCurScopeResult() const;
+        [[nodiscard]] std::string getCurScopeResult() const;
     };
 
-    class CompileVisitor final : public Visitor
+    // 变量ID封装类
+    class VarID final : public Object
     {
+        static size_t _varId; // 变量ID计数器
+        static std::string rccVarPrefixField; // 变量前缀
+        size_t id = 0; // 当前变量ID
+        std::string fileField, scopeField, nameField; // 文件域、作用域、名称
+        std::string vid; // 变量唯一标识
+        size_t scopeLevel = 0;
+        [[nodiscard]] std::string _toVarID(); // 生成变量ID字符串
+
     public:
-        // ========================== 嵌套枚举类型 ==========================
-        // 作用域类型枚举
-        enum class ScopeType : int
+        // 构造函数
+        VarID(const std::string& name,
+              const std::string& fileField,
+              const std::string& scopeField,
+              const size_t& scopeLevel);
+
+        // 字符串转换
+        [[nodiscard]] std::string toString() const override;
+
+        // Getter方法
+        [[nodiscard]] std::string getNameField() const;
+        [[nodiscard]] std::string getScopeField() const;
+        [[nodiscard]] std::string getFileField() const;
+        [[nodiscard]] size_t getScopeLevel() const;
+        [[nodiscard]] size_t getId() const;
+        [[nodiscard]] std::string getVid() const;
+
+        // 输出运算符重载
+        friend std::ostream& operator<<(std::ostream& os, const VarID& varID)
         {
-            TEMPORARY = 0, // 临时作用域
-            GLOBAL, // 全局作用域
-            PROGRAM, // 程序作用域
-            EXPRESSION, // 表达式作用域
-            VAR_DEF_EXPRESSION, // 变量定义表达式作用域
-            CLASS, // 类作用域
-            FUNCTION, // 函数作用域
-            ANONYMOUS, // 匿名作用域
-            LOOP, // 循环作用域
-            CONDITION // 条件作用域
-        };
+            os << varID.vid;
+            return os;
+        }
+    };
 
-        // 操作数类型枚举
-        enum class OpItemType : int
+    // 标签ID封装类
+    class SetID final : public Object
+    {
+        static size_t _setId; // 集合ID计数器
+        static std::string rccSetPrefixField; // 集合前缀
+        size_t id = 0; // 当前集合ID
+        std::string fileField, scopeField, nameField; // 文件域、作用域、名称
+        std::string sid; // 集合唯一标识
+        [[nodiscard]] std::string _toSetID(); // 生成集合ID字符串
+
+    public:
+        // 构造函数
+        SetID(const std::string& name,
+              const std::string& fileField,
+              const std::string& scopeField);
+
+        // 字符串转换
+        [[nodiscard]] std::string toString() const override;
+
+        // Getter方法
+        [[nodiscard]] std::string getNameField() const;
+        [[nodiscard]] std::string getScopeField() const;
+        [[nodiscard]] std::string getFileField() const;
+        [[nodiscard]] size_t getId() const;
+        [[nodiscard]] std::string getSid() const;
+
+        // 输出运算符重载
+        friend std::ostream& operator<<(std::ostream& os, const SetID& setID)
         {
-            IDENTIFIER, // 标识符
-            LITERAL_VALUE, // 字面量值
-            SET_LABEL // 集合标签
-        };
+            os << setID.sid;
+            return os;
+        }
+    };
 
-        static std::string opItemTypeToString(const OpItemType& type);
-        static std::string opItemTypeToFormatString(const OpItemType& type);
+    // 操作数项类
+    class OpItem final:
+    public Object,
+    public IRCCOpItemInterface
+    {
+        std::string value; // 原始值
+        std::string raValue; // RA代码值
+        OpItemType type; // 操作数类型
+        std::shared_ptr<symbol::TypeLabelSymbol> typeLabel; // 类型标签
+        std::shared_ptr<symbol::TypeLabelSymbol> valueType; // 值类型
+        std::shared_ptr<symbol::Symbol> belonging; // 归属符号
+        std::string belongAttrRaValue; // 属性名称
+        std::shared_ptr<symbol::Symbol> referencedSymbol; // 引用符号
+        Pos pos;
 
-        // 内置类型枚举
-        enum BuiltinType : int
-        {
-            B_ANY = 0, // 任意类型
-            B_BOOL, // 布尔类型
-            B_CHAR, // 字符类型
-            B_DICT, // 字典类型
-            B_FLOAT, // 浮点类型
-            B_INT, // 整数类型
-            B_LIST, // 列表类型
-            B_STR, // 字符串类型
-            B_VOID, // 空类型
-            B_NUL, // 空值类型
-            B_FLAG, // 标志类型
-            B_FUNC, // 空返回函数类型
-            B_FUNI, // 实返回函数类型
-            B_CLAS, // 自定义类类型
-        };
+    public:
+        // 构造函数
+        explicit OpItem(
+            const OpItemType& type,
+            const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol,
+            const std::string& value,
+            const std::string& raValue = "",
+            const std::shared_ptr<symbol::TypeLabelSymbol>& valueType = nullptr,
+            const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr,
+            const Pos &pos = getUnknownPos());
 
-        // ========================== 嵌套类 ==========================
-        // 变量ID封装类
-        class VarID final : public Object
-        {
-            static size_t _varId; // 变量ID计数器
-            static std::string rccVarPrefixField; // 变量前缀
-            size_t id = 0; // 当前变量ID
-            std::string fileField, scopeField, nameField; // 文件域、作用域、名称
-            std::string vid; // 变量唯一标识
-            size_t scopeLevel = 0;
-            [[nodiscard]] std::string _toVarID(); // 生成变量ID字符串
+        [[nodiscard]] bool is(const OpItemType& opItemType) const;
+        [[nodiscard]] bool isNot(const OpItemType& opItemType) const;
+        [[nodiscard]] std::string toString() const override;
 
-        public:
-            // 构造函数
-            VarID(const std::string& name,
-                  const std::string& fileField,
-                  const std::string& scopeField,
-                  const size_t& scopeLevel);
+        // Getter方法
+        [[nodiscard]] Pos getPos() const;
+        [[nodiscard]] std::string getVal() const;
+        [[nodiscard]] OpItemType getType() const;
+        [[nodiscard]] std::string getRaVal(const symbol::SymbolTableManager& table,
+                                           const bool& needSearch = true) const;
+        [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getTypeLabel() const;
+        [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getValueType() const;
+        [[nodiscard]] std::shared_ptr<symbol::Symbol> getBelonging() const;
+        [[nodiscard]] std::string getBelongAttrRaValue() const;
+        [[nodiscard]] std::shared_ptr<symbol::Symbol> getReferencedSymbol() const;
 
-            // 字符串转换
-            [[nodiscard]] std::string toString() const override;
+        // Setter方法
+        void setTypeLabel(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol);
+        void setValueType(const std::shared_ptr<symbol::TypeLabelSymbol>& valueTypeSymbol);
+        void setBelonging(const std::shared_ptr<symbol::Symbol>& belongingSymbol,
+                          const std::string& belongAttrRaVal);
+        void setReferencedSymbol(const std::shared_ptr<symbol::Symbol>& symbol);
 
-            // Getter方法
-            [[nodiscard]] std::string getNameField() const;
-            [[nodiscard]] std::string getScopeField() const;
-            [[nodiscard]] std::string getFileField() const;
-            [[nodiscard]] size_t getScopeLevel() const;
-            [[nodiscard]] size_t getId() const;
-            [[nodiscard]] std::string getVid() const;
+        bool Is(const OpItemType& opItemType) override;
+        bool IsNot(const OpItemType& opItemType) override;
+        const char* ToString() const override;
+        const char* GetVal() const override;
+        const char* GetRaVal(const symbol::IRCCSymbolTableManagerInterface* table,
+            const bool& needSearch) const override;
+        OpItemType GetType() const override;
+        symbol::IRCCTypeLabelSymbolInterface* GetTypeLabelSymbolI() const override;
+        symbol::IRCCTypeLabelSymbolInterface* GetValueTypeSymbolI() const override;
+        symbol::IRCCSymbolInterface* GetBelongingSymbolI() const override;
+        const char* GetBelongAttrRaValue() const override;
+        symbol::IRCCSymbolInterface* GetReferencedSymbol() const override;
+        void SetTypeLabel(const symbol::IRCCTypeLabelSymbolInterface* typeLabelSymbolI) override;
+        void SetValueType(const symbol::IRCCTypeLabelSymbolInterface* valueTypeSymbolI) override;
+        void SetBelonging(const symbol::IRCCSymbolInterface* belongingSymbolI,
+            const char* belongAttrRaVal) override;
+        void SetReferencedSymbol(const symbol::IRCCSymbolInterface* symbolI) override;
+        const OpItem* TransformToOII() const override;
+    };
 
-            // 输出运算符重载
-            friend std::ostream& operator<<(std::ostream& os, const VarID& varID)
-            {
-                os << varID.vid;
-                return os;
-            }
-        };
-
-        // 集合ID封装类
-        class SetID final : public Object
-        {
-            static size_t _setId; // 集合ID计数器
-            static std::string rccSetPrefixField; // 集合前缀
-            size_t id = 0; // 当前集合ID
-            std::string fileField, scopeField, nameField; // 文件域、作用域、名称
-            std::string sid; // 集合唯一标识
-            [[nodiscard]] std::string _toSetID(); // 生成集合ID字符串
-
-        public:
-            // 构造函数
-            SetID(const std::string& name,
-                  const std::string& fileField,
-                  const std::string& scopeField);
-
-            // 字符串转换
-            [[nodiscard]] std::string toString() const override;
-
-            // Getter方法
-            [[nodiscard]] std::string getNameField() const;
-            [[nodiscard]] std::string getScopeField() const;
-            [[nodiscard]] std::string getFileField() const;
-            [[nodiscard]] size_t getId() const;
-            [[nodiscard]] std::string getSid() const;
-
-            // 输出运算符重载
-            friend std::ostream& operator<<(std::ostream& os, const SetID& setID)
-            {
-                os << setID.sid;
-                return os;
-            }
-        };
-
-        // 操作数项类
-        class OpItem final : public Object
-        {
-            std::string value; // 原始值
-            std::string raValue; // RA代码值
-            OpItemType type; // 操作数类型
-            std::shared_ptr<symbol::TypeLabelSymbol> typeLabel; // 类型标签
-            std::shared_ptr<symbol::TypeLabelSymbol> valueType; // 值类型
-            std::shared_ptr<symbol::Symbol> belonging; // 归属符号
-            std::string belongAttrRaValue; // 属性名称
-            std::shared_ptr<symbol::Symbol> referencedSymbol; // 引用符号
-
-        public:
-            // 构造函数
-            explicit OpItem(
-                const OpItemType& type,
-                const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol,
-                const std::string& value,
-                const std::string& raValue = "",
-                const std::shared_ptr<symbol::TypeLabelSymbol>& valueType = nullptr,
-                const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr);
-
-            bool is(const OpItemType& opItemType) const;
-            bool isNot(const OpItemType& opItemType) const;
-            std::string toString() const override;
-
-            // Getter方法
-            [[nodiscard]] std::string getVal() const;
-            [[nodiscard]] OpItemType getType() const;
-            [[nodiscard]] std::string getRaVal(const symbol::SymbolTableManager& table, const bool &needSearch = true) const;
-            [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getTypeLabel() const;
-            [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getValueType() const;
-            [[nodiscard]] std::shared_ptr<symbol::Symbol> getBelonging() const;
-            [[nodiscard]] std::string getBelongAttrRaValue() const;
-            [[nodiscard]] std::shared_ptr<symbol::Symbol> getReferencedSymbol() const;
-
-            // Setter方法
-            void setTypeLabel(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol);
-            void setValueType(const std::shared_ptr<symbol::TypeLabelSymbol>& valueTypeSymbol);
-            void setBelonging(const std::shared_ptr<symbol::Symbol>& belongingSymbol,
-                              const std::string& belongAttrRaVal);
-            void setReferencedSymbol(const std::shared_ptr<symbol::Symbol>& symbol);
-        };
-
-    private:
+    class CompileVisitor final :
+    public Visitor,
+    public IRCCCompileInterface
+    {
         // ========================== 静态成员属性 ==========================
         static size_t _temVarId; // 临时变量ID计数器
         static size_t _setId; // 集合标签ID计数器
@@ -214,7 +191,6 @@ namespace ast
                                   std::shared_ptr<symbol::ClassSymbol>> extensionMap; // 扩展类映射
         static std::stack<std::shared_ptr<lexer::Lexer>> _lexers; // 词法分析器
         static std::list<std::string> _lexer_paths; // 词法分析器路径向量
-        static Pos _currentProcessingPos; // 当前正在处理的位置信息
         static std::string fileRecord;
 
         // ========================== 成员属性 ==========================
@@ -251,24 +227,21 @@ namespace ast
         [[nodiscard]] std::string getProgramTargetFilePath() const;
         [[nodiscard]] std::string getCompileOutputFilePath() const;
         [[nodiscard]] std::string getCurrentProcessingFilePath() const;
-        void setCurrentProcessingFilePath(const std::string& filePath = "");
+        void setCurrentProcessingFilePath(const std::string& filePath);
         static void enableDebugMode(bool cond);
-        [[nodiscard]] static Pos currentPos();
-        static void setCurrentPos(const Pos& pos);
-        static void resetCurrentPos();
 
         // ========================== 公共方法 ==========================
         // 作用域管理
         static std::string scopeTypeToString(ScopeType scopeType); // 作用域类型转字符串
         static std::string scopeTypeToFormatString(ScopeType scopeType);
         [[nodiscard]] std::string curScopeField() const; // 获取当前作用域字段
-        [[nodiscard]] ScopeType curScopeType(); // 获取当前作用域字段
+        [[nodiscard]] ScopeType curScopeType() const; // 获取当前作用域字段
         void enterScope(ScopeType scopeType); // 进入作用域
         void enterScope(size_t scopeLevel); // 进入指定层级作用域
         void enterTopScope(); // 进入顶层作用域
         void enterGlobalScope(); // 进入全局作用域
         void exitScope(ScopeType scopeType); // 退出作用域
-        size_t curScopeLevel() const; // 获取当前作用域层级
+        [[nodiscard]] size_t curScopeLevel() const; // 获取当前作用域层级
         void enterLoopScope(); // 进入循环作用域
         void exitLoopScope(); // 退出循环作用域
         [[nodiscard]] bool isInLoopScope() const; // 是否在循环作用域中
@@ -281,6 +254,10 @@ namespace ast
         [[nodiscard]] static bool checkTypeMatch(
             const std::shared_ptr<symbol::Symbol>& leftSymbol,
             const std::shared_ptr<symbol::Symbol>& rightSymbol); // 检查符号类型匹配
+        static Pos currentPos();
+        static void setCurrentPos(const Pos& pos);
+        static void resetCurrentPos();
+        static Pos _currentProcessingPos;
         [[nodiscard]] bool checkTypeMatch(
             const std::shared_ptr<symbol::Symbol>& leftSymbol,
             const OpItem& rightOpItem) const; // 检查符号与操作数类型匹配
@@ -307,7 +284,7 @@ namespace ast
         symbol::SymbolType topProcessingSymbolType(); // 获取栈顶符号类型
         std::string topProcessingSymbolRaVal(); // 获取栈顶符号RA值
         std::string topProcessingSymbolVal(); // 获取栈顶符号值
-        bool isProcessingSymbol() const; // 判断栈内是否有符号
+        [[nodiscard]] bool isProcessingSymbol() const; // 判断栈内是否有符号
 
         // 操作数栈操作
         void pushOpItem(const std::shared_ptr<OpItem>& opItem); // 压入操作数（智能指针）
@@ -318,17 +295,20 @@ namespace ast
             const std::string& value,
             const std::string& racode = "",
             const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr,
-            const std::shared_ptr<symbol::TypeLabelSymbol>& valueTypeSymbol = nullptr);
+            const std::shared_ptr<symbol::TypeLabelSymbol>& valueTypeSymbol = nullptr,
+            const Pos& pos = getUnknownPos());
         void pushOpItem( // 压入操作数（名称构造）
             const std::string& name,
             const std::string& fileField,
             const std::string& scopeField,
             const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol);
-        void pushIdentItem( // 压入标识符操作数
+        void pushIdentItem(
+            // 压入标识符操作数
             const VarID& varID,
             const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol,
             const std::shared_ptr<symbol::TypeLabelSymbol>& valueType = nullptr,
-            const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr);
+            const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr,
+            const Pos& pos = getUnknownPos());
         OpItem rPopOpItem(); // 弹出并返回操作数
         void popOpItem(); // 弹出操作数
         [[nodiscard]] OpItem topOpItem() const; // 获取栈顶操作数
@@ -345,12 +325,13 @@ namespace ast
             const Pos& pos,
             const std::shared_ptr<symbol::TypeLabelSymbol>& valueType = nullptr,
             const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr,
-            const bool& sysDefined = {}, const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel = nullptr); // 生成并压入临时变量操作数
+            const bool& sysDefined = {},
+            const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel = nullptr); // 生成并压入临时变量操作数
         OpItem pushTemOpSetItem(const Pos& pos); // 生成并压入临时集合操作数
-        OpItem newTemOpSetItem(const Pos& pos); // 生成临时集合操作数（不压栈）
-        VarID getThisFieldVarID(const Pos& pos);
-        std::shared_ptr<symbol::VariableSymbol> getThisFieldSymbol(
-            const std::shared_ptr<symbol::ClassSymbol>& classSymbol);
+        [[nodiscard]] OpItem newTemOpSetItem(const Pos& pos) const; // 生成临时集合操作数（不压栈）
+        [[nodiscard]] VarID getThisFieldVarID(const Pos& pos) const;
+        [[nodiscard]] std::shared_ptr<symbol::VariableSymbol> getThisFieldSymbol(
+            const std::shared_ptr<symbol::ClassSymbol>& classSymbol) const;
 
         // 词法分析器管理方法
         static void pushLexer(const std::shared_ptr<lexer::Lexer>& lexer);
@@ -369,7 +350,7 @@ namespace ast
         [[nodiscard]] std::pair<std::shared_ptr<symbol::TypeLabelSymbol>, std::shared_ptr<symbol::TypeLabelSymbol>>
         getTypesFromOpItem(const OpItem& opItem) const;
         [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol>
-        getDefiniteTypeLabelSymbolFromOpItem(const OpItem &opItem) const;
+        getDefiniteTypeLabelSymbolFromOpItem(const OpItem& opItem) const;
         static std::string formatAttrField(const std::string& field); // 格式化属性字段
         void annotatePos(const Pos& pos);
         static std::shared_ptr<symbol::Symbol> getReferenceTargetSymbol(const OpItem& opItem);
@@ -381,9 +362,9 @@ namespace ast
         static bool isExtensionRegistered(const std::string& extensionPath);
         static void setSymbolBuiltinType(const std::shared_ptr<symbol::Symbol>& processingSymbol,
                                          const symbol::TypeOfBuiltin& type);
-        bool checkSymbolExists(const OpItem& opItem) const;
-        bool checkSymbolExists(const std::shared_ptr<OpItem>& opItem) const;
-        bool checkSymbolExists(const std::shared_ptr<symbol::Symbol>& processingSymbol) const;
+        [[nodiscard]] bool checkSymbolExists(const OpItem& opItem) const;
+        [[nodiscard]] bool checkSymbolExists(const std::shared_ptr<OpItem>& opItem) const;
+        [[nodiscard]] bool checkSymbolExists(const std::shared_ptr<symbol::Symbol>& processingSymbol) const;
         void checkExists(const OpItem& opItem, const Pos& pos) const;
         void checkExists(const std::shared_ptr<OpItem>& opItem, const Pos& pos) const;
         void checkExists(const std::shared_ptr<symbol::Symbol>& processingSymbol) const;
@@ -419,21 +400,21 @@ namespace ast
         void handleFuniTypeLabel(const std::shared_ptr<symbol::VariableSymbol>& varSymbol,
                                  const std::shared_ptr<symbol::LabelSymbol>& typeLabel,
                                  std::shared_ptr<symbol::FunctionSymbol>& funcSymbol) const;
-        std::vector<std::shared_ptr<symbol::ParameterSymbol>> createParameters(
+        [[nodiscard]] std::vector<std::shared_ptr<symbol::ParameterSymbol>> createParameters(
             const std::vector<std::shared_ptr<symbol::LabelSymbol>>& desList,
             const std::shared_ptr<symbol::VariableSymbol>& varSymbol) const;
         static symbol::ParamType getParamTypeFromLabel(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel);
-        void handleFuniReturnType(const std::vector<std::shared_ptr<symbol::LabelSymbol>>& secondDes,
-                                  std::shared_ptr<symbol::TypeLabelSymbol>& returnType) const;
-        void throwRCCLabelDesError(const std::shared_ptr<symbol::VariableSymbol>& varSymbol,
-                                   const std::shared_ptr<symbol::LabelSymbol>& typeLabel, size_t currentCount,
-                                   const std::string& expected) const;
-        void throwRCCLabelDesError(const std::shared_ptr<symbol::VariableSymbol>& varSymbol,
-                                   const std::shared_ptr<symbol::LabelSymbol>& typeLabel, size_t currentCount,
-                                   size_t expected) const;
-        void throwRCCTypeMissmatchError(const std::shared_ptr<symbol::LabelSymbol>& des,
+        static void handleFuniReturnType(const std::vector<std::shared_ptr<symbol::LabelSymbol>>& secondDes,
+                                  std::shared_ptr<symbol::TypeLabelSymbol>& returnType) ;
+        static void throwRCCLabelDesError(const std::shared_ptr<symbol::VariableSymbol>& varSymbol,
+                                          const std::shared_ptr<symbol::LabelSymbol>& typeLabel, size_t currentCount,
+                                          const std::string& expected);
+        static void throwRCCLabelDesError(const std::shared_ptr<symbol::VariableSymbol>& varSymbol,
+                                          const std::shared_ptr<symbol::LabelSymbol>& typeLabel, size_t currentCount,
+                                          size_t expected);
+        static void throwRCCTypeMissmatchError(const std::shared_ptr<symbol::LabelSymbol>& des,
                                         const std::shared_ptr<symbol::LabelSymbol>& typeLabel,
-                                        symbol::LabelType expectedType) const;
+                                        symbol::LabelType expectedType) ;
 
         // 当找不到 funcSymbol 时的处理（会在内部生成 CALL/IVOK 等并返回 true 表示已处理）
         void handleNoFuncSymbolCase(const OpItem& funcNameOpItem,
@@ -452,6 +433,8 @@ namespace ast
         void emitFinalCall(const std::shared_ptr<symbol::FunctionSymbol>& funcSymbol,
                            const builtin::CallInfos& callInfos);
 
+        static void processLabelDesNode(const std::shared_ptr<ExpressionNode>& labelNode, std::vector<std::shared_ptr<LabelNode>>& desLabelNodes);
+
         bool compile();
 
         std::string getCompileResult();
@@ -463,9 +446,9 @@ namespace ast
         void visitBlockRangerNode(BlockRangerNode& node) override;
 
         void processFunctionParams(const std::vector<std::shared_ptr<ExpressionNode>>& paramItems,
-                                   std::vector<std::shared_ptr<symbol::ParameterSymbol>> &paramSymbols,
-                                   std::vector<std::string> &paramIdents,
-                                   std::vector<std::shared_ptr<symbol::LabelSymbol>> &paramLabelDes);
+                                   std::vector<std::shared_ptr<symbol::ParameterSymbol>>& paramSymbols,
+                                   std::vector<std::string>& paramIdents,
+                                   std::vector<std::shared_ptr<symbol::LabelSymbol>>& paramLabelDes);
 
         void visitBracketExpressionNode(BracketExpressionNode& node) override;
 
@@ -509,7 +492,7 @@ namespace ast
             std::unordered_map<std::string, OpItem>& namedArgs,
             std::vector<std::pair<std::string, OpItem>>& orderedArgs);
 
-        std::shared_ptr<symbol::FunctionSymbol> getCtorSymbol(
+        [[nodiscard]] std::shared_ptr<symbol::FunctionSymbol> getCtorSymbol(
             const std::shared_ptr<symbol::ClassSymbol>& classSymbol,
             const std::queue<OpItem>& posArgs,
             const std::unordered_map<std::string, OpItem>& namedArgs, const Pos& ctorCallPos,
@@ -563,6 +546,59 @@ namespace ast
         void visitVariableDefinitionNode(VariableDefinitionNode& node) override;
 
         void visitAssignmentNode(AssignmentNode& node) override;
+
+        symbol::IRCCSymbolTableManagerInterface* GetSymbolTableManagerI() override;
+        void WriteRaCode(const char* raCode) override;
+        const char* GetProgramEntryFilePath() const override;
+        const char* GetProgramTargetFilePath() const override;
+        const char* GetCompileOutputFilePath() const override;
+        const char* GetCurrentProcessingFilePath() const override;
+        void SetCurrentProcessingFilePath(const char* filepath) override;
+        const char* CurScopeField() const override;
+        ScopeType CurScopeType() const override;
+        void EnterScope(const ast::ScopeType& scopeType) override;
+        void EnterScope(const std::size_t& level) override;
+        void EnterTopScope() override;
+        void EnterGlobalScope() override;
+        void ExitScope(const ast::ScopeType& scopeType) override;
+        std::size_t CurScopeLevel() const override;
+        void EnterLoopScope() override;
+        void ExitLoopScope() override;
+        bool IsInLoopScope() const override;
+        bool CheckTypeMatch(const symbol::IRCCSymbolInterface* leftSymbolI,
+            const IRCCOpItemInterface* rightOpItemI) const override;
+        void ProcessingTypeAutoChange(const symbol::IRCCSymbolInterface* sourceSymbolI,
+            const IRCCOpItemInterface* targetOpItemI) const override;
+        void PushNewProcessingSymbol(const symbol::IRCCSymbolInterface* symbolI) override;
+        symbol::IRCCSymbolInterface* TopProcessingSymbolI() override;
+        void PopProcessingSymbolI() override;
+        symbol::IRCCSymbolInterface* RPopProcessingSymbolI() override;
+        symbol::SymbolType TopProcessingSymbolType() override;
+        const char* TopProcessingSymbolVal() override;
+        const char* TopProcessingSymbolRaVal() override;
+        bool IsProcessingSymbol() const override;
+        void PushOpItem(const IRCCOpItemInterface* opItemI) override;
+        void PushOpItem(const OpItemType& opItemType, const symbol::IRCCTypeLabelSymbolInterface* typeLabelSymbolI,
+            const char* value, const char* raValue, const symbol::IRCCSymbolInterface* referencedSymbolI,
+            const symbol::IRCCTypeLabelSymbolInterface* valueTypeSymbolI) override;
+        void PushOpItem(const char* name, const char* fileField, const char* scopeField,
+            const symbol::IRCCTypeLabelSymbolInterface* typeLabelSymbolI) override;
+        IRCCOpItemInterface* RPopOpItemI() override;
+        void PopOpItem() override;
+        IRCCOpItemInterface* TopOpItemI() const override;
+        const char* TopOpRaVal() const override;
+        const char* RPopOpItemRaVal() override;
+        const char* RPopOpItemVal() override;
+        bool HasNextOpItem() const override;
+        IRCCOpItemInterface* PushTemOpSetItemWithRecord(const IRCCPosInterface* posI,
+            const symbol::IRCCTypeLabelSymbolInterface* valueTypeSymbolI,
+            const symbol::IRCCSymbolInterface* referencedSymbolI, const bool& sysDefined,
+            const symbol::IRCCTypeLabelSymbolInterface* typeLabelSymbolI) override;
+        IRCCOpItemInterface* PushTemOpSetItem(const IRCCPosInterface* posI) override;
+        IRCCOpItemInterface* NewTemOpSetItem(const IRCCPosInterface* posI) const override;
+        const char* GetThisFieldRaVal(const IRCCPosInterface* posI) const override;
+        symbol::IRCCVariableSymbolInterface* GetThisFieldSymbol(
+            const symbol::IRCCClassSymbolInterface* classSymbolI) const override;
     };
 }
 

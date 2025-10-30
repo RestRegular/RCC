@@ -5,7 +5,7 @@
 #ifndef RCC_RCC_BUILTIN_LOWLEVEL_FUNCTIONS_H
 #define RCC_RCC_BUILTIN_LOWLEVEL_FUNCTIONS_H
 
-#include "../rcc_builtin_core.h"
+#include "../../../include/builtin/rcc_builtin_core.h"
 
 namespace builtin
 {
@@ -13,6 +13,10 @@ namespace builtin
     BuiltinFuncRetType rcc_id(ast::CompileVisitor &visitor, const CallInfos& callInfos);
 
     BuiltinFuncRetType rcc_rasm(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
+    BuiltinFuncRetType rcc_bindDllExt(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
+    BuiltinFuncRetType rcc_unbindDllExt(ast::CompileVisitor &visitor, const CallInfos& callInfos);
 
 }
 

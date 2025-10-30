@@ -44,7 +44,7 @@ namespace error {
 std::string RJsonError::getErrorPosition(const size_t &spaceSize) const {
         if (!error_position.empty()) {
             return std::string(spaceSize, ' ') + "[ Pos ]  : " +
-            utils::StringManager::wrapText(error_position, 80, spaceSize + 10, "", "~ ") + "\n";
+            StringManager::wrapText(error_position, 80, spaceSize + 10, "", "~ ") + "\n";
         }
         return {};
     }
@@ -70,7 +70,7 @@ std::string RJsonError::getErrorPosition(const size_t &spaceSize) const {
         if (!repair_tips.empty()) {
             oss << space << "[ Tips ] : ";
             for (size_t i = 0; i < repair_tips.size(); ++i) {
-                oss << utils::StringManager::wrapText(repair_tips[i], 80, space_size + 10, "", "~ ");
+                oss << StringManager::wrapText(repair_tips[i], 80, space_size + 10, "", "~ ");
                 if (i < repair_tips.size() - 1) {
                     oss << "\n" << std::string(space_size + 9, ' ') << "- ";
                 }
@@ -85,7 +85,7 @@ std::string RJsonError::getErrorPosition(const size_t &spaceSize) const {
         std::ostringstream oss;
         oss << std::string(spaceSize, ' ') << "[ Info ] : ";
         for (size_t i = 0; i < error_info.size(); ++i) {
-            oss << utils::StringManager::wrapText(error_info[i], 80, spaceSize + 10, "", "~ ");
+            oss << StringManager::wrapText(error_info[i], 80, spaceSize + 10, "", "~ ");
             if (i < error_info.size() - 1) {
                 oss << "\n" << std::string(spaceSize + 9, ' ') << "- ";
             }

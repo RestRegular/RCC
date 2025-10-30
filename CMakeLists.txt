@@ -54,25 +54,41 @@ add_executable(RCC code/src/rcc_main.cpp
         code/include/builtin/rcc_builtin.h
         code/src/builtin/rcc_builtin.cpp
         code/include/rcc_version.h
-        code/include/builtin/functions/rcc_builtin_import.h
+        code/declarations/builtin/functions/rcc_builtin_import_dec.h
         code/include/builtin/rcc_builtin_core.h
         code/src/builtin/functions/rcc_builtin_import.cpp
-        code/include/builtin/functions/rcc_builtin_functions.h
-        code/include/builtin/functions/rcc_builtin_export.h
+        code/declarations/builtin/functions/rcc_builtin_functions_dec.h
+        code/declarations/builtin/functions/rcc_builtin_export_dec.h
         code/src/builtin/functions/rcc_builtin_export.cpp
-        code/include/builtin/functions/rcc_builtin_io_functions.h
-        code/include/builtin/functions/rcc_builtin_ds_functions.h
+        code/declarations/builtin/functions/rcc_builtin_io_functions_dec.h
+        code/declarations/builtin/functions/rcc_builtin_ds_functions_dec.h
         code/src/builtin/functions/rcc_builtin_ds_functions.cpp
-        code/include/builtin/functions/rcc_builtin_prog_functions.h
+        code/declarations/builtin/functions/rcc_builtin_prog_functions_dec.h
         code/src/builtin/functions/rcc_builtin_prog_functions.cpp
-        code/include/builtin/functions/rcc_builtin_datatype_functions.h
+        code/declarations/builtin/functions/rcc_builtin_datatype_functions_dec.h
         code/src/builtin/functions/rcc_builtin_datatype_functions.cpp
         code/src/builtin/functions/rcc_builtin_io_functions.cpp
-        code/include/builtin/functions/rcc_builtin_lowlevel_functions.h
+        code/declarations/builtin/functions/rcc_builtin_lowlevel_functions_dec.h
         code/src/builtin/functions/rcc_builtin_lowlevel_functions.cpp
         code/src/builtin/functions/rcc_builtin_super.cpp
-        code/include/builtin/functions/rcc_builtin_super.h
+        code/declarations/builtin/functions/rcc_builtin_super_dec.h
         code/src/builtin/rcc_builtin_core.cpp
         code/src/visitors/tools/rcc_function_call_compiler.cpp
-        code/include/external/rcc_compile_interface.h
+        code/declarations/rcc_base_dec.h
+        code/declarations/rcc_core_dec.h
+        code/declarations/lib/RJson/RJson_dec.h
+        code/declarations/analyzer/rcc_ast_dec.h
+        code/declarations/analyzer/rcc_parser_dec.h
+        code/declarations/builtin/rcc_builtin_dec.h
+        code/declarations/components/symbol/rcc_symbol_dec.h
+        code/declarations/components/symbol/rcc_symbol_dec.h
+        code/declarations/components/ri/rcc_ri_dec.h
+        code/include/internal/rcc_compile_implementation.h
+        code/include/interfaces/rcc_interface_dec.h
+        code/include/interfaces/rcc_pos_interface.h
+        code/include/interfaces/rcc_object_interface.h
+        code/include/builtin/dll_extension_manager/rcc_dll_extension_manager.h
+        code/declarations/builtin/dll_extension_manager/rcc_dll_extension_manager_dec.h
+        code/src/builtin/dll_extension_manager/rcc_dll_extension_manager.cpp
+        code/include/interfaces/rcc_builtin_interface.h
 )

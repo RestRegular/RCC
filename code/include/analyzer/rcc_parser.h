@@ -11,21 +11,14 @@
 #include <queue>
 
 #include "../rcc_base.h"
-#include "./rcc_ast.h"
 #include "./rcc_ast_components.h"
+#include "../../declarations/analyzer/rcc_parser_dec.h"
 
 namespace parser {
     using namespace ast;
     using namespace base;
     using namespace utils;
     using namespace core;
-
-    class Parser;
-
-    typedef std::shared_ptr<ExpressionNode> ExpressionNodePtr;
-    typedef std::function<ExpressionNodePtr(Parser*)> PrefixExpressionBuilder;
-    typedef std::function<ExpressionNodePtr(Parser*, const ExpressionNodePtr &)> InfixExpressionBuilder;
-    typedef std::function<ExpressionNodePtr(Parser*, const ExpressionNodePtr &)> PostfixExpressionBuilder;
 
     class Parser {
     public:
@@ -54,31 +47,31 @@ namespace parser {
         // 语法分析错误列表
         std::vector<std::string> errorMsgs;
         // 前缀表达式构建函数映射表
-        static std::map<TokenType, PrefixExpressionBuilder> prefixExpressionBuilders;
+        static std::map<core::TokenType, PrefixExpressionBuilder> prefixExpressionBuilders;
         // 中缀表达式构建函数映射表
-        static std::map<TokenType, InfixExpressionBuilder> infixExpressionBuilders;
+        static std::map<core::TokenType, InfixExpressionBuilder> infixExpressionBuilders;
         // 后缀表达式构建函数映射表
-        static std::map<TokenType, PostfixExpressionBuilder> postfixExpressionBuilders;
+        static std::map<core::TokenType, PostfixExpressionBuilder> postfixExpressionBuilders;
         // 运算符优先级映射表
-        static std::map<TokenType, Precedence> precedenceMap;
+        static std::map<core::TokenType, Precedence> precedenceMap;
 
         bool isAtEnd();
         void previous();
         const Token &next();
         void consumeNext();
         void reset();
-        const Token &previousToken() const;
+        [[nodiscard]] const Token &previousToken() const;
         [[nodiscard]] const Token &currentToken();
         [[nodiscard]] const Token &nextToken() const;
         [[nodiscard]] bool hasNext() const;
-        [[nodiscard]] bool previousTokenIs(TokenType type) const;
-        [[nodiscard]] bool currentTokenIs(TokenType type);
-        [[nodiscard]] bool nextTokenIs(TokenType type) const;
+        [[nodiscard]] bool previousTokenIs(core::TokenType type) const;
+        [[nodiscard]] bool currentTokenIs(core::TokenType type);
+        [[nodiscard]] bool nextTokenIs(core::TokenType type) const;
         void skipCurrentNewLineToken();
         void skipNextNewLineToken();
-        bool expectedNextTokenAndConsume(TokenType type);
-        void consumeNextIfNextTokenIs(TokenType type);
-        bool expectedNextToken(TokenType type);
+        bool expectedNextTokenAndConsume(core::TokenType type);
+        void consumeNextIfNextTokenIs(core::TokenType type);
+        bool expectedNextToken(core::TokenType type);
         void appendErrorMsg(const RCCError &error);
         [[nodiscard]] Precedence currentTokenPrecedence();
         [[nodiscard]] Precedence nextTokenPrecedence() const;
@@ -88,11 +81,11 @@ namespace parser {
         void clearTemTokens();
 
         // 错误处理
-        void recordUnexpectedTokenTypeError(const Token& token, TokenType expectedType);
+        void recordUnexpectedTokenTypeError(const Token& token, core::TokenType expectedType);
         void recordUnexpectedTokenTypeError(const Token& token, const std::string &expectedType);
-        void recordUnclosedExpressionError(const Token& beginToken, const Token &endToken, TokenType expectedType);
-        void recordPrefixBuilderNotFoundError(const Token &token, TokenType errorType);
-        void recordInfixBuilderNotFoundError(const Token &token, TokenType errorType);
+        void recordUnclosedExpressionError(const Token& beginToken, const Token &endToken, core::TokenType expectedType);
+        void recordPrefixBuilderNotFoundError(const Token &token, core::TokenType errorType);
+        void recordInfixBuilderNotFoundError(const Token &token, core::TokenType errorType);
         void recordSyntaxError(const Token &token, const Token &errorToken, const std::string &errorMsg);
 
         // 根节点构建函数
@@ -154,8 +147,6 @@ namespace parser {
         ExpressionNodePtr buildBracketExpression();
 
     };
-
-    void enableDebugMode(bool cond);
 } // analyzer
 
 #endif //RCC_RCC_PARSER_H

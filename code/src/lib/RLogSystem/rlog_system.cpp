@@ -45,13 +45,13 @@ namespace rlog {
     }
 
     void LogManager::rerror(const std::string &message, const LogRole &role) {
-        if (logMode.contains(NONE) || (!logMode.contains(ALL) && !logMode.contains(ERROR))) return;
+        if (logMode.contains(NONE) || (!logMode.contains(ALL) && !logMode.contains(ERROR_LM))) return;
         std::cerr << cc::colorfulText("[RLog(" + getLogRoleString(role) + ")]: ",
             cc::TextColor(255, 0, 0)) << message << std::endl;
     }
 
     void LogManager::rerror(const std::string &message, const std::string &role) {
-        if (logMode.contains(NONE) || (!logMode.contains(ALL) && !logMode.contains(ERROR))) return;
+        if (logMode.contains(NONE) || (!logMode.contains(ALL) && !logMode.contains(ERROR_LM))) return;
         std::cerr << cc::colorfulText("[RLog(" + role + ")]: ",
             cc::TextColor(255, 0, 0)) << message << std::endl;
     }

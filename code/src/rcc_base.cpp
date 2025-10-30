@@ -92,7 +92,8 @@ namespace base {
 
     const StringSet TYPES = {
             "int", "float", "str", "bool", "char", "any",
-            "list", "dict", "series", "func", "void"
+            "list", "dict", "series", "func", "funi", "void",
+            "nul", "clas"
     };
 
     const StringSet DESCRIBE_LABELS = {
@@ -105,8 +106,8 @@ namespace base {
         // object-oriented feature label
         "overwrite", "interface", "virtual",
         // data type label
-        "int", "float", "str", "bool", "char", "any",
-        "list", "dict", "series", "func", "void", "nul"
+        "int", "float", "str", "bool", "char", "any", "list",
+        "dict", "series", "func", "funi", "void", "nul", "clas"
     };
 
     const std::string NULL_VALUE = "null";
@@ -620,6 +621,76 @@ namespace base {
         {
             StringVector tips {"Please check if the import file is imported recursively."};
             if (!repair_tips.empty())tips.insert (tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::extensionLoadinError(const std::string& error_position,
+        const std::string& error_line, const StringVector& error_infos, const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, [error_infos]
+        {
+            StringVector infos {
+                "This error is caused by a failed extension import."
+            };
+            infos.insert(infos.end(), error_infos.begin(), error_infos.end());
+            return error_infos;
+        }(), [repair_tips]
+        {
+            StringVector tips {
+                "Please check if the imported extension is correct."
+            };
+            tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            return tips;
+        }());
+    }
+
+    RCCCompilerError RCCCompilerError::extensionFunctionCallError(
+    const std::string& error_position,
+    const std::string& error_line,
+    const StringVector& error_infos,
+    const StringVector& repair_tips)
+    {
+        return RCCCompilerError(
+            error_position,
+            error_line,
+            [&error_infos]
+            {
+                StringVector infos {
+                    "This error is caused by a failed extension function call."
+                };
+                // 添加具体的错误信息
+                infos.insert(infos.end(), error_infos.begin(), error_infos.end());
+                return infos;
+            }(),
+            [&repair_tips]
+            {
+                StringVector tips {
+                    "Please check if the imported extension is correct.",
+                };
+                // 添加额外的修复建议
+                if (!repair_tips.empty()) {
+                    tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+                }
+                return tips;
+            }()
+        );
+    }
+
+    RCCCompilerError RCCCompilerError::fileNotFoundError(const std::string& error_position,
+        const std::string& error_line, const std::string& not_found_file_path, const StringVector& repair_tips)
+    {
+        return RCCCompilerError(error_position, error_line, {
+            "This error is caused by the specified file not found.",
+            "Specified file path: " + not_found_file_path
+        }, [repair_tips]{
+            StringVector tips {
+                "Please ensure the specified file path is exist and correct."
+            };
+            if (!repair_tips.empty())
+            {
+                tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            }
             return tips;
         }());
     }

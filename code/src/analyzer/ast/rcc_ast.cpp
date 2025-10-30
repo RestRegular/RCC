@@ -4,6 +4,8 @@
 
 #include "../../../include/analyzer/rcc_ast.h"
 
+#include <string>
+
 namespace ast {
 
     std::string getNodeTypeName(NodeType nodeType) {

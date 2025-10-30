@@ -5,7 +5,8 @@
 #ifndef RCC_COLLECT_SYMBOL_VISITOR_H
 #define RCC_COLLECT_SYMBOL_VISITOR_H
 
-#include "rcc_base_visitor.h"
+#include "./rcc_base_visitor.h"
+#include "../components/symbol/rcc_symbol.h"
 
 namespace ast {
 

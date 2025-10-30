@@ -9,8 +9,6 @@
 
 namespace ri {
 
-    class RI;
-
     class RI: public utils::Object {
     public:
         RI() = default;
@@ -45,7 +43,7 @@ namespace ri {
         std::string comment;
     public:
         explicit FLAG(const std::string &opRI, const std::string &comment="");
-        std::string toRACode() const override;
+        [[nodiscard]] std::string toRACode() const override;
     };
 
     class PASS final: public FLAG
@@ -69,9 +67,9 @@ namespace ri {
         explicit ALLOT(const std::vector<std::string> &idents);
     };
 
-    class DELETE final : public PARALLEL {
+    class RI_DELETE final : public PARALLEL {
     public:
-        explicit DELETE(const std::vector<std::string> &idents);
+        explicit RI_DELETE(const std::vector<std::string> &idents);
     };
 
     class SIN final : public PARALLEL {
@@ -171,9 +169,9 @@ namespace ri {
         BINARY(const std::string &op, const std::string &rvalue, const std::string &lvalue);
         [[nodiscard]] std::string toRACode() const override;
 
-        std::string getRValue() const;
-        std::string getLValue() const;
-        std::string getOp() const;
+        [[nodiscard]] std::string getRValue() const;
+        [[nodiscard]] std::string getLValue() const;
+        [[nodiscard]] std::string getOp() const;
     };
 
     class TP_NEW final : public BINARY {

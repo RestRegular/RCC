@@ -8,131 +8,121 @@
 #include <memory>
 #include <unordered_set>
 #include <ranges>
+#include <optional>
 
-#include "rcc_symbol.h"
-#include "rcc_symbol.h"
-#include "rcc_symbol.h"
 #include "../../analyzer/rcc_ast_components.h"
 #include "../../lib/rcc_utils.h"
+#include "../../../declarations/components/symbol/rcc_symbol_dec.h"
+#include "../../interfaces/rcc_symbol_interface.h"
 
 namespace symbol {
-    class SymbolTable;
 
-    enum class SymbolType: int;
-    enum class LabelType: int;
-    enum class ParamType: int;
-    enum class ArgumentType: int;
-    enum class FunctionType: int;
-    enum class BuiltinTypeLabel: int;
-    enum class PermissionLabel: int;
-    enum class LifeCycleLabel: int;
-    enum class RestrictionLabel: int;
-    enum class ObjectOrientedLabel: int;
-
-    class Symbol;
-    class LabelSymbol;
-    class VariableSymbol;
-    class ParameterSymbol;
-    class FunctionSymbol;
-    class ClassSymbol;
-    class SymbolTableManager;
-
-    extern std::unordered_map<std::string, LabelType> labelTypeMap;
-
-    std::string symbolTypeToString(const SymbolType &type);
-    std::string symbolTypeToFormatString(const SymbolType &type);
-    std::string labelTypeToString(const LabelType &type);
-    std::string builtinTypeLabelToString(const BuiltinTypeLabel &label);
-    std::string permissionLabelToString(const PermissionLabel &label);
-    std::string objectOrientedLabelToString(const ObjectOrientedLabel &label);
-    std::string restrictionLabelToString(const RestrictionLabel &label);
-    std::string lifeCycleLabelToString(const LifeCycleLabel &label);
-    std::string functionTypeToString(const FunctionType &type);
-    std::string functionTypeToFormatString(const FunctionType &type);
-    std::string paramTypeToString(const ParamType &type);
-    std::string paramTypeToFormatString(const ParamType &type);
-
-    LabelType getLabelTypeByName(const std::string &name);
-    PermissionLabel getPermissionLabelByName(const std::string &name);
-    RestrictionLabel getRestrictionLabelByName(const std::string &name);
-    LifeCycleLabel getLifeCycleLabelByName(const std::string &name);
-    ObjectOrientedLabel getObjectOrientedLabelByName(const std::string &name);
-
-    bool checkVisitPermissionAllowed(const PermissionLabel &visitPermission, const PermissionLabel &permission);
-
-    class Symbol: public utils::Object {
+    class Symbol:
+    public utils::Object,
+    public IRCCSymbolInterface {
         utils::Pos pos;
         SymbolType type;
         std::string value;
         std::string raValue;
         size_t scopeLevel;
     public:
-        Symbol(const utils::Pos &pos,
+        Symbol(utils::Pos pos,
             const SymbolType &symbolType,
-            const std::string &symbolValue,
-            const std::string &symbolRaValue,
+            std::string symbolValue,
+            std::string symbolRaValue,
             const size_t &scopeLevel);
-
+        ~Symbol() override;
         [[nodiscard]] bool is(const SymbolType &symbolType) const;
+        bool Is(const SymbolType& tp) const override;
         [[nodiscard]] bool isNot(const SymbolType &symbolType) const;
+        bool IsNot(const SymbolType& tp) const override;
         [[nodiscard]] std::string getRaVal() const;
+        const char* GetRaVal() const override;
+        const char* GetVal() const override;
         [[nodiscard]] SymbolType getType() const;
+        SymbolType GetType() const override;
         [[nodiscard]] std::string getVal() const;
+        size_t GetScopeLevel() const override;
         [[nodiscard]] size_t getScopeLevel() const;
         void setScopeLevel(const size_t& level);
+        void SetScopeLevel(const size_t& level) override;
         [[nodiscard]] utils::Pos getPos() const;
-        std::string toString() const override;
+        const utils::IRCCPosInterface* GetPos() const override;
+        [[nodiscard]] std::string toString() const override;
 
-        bool equalWith(const Symbol &other) const;
-        virtual bool equalWith(const std::shared_ptr<Symbol> &other) const;
+        [[nodiscard]] bool equalWith(const Symbol &other) const;
+        [[nodiscard]] virtual bool equalWith(const std::shared_ptr<Symbol> &other) const;
 
         static std::shared_ptr<Object> copySymbolPtr(const std::shared_ptr<Symbol> &symbolPtr);
 
-        virtual std::shared_ptr<Symbol> transform(
-            const std::string &value, const std::string &raValue, const size_t &scopeLevel = -1)const = 0;
+        [[nodiscard]] virtual std::shared_ptr<Symbol> transform(
+            const std::string &value, const std::string &raValue, const size_t &scopeLevel)const = 0;
+        const Symbol* TransformToSI() const override;
+        const char* ToString() const override;
+        const char* BriefString() const override;
+        const char* ProfessionalString() const override;
+        const char* FormatString(const size_t& indent, const size_t& level) const override;
+        const char* ToJsonString() const override;
+        const IRCCObjectInterface* CopySelf() override;
     };
 
-    class LabelSymbol: public Symbol {
-        typedef std::vector<std::shared_ptr<LabelSymbol>> LabelDes;
-
+    class LabelSymbol:
+    public Symbol,
+    public IRCCLabelSymbolInterface {
+        using LabelDes = std::vector<std::shared_ptr<LabelSymbol>>;
         bool isBuiltIn_;
         LabelType labelType;
         std::vector<LabelDes> labelDesS{};
+        mutable std::vector<LabelDesI> m_labelDesIS;
     public:
-        LabelSymbol(const utils::Pos &pos,
+        LabelSymbol(
+            const utils::Pos &pos,
             const std::string &name, const std::string &raValue,
-            const size_t &scopeLevel, const LabelType &labelType=static_cast<LabelType>(0));
-
+            const size_t &scopeLevel, const LabelType &labelType);
+        ~LabelSymbol() override;
         [[nodiscard]] static bool isBuiltInLabel(const std::string &name);
-
         [[nodiscard]] LabelType getLabelType() const;
+        LabelType GetLabelType() const override;
         [[nodiscard]] std::vector<LabelDes> getLabelDesS() const;
+        const LabelDesI* GetLabelDesIS() const override;
         void appendLabelDes(const LabelDes &labelDes);
         void appendLastLabelDes(const LabelDes &labelDes);
         void handleLabelDesRecorded();
         [[nodiscard]] bool isBuiltIn() const;
-        std::string toString() const override;
-        std::string briefString() const override;
-
+        bool IsBuiltin() const override;
+        [[nodiscard]] std::string toString() const override;
+        const LabelSymbol* TransformToLSI() const override;
+        [[nodiscard]] std::string briefString() const override;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
+        const char* ToString() const override;
+        const char* BriefString() const override;
+        const IRCCObjectInterface* CopySelf() override;
+        [[nodiscard]] std::shared_ptr<Symbol> transform(
+            const std::string& value, const std::string& raValue, const size_t &scopeLevel) const override;
+        void syncLabelDesIS() const;
+        bool Is(const SymbolType& tp) const override;
+        bool IsNot(const SymbolType& tp) const override;
+        const char* GetVal() const override;
+        const char* GetRaVal() const override;
+        SymbolType GetType() const override;
+        size_t GetScopeLevel() const override;
+        void SetScopeLevel(const size_t& level) override;
+        const utils::IRCCPosInterface* GetPos() const override;
+        const Symbol* TransformToSI() const override;
+};
 
-        std::shared_ptr<Symbol> transform(
-            const std::string& value, const std::string& raValue, const size_t &scopeLevel = -1) const override;
-    };
-
-    class TypeLabelSymbol final : public LabelSymbol {
+    class TypeLabelSymbol final:
+    public LabelSymbol,
+    public IRCCTypeLabelSymbolInterface {
         static std::unordered_set<std::string> builtInTypes;
         static std::unordered_map<std::string, std::string> builtInTypeRaCodeMap;
         static std::unordered_map<std::string, std::string> customTypeMap;
         static std::unordered_map<std::string, std::shared_ptr<ClassSymbol>> customClassSymbolMap;
-
-        [[nodiscard]] static std::string getTypeLabelRaCode(
-            const std::string &name,
-            const std::string &raValue);
     public:
         TypeLabelSymbol(const utils::Pos &pos, const std::string &name,
             const size_t &scopeLevel, const std::string &uid = "");
-
+        ~TypeLabelSymbol() override;
+        static std::string getTypeLabelRaCode(const std::string &name, const std::string &raValue);
         [[nodiscard]] static bool isTypeLabel(const std::string &name);
         [[nodiscard]] static bool isBuiltInType(const std::string &name);
         [[nodiscard]] static bool isCustomType(const std::string &uid);
@@ -143,15 +133,32 @@ namespace symbol {
         static std::shared_ptr<TypeLabelSymbol> getCustomTypeLabelSymbol(const std::string &uid, const size_t &scopeLevel);
 
         [[nodiscard]] bool is(const std::string &name) const;
+        bool Is(const char* name) const override;
         [[nodiscard]] bool isNot(const std::string &name) const;
+        bool IsNot(const char* name) const override;
         [[nodiscard]] bool isCustomType() const;
+        bool IsCustomType() const override;
         [[nodiscard]] std::shared_ptr<ClassSymbol> getCustomClassSymbol() const;
         [[nodiscard]] bool isIterable() const;
-        bool equalWith(const std::shared_ptr<Symbol>& other) const override;
-        bool relatedTo(const std::shared_ptr<TypeLabelSymbol> &other) const;
-        std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
-                                          const size_t& scopeLevel = -1) const override;
+        [[nodiscard]] bool equalWith(const std::shared_ptr<Symbol>& other) const override;
+        [[nodiscard]] bool relatedTo(const std::shared_ptr<TypeLabelSymbol> &other) const;
+        [[nodiscard]] std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
+                                          const size_t& scopeLevel) const override;
+        const LabelSymbol* TransformToLSI() const override;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
+        bool Is(const SymbolType& tp) const override;
+        bool IsNot(const SymbolType& tp) const override;
+        const char* GetVal() const override;
+        const char* GetRaVal() const override;
+        SymbolType GetType() const override;
+        size_t GetScopeLevel() const override;
+        void SetScopeLevel(const size_t& level) override;
+        const utils::IRCCPosInterface* GetPos() const override;
+        const Symbol* TransformToSI() const override;
+        LabelType GetLabelType() const override;
+        const LabelDesI* GetLabelDesIS() const override;
+        bool IsBuiltin() const override;
+        const TypeLabelSymbol* TransformToTLSI() const override;
         [[nodiscard]] static std::shared_ptr<TypeLabelSymbol> intTypeSymbol(const utils::Pos &pos, const size_t &scopeLevel);
         [[nodiscard]] static std::shared_ptr<TypeLabelSymbol> floatTypeSymbol(const utils::Pos &pos, const size_t &scopeLevel);
         [[nodiscard]] static std::shared_ptr<TypeLabelSymbol> strTypeSymbol(const utils::Pos &pos, const size_t &scopeLevel);
@@ -180,9 +187,9 @@ namespace symbol {
         int lifeCycleLabelMarks = 0;
         int restrictionLabelMarks = 0;
         std::unordered_set<std::string> typeLabelMarks{};
-        std::string resultDisplay = "";
+        std::string resultDisplay;
     public:
-        LabelMarkManager(){}
+        LabelMarkManager() = default;
         void markLabels(const std::unordered_set<std::shared_ptr<LabelSymbol>> &labels);
         void markLabel(const std::shared_ptr<LabelSymbol> &label, const bool& refresh = false);
 
@@ -215,7 +222,9 @@ namespace symbol {
         void markTypeLabel(const std::string &typeLabel);
     };
 
-    class ParameterSymbol: public Symbol {
+    class ParameterSymbol:
+    public Symbol,
+    public IRCCParameterSymbolInterface {
         std::shared_ptr<TypeLabelSymbol> typeLabel;
         std::shared_ptr<TypeLabelSymbol> valueType;
         std::unordered_set<std::shared_ptr<LabelSymbol>> labels;
@@ -233,7 +242,9 @@ namespace symbol {
             const size_t &scopeLevel,
             const SymbolType &symbolType = static_cast<SymbolType>(3),
             const std::shared_ptr<TypeLabelSymbol> &valueType = nullptr);
-
+        ~ParameterSymbol() override;
+        [[nodiscard]] bool typeIs(const std::string& type) const;
+        [[nodiscard]] bool typeIsNot(const std::string &type) const;
         [[nodiscard]] std::shared_ptr<TypeLabelSymbol> getTypeLabel() const;
         [[nodiscard]] std::unordered_set<std::shared_ptr<LabelSymbol>> getLabels() const;
         [[nodiscard]] std::optional<std::string> getDefaultValue() const;
@@ -246,12 +257,36 @@ namespace symbol {
         [[nodiscard]] LabelMarkManager &getLabelMarkManager();
         [[nodiscard]] LabelMarkManager getLabelMarkManager() const;
         std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
-            const size_t& scopeLevel = -1) const override;
+            const size_t& scopeLevel) const override;
         std::string toString() const override;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
-    };
+        IRCCTypeLabelSymbolInterface* GetTypeLabelSymbolI() const override;
+        IRCCTypeLabelSymbolInterface* GetValueTypeLabelSymbolI() const override;
+        void SetTypeLabelSymbol(IRCCTypeLabelSymbolInterface* typeLabelI) override;
+        void SetValueTypeLabelSymbol(IRCCTypeLabelSymbolInterface* valueTypeI) override;
+        Labels GetLabels() const override;
+        void FreeLabels(Labels& labels_) override;
+        void ResetLabels(const Labels& labels_) override;
+        const char* GetDefaultValue() const override;
+        void SetDefaultValue(const char* value) override;
+        ParamType GetParamType() const override;
+        const ParameterSymbol* TransformToPSI() const override;
+        const char* ToString() const override;
+        bool Is(const SymbolType& tp) const override;
+        bool IsNot(const SymbolType& tp) const override;
+        const char* GetVal() const override;
+        const char* GetRaVal() const override;
+        SymbolType GetType() const override;
+        size_t GetScopeLevel() const override;
+        void SetScopeLevel(const size_t& level) override;
+        const utils::IRCCPosInterface* GetPos() const override;
+        const Symbol* TransformToSI() const override;
+};
 
-    class VariableSymbol final : public ParameterSymbol {
+    class VariableSymbol final:
+    public ParameterSymbol,
+    public IRCCVariableSymbolInterface
+    {
         std::shared_ptr<ClassSymbol> classSymbol;
         std::shared_ptr<Symbol> referencedSymbol;
         std::shared_ptr<ast::ExpressionNode> defaultValueNode;
@@ -279,15 +314,28 @@ namespace symbol {
         std::string toString() const override;
         std::shared_ptr<ast::ExpressionNode> getDefaultValueNode() const;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
+        IRCCTypeLabelSymbolInterface* GetTypeLabelSymbolI() const override;
+        IRCCTypeLabelSymbolInterface* GetValueTypeLabelSymbolI() const override;
+        void SetTypeLabelSymbol(IRCCTypeLabelSymbolInterface* typeLabel) override;
+        void SetValueTypeLabelSymbol(IRCCTypeLabelSymbolInterface* valueType) override;
+        Labels GetLabels() const override;
+        void FreeLabels(Labels& labels) override;
+        void ResetLabels(const Labels& labels) override;
+        const char* GetDefaultValue() const override;
+        void SetDefaultValue(const char* value) override;
+        ParamType GetParamType() const override;
+        const ParameterSymbol* TransformToPSI() const override;
+        const char* ToString() const override;
+        IRCCClassSymbolInterface* GetClassSymbolI() const override;
+        PermissionLabel GetPermissionLabel() const override;
+        IRCCSymbolInterface* GetReferencedSymbol() const override;
+        void SetReferencedSymbol(const IRCCSymbolInterface* symbolI) override;
+        void SetClassSymbol(const IRCCClassSymbolInterface* classSymbolI) override;
     };
 
-    enum class TypeOfBuiltin: int {
-        ORDINARY,
-        BUILTIN,
-        PURE_BUILTIN
-    };
-
-    class FunctionSymbol final : public Symbol {
+    class FunctionSymbol final:
+    public Symbol,
+    public IRCCFunctionSymbolInterface {
         // 核心：返回值类型标签（nullptr 表示未设置；若为 void 类型则表示无返回值）
         std::shared_ptr<TypeLabelSymbol> returnType = nullptr;
         // 函数体中是否已有返回语句（独立于返回类型，用于检查完整性）
@@ -353,13 +401,50 @@ namespace symbol {
         [[nodiscard]] FunctionType getFunctionType() const;
         [[nodiscard]] PermissionLabel getPermissionLabel() const;
         std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
-            const size_t& scopeLevel = -1) const override;
+            const size_t& scopeLevel) const override;
         bool is(const TypeOfBuiltin &type) const;
         [[nodiscard]] std::shared_ptr<TypeLabelSymbol> getFunctionTypeLabel() const;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
-    };
 
-    class ClassSymbol final : public Symbol {
+        bool Is(const SymbolType& tp) const override;
+        bool IsNot(const SymbolType& tp) const override;
+        const char* GetVal() const override;
+        const char* GetRaVal() const override;
+        SymbolType GetType() const override;
+        size_t GetScopeLevel() const override;
+        void SetScopeLevel(const size_t& level) override;
+        const utils::IRCCPosInterface* GetPos() const override;
+        const Symbol* TransformToSI() const override;
+        IRCCTypeLabelSymbolInterface* GetReturnTypeLabelI() const override;
+        void SetReturnType(const IRCCTypeLabelSymbolInterface* typeSymbolI) override;
+        void ReSetReturnType(const IRCCTypeLabelSymbolInterface* typeSymbolI) override;
+        bool HasReturnValue() const override;
+        bool HasSetReturnType() const override;
+        bool HasReturned() const override;
+        void SetHasReturned(const bool& hasReturned) override;
+        void SetFunctionType(const FunctionType& funcType) override;
+        void SetClassSymbol(const IRCCClassSymbolInterface* classSymbolI) override;
+        void SetBuiltInType(const TypeOfBuiltin& type) override;
+        void SetSignature(const IRCCTypeLabelSymbolInterface* signatureSymbolI) override;
+        IRCCTypeLabelSymbolInterface* GetSignatureSymbolI() const override;
+        const char* GetSignatureString() const override;
+        Labels GetLabels() const override;
+        ParamSymbols GetParamSymbols() const override;
+        TypeOfBuiltin GetBuiltInType() const override;
+        IRCCClassSymbolInterface* GetClassSymbolI() const override;
+        FunctionType GetFunctionType() const override;
+        PermissionLabel GetPermissionLabel() const override;
+        const FunctionSymbol* TransformToFSI() const override;
+        bool Is(const TypeOfBuiltin& type) const override;
+        IRCCTypeLabelSymbolInterface* GetFunctionTypeLabelSymbolI() const override;
+        void FreeLabels(Labels& labels_) override;
+        void FreeParamSymbols(ParamSymbols& paramSymbols) override;
+};
+
+    class ClassSymbol final :
+    public Symbol,
+    public IRCCClassSymbolInterface
+    {
         std::vector<std::shared_ptr<ClassSymbol>> baseClasses;
         std::vector<std::shared_ptr<ClassSymbol>> derivedClasses;
         std::shared_ptr<SymbolTable> members = std::make_shared<SymbolTable>();
@@ -368,6 +453,8 @@ namespace symbol {
         LabelMarkManager labelMarkManager{};
         bool collectionFinished = false;
         PermissionLabel visitPermission;
+        size_t scope_level_{};
+
     public:
         ClassSymbol(
             const utils::Pos &pos,
@@ -382,7 +469,7 @@ namespace symbol {
             const utils::Pos &pos,
             const std::string &name,
             const std::string &nameID,
-            const LabelMarkManager &labelMarkManager,
+            LabelMarkManager labelMarkManager,
             size_t scopeLevel,
             std::vector<std::shared_ptr<ClassSymbol>> baseClasses = {},
             const std::vector<std::shared_ptr<ClassSymbol>>& derivedClasses = {},
@@ -390,12 +477,18 @@ namespace symbol {
             const std::shared_ptr<SymbolTable> &staticMembers = {},
             const bool &collectionFinished = true,
             const PermissionLabel &visitPermission = {});
-
+        ~ClassSymbol() override;
+        void FreeClasses(Classes& classes) override;
         [[nodiscard]] std::vector<std::shared_ptr<ClassSymbol>> &getBaseClasses();
+        Classes GetBaseClasses() override;
         [[nodiscard]] std::vector<std::shared_ptr<ClassSymbol>> &getDerivedClasses();
+        Classes GetDeriveClasses() override;
         [[nodiscard]] std::shared_ptr<SymbolTable> &getMembers();
+        IRCCSymbolTableInterface* GetMembers() const override;
         [[nodiscard]] std::shared_ptr<SymbolTable> &getStaticMembers();
+        IRCCSymbolTableInterface* GetStaticMembers() const override;
         [[nodiscard]] std::shared_ptr<SymbolTable> &getConstructors();
+        IRCCSymbolTableInterface* GetConstructors() const override;
 
         void addMember(const std::shared_ptr<Symbol> &symbol, const bool& sysDefined) const;
         void _addDerivedClass(const std::shared_ptr<ClassSymbol> &classSymbol);
@@ -421,27 +514,60 @@ namespace symbol {
         bool hasCollectionFinished() const;
         PermissionLabel getVisitPermission() const;
         std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
-            const size_t& scopeLevel = -1) const override;
+            const size_t& scopeLevel) const override;
         std::string toString() const override;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
         bool relatedTo(const std::shared_ptr<ClassSymbol> &other) const;
         bool isSupperClassOf(const std::shared_ptr<ClassSymbol> &other, const bool &restrict = true) const;
+        void AddMember(const IRCCSymbolInterface* symbolI) const override;
+        void SetDerivedClasses(const IRCCClassSymbolInterface* classSymbolI) override;
+        void SetBaseClasses(const IRCCClassSymbolInterface* classSymbolI) override;
+        bool HasInheritClass() const override;
+        IRCCClassSymbolInterface* GetDirectlyInheritedClassSymbolI() const override;
+        bool HasMember(const char* name) const override;
+        MemberSymbolResult FindMemberSymbolI(const char* name) const override;
+        MemberSymbolResult FindMemberSymbolIInPermission(const char* name) const override;
+        IRCCTypeLabelSymbolInterface* GetClassTypeLabelSymbolI(const utils::IRCCPosInterface* posI) const override;
+        void SetCollectionFinished() override;
+        void SetVisitPermission(const PermissionLabel& permission) override;
+        void SetDefaultVisitPermission() override;
+        PermissionLabel GetDefaultVisitPermission() const override;
+        bool HasCollectionFinished() const override;
+        PermissionLabel GetVisitPermission() const override;
+        const ClassSymbol* TransformToCSI() const override;
+        bool RelatedTo(const IRCCClassSymbolInterface* otherI) const override;
+        bool IsSupperClassOf(const IRCCClassSymbolInterface* otherI, const bool& restrict) const override;
+        bool Is(const SymbolType& tp) const override;
+        bool IsNot(const SymbolType& tp) const override;
+        const char* GetVal() const override;
+        const char* GetRaVal() const override;
+        SymbolType GetType() const override;
+        size_t GetScopeLevel() const override;
+        void SetScopeLevel(const size_t& level) override;
+        const utils::IRCCPosInterface* GetPos() const override;
+        const Symbol* TransformToSI() const override;
     };
 
-    class SymbolTable final: public utils::Object {
+    class SymbolTable final:
+    public utils::Object,
+    public IRCCSymbolTableInterface {
         std::unordered_map<std::string, std::pair<int, std::shared_ptr<Symbol>>> table{};
         std::vector<std::string> nameIndex{};
         std::vector<std::string> sysDefinitionRecord{};
     public:
-        SymbolTable(){}
-        std::shared_ptr<Symbol> insertByName(const std::shared_ptr<Symbol> &symbol, const bool& sysDefined);
+        SymbolTable() = default;
+        ~SymbolTable() override;
+        std::shared_ptr<Symbol> insertByName(const std::shared_ptr<Symbol>& symbol, const bool& sysDefined);
+        void InsertByName(IRCCSymbolInterface* symbolI) override;
         std::shared_ptr<Symbol> insertByRID(const std::shared_ptr<Symbol>& symbol, const bool& sysDefined);
         std::shared_ptr<Symbol> find(const std::string &name) const;
+        IRCCSymbolInterface* Find(const char* name) override;
         [[nodiscard]] bool contains(const std::string &name) const;
+        bool Contains(const char* name) override;
         [[nodiscard]] std::unordered_map<std::string, std::pair<int, std::shared_ptr<Symbol>>> getTable() const;
         [[nodiscard]] std::vector<std::string> getNameIndex() const;
         void remove(const std::string &name);
-
+        void Remove(const char* name) override;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
 
         // 支持管道操作符 |，用于范围适配
@@ -451,8 +577,9 @@ namespace symbol {
             return std::views::all(table | std::views::values) | std::forward<R>(r);
         }
 
-        // 特定重载，处理 std::views::elements<1>
-        auto operator|(const std::views::_Elements<1>&) const {
+        auto operator|(auto&&) const
+        -> decltype(std::views::all(table | std::views::values))
+        {
             return std::views::all(table | std::views::values);
         }
 
@@ -518,7 +645,9 @@ namespace symbol {
         }
     };
 
-    class SymbolTableManager final : public utils::Object {
+    class SymbolTableManager final:
+    public utils::Object,
+    public IRCCSymbolTableManagerInterface {
         std::vector<std::pair<std::shared_ptr<SymbolTable>,
             std::shared_ptr<SymbolTable>>> scopes; // first: val -> Symbol, second: raVal -> Symbol
         size_t currentScopeLevel_; // 0 为全局作用域
@@ -526,10 +655,14 @@ namespace symbol {
         void appendScope(const std::shared_ptr<SymbolTable> &nameScope, const std::shared_ptr<SymbolTable> &idScope);
     public:
         SymbolTableManager();
+        ~SymbolTableManager() override;
         [[nodiscard]] SymbolTable &currentNameMapScope() const;
+        IRCCSymbolTableInterface* CurrentNameMapScope() const override;
         [[nodiscard]] SymbolTable &currentRIDMapScope() const;
+        IRCCSymbolTableInterface* CurrentRIDMapScope() const override;
         [[nodiscard]] std::pair<SymbolTable, SymbolTable> currentScopeCopied() const;
         void enterScope();
+        void EnterScope() override;
         void enterScope(size_t scopeLevel);
         void enterTopScope();
         void enterGlobalScope();
@@ -538,15 +671,27 @@ namespace symbol {
         void removeByName(const std::string &name, const std::optional<size_t>& specifiedLevel = std::nullopt) const;
         void removeByRID(const std::string& rid, const std::optional<size_t>& specifiedLevel = std::nullopt) const;
         [[nodiscard]] std::pair<long long int, std::shared_ptr<Symbol>> findByName(const std::string &name, const std::optional<size_t>& specifiedLevel = std::nullopt) const;
-        std::pair<long long int, std::shared_ptr<Symbol>> findByRID(const std::string& rid) const;
+        [[nodiscard]] std::pair<long long int, std::shared_ptr<Symbol>> findByRID(const std::string& rid) const;
         [[nodiscard]] std::shared_ptr<Symbol> findInCurrentScope(const std::string &name) const;
         [[nodiscard]] bool containsName(const std::string &name) const;
         [[nodiscard]] bool currentScopeContains(const std::string &name) const;
         [[nodiscard]] size_t curScopeLevel() const;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
-
+        void EnterScope(const size_t& scopeLevel) override;
+        void EnterTopScope() override;
+        void EnterGlobalScope() override;
+        void ExitScope() override;
+        void Insert(IRCCSymbolInterface* symbolI) const override;
+        void RemoveByName(const char* name, const size_t* specifiedLevel) const override;
+        void RemoveByRID(const char* rid, const size_t* specifiedLevel) const override;
+        IRCCSymbolInterface* FindByName(const char* name, const size_t* specifiedLevel) const override;
+        IRCCSymbolInterface* FindByRID(const char* rid) const override;
+        IRCCSymbolInterface* FindInCurrentScope(const char* name) const override;
+        bool ContainsName(const char* name) const override;
+        bool CurrentScopeContains(const char* name) const override;
+        size_t CurScopeLevel() const override;
         [[nodiscard]] std::pair<long long int, std::shared_ptr<VariableSymbol>> findVariableSymbolByName(const std::string &name) const;
-        std::pair<long long int, std::shared_ptr<VariableSymbol>> findVariableSymbolByRID(const std::string& rid) const;
+        [[nodiscard]] std::pair<long long int, std::shared_ptr<VariableSymbol>> findVariableSymbolByRID(const std::string& rid) const;
 
         template <typename ST>
         [[nodiscard]] std::pair<long long int, std::shared_ptr<ST>> findByNameAndTransform(const std::string &name, const SymbolType &type) const
@@ -577,31 +722,6 @@ namespace symbol {
         }
     };
 
-    enum class SymbolType: int {
-        VARIABLE = 0,
-        FUNCTION,
-        LABEL,
-        PARAMETER,
-        CLASS
-    };
-
-    enum class LabelType: int {
-        UNKNOWN_TYPE_LABEL = 0,
-        TYPE_LABEL, // 数据类型标签
-        PERMISSION_LABEL, // 权限标签
-        LIFE_CYCLE_LABEL, // 生命周期标签
-        RESTRICTION_LABEL, // 限制标签
-        OBJECT_ORIENTED_LABEL, // 对象关系标签
-    };
-
-    enum class ParamType: int {
-        NO_PARAM = 0,
-        PARAM_POSITIONAL,
-        PARAM_KEYWORD,
-        PARAM_VAR_LEN_POSITIONAL,
-        PARAM_VAR_LEN_KEYWORD
-    };
-
     enum class ArgumentType: int {
         ARG_POSITIONAL = 0,
         ARG_KEYWORD,
@@ -620,7 +740,7 @@ namespace symbol {
         STR,
         BOOL,
         CHAR,
-        VOID,
+        VOID_BTL,
         NUL,
         ANY,
         FUNC,
@@ -631,24 +751,8 @@ namespace symbol {
         FLAG
     };
 
-    enum class PermissionLabel: int {
-        PRIVATE = 0,
-        PROTECTED,
-        PUBLIC,
-        BUILTIN,
-        COUNT
-    };
-
-    enum class LifeCycleLabel: int {
-        STATIC = 0,   // 对应 "static"
-        GLOBAL,       // 对应 "global"
-        ORDINARY,     // 对应 "ordinary"
-        INSTANCE,     // 对应 "instance"
-        COUNT
-    };
-
     enum class RestrictionLabel: int {
-        CONST = 0,   // 对应 "const"
+        CONST_RL = 0,   // 对应 "const"
         QUOTE,       // 对应 "quote"
         COUNT
     };

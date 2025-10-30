@@ -2,7 +2,7 @@
 // Created by RestRegular on 2025/9/16.
 //
 
-#include "../../../include/builtin/functions/rcc_builtin_io_functions.h"
+#include "../../../declarations/builtin/functions/rcc_builtin_io_functions_dec.h"
 
 namespace builtin
 {
@@ -22,7 +22,7 @@ namespace builtin
         {
             throw std::runtime_error("Failure to match parameters of the built-in function: 'sin'");
         }
-        visitor.pushTemOpVarItemWithRecord(utils::Pos::UNKNOW_POS, symbol::TypeLabelSymbol::strTypeSymbol(utils::Pos::UNKNOW_POS, visitor.getSymbolTable().curScopeLevel()));
+        visitor.pushTemOpVarItemWithRecord(utils::getUnknownPos(), symbol::TypeLabelSymbol::strTypeSymbol(utils::getUnknownPos(), visitor.getSymbolTable().curScopeLevel()));
 
         const auto &raCode = ri::SOUT("s-l", {callInfos.processedArgs[0]}).toRACode()
         + ri::SIN({"s-m", visitor.topOpRaVal()}).toRACode();

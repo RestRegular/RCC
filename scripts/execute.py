@@ -45,7 +45,7 @@ def add_version_to_executable(executable_path, version):
     new_file_name = f"{new_base_name}{ext}"
 
     # 组合新的完整路径
-    new_path = os.path.join(dir_path, new_file_name)
+    new_path = os.path.join(dir_path, "exes", new_file_name)
 
     return new_path
 

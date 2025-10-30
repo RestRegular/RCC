@@ -2,6 +2,7 @@
 // Created by RestRegular on 2025/1/17.
 //
 
+#define  NOMINMAX
 #include <iostream>
 #include <limits>
 #include <cmath>
@@ -36,9 +37,18 @@ namespace utils
     {
     }
 
+    Object::~Object() {}
+
+    IRCCObjectInterface::~IRCCObjectInterface() {}
+
     std::string Object::toString() const
     {
         return "[Object: " + std::to_string(id) + "]";
+    }
+
+    const char* Object::ToString() const
+    {
+        return toString().c_str();
     }
 
     std::string Object::briefString() const
@@ -46,9 +56,19 @@ namespace utils
         return toString();
     }
 
+    const char* Object::BriefString() const
+    {
+        return briefString().c_str();
+    }
+
     std::string Object::professionalString() const
     {
         return "Object{id=" + std::to_string(id) + "}";
+    }
+
+    const char* Object::ProfessionalString() const
+    {
+        return professionalString().c_str();
     }
 
     std::string Object::formatString(size_t indent, size_t level) const
@@ -56,19 +76,34 @@ namespace utils
         return {};
     }
 
+    const char* Object::FormatString(const size_t &indent, const size_t &level) const
+    {
+        return formatString(indent, level).c_str();
+    }
+
     std::string Object::toJsonString() const
     {
         return "\"" + StringManager::escape(toString()) + "\"";
+    }
+
+    const char* Object::ToJsonString() const
+    {
+        return toJsonString().c_str();
     }
 
     std::string Object::hashCode()
     {
         if (_hasCode.empty())
         {
-            _hasCode = hashToCode(toString());
+            _hasCode = std::to_string(hashToCode(toString()));
             return _hasCode;
         }
         return _hasCode;
+    }
+
+    const char* Object::HasCode()
+    {
+        return hashCode().c_str();
     }
 
     std::string Object::uniqueId()
@@ -81,9 +116,24 @@ namespace utils
         return _uniqueId;
     }
 
+    const char* Object::UniqueId()
+    {
+        return uniqueId().c_str();
+    }
+
     std::shared_ptr<Object> Object::copySelf() const
     {
         return std::make_shared<Object>();
+    }
+
+    const IRCCObjectInterface* Object::CopySelf()
+    {
+        return copySelf().get();
+    }
+
+    const Object* Object::Transform() const
+    {
+        return this;
     }
 
     const auto& program_start_time = std::chrono::high_resolution_clock::now();
@@ -334,7 +384,7 @@ namespace utils
         }
         if (str.size() == 4 && str[0] == '\'' && str[1] == '\\' && str[3] == '\'')
         {
-            return StringManager::getInstance().escapeChar(str[2]);
+            return StringManager::escapeChar(str[2]);
         }
         throw std::invalid_argument("Invalid character string: " + str);
     }
@@ -385,7 +435,7 @@ namespace utils
     }
 
     // 将double转换为字符串
-    std::string doubleToString(double value)
+    std::string doubleToString(const double value)
     {
         std::ostringstream oss;
         oss << value;
@@ -460,7 +510,6 @@ namespace utils
     std::unordered_set<char> StringManager::spaceChars = {
         ' ', '\t', '\n', '\r'
     };
-
 
     StringManager& StringManager::getInstance()
     {
@@ -819,7 +868,7 @@ namespace utils
                                         const std::string& lastLineSuffix, const std::string& nextLinePrefix, const
                                         bool& retainPreSpaces)
     {
-        return trim(text);
+        return retainPreSpaces ? text : trim(text);
         std::ostringstream oss;
         size_t currentWidth = 0;
         std::istringstream words(text);
@@ -1062,9 +1111,7 @@ namespace utils
     }
 
     // Pos具体实现
-    Pos Pos::UNKNOW_POS = Pos(-1, -1, -1, RCC_UNKNOWN_CONST);
-
-    Pos::Pos(size_t line, size_t column, size_t offset, std::string filepath) :
+    Pos::Pos(const size_t line, const size_t column, const size_t offset, std::string filepath) :
         line(line), column(column), offset(offset), filepath(std::move(filepath))
     {
     }
@@ -1074,14 +1121,29 @@ namespace utils
         return line;
     }
 
+    size_t Pos::GetLine() const
+    {
+        return getLine();
+    }
+
     size_t Pos::getColumn() const
     {
         return column;
     }
 
+    size_t Pos::GetColumn() const
+    {
+        return getColumn();
+    }
+
     size_t Pos::getOffset() const
     {
         return offset;
+    }
+
+    size_t Pos::GetOffset() const
+    {
+        return getOffset();
     }
 
     std::ostream& operator<<(std::ostream& out, const Pos& pos)
@@ -1100,14 +1162,29 @@ namespace utils
         return filepath;
     }
 
+    const char* Pos::GetFilepath() const
+    {
+        return getFilepath().c_str();
+    }
+
     std::string Pos::getFileField() const
     {
         return getFileNameFromPath(filepath);
     }
 
+    const char* Pos::GetFileField() const
+    {
+        return getFileField().c_str();
+    }
+
     std::string Pos::getFilePosStr() const
     {
         return "\"" + StringManager::escape(this->getFilepath()) + ":1:1\", line 1";
+    }
+
+    const char* Pos::GetFilePosStr() const
+    {
+        return getFilePosStr().c_str();
     }
 
     void Pos::serialize(std::ostream& out, const SerializationProfile& profile) const
@@ -1160,9 +1237,19 @@ namespace utils
         this->line = line_;
     }
 
+    void Pos::SetLine(const size_t& line_)
+    {
+        setLine(line_);
+    }
+
     void Pos::setColumn(size_t column_)
     {
         this->column = column_;
+    }
+
+    void Pos::SetColumn(const size_t& column_)
+    {
+        setColumn(column_);
     }
 
     void Pos::setOffset(size_t offset_)
@@ -1170,9 +1257,19 @@ namespace utils
         this->offset = offset_;
     }
 
+    void Pos::SetOffSet(const size_t& offset_)
+    {
+        setOffset(offset_);
+    }
+
     void Pos::setFilepath(const std::string& filepath_)
     {
         this->filepath = filepath_;
+    }
+
+    void Pos::SetFilepath(const char* filepath_)
+    {
+        filepath = std::string(filepath_);
     }
 
     bool Pos::compare(const Pos& other) const
@@ -1181,9 +1278,34 @@ namespace utils
             other.offset == offset && other.filepath == filepath;
     }
 
+    bool Pos::Compare(const IRCCPosInterface* other)
+    {
+        return line == other->GetLine() && column == other->GetColumn() &&
+            offset == other->GetOffset() && filepath == other->GetFilepath();
+    }
+
+    const Pos* Pos::TransformToPI() const
+    {
+        return this;
+    }
+
+    Pos::~Pos() {}
+
+    IRCCPosInterface::~IRCCPosInterface() {}
+
     std::string Pos::briefString() const
     {
         return getFileFromPath(filepath) + ":" + std::to_string(line) + ":" + std::to_string(column);
+    }
+
+    const char* Pos::ToString() const
+    {
+        return toString().c_str();
+    }
+
+    const char* Pos::BriefString() const
+    {
+        return briefString().c_str();
     }
 
     std::string Pos::professionalString() const
@@ -1200,6 +1322,36 @@ namespace utils
             spaceString(indent * (level + 1)) + "offset=" + std::to_string(offset) + ",\n" +
             spaceString(indent * (level + 1)) + "file=" + getFileFromPath(filepath) + "\n" +
             spaceString(indent * level) + "}";
+    }
+
+    const char* Pos::ProfessionalString() const
+    {
+        return professionalString().c_str();
+    }
+
+    const char* Pos::FormatString(const size_t& indent, const size_t& level) const
+    {
+        return formatString(indent, level).c_str();
+    }
+
+    const char* Pos::ToJsonString() const
+    {
+        return Object::ToJsonString();
+    }
+
+    const char* Pos::HasCode()
+    {
+        return Object::HasCode();
+    }
+
+    const char* Pos::UniqueId()
+    {
+        return Object::UniqueId();
+    }
+
+    const IRCCObjectInterface* Pos::CopySelf()
+    {
+        return copySelf().get();
     }
 
     ArgType getArgType(const std::string& str)
@@ -1360,7 +1512,9 @@ namespace utils
         if (!std::filesystem::exists(filepath))
         {
             // ToDo: 添加错误处理逻辑
-            throw std::runtime_error("File not found: " + filepath);
+            throw base::RCCCompilerError::fileNotFoundError(
+                RCC_UNKNOWN_CONST, RCC_UNKNOWN_CONST,
+                filepath, {});
         }
         if (!inFile.is_open())
         {
@@ -1683,7 +1837,7 @@ namespace utils
     {
         namespace fs = std::filesystem;
         std::error_code ec;
-        fs::current_path(fs::path(dir_path), ec); // 设置工作目录
+        current_path(fs::path(dir_path), ec); // 设置工作目录
         if (ec)
         {
             throw std::runtime_error(ec.message());
@@ -1721,13 +1875,13 @@ namespace utils
             fs::path absolute_path;
             if (dir_path.empty() || dir_path == RCC_UNDEFINED_CONST)
             {
-                absolute_path = fs::absolute(input_path);
+                absolute_path = absolute(input_path);
             }
             else
             {
                 absolute_path = fs::path(dir_path) / input_path;
             }
-            return fs::weakly_canonical(absolute_path).string();
+            return weakly_canonical(absolute_path).string();
         }
         catch (const std::exception& e)
         {
@@ -1739,7 +1893,7 @@ namespace utils
     {
         try
         {
-            return std::filesystem::exists(std::filesystem::path(path));
+            return exists(std::filesystem::path(path));
         }
         catch (const std::filesystem::filesystem_error& e)
         {
@@ -2412,8 +2566,14 @@ namespace utils
     {
     }
 
+    const Pos& getUnknownPos()
+    {
+        static Pos UNKNOWN_POS (0, 0, 0, RCC_UNKNOWN_CONST);
+        return UNKNOWN_POS;
+    }
+
     RangerPos::RangerPos(size_t startLine, size_t startColumn, size_t endLine, size_t endColumn, std::string filepath)
-        : Pos(startLine, startColumn, -1, filepath), endLine(endLine), endColumn(endColumn)
+        : Pos(startLine, startColumn, -1, std::move(filepath)), endLine(endLine), endColumn(endColumn)
     {
     }
 
@@ -2471,7 +2631,7 @@ namespace utils
         DWORD username_len = UNLEN + 1;
         if (GetUserNameA(username, &username_len))
         {
-            return std::string(username);
+            return {username};
         }
         return "unknown";
 #elif __linux__

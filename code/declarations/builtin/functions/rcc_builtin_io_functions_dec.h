@@ -5,7 +5,7 @@
 #ifndef RCC_RCC_BUILTIN_IO_FUNCTIONS_H
 #define RCC_RCC_BUILTIN_IO_FUNCTIONS_H
 
-#include "../rcc_builtin_core.h"
+#include "../../../include/builtin/rcc_builtin_core.h"
 
 namespace builtin
 {

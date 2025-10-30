@@ -73,7 +73,7 @@ namespace ri {
     ALLOT::ALLOT(const std::vector<std::string> &idents)
         : PARALLEL("ALLOT", idents) {}
 
-    DELETE::DELETE(const std::vector<std::string> &idents)
+    RI_DELETE::RI_DELETE(const std::vector<std::string> &idents)
         : PARALLEL("DELETE", idents){}
 
     SIN::SIN(const std::vector<std::string> &args)

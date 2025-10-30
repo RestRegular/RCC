@@ -12,50 +12,15 @@
 #include <vector>
 #include <memory>
 #include "lib/rcc_utils.h"
-#include "./rcc_version.h"
-
-#define RIO_PROGRAM_SIGN "Rio Program & compiled by RCC(Rio Compiler Collection)"
-
-#define STRINGIFY(x) #x
-#define VERSION_STR(major, minor, patch) "v" STRINGIFY(major) "." STRINGIFY(minor) "." STRINGIFY(patch)
-#define RCC_VERSION VERSION_STR(VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH)
-
-#define RCC_UNDEFINED_CONST "RCC-UNDEFINED"
-#define RCC_UNKNOWN_CONST "RCC-UNKNOWN"
-#define RCC_NULL_CONST "RCC-NULL"
-#define RCC_TOKEN_STREAM_START "$RCC_TOKEN_STREAM_START$"
-#define RCC_TOKEN_STREAM_END "$RCC_TOKEN_STREAM_END$"
-
-#define RCC_TRUE        "true"
-#define RCC_FALSE       "false"
-#define RCC_NULL        "null"
-#define RCC_REL_RE      "RE"
-#define RCC_REL_RNE     "RNE"
-#define RCC_REL_RGE     "RGE"
-#define RCC_REL_RG      "RG"
-#define RCC_REL_RLE     "RLE"
-#define RCC_REL_RL      "RL"
-#define RCC_REL_AND     "AND"
-#define RCC_REL_OR      "OR"
+#include "../declarations/rcc_base_dec.h"
 
 namespace base
 {
     // 自定义类型
-    typedef std::stack<std::string> StringStack;
-    typedef std::vector<std::string> StringVector;
-    typedef std::unordered_set<std::string> StringSet;
-    typedef std::unordered_map<std::string, std::string> StringMap;
-
-    // 枚举类声明
-    enum class ErrorType;
-
-    // 类声明
-    class RCCError;
-    class RCCSyntaxError;
-
-    // 函数声明
-    bool containsKeyword(const std::string& str);
-    std::string getErrorTypeName(const ErrorType& error_type);
+    using StringStack = std::stack<std::string>;
+    using StringVector = std::vector<std::string>;
+    using StringSet = std::unordered_set<std::string>;
+    using StringMap = std::unordered_map<std::string, std::string>;
 
     // 全局变量声明
     extern StringStack PROGRAM_WORKING_DIRECTORY_STACK; // Program working directory
@@ -213,6 +178,12 @@ namespace base
         static RCCCompilerError recursiveImportError(const std::string& error_position, const std::string& error_line,
                                                      const std::string& file_path,
                                                      const std::string& error_info, const StringVector& repair_tips);
+        static RCCCompilerError extensionLoadinError(const std::string &error_position, const std::string &error_line,
+                                                   const StringVector& error_infos, const StringVector& repair_tips);
+        static RCCCompilerError extensionFunctionCallError(const std::string &error_position, const std::string &error_line,
+                                                   const StringVector& error_infos, const StringVector& repair_tips);
+        static RCCCompilerError fileNotFoundError(const std::string &error_position, const std::string &error_line,
+                                                   const std::string& not_found_file_path, const StringVector& repair_tips);
     };
 
     // 枚举类定义

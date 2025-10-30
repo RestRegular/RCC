@@ -300,6 +300,7 @@ namespace parser {
         for (const auto &errorMsg : errorMsgs) {
             os << errorMsg;
         }
+        exit(-1);
     }
 
     bool Parser::hasError() const {

@@ -5,25 +5,17 @@
 #ifndef RCC_RCC_VISITOR_H
 #define RCC_RCC_VISITOR_H
 
-#include "../analyzer/rcc_ast.h"
-#include "../analyzer/rcc_ast_components.h"
-#include "../components/symbol/rcc_symbol.h"
+#include "../../declarations/analyzer/rcc_ast_dec.h"
 #include "../lib/RJson/RJson.h"
+#include "../lib/rcc_utils.h"
 
 namespace ast {
-    class NullLiteralNode;
-
     using namespace rjson::rj;
-
-    class Visitor;
-    class PrintVisitor;
-    class JsonVisitor;
-    class CompileVisitor;
-    class CollectSymbolVisitor;
 
     class Visitor : public utils::Object {
     public:
         Visitor() = default;
+        ~Visitor() override = default;
 
         virtual void visitLiteralNode(LiteralNode &node) = 0;
 

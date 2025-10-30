@@ -112,7 +112,8 @@ void processCompilation() {
 
     // 执行编译
     __input_file_path__ = getAbsolutePath(__input_file_path__, __working_directory__);
-    __output_file_path__ = getAbsolutePath(__output_file_path__, __working_directory__);
+    __output_file_path__ = getAbsolutePath(__output_file_path__.empty() ?
+        "a.ra" : __output_file_path__, __working_directory__);
     ast::CompileVisitor visitor(__input_file_path__,
                                __input_file_path__,
                                __output_file_path__);
@@ -132,7 +133,7 @@ void processCompilation() {
     }
 }
 
-int main(int argc, char *argv[]) {
+int main(const int argc, char *argv[]) {
     try {
         setDeveloperModel(true);
 
@@ -158,7 +159,10 @@ int main(int argc, char *argv[]) {
         }
 
         // 执行编译处理
-        processCompilation();
+        if (!__input_file_path__.empty())
+        {
+            processCompilation();
+        }
 
     } catch (const RCCError &rccError) {
         std::cerr << rccError.toString() << std::endl;

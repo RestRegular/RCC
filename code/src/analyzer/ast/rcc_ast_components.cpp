@@ -2,6 +2,8 @@
 // Created by RestRegular on 2025/6/29.
 //
 
+#include <utility>
+
 #include "../../../include/rcc_base.h"
 #include "../../../include/analyzer/rcc_ast_components.h"
 
@@ -164,11 +166,11 @@ namespace ast {
 
     AnonFunctionDefinitionNode::AnonFunctionDefinitionNode(const Token &mainToken_,
         const std::shared_ptr<ExpressionNode> &paramNode, const std::shared_ptr<Token> &colonToken_,
-        const std::vector<std::shared_ptr<LabelNode>> &labelNodes_, const Token &indicatorToken_,
+        const std::vector<std::shared_ptr<LabelNode>> &labelNodes_, Token indicatorToken_,
         const std::shared_ptr<ExpressionNode> &bodyNode)
             : ExpressionNode(mainToken_, NodeType::ANON_FUNCTION_DEFINITION),
              paramNode(paramNode), colonToken(colonToken_),
-     labelNodes(labelNodes_), indicatorToken(indicatorToken_), bodyNode(bodyNode){}
+     labelNodes(labelNodes_), indicatorToken(std::move(indicatorToken_)), bodyNode(bodyNode){}
 
     std::shared_ptr<ExpressionNode> AnonFunctionDefinitionNode::getParamNode() const {
         return paramNode;
@@ -610,12 +612,12 @@ namespace ast {
         return labelDesNodes;
     }
 
-    RangerNode::RangerNode(NodeType rangerType_,
-                           const Token &lToken, const Token &rToken)
+    RangerNode::RangerNode(const NodeType rangerType_,
+                           Token lToken, Token rToken)
             : ExpressionNode(NodeType::RANGER),
             rangerType(rangerType_),
-            rStartToken(lToken),
-            rEndToken(rToken){}
+            rStartToken(std::move(lToken)),
+            rEndToken(std::move(rToken)){}
 
     Token RangerNode::getRangerStartToken() const {
         return rStartToken;
@@ -700,9 +702,14 @@ namespace ast {
         return getNode();
     }
 
+    NodeType IndexExpressionNode::getRealType() const
+    {
+        return NodeType::INDEX_EXPRESSION;
+    }
+
     PairExpressionNode::PairExpressionNode(const Token &mainToken_, const std::shared_ptr<ExpressionNode> &leftNode,
-                                           const Token &colonToken, const std::shared_ptr<ExpressionNode> &rightNode)
-            : ExpressionNode(mainToken_, NodeType::PAIR), leftNode(leftNode), colonToken(colonToken),
+                                           Token colonToken, const std::shared_ptr<ExpressionNode> &rightNode)
+            : ExpressionNode(mainToken_, NodeType::PAIR), leftNode(leftNode), colonToken(std::move(colonToken)),
      rightNode(rightNode){}
 
     void PairExpressionNode::acceptVisitor(Visitor &visitor) {
@@ -850,7 +857,7 @@ namespace ast {
         return ExpressionNode::professionalString();
     }
 
-    PostfixExpressionNode::PostfixExpressionNode(Token opToken, NodeType postfixType,
+    PostfixExpressionNode::PostfixExpressionNode(const Token& opToken, const NodeType postfixType,
         const std::shared_ptr<ExpressionNode> &leftNode)
             : ExpressionNode(opToken, NodeType::POSTFIX),
              postfixType(postfixType), node(leftNode){}
@@ -880,16 +887,16 @@ namespace ast {
         visitor.visitUnaryExpressionNode(*this);
     }
 
-    UnaryExpressionNode::UnaryExpressionNode(const Token &mainToken, const Token &opSign,
+    UnaryExpressionNode::UnaryExpressionNode(const Token &mainToken, Token opSign,
         const std::shared_ptr<ExpressionNode> &rightNode)
             : ExpressionNode(mainToken, NodeType::UNARY),
-             opToken(opSign), rightNode(rightNode){}
+             opToken(std::move(opSign)), rightNode(rightNode){}
 
-    std::string UnaryExpressionNode::formatString(size_t indent, size_t level) const {
+    std::string UnaryExpressionNode::formatString(const size_t indent, const size_t level) const {
         return ExpressionNode::formatString(indent, level);
     }
 
-    PrefixExpressionNode::PrefixExpressionNode(const Token &token, NodeType nodeType, const std::shared_ptr<ExpressionNode> &node_)
+    PrefixExpressionNode::PrefixExpressionNode(const Token &token, const NodeType nodeType, const std::shared_ptr<ExpressionNode> &node_)
         : ExpressionNode(token, NodeType::PREFIX), prefixType(nodeType), node(node_){}
 
     void PrefixExpressionNode::acceptVisitor(Visitor &visitor) {
@@ -905,12 +912,12 @@ namespace ast {
     }
 
     InfixExpressionNode::InfixExpressionNode(
-        const Token &mainToken, NodeType nodeType,
-        const Token &opToken,
+        const Token &mainToken, const NodeType nodeType,
+        Token opToken,
         const std::shared_ptr<ExpressionNode> &left,
         const std::shared_ptr<ExpressionNode> &right)
     : ExpressionNode(mainToken, NodeType::INFIX), infixType(nodeType),
-    opToken(opToken), leftNode(left), rightNode(right){}
+    opToken(std::move(opToken)), leftNode(left), rightNode(right){}
 
     Pos InfixExpressionNode::getPos() const {
         return getMainToken().getPos();

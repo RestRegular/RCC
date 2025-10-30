@@ -2,7 +2,7 @@
 // Created by RestRegular on 2025/9/16.
 //
 
-#include "../../../include/builtin/functions/rcc_builtin_import.h"
+#include "../../../declarations/builtin/functions/rcc_builtin_import_dec.h"
 
 #include <filesystem>
 
@@ -25,7 +25,7 @@ namespace builtin
                 return {false, ""};
             }
             // 系统内置拓展文件
-            if (const auto &extPath = getAbsolutePath(".\\Lib\\builtin\\" + extName + ".rio", getWindowsRCCDir());
+            if (const auto &extPath = getAbsolutePath(R"(.\Lib\builtin\)" + extName + ".rio", getWindowsRCCDir());
                 std::filesystem::exists(extPath))
             {
                 return {true, extPath};
@@ -50,12 +50,12 @@ namespace builtin
             if (isAutomaticForm) {
                 return ident;
             }
-            return getFileNameFromPath(importedFilePath) + "_extension_" + visitor.getNewTempVarName();
+            return getFileNameFromPath(importedFilePath) + "_extension_" + ast::CompileVisitor::getNewTempVarName();
         }
 
         std::string handleRegisteredExtension(ast::CompileVisitor& visitor,
                                             const std::shared_ptr<symbol::ClassSymbol>& registeredExtension,
-                                            const ast::CompileVisitor::VarID& tempVarId,
+                                            const ast::VarID& tempVarId,
                                             bool isAutomaticForm)
         {
             std::string raCode;
@@ -67,7 +67,7 @@ namespace builtin
             visitor.getSymbolTable().insert(extensionSymbol, true);
             if (!isAutomaticForm)
             {
-                const auto &clasTypeSymbol = symbol::TypeLabelSymbol::clasTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel());
+                const auto &clasTypeSymbol = symbol::TypeLabelSymbol::clasTypeSymbol(getUnknownPos(), visitor.curScopeLevel());
                 visitor.pushIdentItem(tempVarId, clasTypeSymbol, clasTypeSymbol, extensionSymbol);
             }
             return raCode;
@@ -75,20 +75,20 @@ namespace builtin
 
         std::string compileAndProcessNewExtension(ast::CompileVisitor& visitor,
                                                   const std::string& importedFilePath,
-                                                  const ast::CompileVisitor::VarID& tempVarId)
+                                                  const ast::VarID& tempVarId)
         {
             std::string raCode;
-            const auto &clasTypeSymbol = symbol::TypeLabelSymbol::clasTypeSymbol(Pos::UNKNOW_POS, visitor.curScopeLevel());
-            if (visitor.checkIsRecursiveImportByLexerPath(importedFilePath))
+            const auto &clasTypeSymbol = symbol::TypeLabelSymbol::clasTypeSymbol(getUnknownPos(), visitor.curScopeLevel());
+            if (ast::CompileVisitor::checkIsRecursiveImportByLexerPath(importedFilePath))
             {
                 throw base::RCCCompilerError::recursiveImportError(
-                    visitor.currentPos().toString(),
-                    visitor.topLexer()->getCodeLine(visitor.currentPos()),
+                    ast::CompileVisitor::currentPos().toString(),
+                    ast::CompileVisitor::topLexer()->getCodeLine(ast::CompileVisitor::currentPos()),
                     importedFilePath,
                     "Extension import chain: " + vectorJoin(
                 [&]{
                     std::vector<std::string> result{};
-                    for (const auto &filepath : visitor.getLexerFilePaths())
+                    for (const auto &filepath : ast::CompileVisitor::getLexerFilePaths())
                     {
                         const auto &res = getFileFromPath(filepath);
                         result.push_back(filepath == importedFilePath ?
@@ -102,8 +102,23 @@ namespace builtin
                 });
             }
             ast::CompileVisitor importVisitor(visitor.getProgramEntryFilePath(), importedFilePath, "", false);
-            if (!importVisitor.compile()) {
-                throw std::runtime_error("Failure to import file: '" + importedFilePath + "'");
+            try {
+                if (!importVisitor.compile())
+                {
+                    throw base::RCCCompilerError::extensionLoadinError(
+                        RCC_UNKNOWN_CONST, RCC_UNKNOWN_CONST, {}, {});
+                }
+            } catch (const base::RCCError &)
+            {
+                throw base::RCCCompilerError::extensionLoadinError(
+                    visitor.currentPos().toString(),
+                    visitor.getCodeLine(visitor.currentPos()), {
+                        "Failed imported extension: " + tempVarId.getNameField(),
+                        "Automatically detected path: " + importedFilePath
+                    }, {
+                        "If the automatically detected path of the extension does not match the real absolute path,",
+                        "please use the real absolute path for importing."
+                    });
             }
             raCode += importVisitor.getCompileResult();
             const auto extensionSymbol = std::make_shared<symbol::ClassSymbol>(
@@ -118,7 +133,7 @@ namespace builtin
             extensionSymbol->setCollectionFinished();
             extensionSymbol->setVisitPermission(symbol::PermissionLabel::PUBLIC);
             symbol::TypeLabelSymbol::createCustomType(extensionSymbol);
-            visitor.registerExtension(importedFilePath, extensionSymbol);
+            ast::CompileVisitor::registerExtension(importedFilePath, extensionSymbol);
             visitor.pushIdentItem(tempVarId, clasTypeSymbol, clasTypeSymbol, extensionSymbol);
             return raCode;
         }
@@ -130,9 +145,9 @@ namespace builtin
             std::string raCode;
             importVisitor.getSymbolTable().enterGlobalScope();
             const auto &ordinaryLabel = std::make_shared<symbol::LabelSymbol>(
-                Pos::UNKNOW_POS, "ordinary", "", visitor.curScopeLevel(), symbol::LabelType::LIFE_CYCLE_LABEL);
+                getUnknownPos(), "ordinary", "", visitor.curScopeLevel(), symbol::LabelType::LIFE_CYCLE_LABEL);
             const auto &publicLabel = std::make_shared<symbol::LabelSymbol>(
-                Pos::UNKNOW_POS, "public", "", visitor.curScopeLevel(), symbol::LabelType::PERMISSION_LABEL);
+                getUnknownPos(), "public", "", visitor.curScopeLevel(), symbol::LabelType::PERMISSION_LABEL);
             for (const auto &member : importVisitor.getSymbolTable().currentNameMapScope()) {
                 if (member->is(symbol::SymbolType::VARIABLE)) {
                     const auto &varSymbol = std::static_pointer_cast<symbol::VariableSymbol>(member);
@@ -181,25 +196,35 @@ namespace builtin
             }
         }
         if (hasPositionalArgs && isAutomaticForm) {
-            throw std::runtime_error("You cannot use both positional arguments and keyword arguments for the `import` function at the same time.");
+            throw base::RCCCompilerError::semanticError(
+                callInfos.callPos.toString(), visitor.getCodeLine(callInfos.callPos),
+                "You cannot use both positional arguments and keyword arguments for the `import` function at the same time.",
+                {
+                    "Please ensure that only one import mode is used.",
+                    "It is recommended to use the keyword argument import mode."
+                });
         }
         if (hasPositionalArgs && callInfos.originalArgs.size() != 1) {
-            throw std::runtime_error("Explicitly defining the variable import mode allows only one extension to be imported at a time.");
+            throw base::RCCCompilerError::semanticError(
+                callInfos.callPos.toString(), visitor.getCodeLine(callInfos.callPos),
+                "Explicitly defining the variable import mode allows only one extension to be imported at a time.",
+                {
+                    "Please ensure that only one extension is imported at a time when using the explicit variable definition import mode."
+                });
         }
-        std::string raCode = "";
+        std::string raCode;
         for (const auto &[ident, extName] : callInfos.originalArgs) {
             const auto &unescapedExtNameArg = StringManager::parseStringFormat(extName);
             const auto &importedFilePath = resolveImportedFilePath(visitor, unescapedExtNameArg);
             const auto &varIDName = generateVariableIdentifier(visitor, ident, importedFilePath, isAutomaticForm);
-            const auto &tempVarId = ast::CompileVisitor::VarID(
+            const auto &tempVarId = ast::VarID(
                 varIDName, visitor.getProgramTargetFilePath(), visitor.curScopeField(), visitor.curScopeLevel());
-            if (const auto &registeredExtension = visitor.getRegisteredExtension(importedFilePath)) {
+            if (const auto &registeredExtension = ast::CompileVisitor::getRegisteredExtension(importedFilePath)) {
                 raCode += handleRegisteredExtension(visitor, registeredExtension, tempVarId, isAutomaticForm);
             } else {
                 raCode += compileAndProcessNewExtension(visitor, importedFilePath, tempVarId);
             }
         }
-
         return raCode;
     }
 

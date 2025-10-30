@@ -2,7 +2,6 @@
 // Created by RestRegular on 2025/6/30.
 //
 
-
 #include "../../include/analyzer/rcc_ast_components.h"
 #include "../../include/visitors/rcc_print_visitor.h"
 
@@ -192,7 +191,7 @@ namespace ast {
 
     }
 
-    PrintVisitor::PrintVisitor(const size_t &indent = 4): indent(indent){}
+    PrintVisitor::PrintVisitor(const size_t &indent): indent(indent){}
 
     void PrintVisitor::printAllNode() const {
         std::cout << oss.str() << std::endl;

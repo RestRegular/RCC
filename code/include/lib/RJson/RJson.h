@@ -5,26 +5,15 @@
 #ifndef RJSON_H
 #define RJSON_H
 
-#include <iostream>
 #include <memory>
 
 #include "../rcc_utils.h"
+#include "../../../declarations/lib/RJson/RJson_dec.h"
 
-namespace  rjson {
+namespace rjson {
     using namespace utils;
 
-    enum class RJType;
-    class RJNull;
-    class RJKey;
-    class RJValue;
-    class RJPair;
-    class RJList;
-    class RJObject;
-    class RJsonParser;
-
-    std::string getRJTypeName(RJType type);
-
-    class RJNull: public Object {
+    class RJNull final : public Object {
     public:
         RJNull() = default;
         [[nodiscard]] std::string toString() const override;
@@ -45,7 +34,7 @@ namespace  rjson {
 
     class RJValue : public Object {
     protected:
-        struct Value : Object {
+        struct Value final : Object {
             RJType valueType{};
             std::string stringValue;
             Number numberValue{};
@@ -102,7 +91,7 @@ namespace  rjson {
         [[nodiscard]] std::string formatString(size_t indent, size_t level) const override;
     };
 
-    class RJPair : public Object {
+    class RJPair final : public Object {
         RJKey key;
         std::shared_ptr<RJValue> value;
     public:
@@ -128,8 +117,8 @@ namespace  rjson {
         }
     };
 
-    class RJList : public RJValue {
-        typedef std::vector<std::shared_ptr<RJValue>> ValueList;
+    class RJList final : public RJValue {
+        using ValueList = std::vector<std::shared_ptr<RJValue>>;
     public:
         RJList();
         explicit RJList(const std::string &rawString);
@@ -137,8 +126,8 @@ namespace  rjson {
         [[nodiscard]] static ValueList parseRJList(const std::string &rawString);
     };
 
-    class RJObject: public RJValue {
-        typedef std::vector<std::shared_ptr<RJPair>> PairList;
+    class RJObject final : public RJValue {
+        using PairList = std::vector<std::shared_ptr<RJPair>>;
     public:
         RJObject();
         explicit RJObject(const std::vector<std::shared_ptr<RJPair>>& pairs);
@@ -155,7 +144,7 @@ namespace  rjson {
         RJValue listRJV(const std::vector<RJValue> &value);
         RJValue objectRJV(const std::vector<RJPair> &value);
 
-        class RJsonParser : public Object {
+        class RJsonParser final : public Object {
             std::string rawString{};
             std::shared_ptr<RJValue> parsedValue{};
 
@@ -183,7 +172,7 @@ namespace  rjson {
             [[nodiscard]] std::string formatString(size_t indent, size_t level) const override;
         };
 
-        class RJsonBuilder : public Object {
+        class RJsonBuilder final : public Object {
             RJType type;
             std::shared_ptr<RJValue> value;
 
@@ -196,7 +185,7 @@ namespace  rjson {
 
             explicit RJsonBuilder(std::unordered_map<std::string, RJValue> pairs);
 
-            RJValue build() const;
+            [[nodiscard]] RJValue build() const;
 
             // 构建函数
             // 对象

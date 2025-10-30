@@ -38,6 +38,7 @@ namespace parser {
     }
 
     ExpressionNodePtr Parser::buildIndexExpression(const ExpressionNodePtr &left) {
+        if (!left) return nullptr;
         auto bracketNode = buildBracketExpression();
         return std::make_shared<IndexExpressionNode>(left->getMainToken(), left, bracketNode);
     }
