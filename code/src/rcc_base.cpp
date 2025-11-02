@@ -496,7 +496,8 @@ namespace base {
         }, [repair_tips]
         {
             StringVector tips {"Please check if the symbol exists."};
-            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            if (!repair_tips.empty())
+                tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
             return tips;
         }());
     }
@@ -510,15 +511,14 @@ namespace base {
                 "This error is caused by redefining an already existing symbol.",
                 "Existent symbol: " + symbol_name
             };
-            for (const auto &info : error_infos)
-            {
-                infos.push_back(info);
-            }
+            if (!error_infos.empty())
+                infos.insert(infos.end(), error_infos.begin(), error_infos.end());
             return infos;
         }(), [repair_tips]
         {
             StringVector tips {"Please come up with a new name for the newly defined symbol."};
-            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            if (!repair_tips.empty())
+                tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
             return tips;
         }());
     }
@@ -533,12 +533,14 @@ namespace base {
                 "This error is caused by a symbol not found.",
                 "Non-existent symbol: " + symbol_name
             };
-            if (!error_infos.empty()) result.insert(result.end(), error_infos.begin(), error_infos.end());
+            if (!error_infos.empty())
+                result.insert(result.end(), error_infos.begin(), error_infos.end());
             return result;
         }(), [repair_tips]
         {
             StringVector tips {"Please check if the symbol exists."};
-            if (!repair_tips.empty()) tips.insert(tips.begin(), repair_tips.begin(), repair_tips.end());
+            if (!repair_tips.empty())
+                tips.insert(tips.begin(), repair_tips.begin(), repair_tips.end());
             return tips;
         }());
     }
@@ -556,7 +558,8 @@ namespace base {
         }(), [repair_tips]
         {
             StringVector tips {"Please check if the scope field meets expectations."};
-            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            if (!repair_tips.empty())
+                tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
             return tips;
         }());
     }
@@ -567,12 +570,14 @@ namespace base {
         return RCCCompilerError(error_position, error_line, [error_infos]
         {
             StringVector result = {"This error is caused by an argument error."};
-            if (!error_infos.empty()) result.insert(result.end(), error_infos.begin(), error_infos.end());
+            if (!error_infos.empty())
+                result.insert(result.end(), error_infos.begin(), error_infos.end());
             return result;
         }(), [repair_tips]
         {
             StringVector tips {"Please check if the arguments meet expectations."};
-            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            if (!repair_tips.empty())
+                tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
             return tips;
         }());
     }
@@ -586,7 +591,8 @@ namespace base {
         }, [repair_tips]
         {
             StringVector tips {"Please check if the semantic of code meets expectations."};
-            if (!repair_tips.empty()) tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            if (!repair_tips.empty())
+                tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
             return tips;
         }());
     }
@@ -597,12 +603,14 @@ namespace base {
         return RCCCompilerError(error_position, error_line, [error_infos]
         {
             StringVector result{"This error is caused by a semantic error."};
-            if (!error_infos.empty()) result.insert(result.end(), error_infos.begin(), error_infos.end());
+            if (!error_infos.empty())
+                result.insert(result.end(), error_infos.begin(), error_infos.end());
             return result;
         }(), [repair_tips]
         {
             StringVector result{"Please check if the semantic of code meets expectations."};
-            if (!repair_tips.empty()) result.insert(result.end(), repair_tips.begin(), repair_tips.end());
+            if (!repair_tips.empty())
+                result.insert(result.end(), repair_tips.begin(), repair_tips.end());
             return result;
         }());
     }
@@ -620,7 +628,8 @@ namespace base {
         }(), [repair_tips]
         {
             StringVector tips {"Please check if the import file is imported recursively."};
-            if (!repair_tips.empty())tips.insert (tips.end(), repair_tips.begin(), repair_tips.end());
+            if (!repair_tips.empty())
+                tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
             return tips;
         }());
     }
@@ -633,14 +642,20 @@ namespace base {
             StringVector infos {
                 "This error is caused by a failed extension import."
             };
-            infos.insert(infos.end(), error_infos.begin(), error_infos.end());
+            if (!error_infos.empty())
+            {
+                infos.insert(infos.end(), error_infos.begin(), error_infos.end());
+            }
             return error_infos;
         }(), [repair_tips]
         {
             StringVector tips {
                 "Please check if the imported extension is correct."
             };
-            tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            if (!repair_tips.empty())
+            {
+                tips.insert(tips.end(), repair_tips.begin(), repair_tips.end());
+            }
             return tips;
         }());
     }

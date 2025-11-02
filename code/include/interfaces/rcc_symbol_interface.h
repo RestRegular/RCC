@@ -8,6 +8,7 @@
 #include <string>
 
 #include "rcc_interface_dec.h"
+#include "./rcc_object_interface.h"
 
 namespace symbol
 {
@@ -42,7 +43,7 @@ namespace symbol
     virtual public utils::IRCCObjectInterface
     {
     public:
-        virtual ~IRCCSymbolInterface() override SYS_INTERFACE_CALL = 0;
+        virtual ~IRCCSymbolInterface() SYS_INTERFACE_CALL = 0;
         virtual bool SYS_INTERFACE_CALL Is(const SymbolType &tp) const = 0;
         virtual bool SYS_INTERFACE_CALL IsNot(const SymbolType &tp) const = 0;
         virtual const char* SYS_INTERFACE_CALL GetVal() const = 0;
@@ -79,7 +80,7 @@ namespace symbol
         virtual bool SYS_INTERFACE_CALL Is(const char* name) const = 0;
         virtual bool SYS_INTERFACE_CALL IsNot(const char* name) const = 0;
         virtual bool SYS_INTERFACE_CALL IsCustomType() const = 0;
-        virtual const TypeLabelSymbol* TransformToTLSI() const = 0;
+        virtual const TypeLabelSymbol* SYS_INTERFACE_CALL TransformToTLSI() const = 0;
     };
 
     class IRCCParameterSymbolInterface:
@@ -270,7 +271,7 @@ namespace symbol
     virtual public utils::IRCCObjectInterface
     {
     public:
-        virtual ~IRCCSymbolTableInterface() override SYS_INTERFACE_CALL = 0;
+        virtual ~IRCCSymbolTableInterface() SYS_INTERFACE_CALL = 0;
         virtual void SYS_INTERFACE_CALL InsertByName(IRCCSymbolInterface* symbolI) = 0;
         virtual IRCCSymbolInterface* Find(const char* name) = 0;
         virtual bool SYS_INTERFACE_CALL Contains(const char* name) = 0;
@@ -281,7 +282,7 @@ namespace symbol
     virtual public utils::IRCCObjectInterface
     {
     public:
-        virtual ~IRCCSymbolTableManagerInterface() override SYS_INTERFACE_CALL = 0;
+        virtual ~IRCCSymbolTableManagerInterface() SYS_INTERFACE_CALL = 0;
         virtual IRCCSymbolTableInterface* SYS_INTERFACE_CALL CurrentNameMapScope() const = 0;
         virtual IRCCSymbolTableInterface* SYS_INTERFACE_CALL CurrentRIDMapScope() const = 0;
         virtual void SYS_INTERFACE_CALL EnterScope() = 0;

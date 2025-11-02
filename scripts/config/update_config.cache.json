@@ -1,15 +1,15 @@
 {
   "validate": true,
   "version": {
-    "vs_desc": "优化了错误提示信息",
+    "vs_desc": "修复未检查符号存在性的问题",
     "change_type": [
-      "opt"
+      "fix"
     ]
   },
   "update_log": {
     "author": "RestRegular",
     "log_contents": [
-      "优化了扩展相关的错误提示信息。"
+      "修复了获取操作符号时因未检查符号存在性而导致异常未被捕获的问题，确保符号缺失时能正确触发错误处理流程。"
     ]
   },
   "annotation": {

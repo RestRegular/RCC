@@ -27,6 +27,7 @@ namespace rccdll
         DllExtFuncs dllExtFuncs {};
     public:
         explicit DLLExtension(const std::string &dllFilepath_, ast::IRCCCompileInterface* pCompileInterface);
+
         ~DLLExtension();
 
         bool hasFunc(const std::string &funcName) const;
@@ -60,7 +61,7 @@ namespace rccdll
 
         static bool hasFunc(const std::string &funcName);
 
-        static rinterface::DLL_EXT_FUNC find(const std::string &funcName);
+        static std::pair<DLLExtension*, rinterface::DLL_EXT_FUNC> find(const std::string &funcName);
     };
 
 }

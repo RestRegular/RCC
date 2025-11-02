@@ -6,5 +6,5 @@
 #define RCC_VERSION_H
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 13
-#define VERSION_PATCH 3
+#define VERSION_PATCH 7
 #endif //RCC_VERSION_H//

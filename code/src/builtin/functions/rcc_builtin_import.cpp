@@ -24,15 +24,28 @@ namespace builtin
                 }
                 return {false, ""};
             }
-            // 系统内置拓展文件
+            // 系统内置扩展文件
             if (const auto &extPath = getAbsolutePath(R"(.\Lib\builtin\)" + extName + ".rio", getWindowsRCCDir());
                 std::filesystem::exists(extPath))
             {
                 return {true, extPath};
             }
-            // 系统外部拓展文件
-            const auto &outerExtPath = getAbsolutePath(".\\Lib\\" + extName + "\\" + extName + ".rio", getWindowsRCCDir());
-            return {std::filesystem::exists(outerExtPath), outerExtPath};
+            // 系统外部扩展文件
+            const auto& extDir = getAbsolutePath(".\\Lib\\" + extName, getWindowsRCCDir());
+            if (const auto& extInfoPath = getAbsolutePath("ext_info.json", extDir);
+                std::filesystem::exists(extDir) &&
+                std::filesystem::exists(extInfoPath))
+            {
+                auto rjParser = rjson::rj::RJsonParser();
+                rjParser.parse(extInfoPath);
+                const auto& entryPath = getAbsolutePath(
+                    parseStringFormat(rjParser.getAtKey("main")->getStringValue()), extDir);
+                if (std::filesystem::exists(entryPath))
+                {
+                    return {true, entryPath};
+                }
+            }
+            return {false, ""};
         }
 
         std::string resolveImportedFilePath(const ast::CompileVisitor& visitor, const std::string& extName)
@@ -105,10 +118,13 @@ namespace builtin
             try {
                 if (!importVisitor.compile())
                 {
-                    throw base::RCCCompilerError::extensionLoadinError(
-                        RCC_UNKNOWN_CONST, RCC_UNKNOWN_CONST, {}, {});
+                    throw std::runtime_error("Failed to import extension.");
                 }
             } catch (const base::RCCError &)
+            {
+                throw;
+            }
+            catch (...)
             {
                 throw base::RCCCompilerError::extensionLoadinError(
                     visitor.currentPos().toString(),
@@ -219,11 +235,13 @@ namespace builtin
             const auto &varIDName = generateVariableIdentifier(visitor, ident, importedFilePath, isAutomaticForm);
             const auto &tempVarId = ast::VarID(
                 varIDName, visitor.getProgramTargetFilePath(), visitor.curScopeField(), visitor.curScopeLevel());
+            visitor.recordProcessingExtension(importedFilePath, unescapedExtNameArg);
             if (const auto &registeredExtension = ast::CompileVisitor::getRegisteredExtension(importedFilePath)) {
                 raCode += handleRegisteredExtension(visitor, registeredExtension, tempVarId, isAutomaticForm);
             } else {
                 raCode += compileAndProcessNewExtension(visitor, importedFilePath, tempVarId);
             }
+            visitor.removeProcessingExtension(importedFilePath);
         }
         return raCode;
     }

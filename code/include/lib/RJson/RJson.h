@@ -151,7 +151,7 @@ namespace rjson {
         public:
             std::pair<RJType, std::string> _collectRangerString(size_t &index);
 
-            static std::unordered_map<char, std::pair<RJType, char> > rangerMap;
+            static std::unordered_map<char, std::pair<RJType, char>> rangerMap;
 
             RJsonParser();
 

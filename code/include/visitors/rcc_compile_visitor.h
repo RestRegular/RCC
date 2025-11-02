@@ -143,6 +143,7 @@ namespace ast
 
         // Getter方法
         [[nodiscard]] Pos getPos() const;
+        void setPos(const Pos &pos_);
         [[nodiscard]] std::string getVal() const;
         [[nodiscard]] OpItemType getType() const;
         [[nodiscard]] std::string getRaVal(const symbol::SymbolTableManager& table,
@@ -192,6 +193,7 @@ namespace ast
         static std::stack<std::shared_ptr<lexer::Lexer>> _lexers; // 词法分析器
         static std::list<std::string> _lexer_paths; // 词法分析器路径向量
         static std::string fileRecord;
+        static std::unordered_map<std::string, std::string> processingExtensionPathNameMap;
 
         // ========================== 成员属性 ==========================
         RaCodeBuilder raCodeBuilder{}; // RA代码构建器
@@ -208,6 +210,7 @@ namespace ast
         std::stack<std::shared_ptr<OpItem>> opItemStack{}; // 操作数栈
         std::stack<ScopeType> scopeTypeStack{}; // 作用域类型栈
         std::stack<ScopeType> loopScopeStack{}; // 循环作用域栈
+        std::unordered_map<std::string, std::shared_ptr<VarID>> varIdMap {};
 
     public:
         // ======================= constructor ========================
@@ -255,9 +258,9 @@ namespace ast
             const std::shared_ptr<symbol::Symbol>& leftSymbol,
             const std::shared_ptr<symbol::Symbol>& rightSymbol); // 检查符号类型匹配
         static Pos currentPos();
-        static void setCurrentPos(const Pos& pos);
-        static void resetCurrentPos();
-        static Pos _currentProcessingPos;
+        static void pushProcessingPos(const Pos& pos);
+        static void popProcessingPos();
+        static std::stack<Pos> _currentProcessingPos;
         [[nodiscard]] bool checkTypeMatch(
             const std::shared_ptr<symbol::Symbol>& leftSymbol,
             const OpItem& rightOpItem) const; // 检查符号与操作数类型匹配
@@ -365,13 +368,16 @@ namespace ast
         [[nodiscard]] bool checkSymbolExists(const OpItem& opItem) const;
         [[nodiscard]] bool checkSymbolExists(const std::shared_ptr<OpItem>& opItem) const;
         [[nodiscard]] bool checkSymbolExists(const std::shared_ptr<symbol::Symbol>& processingSymbol) const;
-        void checkExists(const OpItem& opItem, const Pos& pos) const;
+        void checkExists(const OpItem& opItem, const std::optional<Pos>& pos = std::nullopt) const;
         void checkExists(const std::shared_ptr<OpItem>& opItem, const Pos& pos) const;
         void checkExists(const std::shared_ptr<symbol::Symbol>& processingSymbol) const;
         static std::string getListFormatString(const std::vector<std::string>& list);
         static std::string getCodeLine(const Pos& pos);
         static std::shared_ptr<symbol::TypeLabelSymbol> getTypeLabelFromSymbol(
             const std::shared_ptr<symbol::Symbol>& symbol);
+        static void recordProcessingExtension(const std::string &extensionPath, const std::string& extensionName);
+        static void removeProcessingExtension(const std::string &extensionPath);
+        static bool checkIsProcessingExtension(const std::string &extensionPath);
 
         // 将原 visitFunctionCallNode 的逻辑迁移到这里（主调度器）
         void processFunctionCallNode(const FunctionCallNode& node);
@@ -481,6 +487,7 @@ namespace ast
         void visitClassDeclarationNode(ClassDeclarationNode& node) override;
 
         std::string compileConstructorNode(const std::shared_ptr<symbol::FunctionSymbol>& ctorSymbol);
+
         void compileClassMembers(const std::string& classIdent, const std::shared_ptr<symbol::SymbolTable>& members,
                                  const symbol::LifeCycleLabel&
                                  memberType);
@@ -590,7 +597,7 @@ namespace ast
         const char* RPopOpItemRaVal() override;
         const char* RPopOpItemVal() override;
         bool HasNextOpItem() const override;
-        IRCCOpItemInterface* PushTemOpSetItemWithRecord(const IRCCPosInterface* posI,
+        void PushTemOpVarItemWithRecord(const IRCCPosInterface* posI,
             const symbol::IRCCTypeLabelSymbolInterface* valueTypeSymbolI,
             const symbol::IRCCSymbolInterface* referencedSymbolI, const bool& sysDefined,
             const symbol::IRCCTypeLabelSymbolInterface* typeLabelSymbolI) override;
@@ -599,6 +606,22 @@ namespace ast
         const char* GetThisFieldRaVal(const IRCCPosInterface* posI) const override;
         symbol::IRCCVariableSymbolInterface* GetThisFieldSymbol(
             const symbol::IRCCClassSymbolInterface* classSymbolI) const override;
+        const char* GetNewRaValCorrespondingToNewVal(const char* val) override;
+        const char* RaVal(const IRCCOpItemInterface* opItemI) const override;
+        symbol::IRCCTypeLabelSymbolInterface*
+        GetTypeLabelSymbolIByStr(const char* name, const std::size_t scopeLevel) override;
+        void FreeTypeLabelSymbolI(symbol::IRCCTypeLabelSymbolInterface*& symbol) override;
+        const char* GetNewTempVarName() override;
+        void FreeCharP(const char* data) override;
+        const char* GetNewSetLabelName() override;
+        bool CheckTypeMatch(const symbol::IRCCTypeLabelSymbolInterface* leftTypeSymbolI,
+            const symbol::IRCCTypeLabelSymbolInterface* rightTypeSymbolI, const bool& restrict) const override;
+        utils::IRCCPosInterface* CurrentPos() const override;
+        void SetCurrentPos(const utils::IRCCPosInterface* pos) override;
+        void ResetCurrentPos() override;
+        void FreeOpItemI(IRCCOpItemInterface*& opItemI) override;
+        IRCCPosInterface* GetUnknownPosI() const override;
+        static const char* CreateCharP(const std::string& data);
     };
 }
 

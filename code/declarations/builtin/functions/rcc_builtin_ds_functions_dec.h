@@ -22,6 +22,8 @@ namespace builtin
 
     BuiltinFuncRetType rcc_dictValues(ast::CompileVisitor &visitor, const CallInfos& callInfos);
 
+    BuiltinFuncRetType rcc_repeat(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
 }
 
 #endif //RCC_RCC_BUILTIN_DS_FUNCTIONS_H

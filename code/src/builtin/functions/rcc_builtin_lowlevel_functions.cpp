@@ -27,7 +27,7 @@ namespace builtin
         const auto &extAlias = visitor.getNewTempVarName();
         const auto &dllFilePath = utils::StringManager::parseStringFormat(callInfos.processedArgs[0]);
         rccdll::DLLExtensionManager::registerDllExt(utils::getAbsolutePath(
-            dllFilePath, visitor.getCurrentProcessingFilePath()),
+            dllFilePath, utils::getFileDirFromPath(visitor.getCurrentProcessingFilePath())),
             &visitor, extAlias);
         visitor.pushOpItem(ast::OpItemType::LITERAL_VALUE, symbol::TypeLabelSymbol::strTypeSymbol(
             utils::getUnknownPos(), visitor.curScopeLevel()), utils::StringManager::toStringFormat(extAlias),

@@ -101,13 +101,13 @@ namespace ast
         virtual void SYS_INTERFACE_CALL EnterLoopScope() = 0;
         virtual void SYS_INTERFACE_CALL ExitLoopScope() = 0;
         virtual bool SYS_INTERFACE_CALL IsInLoopScope() const = 0;
-        static bool SYS_INTERFACE_CALL CheckTypeMatch(
+        virtual bool SYS_INTERFACE_CALL CheckTypeMatch(
             const symbol::IRCCTypeLabelSymbolInterface* leftTypeSymbolI,
             const symbol::IRCCTypeLabelSymbolInterface* rightTypeSymbolI,
-            const bool& restrict = true);
-        static utils::IRCCPosInterface* SYS_INTERFACE_CALL CurrentPos();
-        static void SYS_INTERFACE_CALL SetCurrentPos(const utils::IRCCPosInterface* pos);
-        static void SYS_INTERFACE_CALL ResetCurrentPos();
+            const bool& restrict = true) const = 0;
+        virtual utils::IRCCPosInterface* SYS_INTERFACE_CALL CurrentPos() const = 0;
+        virtual void SYS_INTERFACE_CALL SetCurrentPos(const utils::IRCCPosInterface* pos) = 0;
+        virtual void SYS_INTERFACE_CALL ResetCurrentPos() = 0;
         virtual bool SYS_INTERFACE_CALL CheckTypeMatch(
             const symbol::IRCCSymbolInterface* leftSymbolI,
             const IRCCOpItemInterface* rightOpItemI) const = 0;
@@ -143,10 +143,11 @@ namespace ast
         virtual const char* SYS_INTERFACE_CALL RPopOpItemRaVal() = 0;
         virtual const char* SYS_INTERFACE_CALL RPopOpItemVal() = 0;
         virtual bool SYS_INTERFACE_CALL HasNextOpItem() const = 0;
-
-        static const char* SYS_INTERFACE_CALL GetNewTempVarName();
-        static const char* SYS_INTERFACE_CALL GetNewSetLabelName();
-        virtual IRCCOpItemInterface* SYS_INTERFACE_CALL PushTemOpSetItemWithRecord(
+        virtual void SYS_INTERFACE_CALL FreeCharP(const char* data) = 0;
+        virtual const char* SYS_INTERFACE_CALL GetNewTempVarName() = 0;
+        virtual const char* SYS_INTERFACE_CALL GetNewSetLabelName() = 0;
+        virtual const char* SYS_INTERFACE_CALL GetNewRaValCorrespondingToNewVal(const char* val) = 0;
+        virtual void SYS_INTERFACE_CALL PushTemOpVarItemWithRecord(
             const utils::IRCCPosInterface* posI,
             const symbol::IRCCTypeLabelSymbolInterface* valueTypeSymbolI,
             const symbol::IRCCSymbolInterface* referencedSymbolI,
@@ -157,6 +158,11 @@ namespace ast
         virtual const char* SYS_INTERFACE_CALL GetThisFieldRaVal(const utils::IRCCPosInterface* posI) const = 0;
         virtual symbol::IRCCVariableSymbolInterface* SYS_INTERFACE_CALL GetThisFieldSymbol(
             const symbol::IRCCClassSymbolInterface* classSymbolI) const = 0;
+        virtual const char* SYS_INTERFACE_CALL RaVal(const IRCCOpItemInterface* opItemI) const = 0;
+        virtual symbol::IRCCTypeLabelSymbolInterface* SYS_INTERFACE_CALL GetTypeLabelSymbolIByStr(const char* name, const std::size_t scopeLevel) = 0;
+        virtual void SYS_INTERFACE_CALL FreeTypeLabelSymbolI(symbol::IRCCTypeLabelSymbolInterface*& symbolI) = 0;
+        virtual void SYS_INTERFACE_CALL FreeOpItemI(IRCCOpItemInterface*& opItemI) = 0;
+        virtual utils::IRCCPosInterface* SYS_INTERFACE_CALL GetUnknownPosI() const = 0;
     };
 
 }

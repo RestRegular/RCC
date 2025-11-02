@@ -1,0 +1,13 @@
+import(ll="lowlevel", io="io")
+
+ll.bindDllExt("../dll/random.dll")
+
+fun randomInt(lowLimit: int, highLimit: int): int {
+    encapsulated
+}
+
+fun randomFloat(lowLimit, highLimit, decimalPlaces: int = 2): float {
+    encapsulated
+}
+
+export(randomInt, randomFloat)

@@ -1,0 +1,25 @@
+import(io="io", ds="ds", rd="random", nr="newrcc", prog="prog", dt="datatype")
+
+fun main() {
+    var answer: int = rd.randomInt(0, 100),
+        totalTimes: int = 0
+    io.sout(nr.ctext("Please input a number.", nr.TextColor.BLUE))
+    while true {
+        var input = io.sin(nr.TextColor.YELLOW + "<<< ")
+        totalTimes ++
+        dt.setType(input, "int")
+        if input == answer {
+            break
+        } elif input > answer {
+            io.sout(nr.ctext("The answer is smaller, please try again.", nr.TextColor.RED))
+        } elif input < answer {
+            io.sout(nr.ctext("The answer is bigger, please try again.", nr.TextColor.RED))
+        }
+    }
+    io.sout(nr.ctext(ds.joins("You are win! The answer is ", answer, ".\n",
+        "You have tried ", totalTimes, " times."), nr.TextColor.GREEN))
+}
+
+prog.entry((*args, **kwargs): void -> {
+    main()
+})

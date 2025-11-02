@@ -4,7 +4,6 @@
 
 #ifndef RCC_RCC_INTERFACE_DEC_H
 #define RCC_RCC_INTERFACE_DEC_H
-#include <cstddef>
 
 #if defined(_WIN32) || defined(_WIN64)
 #define SYS_INTERFACE_CALL __stdcall
@@ -76,13 +75,15 @@ namespace rinterface
 #define DLL_FUNC_UNLOAD "DllUnload"
 #define DLL_FUNC_OBTAIN_EXT_FUNCS "DllObtainExtFuncs"
 #define DLL_FUNC_FREE_EXT_FUNCS "DllFreeExtFuncs"
+#define DLL_FUNC_FREE_CHAR_P "DllFreeCharP"
         struct ExtFunc;
         struct ExtFuncs;
 
-        using DLL_LOADIN = bool(*)(ast::IRCCCompileInterface* pCompileInterface);
+        using DLL_LOADIN = bool(*)();
         using DLL_UNLOAD = void(*)();
         using DLL_OBTAIN_EXT_FUNCS = ExtFuncs(*)();
         using DLL_FREE_EXT_FUNCS = void(*)(ExtFuncs* extFuncs);
+        using DLL_FREE_CHAR_P = void(*)(const char* data);
         using DLL_EXT_FUNC = const char*(*)(builtin::IRCCCallInfos* callInfos);
 
         struct ExtFunc
@@ -98,10 +99,11 @@ namespace rinterface
         };
 
         // 系统调用，DLL实现
-        bool SYS_INTERFACE_CALL DllLoadin(ast::IRCCCompileInterface* pCompileInterface);
+        bool SYS_INTERFACE_CALL DllLoadin();
         void SYS_INTERFACE_CALL DllUnload();
         ExtFuncs SYS_INTERFACE_CALL DllObtainExtFuncs();
         void SYS_INTERFACE_CALL DllFreeExtFuncs(ExtFuncs* extFuncs);
+        void SYS_INTERFACE_CALL DllFreeCharP(const char* data);
     }
 }
 

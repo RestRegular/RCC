@@ -1966,14 +1966,14 @@ namespace symbol {
 
     IRCCFunctionSymbolInterface::Labels FunctionSymbol::GetLabels() const
     {
-        Labels labels(getLabels().size());
+        Labels labels_(getLabels().size());
         size_t i = 0;
         for (const auto &l: getLabels())
         {
-            labels.labels[i] = l.get();
+            labels_.labels[i] = l.get();
             i ++;
         }
-        return labels;
+        return labels_;
     }
 
     IRCCFunctionSymbolInterface::ParamSymbols FunctionSymbol::GetParamSymbols() const

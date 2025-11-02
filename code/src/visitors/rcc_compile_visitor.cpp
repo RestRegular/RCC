@@ -241,7 +241,7 @@ namespace ast
         const std::string& raValue,
         const std::shared_ptr<TypeLabelSymbol>& valueType,
         const std::shared_ptr<Symbol>& referencedSymbol,
-        const Pos &pos)
+        const Pos& pos)
         : value(value), raValue(type == OpItemType::LITERAL_VALUE || type == OpItemType::SET_LABEL ? value : raValue),
           type(type), typeLabel(typeLabelSymbol), valueType(valueType), referencedSymbol(referencedSymbol), pos(pos)
     {
@@ -291,6 +291,11 @@ namespace ast
     Pos OpItem::getPos() const
     {
         return pos;
+    }
+
+    void OpItem::setPos(const Pos& pos_)
+    {
+        this->pos = pos_;
     }
 
     std::string OpItem::getVal() const
@@ -404,7 +409,7 @@ namespace ast
 
     const char* OpItem::GetRaVal(const IRCCSymbolTableManagerInterface* table, const bool& needSearch) const
     {
-        return getRaVal(*static_cast<const SymbolTableManager*>(table->Transform()), needSearch).c_str();
+        return CompileVisitor::CreateCharP(getRaVal(*static_cast<const SymbolTableManager*>(table->Transform()), needSearch));
     }
 
     OpItemType OpItem::GetType() const
@@ -475,6 +480,8 @@ namespace ast
 
     std::string CompileVisitor::fileRecord{};
 
+    std::unordered_map<std::string, std::string> CompileVisitor::processingExtensionPathNameMap = {};
+
     // 辅助函数：获取符号的类型标签
     std::shared_ptr<TypeLabelSymbol> CompileVisitor::getTypeLabelFromSymbol(const std::shared_ptr<Symbol>& symbol)
     {
@@ -493,6 +500,21 @@ namespace ast
         default:
             return nullptr;
         }
+    }
+
+    void CompileVisitor::recordProcessingExtension(const std::string& extensionPath, const std::string& extensionName)
+    {
+        processingExtensionPathNameMap.insert({extensionPath, extensionName});
+    }
+
+    void CompileVisitor::removeProcessingExtension(const std::string& extensionPath)
+    {
+        processingExtensionPathNameMap.erase(extensionPath);
+    }
+
+    bool CompileVisitor::checkIsProcessingExtension(const std::string& extensionPath)
+    {
+        return processingExtensionPathNameMap.contains(extensionPath);
     }
 
     // 辅助函数：获取符号的类型标签
@@ -599,21 +621,21 @@ namespace ast
         return checkTypeMatch(leftType, rightValueType, true);
     }
 
-    Pos CompileVisitor::_currentProcessingPos = getUnknownPos();
+    std::stack<Pos> CompileVisitor::_currentProcessingPos {};
 
     Pos CompileVisitor::currentPos()
     {
-        return _currentProcessingPos;
+        return _currentProcessingPos.empty() ? getUnknownPos() : _currentProcessingPos.top();
     }
 
-    void CompileVisitor::setCurrentPos(const Pos& pos)
+    void CompileVisitor::pushProcessingPos(const Pos& pos)
     {
-        _currentProcessingPos = pos;
+        _currentProcessingPos.push(pos);
     }
 
-    void CompileVisitor::resetCurrentPos()
+    void CompileVisitor::popProcessingPos()
     {
-        _currentProcessingPos = getUnknownPos();
+        _currentProcessingPos.pop();
     }
 
     // 从OpItem获取符号
@@ -935,11 +957,12 @@ namespace ast
         return processingSymbol && symbolTable.containsName(processingSymbol->getVal());
     }
 
-    void CompileVisitor::checkExists(const OpItem& opItem, const Pos& pos) const
+    void CompileVisitor::checkExists(const OpItem& opItem, const std::optional<Pos>& pos) const
     {
+        const auto& itemPos = pos.has_value() ? pos.value() : opItem.getPos();
         if (opItem.is(OpItemType::IDENTIFIER) && !checkSymbolExists(opItem))
         {
-            throw RCCCompilerError::symbolNotFoundError(pos.toString(), getCodeLine(pos), opItem.getVal(),
+            throw RCCCompilerError::symbolNotFoundError(itemPos.toString(), getCodeLine(itemPos), opItem.getVal(),
                                                         "Error operation item: " + opItem.toString(),
                                                         {
                                                             "If the name of this operation item is not defined by you, then this error may occur within the compiler."
@@ -950,14 +973,15 @@ namespace ast
 
     void CompileVisitor::checkExists(const std::shared_ptr<OpItem>& opItem, const Pos& pos) const
     {
+
         if (opItem->is(OpItemType::IDENTIFIER) && !checkSymbolExists(opItem))
         {
             throw RCCCompilerError::symbolNotFoundError(pos.toString(), getCodeLine(pos), opItem->getVal(),
-                                                        "Error operation item: " + opItem->toString(),
-                                                        {
-                                                            "If the name of this operation item is not defined by you, then this error may occur within the compiler."
-                                                            " You are welcome to report this issue to the Rio team."
-                                                        });
+                                                           "Error operation item: " + opItem->toString(),
+                                                           {
+                                                               "If the name of this operation item is not defined by you, then this error may occur within the compiler."
+                                                               " You are welcome to report this issue to the Rio team."
+                                                           });
         }
     }
 
@@ -1384,7 +1408,9 @@ namespace ast
         }
     }
 
-    IRCCOpItemInterface::~IRCCOpItemInterface() {}
+    IRCCOpItemInterface::~IRCCOpItemInterface()
+    {
+    }
 
     void IRCCOpItemInterface::FreeOpItem(OpItem*& opItem)
     {
@@ -1392,7 +1418,9 @@ namespace ast
         opItem = nullptr;
     }
 
-    IRCCCompileInterface::~IRCCCompileInterface() {}
+    IRCCCompileInterface::~IRCCCompileInterface()
+    {
+    }
 
     const char* IRCCCompileInterface::ScopeTypeToString(const ScopeType& scopeType)
     {
@@ -1404,42 +1432,105 @@ namespace ast
         return CompileVisitor::scopeTypeToFormatString(scopeType).c_str();
     }
 
-    bool IRCCCompileInterface::CheckTypeMatch(const IRCCTypeLabelSymbolInterface* leftTypeSymbolI,
-                                              const IRCCTypeLabelSymbolInterface* rightTypeSymbolI,
-                                              const bool& restrict)
+    const char* CompileVisitor::GetNewRaValCorrespondingToNewVal(const char* val)
     {
-        return CompileVisitor::checkTypeMatch(
-            std::static_pointer_cast<TypeLabelSymbol>(leftTypeSymbolI->TransformToTLSI()->copySelf()),
-            std::static_pointer_cast<TypeLabelSymbol>(rightTypeSymbolI->TransformToTLSI()->copySelf()),
-            restrict);
+        if (const auto& it = varIdMap.find(val);
+            it != varIdMap.end())
+        {
+            return it->second->getVid().c_str();
+        }
+        const auto& varId = std::make_shared<
+            VarID>(val, CurrentPos()->GetFileField(), CurScopeField(), CurScopeLevel());
+        varIdMap.insert({val, varId});
+        return varId->getVid().c_str();
     }
 
-    IRCCPosInterface* IRCCCompileInterface::CurrentPos()
+    const char* CompileVisitor::RaVal(const IRCCOpItemInterface* opItemI) const
     {
-        return &CompileVisitor::_currentProcessingPos;
+        return opItemI->GetRaVal(&symbolTable, true);
     }
 
-    void IRCCCompileInterface::SetCurrentPos(const IRCCPosInterface* pos)
+    IRCCTypeLabelSymbolInterface* CompileVisitor::GetTypeLabelSymbolIByStr(const char* name,
+                                                                           const std::size_t scopeLevel)
     {
-        CompileVisitor::setCurrentPos(*std::static_pointer_cast<Pos>(pos->TransformToPI()->copySelf()));
+        IRCCTypeLabelSymbolInterface* p = new TypeLabelSymbol(
+            *TypeLabelSymbol::getTypeLabelSymbolByStr(name, scopeLevel));
+        return p;
     }
 
-    void IRCCCompileInterface::ResetCurrentPos()
+    void CompileVisitor::FreeTypeLabelSymbolI(symbol::IRCCTypeLabelSymbolInterface*& symbol)
     {
-        CompileVisitor::resetCurrentPos();
+        if (symbol)
+        {
+            delete symbol;
+            symbol = nullptr;
+        }
     }
 
-    const char* IRCCCompileInterface::GetNewTempVarName()
+    const char* CompileVisitor::GetNewTempVarName()
     {
-        return CompileVisitor::getNewTempVarName().c_str();
+        const auto& temp = getNewTempVarName();
+        const auto result = new char[temp.length() + 1];
+        strcpy(result, temp.c_str());
+        return result;
     }
 
-    const char* IRCCCompileInterface::GetNewSetLabelName()
+    void CompileVisitor::FreeCharP(const char* data)
     {
-        return CompileVisitor::getNewSetLabelName().c_str();
+        delete[] data;
     }
 
-    std::string CompileVisitor::scopeTypeToFormatString(ScopeType scopeType)
+    const char* CompileVisitor::GetNewSetLabelName()
+    {
+        return getNewSetLabelName().c_str();
+    }
+
+    bool CompileVisitor::CheckTypeMatch(const symbol::IRCCTypeLabelSymbolInterface* leftTypeSymbolI,
+                                        const symbol::IRCCTypeLabelSymbolInterface* rightTypeSymbolI,
+                                        const bool& restrict) const
+    {
+        return checkTypeMatch(std::static_pointer_cast<TypeLabelSymbol>(leftTypeSymbolI->TransformToTLSI()->copySelf()),
+                              std::static_pointer_cast<
+                                  TypeLabelSymbol>(rightTypeSymbolI->TransformToTLSI()->copySelf()), restrict);
+    }
+
+    utils::IRCCPosInterface* CompileVisitor::CurrentPos() const
+    {
+        return &_currentProcessingPos.top();
+    }
+
+    void CompileVisitor::SetCurrentPos(const utils::IRCCPosInterface* pos)
+    {
+        pushProcessingPos(*pos->TransformToPI());
+    }
+
+    void CompileVisitor::ResetCurrentPos()
+    {
+        popProcessingPos();
+    }
+
+    void CompileVisitor::FreeOpItemI(IRCCOpItemInterface*& opItemI)
+    {
+        if (opItemI)
+        {
+            delete opItemI;
+            opItemI = nullptr;
+        }
+    }
+
+    IRCCPosInterface* CompileVisitor::GetUnknownPosI() const
+    {
+        return getUnknownPosP();
+    }
+
+    const char* CompileVisitor::CreateCharP(const std::string& data)
+    {
+        const auto result = new char[data.length() + 1];
+        strcpy(result, data.c_str());
+        return result;
+    }
+
+    std::string CompileVisitor::scopeTypeToFormatString(const ScopeType scopeType)
     {
         return "[ScopeType: " + scopeTypeToString(scopeType) + "]";
     }
@@ -1635,13 +1726,10 @@ namespace ast
                 }
             }
         }
-        catch (RCCError& _)
+        catch (const RCCError& _)
         {
             popLexer();
             throw;
-        } catch (std::exception& _)
-        {
-
         }
         popLexer();
         return true;
@@ -2056,14 +2144,19 @@ namespace ast
                 identNode->acceptVisitor(*this);
                 const auto& identName = rPopOpItemVal();
                 valueNode->acceptVisitor(*this);
-                orderedArgs.push_back({identName, topOpItem()});
-                namedArgs.insert({identName, rPopOpItem()});
+                auto resultOpItem = rPopOpItem();
+                resultOpItem.setPos(valueNode->getPos());
+                checkExists(resultOpItem);
+                orderedArgs.push_back({identName, resultOpItem});
+                namedArgs.insert({identName, resultOpItem});
             }
             else
             {
                 arg->acceptVisitor(*this);
-                orderedArgs.push_back({"", topOpItem()});
-                posArgs.push(rPopOpItem());
+                auto resultOpItem = rPopOpItem();
+                resultOpItem.setPos(arg->getPos());
+                orderedArgs.push_back({"", resultOpItem});
+                posArgs.push(resultOpItem);
             }
         }
     }
@@ -2208,18 +2301,19 @@ namespace ast
         try
         {
             setCurrentProcessingFilePath(node.getPos().getFilepath());
-            setCurrentPos(node.getPos());
+            pushProcessingPos(node.getPos());
             builtin::initializePureBuiltinEnvironment(*this);
             enterScope(ScopeType::PROGRAM);
             for (auto& statement : node.getStatements())
             {
                 errorPos = statement->getPos();
-                setCurrentPos(errorPos);
+                pushProcessingPos(errorPos);
                 statement->acceptVisitor(*this);
+                popProcessingPos();
             }
             exitScope(ScopeType::PROGRAM);
             setCurrentProcessingFilePath("");
-            resetCurrentPos();
+            popProcessingPos();
         }
         catch (RCCError& e)
         {
@@ -2228,12 +2322,17 @@ namespace ast
             {
                 fileRecord = errorFilePath;
             }
+            const auto& isExt = checkIsProcessingExtension(errorFilePath);
             e.addTraceInfo(RCCError::makeTraceInfo(
                 listJoin(e.getTraceInfo()),
                 errorPos.toString(),
                 getCodeLine(errorPos),
                 getPosStrFromFilePath(errorFilePath),
-                makeFileIdentStr(errorFilePath)));
+                makeFileIdentStr(
+                    isExt
+                    ? processingExtensionPathNameMap.at(errorFilePath)
+                    : errorFilePath,
+                    isExt)));
             if (fileRecord != errorFilePath)
             {
                 fileRecord = errorFilePath;
@@ -2500,16 +2599,27 @@ namespace ast
 
     void CompileVisitor::visitUnaryExpressionNode(UnaryExpressionNode& node)
     {
+        if (node.getOpToken().getType() == TokenType::TOKEN_NOT)
+        {
+            node.getRightNode()->acceptVisitor(*this);
+            auto resultOpItem = rPopOpItem();
+            resultOpItem.setPos(node.getRightNode()->getPos());
+            pushTemOpVarItemWithRecord(node.getPos(), TypeLabelSymbol::boolTypeSymbol(node.getPos(), curScopeLevel()),
+                nullptr, true, nullptr);
+            raCodeBuilder
+            << ri::OPP(raVal(resultOpItem), topOpRaVal());
+            return;
+        }
         pass("To visit " + getNodeTypeName(node.getRealType()) + " type node.");
     }
 
     void CompileVisitor::visitExpressionStatementNode(ExpressionStatementNode& node)
     {
-        setCurrentPos(node.getPos());
+        pushProcessingPos(node.getPos());
         annotatePos(node.getPos());
         node.getExpression()->acceptVisitor(*this);
         while (hasNextOpItem()) popOpItem();
-        resetCurrentPos();
+        popProcessingPos();
     }
 
     void CompileVisitor::visitPrefixExpressionNode(PrefixExpressionNode& node)
@@ -2553,10 +2663,10 @@ namespace ast
             for (const auto& statement : node.getBodyExpressions())
             {
                 errorPos = statement->getMainToken().getPos();
-                setCurrentPos(errorPos);
+                pushProcessingPos(errorPos);
                 annotatePos(errorPos);
                 statement->acceptVisitor(*this);
-                resetCurrentPos();
+                popProcessingPos();
             }
         }
         catch (RCCError& e)
@@ -2598,6 +2708,8 @@ namespace ast
                 param = ident;
                 value->acceptVisitor(*this);
                 defaultValue = rPopOpItem();
+                defaultValue->setPos(value->getPos());
+                checkExists(defaultValue.value(), value->getPos());
                 paramType = ParamType::PARAM_KEYWORD;
                 isValidItem = true;
             }
@@ -2862,12 +2974,14 @@ namespace ast
         popProcessingSymbol();
     }
 
-    void CompileVisitor::processLabelDesNode(const std::shared_ptr<ExpressionNode> &labelNode, std::vector<std::shared_ptr<LabelNode>>& desLabelNodes)
+    void CompileVisitor::processLabelDesNode(const std::shared_ptr<ExpressionNode>& labelNode,
+                                             std::vector<std::shared_ptr<LabelNode>>& desLabelNodes)
     {
         if (labelNode->getType() == NodeType::LABEL)
         {
             desLabelNodes.push_back(std::static_pointer_cast<LabelNode>(labelNode));
-        } else if (labelNode->getRealType() == NodeType::INDEX_EXPRESSION)
+        }
+        else if (labelNode->getRealType() == NodeType::INDEX_EXPRESSION)
         {
             // TODO
             pass("Process index expression type label node.");
@@ -3313,9 +3427,9 @@ namespace ast
                  const auto& itemNode : itemNodes)
             {
                 errorPos = itemNode->getPos();
-                setCurrentPos(itemNode->getPos());
+                pushProcessingPos(itemNode->getPos());
                 itemNode->acceptVisitor(*this);
-                resetCurrentPos();
+                popProcessingPos();
             }
         }
         catch (RCCError& e)
@@ -3457,6 +3571,7 @@ namespace ast
             if (values[i].has_value())
             {
                 const auto& value = values[i].value();
+                checkExists(value, value.getPos());
                 if (!checkTypeMatch(symbol->getTypeLabel(),
                                     getDefiniteTypeLabelSymbolFromOpItem(value),
                                     false))
@@ -3514,6 +3629,7 @@ namespace ast
         {
             std::string value{};
             const auto& valueItem = rPopOpItem();
+            checkExists(valueItem, node.getAssignPair().second->getPos());
             if (!checkTypeMatch(identSymbol->getTypeLabel(), valueItem.getTypeLabel(), true))
             {
                 throw RCCCompilerError::typeMissmatchError(
@@ -3738,8 +3854,13 @@ namespace ast
         pushOpItem(
             opItemType,
             std::static_pointer_cast<TypeLabelSymbol>(typeLabelSymbolI->TransformToTLSI()->copySelf()),
-            value, raValue, std::static_pointer_cast<Symbol>(referencedSymbolI->TransformToSI()->copySelf()),
-            std::static_pointer_cast<TypeLabelSymbol>(valueTypeSymbolI->TransformToTLSI()->copySelf()));
+            value, raValue,
+            referencedSymbolI
+                ? std::static_pointer_cast<Symbol>(referencedSymbolI->TransformToSI()->copySelf())
+                : nullptr,
+            valueTypeSymbolI != nullptr
+                ? std::static_pointer_cast<TypeLabelSymbol>(valueTypeSymbolI->TransformToTLSI()->copySelf())
+                : nullptr);
     }
 
     void CompileVisitor::PushOpItem(const char* name, const char* fileField, const char* scopeField,
@@ -3766,7 +3887,7 @@ namespace ast
 
     const char* CompileVisitor::TopOpRaVal() const
     {
-        return topOpRaVal().c_str();
+        return CreateCharP(topOpRaVal());
     }
 
     const char* CompileVisitor::RPopOpItemRaVal()
@@ -3784,21 +3905,27 @@ namespace ast
         return hasNextOpItem();
     }
 
-    IRCCOpItemInterface* CompileVisitor::PushTemOpSetItemWithRecord(const IRCCPosInterface* posI,
-                                                                    const symbol::IRCCTypeLabelSymbolInterface*
-                                                                    valueTypeSymbolI,
-                                                                    const symbol::IRCCSymbolInterface*
-                                                                    referencedSymbolI, const bool& sysDefined,
-                                                                    const symbol::IRCCTypeLabelSymbolInterface*
-                                                                    typeLabelSymbolI)
+    void CompileVisitor::PushTemOpVarItemWithRecord(const IRCCPosInterface* posI,
+                                                    const symbol::IRCCTypeLabelSymbolInterface*
+                                                    valueTypeSymbolI,
+                                                    const symbol::IRCCSymbolInterface*
+                                                    referencedSymbolI, const bool& sysDefined,
+                                                    const symbol::IRCCTypeLabelSymbolInterface*
+                                                    typeLabelSymbolI)
     {
-        return new OpItem(pushTemOpVarItemWithRecord(*posI->TransformToPI(),
-                                                 std::static_pointer_cast<TypeLabelSymbol>(
-                                                     valueTypeSymbolI->TransformToTLSI()->copySelf()),
-                                                 std::static_pointer_cast<Symbol>(
-                                                     referencedSymbolI->TransformToSI()->copySelf()),
-                                                 sysDefined, std::static_pointer_cast<TypeLabelSymbol>(
-                                                     typeLabelSymbolI->TransformToTLSI()->copySelf())));
+        pushTemOpVarItemWithRecord(*posI->TransformToPI(),
+                                   typeLabelSymbolI
+                                       ? std::static_pointer_cast<TypeLabelSymbol>(
+                                           valueTypeSymbolI->TransformToTLSI()->copySelf())
+                                       : nullptr,
+                                   referencedSymbolI
+                                       ? std::static_pointer_cast<Symbol>(
+                                           referencedSymbolI->TransformToSI()->copySelf())
+                                       : nullptr,
+                                   sysDefined, typeLabelSymbolI
+                                                   ? std::static_pointer_cast<TypeLabelSymbol>(
+                                                       typeLabelSymbolI->TransformToTLSI()->copySelf())
+                                                   : nullptr);
     }
 
     IRCCOpItemInterface* CompileVisitor::PushTemOpSetItem(const IRCCPosInterface* posI)

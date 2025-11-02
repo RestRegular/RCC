@@ -1,0 +1,54 @@
+import(io="io", prog="prog", ds="ds", nr="newrcc")
+
+fun colorPrint(*msg, color=nr.TextColor.WHITE): void {
+    nr.cprint(ds.join(msg, sep=""), color)
+}
+
+fun processData(
+    data: list,
+    filterFunc: funi[int][bool],
+    transformFunc: funi[int][int]
+): list {
+    /*
+     * 高阶函数：通用数据处理流水线
+     *  参数：
+     *    data：原始数据列表
+     *    filterFunc：过滤函数（输入int，返回bool，决定是否保留该数据）
+     *    transformFunc：转换函数（输入int，返回int，对保留的数据做加工）
+     */
+    var result = []
+    ds.iter(data, (num: int, index: int, _, _) -> {
+        if filterFunc(num) {
+            result += transformFunc(num)
+        }
+    })
+    ret result
+}
+
+fun main(*args, **kwargs): void {
+    // 原始数据
+    var numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+    // 场景1：筛选偶数，然后乘以2
+    colorPrint("Stage1: filter even and double transform: ", color=nr.TextColor.BLUE)
+    var evenFilter = (n: int): bool -> { ret n % 2 == 0 }  // 过滤偶数
+    var doubleTransform = (n: int): int -> { ret n * 2 }   // 乘以2
+    colorPrint(processData(numbers, evenFilter, doubleTransform))  // 输出 [4, 8, 12, 16, 20]
+
+    // 场景2：筛选大于5的数，然后求平方
+    colorPrint("Stage2: greater filter and square transform: ", color=nr.TextColor.BLUE)
+    var greater5Filter = (n: int): bool -> { ret n > 5 }   // 过滤大于5的数
+    var squareTransform = (n: int): int -> { ret n * n }   // 求平方
+    colorPrint(processData(numbers, greater5Filter, squareTransform))  // 输出 [36, 49, 64, 81, 100]
+
+    // 场景3：筛选奇数，然后加10
+    colorPrint("Stage3: odd filter and plus 10", color=nr.TextColor.BLUE)
+    // 直接传递匿名函数，无需提前定义变量
+    colorPrint(processData(
+        numbers,
+        (n: int): bool -> { ret n % 2 == 1 },  // 过滤奇数
+        (n: int): int -> { ret n + 10 }        // 加10
+    ))  // 输出 [11, 13, 15, 17, 19]
+}
+
+prog.entry(main)

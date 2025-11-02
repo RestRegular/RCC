@@ -31,11 +31,21 @@ namespace ri {
         return "; " + comment + "\n";
     }
 
+    std::string ANNOTATION::getOpRI() const
+    {
+        return "; ";
+    }
+
     BREAKPOINT::BREAKPOINT() {}
 
     std::string BREAKPOINT::toRACode() const
     {
         return "BREAKPOINT: ;\n";
+    }
+
+    std::string BREAKPOINT::getOpRI() const
+    {
+        return "BREAKPOINT";
     }
 
 
@@ -45,6 +55,11 @@ namespace ri {
     std::string FLAG::toRACode() const
     {
         return opRI + ": ;" + (comment.empty() ? "" : " " + comment) + "\n";
+    }
+
+    std::string FLAG::getOpRI() const
+    {
+        return opRI;
     }
 
     PASS::PASS(const std::string& comment)
@@ -68,6 +83,11 @@ namespace ri {
     std::vector<std::string> PARALLEL::getIdents() const
     {
         return idents;
+    }
+
+    std::string PARALLEL::getOpRI() const
+    {
+        return opRI;
     }
 
     ALLOT::ALLOT(const std::vector<std::string> &idents)
@@ -159,6 +179,11 @@ namespace ri {
         return opRI + ": " + ident + "\n";
     }
 
+    std::string UNARY::getOpRI() const
+    {
+        return opRI;
+    }
+
     SET::SET(const std::string &ident)
         : UNARY("SET", ident) {}
 
@@ -191,7 +216,7 @@ namespace ri {
         return lvalue;
     }
 
-    std::string BINARY::getOp() const
+    std::string BINARY::getOpRI() const
     {
         return opRI;
     }
@@ -254,6 +279,9 @@ namespace ri {
     DICT_DEL::DICT_DEL(const std::string& dictData, const std::string& key)
         : BINARY("DICT_DEL", dictData, key) {}
 
+    REPEAT::REPEAT(const std::string& times, const std::string& indexData)
+        :BINARY("REPEAT", times, indexData) {}
+
     TERNARY::TERNARY(const std::string &op, const std::string &rvalue1, const std::string &rvalue2,
                      const std::string &lvalue)
             : opRI(op), rvalue1(rvalue1), rvalue2(rvalue2), lvalue(lvalue){}
@@ -262,8 +290,13 @@ namespace ri {
         return opRI + ": " + rvalue1 + ", " + rvalue2 + ", " + lvalue + "\n";
     }
 
+    std::string TERNARY::getOpRI() const
+    {
+        return opRI;
+    }
+
     ADD::ADD(const std::string &rvalue1, const std::string &rvalue2,
-        const std::string &lvalue)
+             const std::string &lvalue)
             : TERNARY("ADD", rvalue1, rvalue2, lvalue) {}
 
     MUL::MUL(const std::string &rvalue1, const std::string &rvalue2, const std::string &lvalue)

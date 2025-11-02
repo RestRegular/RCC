@@ -74,4 +74,36 @@ namespace builtin
         visitor.pushTemOpVarItemWithRecord(utils::getUnknownPos(), symbol::TypeLabelSymbol::listTypeSymbol(utils::getUnknownPos(), visitor.getSymbolTable().curScopeLevel()));
         return ri::DICT_VALUES(callInfos.processedArgs[0], visitor.topOpRaVal()).toRACode();
     }
+
+    BuiltinFuncRetType rcc_repeat(ast::CompileVisitor& visitor, const CallInfos& callInfos)
+    {
+        const auto& times = callInfos.processedArgs[0];
+        const auto& handler = callInfos.processedArgs[1];
+        const auto& intTypeLabel = symbol::TypeLabelSymbol::intTypeSymbol(utils::getUnknownPos(), visitor.curScopeLevel());
+        const auto& boolTypeLabel = symbol::TypeLabelSymbol::boolTypeSymbol(utils::getUnknownPos(), visitor.curScopeLevel());
+        visitor.pushTemOpVarItemWithRecord(utils::getUnknownPos(),
+            intTypeLabel, nullptr,
+            true, intTypeLabel);  // index
+        const auto& indexRaVal = visitor.rPopOpItemRaVal();
+        visitor.pushTemOpVarItemWithRecord(utils::getUnknownPos(),
+            boolTypeLabel, nullptr,
+            true, boolTypeLabel); // handlerResult
+        const auto& handlerResultRaVal = visitor.rPopOpItemRaVal();
+        visitor.pushTemOpVarItemWithRecord(utils::getUnknownPos(),
+            nullptr, nullptr,
+            true, nullptr); // cmpResult
+        const auto& cmpRaVal = visitor.rPopOpItemRaVal();
+        const auto& continueSetLabel = visitor.getNewSetLabelName();
+        const auto& repeatRI = ri::REPEAT(times, indexRaVal);
+        std::string raCode
+        = repeatRI.toRACode()
+        + ri::IVOK(handler, {indexRaVal}, handlerResultRaVal).toRACode()
+        + ri::CMP(handlerResultRaVal, RCC_FALSE, cmpRaVal).toRACode()
+        + ri::CREL(cmpRaVal, RCC_REL_RE, cmpRaVal).toRACode()
+        + ri::JF(cmpRaVal, continueSetLabel).toRACode()
+        + ri::EXIT(repeatRI.getOpRI()).toRACode()
+        + ri::SET(continueSetLabel).toRACode()
+        + ri::END(repeatRI.getOpRI()).toRACode();
+        return raCode;
+    }
 }

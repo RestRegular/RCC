@@ -46,11 +46,11 @@ namespace builtin
     {
         for (size_t i = 0; i < map.size; ++i)
         {
-            delete[] map.nameOpItemPair[i].name;
+            delete[] map.nameOpItemPairArray[i].name;
             // 注意：opItemI由原始ast::OpItem转换而来，假设无需在此释放（由原对象管理）
         }
-        delete[] map.nameOpItemPair;
-        map.nameOpItemPair = nullptr;
+        delete[] map.nameOpItemPairArray;
+        map.nameOpItemPairArray = nullptr;
         map.size = 0;
     }
 
@@ -97,15 +97,15 @@ namespace builtin
         }
 
         // 4. 释放namedArgOpItems（补充接口释放）
-        if (pCallInfos->namedArgOpItems.nameOpItemPair)
+        if (pCallInfos->namedArgOpItems.nameOpItemPairArray)
         {
             for (size_t i = 0; i < pCallInfos->namedArgOpItems.size; ++i)
             {
-                delete[] pCallInfos->namedArgOpItems.nameOpItemPair[i].name;
-                delete pCallInfos->namedArgOpItems.nameOpItemPair[i].opItemI;
+                delete[] pCallInfos->namedArgOpItems.nameOpItemPairArray[i].name;
+                delete pCallInfos->namedArgOpItems.nameOpItemPairArray[i].opItemI;
             }
-            delete[] pCallInfos->namedArgOpItems.nameOpItemPair;
-            pCallInfos->namedArgOpItems.nameOpItemPair = nullptr;
+            delete[] pCallInfos->namedArgOpItems.nameOpItemPairArray;
+            pCallInfos->namedArgOpItems.nameOpItemPairArray = nullptr;
             pCallInfos->namedArgOpItems.size = 0;
         }
 
@@ -114,15 +114,15 @@ namespace builtin
         pCallInfos->callPosI = nullptr;
 
         // 6. 释放orderedArgOpItems（补充接口释放）
-        if (pCallInfos->orderedArgOpItems.nameOpItemPair)
+        if (pCallInfos->orderedArgOpItems.nameOpItemPairArray)
         {
             for (size_t i = 0; i < pCallInfos->orderedArgOpItems.size; ++i)
             {
-                delete[] pCallInfos->orderedArgOpItems.nameOpItemPair[i].name;
-                delete pCallInfos->orderedArgOpItems.nameOpItemPair[i].opItemI;
+                delete[] pCallInfos->orderedArgOpItems.nameOpItemPairArray[i].name;
+                delete pCallInfos->orderedArgOpItems.nameOpItemPairArray[i].opItemI;
             }
-            delete[] pCallInfos->orderedArgOpItems.nameOpItemPair;
-            pCallInfos->orderedArgOpItems.nameOpItemPair = nullptr;
+            delete[] pCallInfos->orderedArgOpItems.nameOpItemPairArray;
+            pCallInfos->orderedArgOpItems.nameOpItemPairArray = nullptr;
             pCallInfos->orderedArgOpItems.size = 0;
         }
 
@@ -130,7 +130,7 @@ namespace builtin
     }
 
     // CallInfos -> IRCCCallInfos（C++对象转C兼容结构）
-    IRCCCallInfos* transformCallInfos(const CallInfos& callInfos)
+    IRCCCallInfos* transformCallInfos(ast::IRCCCompileInterface* compileVisitorI, const CallInfos& callInfos)
     {
         // 分配IRCCCallInfos结构体
         const auto irccCallInfos = new(std::nothrow) IRCCCallInfos;
@@ -138,6 +138,8 @@ namespace builtin
 
         try
         {
+            irccCallInfos->compileVisitorI = compileVisitorI;
+
             // 1. 转换processedArgs（std::vector<std::string> -> IRCCStringArray）
             const size_t processedArgsSize = callInfos.processedArgs.size();
             irccCallInfos->processedArgs.stringArray = new char*[processedArgsSize];
@@ -179,12 +181,12 @@ namespace builtin
             // 4. 转换namedArgOpItems（unordered_map -> IRCCStringOpItemMap）
             const size_t namedArgsSize = callInfos.namedArgOpItems.size();
             irccCallInfos->namedArgOpItems.size = namedArgsSize;
-            irccCallInfos->namedArgOpItems.nameOpItemPair = new IRCCStringOpItemPair[namedArgsSize];
+            irccCallInfos->namedArgOpItems.nameOpItemPairArray = new IRCCStringOpItemPair[namedArgsSize];
             size_t idx = 0;
             for (const auto& [name, opItem] : callInfos.namedArgOpItems)
             {
-                irccCallInfos->namedArgOpItems.nameOpItemPair[idx].name = copyString(name);
-                irccCallInfos->namedArgOpItems.nameOpItemPair[idx].opItemI = new ast::OpItem(opItem);
+                irccCallInfos->namedArgOpItems.nameOpItemPairArray[idx].name = copyString(name);
+                irccCallInfos->namedArgOpItems.nameOpItemPairArray[idx].opItemI = new ast::OpItem(opItem);
                 ++idx;
             }
 
@@ -195,12 +197,12 @@ namespace builtin
             // 6. 转换orderedArgOpItems（vector<pair<string, OpItem>> -> IRCCStringOpItemMap）
             const size_t orderedArgsSize = callInfos.orderedArgOpItems.size();
             irccCallInfos->orderedArgOpItems.size = orderedArgsSize;
-            irccCallInfos->orderedArgOpItems.nameOpItemPair = new IRCCStringOpItemPair[orderedArgsSize];
+            irccCallInfos->orderedArgOpItems.nameOpItemPairArray = new IRCCStringOpItemPair[orderedArgsSize];
             for (size_t i = 0; i < orderedArgsSize; ++i)
             {
-                irccCallInfos->orderedArgOpItems.nameOpItemPair[i].name = copyString(
+                irccCallInfos->orderedArgOpItems.nameOpItemPairArray[i].name = copyString(
                     callInfos.orderedArgOpItems[i].first);
-                irccCallInfos->orderedArgOpItems.nameOpItemPair[i].opItemI = new ast::OpItem(
+                irccCallInfos->orderedArgOpItems.nameOpItemPairArray[i].opItemI = new ast::OpItem(
                     callInfos.orderedArgOpItems[i].second);
             }
         }
@@ -257,7 +259,7 @@ namespace builtin
         // 4. 转换namedArgOpItems（IRCCStringOpItemMap -> unordered_map）
         for (size_t i = 0; i < pCallInfosI->namedArgOpItems.size; ++i)
         {
-            if (const auto& [name, opItemI] = pCallInfosI->namedArgOpItems.nameOpItemPair[i];
+            if (const auto& [name, opItemI] = pCallInfosI->namedArgOpItems.nameOpItemPairArray[i];
                 name && opItemI)
             {
                 callInfos.namedArgOpItems.emplace(
@@ -276,7 +278,7 @@ namespace builtin
         // 6. 转换orderedArgOpItems（IRCCStringOpItemMap -> vector<pair<string, OpItem>>）
         for (size_t i = 0; i < pCallInfosI->orderedArgOpItems.size; ++i)
         {
-            const IRCCStringOpItemPair& pair = pCallInfosI->orderedArgOpItems.nameOpItemPair[i];
+            const IRCCStringOpItemPair& pair = pCallInfosI->orderedArgOpItems.nameOpItemPairArray[i];
             if (pair.name && pair.opItemI)
             {
                 callInfos.orderedArgOpItems.emplace_back(

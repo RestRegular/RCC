@@ -76,11 +76,25 @@ namespace builtin
         {
             return it->second(visitor, callInfos);
         }
-        if (const auto &it = rccdll::DLLExtensionManager::find(funcName))
+        if (auto [ext, extFunc] = rccdll::DLLExtensionManager::find(funcName);
+            ext && extFunc)
         {
-            const auto &callInfosI = transformCallInfos(callInfos);
-            const auto &result = it(callInfosI);
+            const auto& freeCharPFunc = ext->loadExtFunc<rinterface::DLL_FREE_CHAR_P>(DLL_FUNC_FREE_CHAR_P);
+            const auto &callInfosI = transformCallInfos(&visitor, callInfos);
+            const char* resData = nullptr;
+            try
+            {
+                resData = extFunc(callInfosI);
+            } catch (const std::runtime_error& e)
+            {
+                throw base::RCCCompilerError::extensionFunctionCallError(
+                    callInfos.callPos.toString(),
+                    visitor.getCodeLine(callInfos.callPos),
+                    {e.what()}, {});
+            }
             freeCallInfosI(callInfosI);
+            const auto& result = std::string(resData);
+            freeCharPFunc(resData);
             return result;
         }
         throw std::runtime_error("Non-existent built-in function: '" + funcName + "'");
@@ -116,6 +130,7 @@ namespace builtin
         {"dictRemove", rcc_dictRemove},
         {"dictKeys", rcc_dictKeys},
         {"dictValues", rcc_dictValues},
+        {"repeat", rcc_repeat},
 
         // datatype.rio
         {"type", rcc_type},

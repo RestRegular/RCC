@@ -23,7 +23,7 @@ namespace builtin
     };
 
     void freeCallInfosI(IRCCCallInfos* pCallInfos);
-    IRCCCallInfos* transformCallInfos(const CallInfos& callInfos);
+    IRCCCallInfos* transformCallInfos(ast::IRCCCompileInterface* compileVisitorI, const CallInfos& callInfos);
     CallInfos transformCallInfos(IRCCCallInfos* pCallInfosI);
 
     class PureBuiltinFunction

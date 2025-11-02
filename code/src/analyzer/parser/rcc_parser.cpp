@@ -49,7 +49,7 @@ namespace parser {
         // 一元前缀运算符：+、-、!、*、**、:
         {TokenType::TOKEN_PLUS, &Parser::buildPrefixExpression},
         {TokenType::TOKEN_MINUS, &Parser::buildPrefixExpression},
-        {TokenType::TOKEN_NOT, &Parser::buildPrefixExpression},
+        {TokenType::TOKEN_NOT, &Parser::buildUnaryExpression},
         {TokenType::TOKEN_STAR, &Parser::buildUnaryExpression},
         {TokenType::TOKEN_DOUBLE_STAR, &Parser::buildUnaryExpression},
         // 变量定义

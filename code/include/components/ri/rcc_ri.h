@@ -19,6 +19,8 @@ namespace ri {
             os << ri.toRACode();
             return os;
         }
+
+        virtual std::string getOpRI() const = 0;
     };
 
     class ANNOTATION final : public RI
@@ -28,6 +30,7 @@ namespace ri {
         explicit ANNOTATION(const std::string &comment);
         explicit ANNOTATION(const std::vector<std::string> &comments);
         [[nodiscard]] std::string toRACode() const override;
+        std::string getOpRI() const override;
     };
 
     class BREAKPOINT final : public RI
@@ -35,6 +38,7 @@ namespace ri {
     public:
         explicit BREAKPOINT();
         [[nodiscard]] std::string toRACode() const override;
+        std::string getOpRI() const override;
     };
 
     class FLAG: public RI
@@ -44,6 +48,7 @@ namespace ri {
     public:
         explicit FLAG(const std::string &opRI, const std::string &comment="");
         [[nodiscard]] std::string toRACode() const override;
+        std::string getOpRI() const override;
     };
 
     class PASS final: public FLAG
@@ -60,6 +65,7 @@ namespace ri {
         [[nodiscard]] std::string toRACode() const override;
 
         [[nodiscard]] std::vector<std::string> getIdents() const;
+        std::string getOpRI() const override;
     };
 
     class ALLOT final : public PARALLEL {
@@ -131,6 +137,7 @@ namespace ri {
     public:
         explicit UNARY(const std::string &opRI, const std::string &ident);
         [[nodiscard]] std::string toRACode() const override;
+        std::string getOpRI() const override;
     };
 
     class SET final : public UNARY {
@@ -171,7 +178,7 @@ namespace ri {
 
         [[nodiscard]] std::string getRValue() const;
         [[nodiscard]] std::string getLValue() const;
-        [[nodiscard]] std::string getOp() const;
+        std::string getOpRI() const override;
     };
 
     class TP_NEW final : public BINARY {
@@ -257,6 +264,12 @@ namespace ri {
         explicit DICT_DEL(const std::string &dictData, const std::string &key);
     };
 
+    class REPEAT final: public BINARY
+    {
+    public:
+        explicit REPEAT(const std::string &times, const std::string& indexData);
+    };
+
     class TERNARY: public RI {
         std::string opRI, rvalue1, rvalue2, lvalue;
     public:
@@ -264,6 +277,7 @@ namespace ri {
             const std::string &op, const std::string &rvalue1,
             const std::string &rvalue2, const std::string &lvalue);
         [[nodiscard]] std::string toRACode() const override;
+        std::string getOpRI() const override;
     };
 
     class ADD final : public TERNARY {
@@ -271,22 +285,22 @@ namespace ri {
         explicit ADD(const std::string &rvalue1, const std::string &rvalue2, const std::string &lvalue);
     };
 
-    class MUL: public TERNARY {
+    class MUL final : public TERNARY {
     public:
         explicit MUL(const std::string &rvalue1, const std::string &rvalue2, const std::string &lvalue);
     };
 
-    class DIV: public TERNARY {
+    class DIV final : public TERNARY {
     public:
         explicit DIV(const std::string &rvalue1, const std::string &rvalue2, const std::string &lvalue);
     };
 
-    class MOD: public TERNARY {
+    class MOD final : public TERNARY {
     public:
         explicit MOD(const std::string &rvalue1, const std::string &rvalue2, const std::string &lvalue);
     };
 
-    class POW: public TERNARY {
+    class POW final : public TERNARY {
     public:
         explicit POW(const std::string &rvalue1, const std::string &rvalue2, const std::string &lvalue);
     };

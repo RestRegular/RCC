@@ -136,7 +136,7 @@ namespace utils {
     size_t getSpaceFrontOfLineCode(const std::string& lineCode);
     void addCharBeforeNewline(std::string &code, const char &c= ';');
     std::string spaceString(size_t n);
-    std::string makeFileIdentStr(const std::string &filepath);
+    std::string makeFileIdentStr(const std::string &content, const bool& isExtension = false);
     std::string listJoin(const std::list<std::string>& strList, const std::string& delimiter="");
     std::string vectorJoin(const std::vector<std::string>& strVector, const std::string& delimiter="");
 
@@ -242,6 +242,8 @@ namespace utils {
     };
 
     const Pos &getUnknownPos();
+
+    Pos* getUnknownPosP();
 
     class  RangerPos final : Pos {
         RangerPos(size_t startLine, size_t startColumn, size_t endLine, size_t endColumn, std::string filepath);

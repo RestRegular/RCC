@@ -37,12 +37,13 @@ namespace builtin
 
     struct IRCCStringOpItemMap
     {
-        IRCCStringOpItemPair* nameOpItemPair;
+        IRCCStringOpItemPair* nameOpItemPairArray;
         size_t size;
     };
 
     struct IRCCCallInfos
     {
+        ast::IRCCCompileInterface* compileVisitorI;
         IRCCStringArray processedArgs;
         struct
         {

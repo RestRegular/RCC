@@ -45,7 +45,7 @@ namespace rccdll
         dllUnload = loadExtFunc<rinterface::DLL_UNLOAD>(DLL_FUNC_UNLOAD);
         const auto obtainExtFuncs = loadExtFunc<rinterface::DLL_OBTAIN_EXT_FUNCS>(DLL_FUNC_OBTAIN_EXT_FUNCS);
 
-        dllLoadin(pCompileInterface);
+        dllLoadin();
 
         const auto [size, extFuncs] = obtainExtFuncs();
         for (int i = 0; i < size; i ++)
@@ -88,6 +88,7 @@ namespace rccdll
     }
 
     std::unordered_map<std::string, std::unique_ptr<DLLExtension>> DLLExtensionManager::dllExtMap = {};
+
     std::unordered_map<std::string, std::string> DLLExtensionManager::dllExtPathAliasMap = {};
 
     void DLLExtensionManager::registerDllExt(const std::string& dllFilepath_,
@@ -120,15 +121,15 @@ namespace rccdll
         });
     }
 
-    rinterface::DLL_EXT_FUNC DLLExtensionManager::find(const std::string& funcName)
+    std::pair<DLLExtension*, rinterface::DLL_EXT_FUNC> DLLExtensionManager::find(const std::string& funcName)
     {
         for (const auto &dllExt: dllExtMap | std::views::values)
         {
             if (const auto &dllExtFunc = dllExt->find(funcName))
             {
-                return dllExtFunc;
+                return {dllExt.get(), dllExtFunc};
             }
         }
-        return nullptr;
+        return {nullptr, nullptr};
     }
 }

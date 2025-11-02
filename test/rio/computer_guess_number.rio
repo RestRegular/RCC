@@ -1,0 +1,52 @@
+import(io="io", rd="random", nr="newrcc", prog="prog", sm="str", ds="ds")
+
+fun main() {
+    // Initialize game range and counter
+    var minNum: int = 0,
+        maxNum: int = 100,
+        guessTimes: int = 0
+
+    io.sout(nr.ctext("Please think of an integer between 0-100, don't tell anyone ~", nr.TextColor.BLUE))
+    io.sout(nr.ctext("After the computer guesses, please enter:", nr.TextColor.GREEN))
+    io.sout(nr.ctext("  'b' - The number you thought of is bigger\n  's' - The number you thought of is smaller\n  'c' - Correct guess\n  'exit' - Quit the game", nr.TextColor.GREEN))
+
+    while true {
+        // Computer generates a guess within current range
+        var computerGuess: int = rd.randomInt(minNum, maxNum)
+        guessTimes++
+
+        // Display guess and get user feedback
+        var input = io.sin(nr.ctext(ds.joins("Computer's guess: ", computerGuess, ", please feedback (b/s/c/exit):"), nr.TextColor.YELLOW))
+        input = sm.toLowerCase(sm.trim(input))  // Process input (trim + lowercase)
+
+        // Handle exit command
+        if input == "exit" {
+            io.sout(nr.ctext(ds.joins("\nGame exited. Computer has tried ", guessTimes - 1, " rounds."), nr.TextColor.CYAN))
+            break
+        }
+
+        // Validate input and adjust range
+        if input == "c" {
+            io.sout(nr.ctext(ds.joins("\nGreat! The computer guessed correctly in ", guessTimes, " attempts ~"), nr.TextColor.GREEN))
+            break
+        } elif input == "b" {
+            minNum = computerGuess + 1  // Target is bigger, adjust lower bound
+        } elif input == "s" {
+            maxNum = computerGuess - 1  // Target is smaller, adjust upper bound
+        } else {
+            io.sout(nr.ctext("Invalid input! Please enter b/s/c/exit", nr.TextColor.RED))
+            guessTimes--  // Don't count invalid inputs
+        }
+
+        // Detect cheating (contradictory feedback)
+        if minNum > maxNum {
+            io.sout(nr.ctext("\nContradictory feedback detected, possible cheating ~", nr.TextColor.RED))
+            break
+        }
+    }
+}
+
+// Program entry point
+prog.entry((*args, **kwargs): void -> {
+    main()
+})

@@ -1512,9 +1512,7 @@ namespace utils
         if (!std::filesystem::exists(filepath))
         {
             // ToDo: 添加错误处理逻辑
-            throw base::RCCCompilerError::fileNotFoundError(
-                RCC_UNKNOWN_CONST, RCC_UNKNOWN_CONST,
-                filepath, {});
+            throw std::runtime_error("Failed to read file: " + filepath);
         }
         if (!inFile.is_open())
         {
@@ -1584,7 +1582,7 @@ namespace utils
         return file.good(); // 检查写入是否成功
     }
 
-    std::string getLineFromFile(const std::string& filePath, size_t lineNum)
+    std::string getLineFromFile(const std::string& filePath, const size_t lineNum)
     {
         if (lineNum == 0)
         {
@@ -2566,10 +2564,17 @@ namespace utils
     {
     }
 
+
     const Pos& getUnknownPos()
     {
         static Pos UNKNOWN_POS (0, 0, 0, RCC_UNKNOWN_CONST);
         return UNKNOWN_POS;
+    }
+
+    Pos* getUnknownPosP()
+    {
+        static Pos UNKNOWN_POS (0, 0, 0, RCC_UNKNOWN_CONST);
+        return &UNKNOWN_POS;
     }
 
     RangerPos::RangerPos(size_t startLine, size_t startColumn, size_t endLine, size_t endColumn, std::string filepath)
@@ -2618,10 +2623,10 @@ namespace utils
         return std::string(n, ' ');
     }
 
-    std::string makeFileIdentStr(const std::string& filepath)
+    std::string makeFileIdentStr(const std::string& content, const bool& isExtension)
     {
-        const auto& fileName = getFileFromPath(filepath);
-        return getObjectFormatString("File", fileName);
+        const auto& ident = isExtension ? content : getFileFromPath(content);
+        return getObjectFormatString(isExtension ? "Extension" : "File", ident);
     }
 
     std::string getSystemUserName()
