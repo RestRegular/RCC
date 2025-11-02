@@ -35,43 +35,43 @@ int __optimization_level__ = 0;
 ProgArgParser argParser{};
 
 void initializeArgumentParser() {
-    // 帮助与版本选项
+    // Help and version options
     argParser.addFlag("help", &__help_option__, false, true,
-                      "显示帮助信息并退出", {"h"});
+                      "Display help information and exit", {"h"});
     argParser.addFlag("version", &__version_option__, false, true,
-                      "显示版本信息并退出", {"v"});
+                      "Display version information and exit", {"v"});
     argParser.addOption<std::string>("help-option", &__help_option_name__, "",
-                                    "指定要显示详细信息的选项名称", {"ho"});
+                                    "Specify the option name to show detailed information for", {"ho"});
 
-    // 核心功能选项
+    // Core functionality options
     argParser.addOption<std::string>("input", &__input_file_path__, "",
-                                    "指定输入文件路径", {"i", "in"});
+                                    "Specify input file path", {"i", "in"});
     argParser.addOption<std::string>("output", &__output_file_path__,
-        "", "指定输出文件路径", {"o", "out"});
+        "", "Specify output file path", {"o", "out"});
     argParser.addOption<std::string>("working-dir", &__working_directory__,
-                                    getWindowsDefaultDir(), "指定工作目录", {"wd"});
+                                    getWindowsDefaultDir(), "Specify working directory", {"wd"});
 
-    // 调试与日志选项
+    // Debug and logging options
     argParser.addFlag("lexer-debug", &__lexer_debug__, false, true,
-                      "启用词法分析器调试模式", {"ld"});
+                      "Enable lexer debugging mode", {"ld"});
     argParser.addFlag("parser-debug", &__parser_debug__, false, true,
-                      "启用语法分析器调试模式", {"pd"});
+                      "Enable parser debugging mode", {"pd"});
     argParser.addFlag("visitor-debug", &__visitor_debug__, false, true,
-                      "启用访问器调试模式", {"vd"});
+                      "Enable visitor debugging mode", {"vd"});
     argParser.addOption<std::string>("log-file", &__log_file_path__,
-                                    "", "指定日志输出文件路径", {"lf"});
+                                    "", "Specify log output file path", {"lf"});
     argParser.addFlag("verbose", &__verbose__, false, true,
-                      "启用详细输出模式", {"V"});
+                      "Enable verbose output mode", {"V"});
 
-    // 编译选项
+    // Compilation options
     argParser.addOption<int>("optimization", &__optimization_level__, 0,
-                            "设置优化级别(0-3)", {"O"});
+                            "Set optimization level (0-3)", {"O"});
     argParser.addFlag("force", &__force_overwrite__, false, true,
-                      "强制覆盖已存在的输出文件", {"f"});
+                      "Force overwrite of existing output files", {"f"});
     argParser.addFlag("time-info", &__time_info__, false, true,
-                      "显示编译时间信息", {"ti"});
+                      "Display compilation time information", {"ti"});
 
-    // 互斥与依赖关系
+    // Mutual exclusion and dependency relationships
     argParser.addMutuallyExclusive(std::vector<std::string>{"help", "version"},
                                   std::vector<std::string>{"input", "output", "lexer-debug",
                                                            "parser-debug", "visitor-debug"},

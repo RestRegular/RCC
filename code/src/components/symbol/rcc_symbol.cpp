@@ -2093,9 +2093,24 @@ namespace symbol {
           labelMarkManager(std::move(labelMarkManager)), collectionFinished(collectionFinished),
           visitPermission(visitPermission), scope_level_(scopeLevel) {}
 
-    ClassSymbol::~ClassSymbol() {}
+    ClassSymbol::~ClassSymbol() = default;
 
-    IRCCVariableSymbolInterface::~IRCCVariableSymbolInterface() {}
+    std::string ClassSymbol::getInheritanceChain() const
+    {
+        std::string chain;
+        for (const auto& bc: baseClasses)
+        {
+            chain += bc->getVal() + ".";
+        }
+        return chain;
+    }
+
+    std::string ClassSymbol::briefString() const
+    {
+        return "[<Class> " + getInheritanceChain() + getVal() + "]";
+    }
+
+    IRCCVariableSymbolInterface::~IRCCVariableSymbolInterface() = default;
 
     IRCCFunctionSymbolInterface::~IRCCFunctionSymbolInterface() {}
 

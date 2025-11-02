@@ -2,4 +2,4 @@
 cls
 color 07
 echo ^>^>^> python execute.py %*
-python D:\ClionProjects\RCC\scripts\execute.py %*
+python D:\repositories\RCC\scripts\execute.py %*

@@ -127,8 +127,8 @@ namespace builtin
             catch (...)
             {
                 throw base::RCCCompilerError::extensionLoadinError(
-                    visitor.currentPos().toString(),
-                    visitor.getCodeLine(visitor.currentPos()), {
+                    ast::CompileVisitor::currentPos().toString(),
+                    ast::CompileVisitor::getCodeLine(ast::CompileVisitor::currentPos()), {
                         "Failed imported extension: " + tempVarId.getNameField(),
                         "Automatically detected path: " + importedFilePath
                     }, {
@@ -213,7 +213,7 @@ namespace builtin
         }
         if (hasPositionalArgs && isAutomaticForm) {
             throw base::RCCCompilerError::semanticError(
-                callInfos.callPos.toString(), visitor.getCodeLine(callInfos.callPos),
+                callInfos.callPos.toString(), ast::CompileVisitor::getCodeLine(callInfos.callPos),
                 "You cannot use both positional arguments and keyword arguments for the `import` function at the same time.",
                 {
                     "Please ensure that only one import mode is used.",
@@ -222,7 +222,7 @@ namespace builtin
         }
         if (hasPositionalArgs && callInfos.originalArgs.size() != 1) {
             throw base::RCCCompilerError::semanticError(
-                callInfos.callPos.toString(), visitor.getCodeLine(callInfos.callPos),
+                callInfos.callPos.toString(), ast::CompileVisitor::getCodeLine(callInfos.callPos),
                 "Explicitly defining the variable import mode allows only one extension to be imported at a time.",
                 {
                     "Please ensure that only one extension is imported at a time when using the explicit variable definition import mode."
@@ -235,13 +235,13 @@ namespace builtin
             const auto &varIDName = generateVariableIdentifier(visitor, ident, importedFilePath, isAutomaticForm);
             const auto &tempVarId = ast::VarID(
                 varIDName, visitor.getProgramTargetFilePath(), visitor.curScopeField(), visitor.curScopeLevel());
-            visitor.recordProcessingExtension(importedFilePath, unescapedExtNameArg);
+            ast::CompileVisitor::recordProcessingExtension(importedFilePath, unescapedExtNameArg);
             if (const auto &registeredExtension = ast::CompileVisitor::getRegisteredExtension(importedFilePath)) {
                 raCode += handleRegisteredExtension(visitor, registeredExtension, tempVarId, isAutomaticForm);
             } else {
                 raCode += compileAndProcessNewExtension(visitor, importedFilePath, tempVarId);
             }
-            visitor.removeProcessingExtension(importedFilePath);
+            ast::CompileVisitor::removeProcessingExtension(importedFilePath);
         }
         return raCode;
     }

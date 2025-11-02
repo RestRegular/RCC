@@ -3,6 +3,7 @@
 //
 
 #include "../../../declarations/builtin/functions/rcc_builtin_export_dec.h"
+#include "../../../include/lib/RLogSystem/rlog_system.h"
 
 namespace builtin
 {

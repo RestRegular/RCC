@@ -194,6 +194,7 @@ namespace ast
         static std::list<std::string> _lexer_paths; // 词法分析器路径向量
         static std::string fileRecord;
         static std::unordered_map<std::string, std::string> processingExtensionPathNameMap;
+        static std::stack<std::string> processingExtensionStack;
 
         // ========================== 成员属性 ==========================
         RaCodeBuilder raCodeBuilder{}; // RA代码构建器
@@ -378,6 +379,7 @@ namespace ast
         static void recordProcessingExtension(const std::string &extensionPath, const std::string& extensionName);
         static void removeProcessingExtension(const std::string &extensionPath);
         static bool checkIsProcessingExtension(const std::string &extensionPath);
+        static std::string topProcessingExtensionPath();
 
         // 将原 visitFunctionCallNode 的逻辑迁移到这里（主调度器）
         void processFunctionCallNode(const FunctionCallNode& node);
@@ -609,7 +611,7 @@ namespace ast
         const char* GetNewRaValCorrespondingToNewVal(const char* val) override;
         const char* RaVal(const IRCCOpItemInterface* opItemI) const override;
         symbol::IRCCTypeLabelSymbolInterface*
-        GetTypeLabelSymbolIByStr(const char* name, const std::size_t scopeLevel) override;
+        GetTypeLabelSymbolIByStr(const char* name, std::size_t scopeLevel) override;
         void FreeTypeLabelSymbolI(symbol::IRCCTypeLabelSymbolInterface*& symbol) override;
         const char* GetNewTempVarName() override;
         void FreeCharP(const char* data) override;

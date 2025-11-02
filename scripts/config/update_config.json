@@ -1,15 +1,15 @@
 {
-  "validate": false,
+  "validate": true,
   "version": {
-    "vs_desc": "...",
+    "vs_desc": "优化了帮助信息",
     "change_type": [
-      "fix"
+      "opt"
     ]
   },
   "update_log": {
     "author": "RestRegular",
     "log_contents": [
-      "..."
+      "优化了帮助信息。"
     ]
   },
   "annotation": {

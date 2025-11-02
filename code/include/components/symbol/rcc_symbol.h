@@ -478,6 +478,8 @@ namespace symbol {
             const bool &collectionFinished = true,
             const PermissionLabel &visitPermission = {});
         ~ClassSymbol() override;
+        [[nodiscard]] std::string getInheritanceChain() const;
+        [[nodiscard]] std::string briefString() const override;
         void FreeClasses(Classes& classes) override;
         [[nodiscard]] std::vector<std::shared_ptr<ClassSymbol>> &getBaseClasses();
         Classes GetBaseClasses() override;

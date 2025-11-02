@@ -482,6 +482,8 @@ namespace ast
 
     std::unordered_map<std::string, std::string> CompileVisitor::processingExtensionPathNameMap = {};
 
+    std::stack<std::string> CompileVisitor::processingExtensionStack = {};
+
     // 辅助函数：获取符号的类型标签
     std::shared_ptr<TypeLabelSymbol> CompileVisitor::getTypeLabelFromSymbol(const std::shared_ptr<Symbol>& symbol)
     {
@@ -505,16 +507,32 @@ namespace ast
     void CompileVisitor::recordProcessingExtension(const std::string& extensionPath, const std::string& extensionName)
     {
         processingExtensionPathNameMap.insert({extensionPath, extensionName});
+        processingExtensionStack.push(extensionPath);
     }
 
     void CompileVisitor::removeProcessingExtension(const std::string& extensionPath)
     {
+        if (processingExtensionStack.empty() ||
+            extensionPath != processingExtensionStack.top())
+        {
+            throw std::runtime_error("Invalid operation.");
+        }
         processingExtensionPathNameMap.erase(extensionPath);
+        processingExtensionStack.pop();
     }
 
     bool CompileVisitor::checkIsProcessingExtension(const std::string& extensionPath)
     {
         return processingExtensionPathNameMap.contains(extensionPath);
+    }
+
+    std::string CompileVisitor::topProcessingExtensionPath()
+    {
+        if (processingExtensionStack.empty())
+        {
+            throw std::runtime_error("Invalid operation.");
+        }
+        return processingExtensionStack.top();
     }
 
     // 辅助函数：获取符号的类型标签
