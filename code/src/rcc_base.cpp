@@ -145,6 +145,10 @@ namespace base {
         {"<", "RL"}, {"<=", "RLE"}, {"&&", "AND"}, {"||", "OR"}
     };
 
+    const std::string RCC_BUILTIN_LIB_DIR = utils::getAbsolutePath("./Lib/builtin/", utils::getWindowsRCCDir());
+
+    const std::string RCC_LIB_DIR = utils::getAbsolutePath("./Lib/", utils::getWindowsRCCDir());
+
     bool containsKeyword(const std::string &str) {
         return KEYWORDS.contains(str);
     }

@@ -13,7 +13,7 @@ namespace ast
 
     // 类声明
     // --- 工具类 ---
-    class RaCodeBuilder;
+    class ContentBuilder;
     class VarID;
     class SetID;
     class OpItem;

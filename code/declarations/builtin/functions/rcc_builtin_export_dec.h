@@ -9,7 +9,6 @@
 
 namespace builtin
 {
-
     BuiltinFuncRetType rcc_export(ast::CompileVisitor &visitor, const CallInfos& callInfos);
 
     extern const PureBuiltinFunction EXPORT;

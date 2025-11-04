@@ -21,12 +21,12 @@ namespace ast
 {
     using namespace symbol;
 
-    RaCodeBuilder::RaCodeBuilder()
+    ContentBuilder::ContentBuilder()
     {
         enterScope();
     }
 
-    std::string RaCodeBuilder::buildAll()
+    std::string ContentBuilder::buildAll()
     {
         if (raCode.empty())
         {
@@ -39,7 +39,7 @@ namespace ast
         return raCode;
     }
 
-    RaCodeBuilder& RaCodeBuilder::appendCode(const std::string& code)
+    ContentBuilder& ContentBuilder::appendCode(const std::string& code)
     {
         if (code.empty()) return *this;
         if (raCodeStack.empty()) throw std::runtime_error("RaCodeBuilder::appendCode: raCodeStack is empty.");
@@ -47,7 +47,7 @@ namespace ast
         return *this;
     }
 
-    RaCodeBuilder& RaCodeBuilder::operator<<(const std::string& code)
+    ContentBuilder& ContentBuilder::operator<<(const std::string& code)
     {
         if (code.empty()) return *this;
         if (raCodeStack.empty()) throw std::runtime_error("RaCodeBuilder::appendCode: raCodeStack is empty.");
@@ -55,38 +55,38 @@ namespace ast
         return *this;
     }
 
-    RaCodeBuilder& RaCodeBuilder::operator<<(const ri::RI& ri)
+    ContentBuilder& ContentBuilder::operator<<(const ri::RI& ri)
     {
         *this << ri.toRACode();
         return *this;
     }
 
-    void RaCodeBuilder::enterScope()
+    void ContentBuilder::enterScope()
     {
         raCodeStack.emplace();
     }
 
-    void RaCodeBuilder::exitScope()
+    void ContentBuilder::exitScope()
     {
         if (raCodeStack.empty()) throw std::runtime_error("RaCodeBuilder::exitScope: raCodeStack is empty.");
         raCodeStack.pop();
     }
 
-    RaCodeBuilder& RaCodeBuilder::buildCurScope(std::string& target)
+    ContentBuilder& ContentBuilder::buildCurScope(std::string& target)
     {
         if (raCodeStack.empty()) throw std::runtime_error("RaCodeBuilder::buildCurScopeAndExit: raCodeStack is empty.");
         target = raCodeStack.top().str();
         return *this;
     }
 
-    RaCodeBuilder& RaCodeBuilder::buildCurScope(RaCodeBuilder& builder)
+    ContentBuilder& ContentBuilder::buildCurScope(ContentBuilder& builder)
     {
         if (raCodeStack.empty()) throw std::runtime_error("RaCodeBuilder::buildCurScopeAndExit: raCodeStack is empty.");
         builder << raCodeStack.top().str();
         return *this;
     }
 
-    RaCodeBuilder& RaCodeBuilder::operator>>(std::string& target)
+    ContentBuilder& ContentBuilder::operator>>(std::string& target)
     {
         if (!raCodeStack.empty())
         {
@@ -100,7 +100,7 @@ namespace ast
         return *this;
     }
 
-    RaCodeBuilder& RaCodeBuilder::operator>>(RaCodeBuilder& builder)
+    ContentBuilder& ContentBuilder::operator>>(ContentBuilder& builder)
     {
         if (!raCodeStack.empty())
         {
@@ -110,7 +110,7 @@ namespace ast
         return *this;
     }
 
-    std::string RaCodeBuilder::getCurScopeResult() const
+    std::string ContentBuilder::getCurScopeResult() const
     {
         return raCodeStack.top().str();
     }
@@ -480,9 +480,15 @@ namespace ast
 
     std::string CompileVisitor::fileRecord{};
 
-    std::unordered_map<std::string, std::string> CompileVisitor::processingExtensionPathNameMap = {};
+    std::unordered_map<std::string, std::string> CompileVisitor::extensionPathNameMap = {};
 
     std::stack<std::string> CompileVisitor::processingExtensionStack = {};
+
+    OutputFormat CompileVisitor::_output_format = OutputFormat::TXT;
+
+    bool CompileVisitor::_symbol_flag = false;
+
+    bool CompileVisitor::_symbol_flag_only_export_option = false;
 
     // 辅助函数：获取符号的类型标签
     std::shared_ptr<TypeLabelSymbol> CompileVisitor::getTypeLabelFromSymbol(const std::shared_ptr<Symbol>& symbol)
@@ -506,24 +512,31 @@ namespace ast
 
     void CompileVisitor::recordProcessingExtension(const std::string& extensionPath, const std::string& extensionName)
     {
-        processingExtensionPathNameMap.insert({extensionPath, extensionName});
+        extensionPathNameMap.insert({extensionPath, extensionName});
         processingExtensionStack.push(extensionPath);
     }
 
-    void CompileVisitor::removeProcessingExtension(const std::string& extensionPath)
+    void CompileVisitor::popProcessingExtension()
     {
-        if (processingExtensionStack.empty() ||
-            extensionPath != processingExtensionStack.top())
+        if (processingExtensionStack.empty())
         {
             throw std::runtime_error("Invalid operation.");
         }
-        processingExtensionPathNameMap.erase(extensionPath);
         processingExtensionStack.pop();
     }
 
-    bool CompileVisitor::checkIsProcessingExtension(const std::string& extensionPath)
+    bool CompileVisitor::checkIsProcessedExtension(const std::string& extensionPath)
     {
-        return processingExtensionPathNameMap.contains(extensionPath);
+        return extensionPathNameMap.contains(extensionPath);
+    }
+
+    std::string CompileVisitor::getExtensionName(const std::string& extensionPath)
+    {
+        if (!checkIsProcessedExtension(extensionPath))
+        {
+            throw std::runtime_error("Invalid operation.");
+        }
+        return extensionPathNameMap.at(extensionPath);
     }
 
     std::string CompileVisitor::topProcessingExtensionPath()
@@ -533,6 +546,49 @@ namespace ast
             throw std::runtime_error("Invalid operation.");
         }
         return processingExtensionStack.top();
+    }
+
+    void CompileVisitor::processSymbolFlagOperation()
+    {
+        if (_symbol_flag && !_symbol_flag_only_export_option)
+        {
+            std::string result;
+            if (_output_format == OutputFormat::JSON)
+            {
+                if (analyzeBuilder.getCurScopeResult().empty())
+                {
+                    analyzeBuilder.enterScope();
+                    analyzeBuilder << "{}";
+                }
+                result = analyzeBuilder.getCurScopeResult();
+                analyzeBuilder.exitScope();
+            }
+            for (const auto& st: symbolTable.currentNameMapScope())
+            {
+                if (const auto& sysDefs = symbolTable.currentNameMapScope().getSysDefinedRecord();
+                    sysDefs.contains(st->getRaVal()))
+                {
+                    continue;
+                }
+                if (_output_format == OutputFormat::TXT)
+                {
+                    analyzeBuilder << st->toDetailString() << "\n";
+                } else if (_output_format == OutputFormat::JSON)
+                {
+
+                    RJsonParser rjParser (result);
+                    rjParser.parse();
+                    RJsonBuilder builder (rjParser.getParsedValue());
+                    builder.insertRJValue(st->getVal(), rjson::RJValue::getObjectRJValue(st->toJsonString()));
+                    result = builder.formatString(4);
+                }
+            }
+            if (_output_format == OutputFormat::JSON)
+            {
+                analyzeBuilder.enterScope();
+                analyzeBuilder << result;
+            }
+        }
     }
 
     // 辅助函数：获取符号的类型标签
@@ -1352,18 +1408,21 @@ namespace ast
         : programEntryFilePath(programEntryFilePath),
           programTagetFilePath(programTargetFilePath),
           compileOutputFilePath(compileOutputFilePath),
-          needSaveOutputToFile(needSaveOutput)
-    {
-    }
+          needSaveOutputToFile(needSaveOutput) {}
 
     SymbolTableManager& CompileVisitor::getSymbolTable()
     {
         return symbolTable;
     }
 
-    RaCodeBuilder& CompileVisitor::getRaCodeBuilder()
+    ContentBuilder& CompileVisitor::getRaCodeBuilder()
     {
         return raCodeBuilder;
+    }
+
+    ContentBuilder& CompileVisitor::getAnalyzeBuilder()
+    {
+        return analyzeBuilder;
     }
 
     std::stack<std::shared_ptr<Symbol>>& CompileVisitor::getProcessingSymbolStack()
@@ -1743,6 +1802,7 @@ namespace ast
                     throw std::runtime_error("Can not write file: " + compileOutputFilePath);
                 }
             }
+            processSymbolFlagOperation();
         }
         catch (const RCCError& _)
         {
@@ -2329,6 +2389,7 @@ namespace ast
                 statement->acceptVisitor(*this);
                 popProcessingPos();
             }
+            processSymbolFlagOperation();
             exitScope(ScopeType::PROGRAM);
             setCurrentProcessingFilePath("");
             popProcessingPos();
@@ -2340,7 +2401,7 @@ namespace ast
             {
                 fileRecord = errorFilePath;
             }
-            const auto& isExt = checkIsProcessingExtension(errorFilePath);
+            const auto& isExt = checkIsProcessedExtension(errorFilePath);
             e.addTraceInfo(RCCError::makeTraceInfo(
                 listJoin(e.getTraceInfo()),
                 errorPos.toString(),
@@ -2348,7 +2409,7 @@ namespace ast
                 getPosStrFromFilePath(errorFilePath),
                 makeFileIdentStr(
                     isExt
-                    ? processingExtensionPathNameMap.at(errorFilePath)
+                    ? extensionPathNameMap.at(errorFilePath)
                     : errorFilePath,
                     isExt)));
             if (fileRecord != errorFilePath)
@@ -2822,7 +2883,7 @@ namespace ast
                                    paramOpItem.getRaVal(symbolTable),
                                    labels,
                                    symbolTable.curScopeLevel(),
-                                   true), false);
+                                   true), true);
             paramLabelDes.push_back(isPosVarParam
                                         ? TypeLabelSymbol::varArgTypeSymbol(getUnknownPos(), curScopeLevel())
                                         : isKWVarParam
@@ -3004,6 +3065,11 @@ namespace ast
             // TODO
             pass("Process index expression type label node.");
         }
+    }
+
+    bool CompileVisitor::isVisitingProgramEntry() const
+    {
+        return getCurrentProcessingFilePath() == programEntryFilePath;
     }
 
     void CompileVisitor::visitLabelNode(LabelNode& node)
@@ -3343,7 +3409,7 @@ namespace ast
             return funcSymbol;
         };
         functionSymbol = createFunctionSymbol(FunctionType::ANONYMOUS);
-        symbolTable.insert(functionSymbol, false);
+        symbolTable.insert(functionSymbol, true);
         if (!functionSymbol->getReturnType())
         {
             functionSymbol->setReturnType(getBuiltinTypeSymbol(functionSymbol->getPos(), BuiltinType::B_ANY));
@@ -3381,7 +3447,7 @@ namespace ast
                                                         functionSymbol->hasReturnValue()
                                                             ? BuiltinType::B_FUNI
                                                             : BuiltinType::B_FUNC),
-                                   functionSymbol);
+                                   functionSymbol, true);
         raCodeBuilder << ri::PUT(functionSymbol->getRaVal(), topOpRaVal());
     }
 

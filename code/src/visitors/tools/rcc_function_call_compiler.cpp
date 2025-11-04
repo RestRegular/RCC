@@ -537,24 +537,24 @@ namespace ast
                 {
                     const auto& argItem = posArgs.front();
                     // 先检查类型匹配
-                    if (!checkTypeMatch(param, argItem))
-                    {
-                        const auto& [fst, snd] = getTypesFromOpItem(argItem);
-                        throw RCCCompilerError::typeMissmatchError(argItem.getPos().toString(),
-                                                                   getCodeLine(callPos),
-                                                                   std::vector{
-                                                                       "Error symbol: " + param->toString(),
-                                                                       "Type mismatched value: " + argItem.toString()
-                                                                   }, param->getTypeLabel()->toString(),
-                                                                   fst
-                                                                       ? fst->toString()
-                                                                       : snd
-                                                                       ? snd->toString()
-                                                                       : RCC_UNKNOWN_CONST,
-                                                                   {
-                                                                       "You can try using the `any` type to set the parameter types more loosely."
-                                                                   });
-                    }
+                    // if (!checkTypeMatch(param, argItem))
+                    // {
+                    //     const auto& [fst, snd] = getTypesFromOpItem(argItem);
+                    //     throw RCCCompilerError::typeMissmatchError(argItem.getPos().toString(),
+                    //                                                getCodeLine(callPos),
+                    //                                                std::vector{
+                    //                                                    "Error symbol: " + param->toString(),
+                    //                                                    "Type mismatched value: " + argItem.toString()
+                    //                                                }, param->getTypeLabel()->toString(),
+                    //                                                fst
+                    //                                                    ? fst->toString()
+                    //                                                    : snd
+                    //                                                    ? snd->toString()
+                    //                                                    : RCC_UNKNOWN_CONST,
+                    //                                                {
+                    //                                                    "You can try using the `any` type to set the parameter types more loosely."
+                    //                                                });
+                    // }
                     // 根据不同类型处理参数
                     std::string item;
                     switch (argItem.getType())
@@ -605,7 +605,8 @@ namespace ast
                 }
                 if (needAutoPack)
                 {
-                    pushTemOpVarItemWithRecord(callPos);
+                    pushTemOpVarItemWithRecord(callPos, nullptr,
+                        nullptr, true);
                     raCodeBuilder
                         << ri::TP_SET(
                             TypeLabelSymbol::listTypeSymbol(callPos, symbolTable.curScopeLevel())->getRaVal(),
@@ -622,31 +623,33 @@ namespace ast
                 std::vector<std::string> items{};
                 for (const auto& [name, opItem] : namedArgs)
                 {
-                    if (!checkTypeMatch(param, opItem))
-                    {
-                        const auto& [fst, snd] = getTypesFromOpItem(opItem);
-                        throw RCCCompilerError::typeMissmatchError(opItem.getPos().toString(),
-                                                                   getCodeLine(callPos),
-                                                                   std::vector{
-                                                                       "Error symbol: " + param->toString(),
-                                                                       "Type mismatched value: " + opItem.toString()
-                                                                   }, param->getTypeLabel()->toString(),
-                                                                   fst
-                                                                       ? fst->toString()
-                                                                       : snd
-                                                                       ? snd->toString()
-                                                                       : RCC_UNKNOWN_CONST,
-                                                                   {
-                                                                       "You can try using the `any` type to set the parameter types more loosely."
-                                                                   });
-                    }
-                    pushTemOpVarItemWithRecord(callPos);
+                    // if (!checkTypeMatch(param, opItem))
+                    // {
+                    //     const auto& [fst, snd] = getTypesFromOpItem(opItem);
+                    //     throw RCCCompilerError::typeMissmatchError(opItem.getPos().toString(),
+                    //                                                getCodeLine(callPos),
+                    //                                                std::vector{
+                    //                                                    "Error symbol: " + param->toString(),
+                    //                                                    "Type mismatched value: " + opItem.toString()
+                    //                                                }, param->getTypeLabel()->toString(),
+                    //                                                fst
+                    //                                                    ? fst->toString()
+                    //                                                    : snd
+                    //                                                    ? snd->toString()
+                    //                                                    : RCC_UNKNOWN_CONST,
+                    //                                                {
+                    //                                                    "You can try using the `any` type to set the parameter types more loosely."
+                    //                                                });
+                    // }
+                    pushTemOpVarItemWithRecord(callPos, nullptr,
+                        nullptr, true);
                     raCodeBuilder
                         << ri::PAIR_SET(StringManager::toStringFormat(name), opItem.getRaVal(symbolTable),
                                         topOpRaVal());
                     items.push_back(rPopOpItemRaVal());
                 }
-                pushTemOpVarItemWithRecord(callPos);
+                pushTemOpVarItemWithRecord(callPos, nullptr,
+                    nullptr, true);
                 raCodeBuilder
                     << ri::TP_SET(
                         TypeLabelSymbol::dictTypeSymbol(callPos, symbolTable.curScopeLevel())->getRaVal(),
@@ -680,7 +683,7 @@ namespace ast
             // 普通函数调用：根据是否有返回值生成 IVOK / CALL
             if (funcSymbol->hasReturnValue())
             {
-                pushTemOpVarItemWithRecord(callInfos.callPos, funcSymbol->getReturnType());
+                pushTemOpVarItemWithRecord(callInfos.callPos, funcSymbol->getReturnType(), nullptr, true);
                 raCodeBuilder << ri::IVOK(funcSymbol->getRaVal(), callInfos.processedArgs, topOpRaVal());
             }
             else

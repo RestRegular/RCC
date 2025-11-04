@@ -74,6 +74,7 @@ namespace rjson {
         explicit RJValue(const std::vector<std::shared_ptr<RJValue>> &value);
         explicit RJValue(const std::vector<std::shared_ptr<RJPair>> &value);
         [[nodiscard]] static RJType parseValueType(const std::string &value);
+        static RJValue getObjectRJValue(const std::string &objectRawString, const bool& isRange = true);
         [[nodiscard]] std::string toString() const override;
         [[nodiscard]] std::string toJsonString() const override;
         void add(const std::shared_ptr<RJValue> &value);
@@ -132,7 +133,7 @@ namespace rjson {
         RJObject();
         explicit RJObject(const std::vector<std::shared_ptr<RJPair>>& pairs);
         explicit RJObject(const std::string &rawString);
-        static PairList parseRJObject(const std::string & string);
+        static PairList parseRJObject(const std::string & rawString, const bool& isRange = false);
     };
 
     namespace rj {
@@ -170,6 +171,8 @@ namespace rjson {
             [[nodiscard]] std::shared_ptr<RJValue> getAtKey(const std::string &key) const;
 
             [[nodiscard]] std::string formatString(size_t indent, size_t level) const override;
+
+            [[nodiscard]] std::shared_ptr<RJValue> getParsedValue() const;
         };
 
         class RJsonBuilder final : public Object {
@@ -184,6 +187,8 @@ namespace rjson {
             explicit RJsonBuilder(const std::vector<RJValue> &values);
 
             explicit RJsonBuilder(std::unordered_map<std::string, RJValue> pairs);
+
+            explicit RJsonBuilder(const std::shared_ptr<RJValue> &value);
 
             [[nodiscard]] RJValue build() const;
 

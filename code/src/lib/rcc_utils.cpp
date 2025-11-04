@@ -1970,25 +1970,25 @@ namespace utils
     }
 
     // 添加标志参数（支持别名）
-    void ProgArgParser::addFlag(const std::string& name, bool* var, bool defaultValue,
-                                [[maybe_unused]] bool whenPresent,
-                                const std::string& description, const std::vector<std::string>& aliases)
+    ProgArgParser& ProgArgParser::addFlag(const std::string& name, bool* var, bool defaultValue,
+                                          [[maybe_unused]] bool whenPresent,
+                                          const std::string& description, const std::vector<std::string>& aliases)
     {
         *var = defaultValue;
         flags_.emplace_back(name, var, whenPresent, aliases, description);
+        return *this;
     }
 
-    void ProgArgParser::parse(int argc, char* argv[])
+    void ProgArgParser::parse(const int argc, char* argv[])
     {
         std::set<std::string> providedOptions;
 
         for (int i = 1; i < argc;)
         {
-            std::string arg = argv[i];
-            if (arg.size() >= 2 && arg.substr(0, 2) == "--")
+            if (std::string arg = argv[i]; arg.size() >= 2 && arg.substr(0, 2) == "--")
             {
                 std::string name_part = arg.substr(2);
-                size_t eq_pos = name_part.find('=');
+                const size_t eq_pos = name_part.find('=');
                 std::string name = name_part.substr(0, eq_pos);
 
                 // 将选项的主名称加入 providedOptions
@@ -2219,18 +2219,20 @@ namespace utils
         return nullptr;
     }
 
-    void ProgArgParser::addMutuallyExclusive(const std::vector<std::string>& options, const std::string& target,
-                                             ProgArgParser::CheckDir direction)
+    ProgArgParser& ProgArgParser::addMutuallyExclusive(const std::vector<std::string>& options,
+                                                       const std::string& target,
+                                                       ProgArgParser::CheckDir direction)
     {
         for (const auto& opt : options)
         {
             addMutuallyExclusive(opt, target, direction);
         }
+        return *this;
     }
 
-    void ProgArgParser::addMutuallyExclusive(const std::vector<std::string>& options,
-                                             const std::vector<std::string>& targets,
-                                             ProgArgParser::CheckDir direction)
+    ProgArgParser& ProgArgParser::addMutuallyExclusive(const std::vector<std::string>& options,
+                                                       const std::vector<std::string>& targets,
+                                                       ProgArgParser::CheckDir direction)
     {
         for (const auto& opt : options)
         {
@@ -2239,19 +2241,22 @@ namespace utils
                 addMutuallyExclusive(opt, target, direction);
             }
         }
+        return *this;
     }
 
-    void ProgArgParser::addDependent(const std::vector<std::string>& options, const std::string& target,
-                                     ProgArgParser::CheckDir direction)
+    ProgArgParser& ProgArgParser::addDependent(const std::vector<std::string>& options, const std::string& target,
+                                               ProgArgParser::CheckDir direction)
     {
         for (const auto& opt : options)
         {
             addDependent(opt, target, direction);
         }
+        return *this;
     }
 
-    void ProgArgParser::addDependent(const std::vector<std::string>& options, const std::vector<std::string>& targets,
-                                     ProgArgParser::CheckDir direction)
+    ProgArgParser& ProgArgParser::addDependent(const std::vector<std::string>& options,
+                                               const std::vector<std::string>& targets,
+                                               ProgArgParser::CheckDir direction)
     {
         for (const auto& opt : options)
         {
@@ -2260,10 +2265,11 @@ namespace utils
                 addDependent(opt, target, direction);
             }
         }
+        return *this;
     }
 
-    void ProgArgParser::addMutuallyExclusiveGroup(const std::vector<std::string>& options,
-                                                  ProgArgParser::CheckDir direction)
+    ProgArgParser& ProgArgParser::addMutuallyExclusiveGroup(const std::vector<std::string>& options,
+                                                            ProgArgParser::CheckDir direction)
     {
         for (size_t i = 0; i < options.size(); ++i)
         {
@@ -2272,9 +2278,11 @@ namespace utils
                 addMutuallyExclusive(options[i], options[j], direction);
             }
         }
+        return *this;
     }
 
-    void ProgArgParser::addDependentGroup(const std::vector<std::string>& options, ProgArgParser::CheckDir direction)
+    ProgArgParser& ProgArgParser::addDependentGroup(const std::vector<std::string>& options,
+                                                    ProgArgParser::CheckDir direction)
     {
         for (size_t i = 0; i < options.size(); ++i)
         {
@@ -2283,28 +2291,32 @@ namespace utils
                 addDependent(options[i], options[j], direction);
             }
         }
+        return *this;
     }
 
-    void ProgArgParser::addMutuallyExclusive(const std::string& opt1, const std::string& opt2,
-                                             [[maybe_unused]] ProgArgParser::CheckDir direction)
+    ProgArgParser& ProgArgParser::addMutuallyExclusive(const std::string& opt1, const std::string& opt2,
+                                                       [[maybe_unused]] ProgArgParser::CheckDir direction)
     {
         mutuallyExclusive_.emplace_back(opt1, opt2, direction);
+        return *this;
     }
 
-    void
-    ProgArgParser::addDependent(const std::string& opt1, const std::string& opt2,
-                                [[maybe_unused]] ProgArgParser::CheckDir direction)
+    ProgArgParser
+    & ProgArgParser::addDependent(const std::string& opt1, const std::string& opt2,
+                                  [[maybe_unused]] ProgArgParser::CheckDir direction)
     {
         dependent_.emplace_back(opt1, opt2, direction);
+        return *this;
     }
 
-    void ProgArgParser::addMutuallyExclusive(const std::string& opt1, const std::vector<std::string>& opt2,
-                                             ProgArgParser::CheckDir direction)
+    ProgArgParser& ProgArgParser::addMutuallyExclusive(const std::string& opt1, const std::vector<std::string>& opt2,
+                                                       ProgArgParser::CheckDir direction)
     {
         for (const auto& opt : opt2)
         {
             addMutuallyExclusive(opt1, opt, direction);
         }
+        return *this;
     }
 
     std::string ProgArgParser::FlagInfo::toString() const

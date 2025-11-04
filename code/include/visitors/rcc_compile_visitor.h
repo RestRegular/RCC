@@ -19,24 +19,24 @@ namespace builtin
 
 namespace ast
 {
-    class RaCodeBuilder
+    class ContentBuilder
     {
         std::stack<std::stringstream> raCodeStack{};
         std::string raCode;
 
     public:
-        RaCodeBuilder();
-        ~RaCodeBuilder() = default;
+        ContentBuilder();
+        ~ContentBuilder() = default;
         std::string buildAll();
-        RaCodeBuilder& appendCode(const std::string& code);
-        RaCodeBuilder& operator<<(const std::string& code);
-        RaCodeBuilder& operator<<(const ri::RI& ri);
+        ContentBuilder& appendCode(const std::string& code);
+        ContentBuilder& operator<<(const std::string& code);
+        ContentBuilder& operator<<(const ri::RI& ri);
         void enterScope();
         void exitScope();
-        RaCodeBuilder& buildCurScope(std::string& target);
-        RaCodeBuilder& buildCurScope(RaCodeBuilder& builder);
-        RaCodeBuilder& operator>>(std::string& target);
-        RaCodeBuilder& operator>>(RaCodeBuilder& builder);
+        ContentBuilder& buildCurScope(std::string& target);
+        ContentBuilder& buildCurScope(ContentBuilder& builder);
+        ContentBuilder& operator>>(std::string& target);
+        ContentBuilder& operator>>(ContentBuilder& builder);
         [[nodiscard]] std::string getCurScopeResult() const;
     };
 
@@ -185,6 +185,14 @@ namespace ast
     public Visitor,
     public IRCCCompileInterface
     {
+    public:
+        // =========================== 标志属性 ============================
+        static OutputFormat _output_format;
+        static bool _symbol_flag;
+        static bool _symbol_flag_only_export_option;
+
+    private:
+
         // ========================== 静态成员属性 ==========================
         static size_t _temVarId; // 临时变量ID计数器
         static size_t _setId; // 集合标签ID计数器
@@ -193,11 +201,12 @@ namespace ast
         static std::stack<std::shared_ptr<lexer::Lexer>> _lexers; // 词法分析器
         static std::list<std::string> _lexer_paths; // 词法分析器路径向量
         static std::string fileRecord;
-        static std::unordered_map<std::string, std::string> processingExtensionPathNameMap;
+        static std::unordered_map<std::string, std::string> extensionPathNameMap;
         static std::stack<std::string> processingExtensionStack;
 
         // ========================== 成员属性 ==========================
-        RaCodeBuilder raCodeBuilder{}; // RA代码构建器
+        ContentBuilder raCodeBuilder {}; // RA代码构建器
+        ContentBuilder analyzeBuilder {}; // 分析结果构建器
         symbol::SymbolTableManager symbolTable{}; // 符号表管理器
 
         std::string programEntryFilePath; // 程序入口文件路径
@@ -223,7 +232,8 @@ namespace ast
 
         // ====================== getter & setter =====================
         [[nodiscard]] symbol::SymbolTableManager& getSymbolTable();
-        [[nodiscard]] RaCodeBuilder& getRaCodeBuilder();
+        [[nodiscard]] ContentBuilder& getRaCodeBuilder();
+        [[nodiscard]] ContentBuilder& getAnalyzeBuilder();
         [[nodiscard]] std::stack<std::shared_ptr<symbol::Symbol>>& getProcessingSymbolStack();
         [[nodiscard]] std::stack<std::shared_ptr<OpItem>>& getOpItemStack();
         [[nodiscard]] std::stack<ScopeType>& getScopeTypeStack();
@@ -377,9 +387,11 @@ namespace ast
         static std::shared_ptr<symbol::TypeLabelSymbol> getTypeLabelFromSymbol(
             const std::shared_ptr<symbol::Symbol>& symbol);
         static void recordProcessingExtension(const std::string &extensionPath, const std::string& extensionName);
-        static void removeProcessingExtension(const std::string &extensionPath);
-        static bool checkIsProcessingExtension(const std::string &extensionPath);
+        static void popProcessingExtension();
+        static bool checkIsProcessedExtension(const std::string &extensionPath);
+        static std::string getExtensionName(const std::string &extensionPath);
         static std::string topProcessingExtensionPath();
+        void processSymbolFlagOperation();
 
         // 将原 visitFunctionCallNode 的逻辑迁移到这里（主调度器）
         void processFunctionCallNode(const FunctionCallNode& node);
@@ -442,6 +454,8 @@ namespace ast
                            const builtin::CallInfos& callInfos);
 
         static void processLabelDesNode(const std::shared_ptr<ExpressionNode>& labelNode, std::vector<std::shared_ptr<LabelNode>>& desLabelNodes);
+
+        bool isVisitingProgramEntry() const;
 
         bool compile();
 

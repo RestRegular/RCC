@@ -11,6 +11,7 @@
 
 #include <memory_resource>
 
+#include "../../../declarations/builtin/rcc_builtin_dec.h"
 #include "../../../include/visitors/rcc_compile_visitor.h"
 
 namespace symbol {
@@ -154,6 +155,8 @@ namespace symbol {
         {"series", LabelType::TYPE_LABEL},
         {"flag", LabelType::TYPE_LABEL},
         {"any", LabelType::TYPE_LABEL},
+        {"..", LabelType::TYPE_LABEL},
+        {".*", LabelType::TYPE_LABEL},
         {"public", LabelType::PERMISSION_LABEL},
         {"private", LabelType::PERMISSION_LABEL},
         {"protected", LabelType::PERMISSION_LABEL},
@@ -335,6 +338,33 @@ namespace symbol {
             + "): " + value + "(" + raValue + ") @ " + std::to_string(scopeLevel) + "]";
     }
 
+    std::string Symbol::getSymbolPosInfoString() const
+    {
+        if (ast::CompileVisitor::getRegisteredExtension(pos.getFilepath()))
+        {
+            return utils::makeFileIdentStr(
+                ast::CompileVisitor::getExtensionName(pos.getFilepath()),
+                true);
+        }
+        return utils::makeFileIdentStr(pos.getFilepath());
+    }
+
+    std::string Symbol::toDetailString() const
+    {
+        return "[<Symbol at " + getSymbolPosInfoString() + "> " + getVal() + "(" + getRaVal() + ")]";
+    }
+
+    std::string Symbol::toJsonString() const
+    {
+        rjson::rj::RJsonBuilder builder (rjson::RJType::RJ_OBJECT);
+        builder
+        .insertString("symbolType", "Symbol")
+        .insertString("symbolName", getVal())
+        .insertString("symbolId", getRaVal())
+        .insertString("definedAt", getSymbolPosInfoString());
+        return builder.toJsonString();
+    }
+
     bool Symbol::equalWith(const Symbol& other) const
     {
         return toString() == other.toString();
@@ -469,8 +499,27 @@ namespace symbol {
         return isBuiltIn();
     }
 
-    std::string LabelSymbol::toString() const {
-        std::string result = "[<" + labelTypeToString(labelType) + "_LABEL> " + getVal();
+    std::string LabelSymbol::toDetailString() const
+    {
+        return "[<Label at " + getSymbolPosInfoString() + "> " + getVal() + ": " + labelTypeToString(getLabelType()) + "]";
+    }
+
+    std::string LabelSymbol::toJsonString() const
+    {
+        rjson::rj::RJsonBuilder builder (rjson::RJType::RJ_OBJECT);
+        builder
+        .insertString("symbolType", "Label")
+        .insertString("symbolName", getVal())
+        .insertString("symbolId", getRaVal())
+        .insertString("definedAt", getSymbolPosInfoString())
+        .insertString("labelType", labelTypeToString(getLabelType()))
+        .insertString("labelDesc", getLabelDescString());
+        return builder.toJsonString();
+    }
+
+    std::string LabelSymbol::getLabelDescString() const
+    {
+        std::string result = getVal();
         if (!labelDesS.empty()) {
             std::string desStr;
             for (const auto& desS : labelDesS) {
@@ -487,8 +536,12 @@ namespace symbol {
             }
             result += desStr;
         }
-        result += "]";
         return result;
+    }
+
+    std::string LabelSymbol::toString() const {
+        const std::string result = "[<LABEL> " + getVal() + getLabelDescString() + ": " + labelTypeToString(labelType);
+        return result + "]";
     }
 
     const LabelSymbol* LabelSymbol::TransformToLSI() const
@@ -497,24 +550,7 @@ namespace symbol {
     }
 
     std::string LabelSymbol::briefString() const {
-        std::string result = getVal();
-        if (!labelDesS.empty()) {
-            std::string desStr;
-            for (const auto& desS : labelDesS) {
-                desStr += "[";
-                bool isFirst = true;
-                for (const auto& des : desS) {
-                    if (!isFirst) {
-                        desStr += ", ";
-                    }
-                    desStr += des->getVal();
-                    isFirst = false;
-                }
-                desStr += "]";
-            }
-            result += desStr;
-        }
-        return result;
+        return getLabelDescString();
     }
 
     std::shared_ptr<utils::Object> LabelSymbol::copySelf() const
@@ -759,6 +795,29 @@ namespace symbol {
     bool TypeLabelSymbol::IsCustomType() const
     {
         return isCustomType();
+    }
+
+    std::string TypeLabelSymbol::toDetailString() const
+    {
+        return "[<TypeLabel at " + getSymbolPosInfoString() + "> " + getLabelDescString() + "]";
+    }
+
+    std::string TypeLabelSymbol::toString() const
+    {
+        return "[<TypeLabel> " + getLabelDescString() + "]";
+    }
+
+    std::string TypeLabelSymbol::toJsonString() const
+    {
+        rjson::rj::RJsonBuilder builder (rjson::RJType::RJ_OBJECT);
+        builder
+        .insertString("symbolType", "TypeLabel")
+        .insertString("symbolName", getVal())
+        .insertString("symbolId", getRaVal())
+        .insertString("definedAt", getSymbolPosInfoString())
+        .insertString("labelType", labelTypeToString(getLabelType()))
+        .insertString("labelDesc", getLabelDescString());
+        return builder.toJsonString();
     }
 
     std::shared_ptr<ClassSymbol> TypeLabelSymbol::getCustomClassSymbol() const
@@ -1218,6 +1277,19 @@ namespace symbol {
         if (!typeLabel) {
             typeLabel = std::make_shared<TypeLabelSymbol>(pos, "any", scopeLevel);
         }
+        if (typeLabel->is(".."))
+        {
+            this->paramType = ParamType::PARAM_VAR_LEN_POSITIONAL;
+        } else if (typeLabel->is(".*"))
+        {
+            this->paramType = ParamType::PARAM_VAR_LEN_KEYWORD;
+        } else if (this->paramType == ParamType::PARAM_VAR_LEN_POSITIONAL)
+        {
+            typeLabel = TypeLabelSymbol::varArgTypeSymbol(pos, scopeLevel);
+        } else if (this->paramType == ParamType::PARAM_VAR_LEN_KEYWORD)
+        {
+            typeLabel = TypeLabelSymbol::kwVarArgTypeSymbol(pos, scopeLevel);
+        }
         if (!this->valueType)
         {
             this->valueType = TypeLabelSymbol::nulTypeSymbol(pos, scopeLevel);
@@ -1335,6 +1407,33 @@ namespace symbol {
     {
         return "[<Param> " + getVal() + ": " + getTypeLabel()->briefString() +
             (getDefaultValue().has_value() ? " = " + getDefaultValue().value() : "") + "]";
+    }
+
+    std::string ParameterSymbol::toDetailString() const
+    {
+        return "[<Param at " + getSymbolPosInfoString() + "> " + getVal() + ": " + getTypeLabel()->briefString() +
+            (getDefaultValue().has_value() ? " = " + getDefaultValue().value() : "") + "]";
+    }
+
+    std::string ParameterSymbol::toJsonString() const
+    {
+        rjson::rj::RJsonBuilder builder (rjson::RJType::RJ_OBJECT);
+        builder
+        .insertString("symbolType", "Param")
+        .insertString("paramType", paramTypeToString(paramType))
+        .insertString("symbolName", getVal())
+        .insertString("symbolId", getRaVal())
+        .insertString("definedAt", getSymbolPosInfoString())
+        .insertRJValue("typeLabel", rjson::RJValue::getObjectRJValue(
+            getTypeLabel()->toJsonString(), true));
+        if (defaultValue.has_value())
+        {
+            builder.insertString("defaultValue", getDefaultValue().value());
+        } else
+        {
+            builder.insertNull("defaultValue");
+        }
+        return builder.toJsonString();
     }
 
     std::shared_ptr<utils::Object> ParameterSymbol::copySelf() const
@@ -1537,6 +1636,31 @@ namespace symbol {
     {
         return "[<Variable> " + getVal() + ": " + getTypeLabel()->briefString() +
             (getDefaultValue().has_value() ? " = " + getDefaultValue().value() : "") + "]";
+    }
+
+    std::string VariableSymbol::toDetailString() const
+    {
+        return "[<Variable at " + getSymbolPosInfoString() + "> " + getVal() + ": " + getTypeLabel()->briefString() +
+            (getDefaultValue().has_value() ? " = " + getDefaultValue().value() : "") + "]";
+    }
+
+    std::string VariableSymbol::toJsonString() const
+    {
+        rjson::rj::RJsonBuilder builder (rjson::RJType::RJ_OBJECT);
+        builder
+        .insertString("symbolType", "Variable")
+        .insertString("symbolName", getVal())
+        .insertString("symbolId", getRaVal())
+        .insertString("definedAt", getSymbolPosInfoString())
+        .insertRJValue("typeLabel", rjson::RJValue::getObjectRJValue(getTypeLabel()->toJsonString()));
+        if (getDefaultValue().has_value())
+        {
+            builder.insertString("defaultValue", getDefaultValue().value());
+        } else
+        {
+            builder.insertNull("defaultValue");
+        }
+        return builder.toJsonString();
     }
 
     std::shared_ptr<ast::ExpressionNode> VariableSymbol::getDefaultValueNode() const
@@ -1774,6 +1898,33 @@ namespace symbol {
     std::string FunctionSymbol::toString() const
     {
         return "[<Function> " + getSignatureString() + "]";
+    }
+
+    std::string FunctionSymbol::toDetailString() const
+    {
+        return "[<Function at " + getSymbolPosInfoString() + "> " + getSignatureString() + "]";
+    }
+
+    std::string FunctionSymbol::toJsonString() const
+    {
+        rjson::rj::RJsonBuilder builder (rjson::RJType::RJ_OBJECT);
+        builder
+        .insertString("symbolType", "Function")
+        .insertString("symbolName", getVal())
+        .insertString("symbolId", getRaVal())
+        .insertString("definedAt", getSymbolPosInfoString())
+        .insertString("signature", getSignatureString())
+        .insertList("funcParams", [this]
+        {
+            std::vector<rjson::RJValue> pairs {};
+            for (const auto& p: parameters)
+            {
+                pairs.push_back(rjson::RJValue::getObjectRJValue(p->toJsonString()));
+            }
+            return pairs;
+        }())
+        .insertRJValue("returnType", rjson::RJValue::getObjectRJValue(returnType->toJsonString()));
+        return builder.toJsonString();
     }
 
     std::unordered_set<std::shared_ptr<LabelSymbol>> FunctionSymbol::getLabels() const {
@@ -2386,7 +2537,39 @@ namespace symbol {
 
     std::string ClassSymbol::toString() const
     {
-        return "[Class(" + getRaVal() + "): " + getVal() + "]";
+        return "[<Class> " + getInheritanceChain() + getVal() + "]";
+    }
+
+    std::string ClassSymbol::toDetailString() const
+    {
+        return "[<Class at " + getSymbolPosInfoString() + "> " + getInheritanceChain() + getVal() + "]";
+    }
+
+    std::string ClassSymbol::toJsonString() const
+    {
+        rjson::rj::RJsonBuilder builder(rjson::RJType::RJ_OBJECT);
+        builder
+            .insertString("symbolType", "Class")
+            .insertString("symbolName", getVal())
+            .insertString("symbolId", getRaVal())
+            .insertString("definedAt", getSymbolPosInfoString())
+            .insertString("inheritanceChain", getInheritanceChain())
+            .insertList("baseClasses", [this] {
+                return transformToRJValues(baseClasses);
+            }())
+            .insertList("deriveClasses", [this] {
+                return transformToRJValues(derivedClasses);
+            }())
+            .insertList("constructors", [this] {
+                return transformSymbolTableToRJValues(constructors->getTable());
+            }())
+            .insertList("members", [this] {
+                return transformSymbolTableToRJValues(members->getTable());
+            }())
+            .insertList("staticMembers", [this] {
+                return transformSymbolTableToRJValues(staticMembers->getTable());
+            }());
+        return builder.toJsonString();
     }
 
     std::shared_ptr<utils::Object> ClassSymbol::copySelf() const
@@ -2588,7 +2771,7 @@ namespace symbol {
         nameIndex.push_back(symbolName);
         if (sysDefined)
         {
-            sysDefinitionRecord.push_back(symbol->getRaVal());
+            sysDefinitionRecord.insert(symbol->getRaVal());
         }
         return symbol;
     }
@@ -2608,7 +2791,7 @@ namespace symbol {
         nameIndex.push_back(rid);
         if (sysDefined)
         {
-            sysDefinitionRecord.push_back(rid);
+            sysDefinitionRecord.insert(rid);
         }
         return symbol;
     }
@@ -2671,8 +2854,13 @@ namespace symbol {
         return copied;
     }
 
+    std::unordered_set<std::string> SymbolTable::getSysDefinedRecord() const
+    {
+        return sysDefinitionRecord;
+    }
+
     void SymbolTableManager::appendScope(const std::shared_ptr<SymbolTable>& nameScope,
-        const std::shared_ptr<SymbolTable>& idScope)
+                                         const std::shared_ptr<SymbolTable>& idScope)
     {
         scopes.emplace_back(nameScope, idScope);
     }

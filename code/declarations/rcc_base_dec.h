@@ -35,6 +35,8 @@ namespace base
 #define RCC_REL_AND     "AND"
 #define RCC_REL_OR      "OR"
 
+#define RCC_EXT_INFO_FILE_NAME "ext_info.json"
+
     // Ã¶¾ÙÀàÉùÃ÷
     enum class ErrorType;
 

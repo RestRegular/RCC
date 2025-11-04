@@ -49,6 +49,9 @@ namespace symbol {
         [[nodiscard]] utils::Pos getPos() const;
         const utils::IRCCPosInterface* GetPos() const override;
         [[nodiscard]] std::string toString() const override;
+        [[nodiscard]] std::string getSymbolPosInfoString() const;
+        virtual std::string toDetailString() const;
+        [[nodiscard]] std::string toJsonString() const override;
 
         [[nodiscard]] bool equalWith(const Symbol &other) const;
         [[nodiscard]] virtual bool equalWith(const std::shared_ptr<Symbol> &other) const;
@@ -90,6 +93,9 @@ namespace symbol {
         void handleLabelDesRecorded();
         [[nodiscard]] bool isBuiltIn() const;
         bool IsBuiltin() const override;
+        std::string toDetailString() const override;
+        [[nodiscard]] std::string toJsonString() const override;
+        [[nodiscard]] std::string getLabelDescString() const;
         [[nodiscard]] std::string toString() const override;
         const LabelSymbol* TransformToLSI() const override;
         [[nodiscard]] std::string briefString() const override;
@@ -138,6 +144,9 @@ namespace symbol {
         bool IsNot(const char* name) const override;
         [[nodiscard]] bool isCustomType() const;
         bool IsCustomType() const override;
+        std::string toDetailString() const override;
+        [[nodiscard]] std::string toString() const override;
+        [[nodiscard]] std::string toJsonString() const override;
         [[nodiscard]] std::shared_ptr<ClassSymbol> getCustomClassSymbol() const;
         [[nodiscard]] bool isIterable() const;
         [[nodiscard]] bool equalWith(const std::shared_ptr<Symbol>& other) const override;
@@ -259,6 +268,8 @@ namespace symbol {
         std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
             const size_t& scopeLevel) const override;
         std::string toString() const override;
+        std::string toDetailString() const override;
+        [[nodiscard]] std::string toJsonString() const override;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
         IRCCTypeLabelSymbolInterface* GetTypeLabelSymbolI() const override;
         IRCCTypeLabelSymbolInterface* GetValueTypeLabelSymbolI() const override;
@@ -312,6 +323,8 @@ namespace symbol {
         std::shared_ptr<Symbol> getReferencedSymbol() const;
         void setReferencedSymbol(const std::shared_ptr<Symbol> &refSymbol);
         std::string toString() const override;
+        std::string toDetailString() const override;
+        [[nodiscard]] std::string toJsonString() const override;
         std::shared_ptr<ast::ExpressionNode> getDefaultValueNode() const;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
         IRCCTypeLabelSymbolInterface* GetTypeLabelSymbolI() const override;
@@ -390,6 +403,8 @@ namespace symbol {
         std::shared_ptr<TypeLabelSymbol> getSignature() const;
         std::string getSignatureString() const;
         std::string toString() const override;
+        std::string toDetailString() const override;
+        [[nodiscard]] std::string toJsonString() const override;
 
         // ======================== 其他原有方法（保持不变） ========================
         [[nodiscard]] std::unordered_set<std::shared_ptr<LabelSymbol>> getLabels() const;
@@ -454,7 +469,28 @@ namespace symbol {
         bool collectionFinished = false;
         PermissionLabel visitPermission;
         size_t scope_level_{};
+        // 用于处理普通容器
+        template<typename Container>
+        std::vector<rjson::RJValue> transformToRJValues(const Container& container) const
+        {
+            std::vector<rjson::RJValue> values;
+            values.reserve(container.size());
+            for (const auto& item : container) {
+                values.emplace_back(rjson::RJType::RJ_OBJECT, item->toJsonString());
+            }
+            return values;
+        }
 
+        // 用于处理符号表（map-like结构）
+        static std::vector<rjson::RJValue> transformSymbolTableToRJValues(const std::unordered_map<std::string, std::pair<int, std::shared_ptr<Symbol>>>& table)
+        {
+            std::vector<rjson::RJValue> values;
+            values.reserve(table.size());
+            for (const auto& [_, s] : table | std::views::values) {
+                values.push_back(rjson::RJValue::getObjectRJValue(s->toJsonString()));
+            }
+            return values;
+        }
     public:
         ClassSymbol(
             const utils::Pos &pos,
@@ -518,6 +554,8 @@ namespace symbol {
         std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
             const size_t& scopeLevel) const override;
         std::string toString() const override;
+        std::string toDetailString() const override;
+        [[nodiscard]] std::string toJsonString() const override;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
         bool relatedTo(const std::shared_ptr<ClassSymbol> &other) const;
         bool isSupperClassOf(const std::shared_ptr<ClassSymbol> &other, const bool &restrict = true) const;
@@ -555,7 +593,7 @@ namespace symbol {
     public IRCCSymbolTableInterface {
         std::unordered_map<std::string, std::pair<int, std::shared_ptr<Symbol>>> table{};
         std::vector<std::string> nameIndex{};
-        std::vector<std::string> sysDefinitionRecord{};
+        std::unordered_set<std::string> sysDefinitionRecord{};
     public:
         SymbolTable() = default;
         ~SymbolTable() override;
@@ -571,6 +609,7 @@ namespace symbol {
         void remove(const std::string &name);
         void Remove(const char* name) override;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
+        std::unordered_set<std::string> getSysDefinedRecord() const;
 
         // 支持管道操作符 |，用于范围适配
         template <std::ranges::viewable_range R>

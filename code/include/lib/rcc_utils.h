@@ -75,6 +75,12 @@ namespace utils {
         Minified       // 极致精简（无版本/元数据，仅用于封闭沙盒）
     };
 
+    enum class OutputFormat
+    {
+        TXT,
+        JSON
+    };
+
     enum class TimeFormat {
         ISO,             // YYYY-MM-DD
         ISO_WITH_TIME,   // YYYY-MM-DD HH:MM:SS
@@ -294,32 +300,34 @@ namespace utils {
             Bidirectional = BiDir
         };
 
-        void addMutuallyExclusive(const std::vector<std::string>& options,
-                                  const std::string& target, CheckDir direction = CheckDir::Bidirectional);
-        void addMutuallyExclusive(const std::vector<std::string>& options,
-                                  const std::vector<std::string>& targets,
-                                  CheckDir direction = CheckDir::Bidirectional);
-        void addDependent(const std::vector<std::string>& options,
-                          const std::string& target, CheckDir direction = CheckDir::Bidirectional);
-        void addDependent(const std::vector<std::string>& options,
-                          const std::vector<std::string>& targets,
-                          CheckDir direction = CheckDir::Bidirectional);
-        void addMutuallyExclusiveGroup(const std::vector<std::string>& options,
-                                       CheckDir direction = CheckDir::Bidirectional);
-        void addDependentGroup(const std::vector<std::string>& options,
-                               CheckDir direction = CheckDir::Bidirectional);
-        void addMutuallyExclusive(const std::string& opt1, const std::string& opt2,
-                                  CheckDir direction = CheckDir::UniDir);
-        void addMutuallyExclusive(const std::string& opt1, const std::vector<std::string>& opt2,
-                                  CheckDir direction = CheckDir::UniDir);
-        void addDependent(const std::string& opt1, const std::string& opt2,
-                          CheckDir direction = CheckDir::UniDir);
-        void addFlag(const std::string& name, bool* var, bool defaultValue, [[maybe_unused]] bool whenPresent,
-                     const std::string& description = "", const std::vector<std::string>& aliases = {});
+        ProgArgParser& addMutuallyExclusive(const std::vector<std::string>& options,
+                                            const std::string& target, CheckDir direction = CheckDir::Bidirectional);
+        ProgArgParser& addMutuallyExclusive(const std::vector<std::string>& options,
+                                            const std::vector<std::string>& targets,
+                                            CheckDir direction = CheckDir::Bidirectional);
+        ProgArgParser& addDependent(const std::vector<std::string>& options,
+                                    const std::string& target, CheckDir direction = CheckDir::Bidirectional);
+        ProgArgParser& addDependent(const std::vector<std::string>& options,
+                                    const std::vector<std::string>& targets,
+                                    CheckDir direction = CheckDir::Bidirectional);
+        ProgArgParser& addMutuallyExclusiveGroup(const std::vector<std::string>& options,
+                                                 CheckDir direction = CheckDir::Bidirectional);
+        ProgArgParser& addDependentGroup(const std::vector<std::string>& options,
+                                         CheckDir direction = CheckDir::Bidirectional);
+        ProgArgParser& addMutuallyExclusive(const std::string& opt1, const std::string& opt2,
+                                            CheckDir direction = CheckDir::UniDir);
+        ProgArgParser& addMutuallyExclusive(const std::string& opt1, const std::vector<std::string>& opt2,
+                                            CheckDir direction = CheckDir::UniDir);
+        ProgArgParser& addDependent(const std::string& opt1, const std::string& opt2,
+                                    CheckDir direction = CheckDir::UniDir);
+        ProgArgParser& addFlag(const std::string& name, bool* var, bool defaultValue, [[maybe_unused]] bool whenPresent,
+                               const std::string& description = "", const std::vector<std::string>& aliases = {});
         template<typename T>
-        void addOption(const std::string& name, T* var, const T& defaultValue, const std::string& description = "", const std::vector<std::string>& aliases = {}) {
+        ProgArgParser& addOption(const std::string& name, T* var, const T& defaultValue,
+                                 const std::string& description = "", const std::vector<std::string>& aliases = {}) {
             *var = defaultValue;
             setupOptionSetter(name, var, aliases, description);
+            return *this;
         }
         void parse(int argc, char* argv[]);
         [[nodiscard]] std::string getOptionDescription(const std::string& name) const;
@@ -401,7 +409,8 @@ namespace utils {
                     else if (value == "false" || value == "0") *var = false;
                     else throw std::invalid_argument("Invalid boolean value");
                 }, aliases, description});
-            } else if constexpr (std::is_same_v<T, SerializationProfile>) {
+            } else if constexpr (std::is_same_v<T, SerializationProfile>)
+            {
                 options_.push_back({name, [var](const std::string& value) {
                     if (value == "Debug" || value == "-db" || value == "0" || value == "L0")
                         *var = SerializationProfile::Debug;
@@ -412,6 +421,17 @@ namespace utils {
                     else if (value == "Minified" || value == "-min" || value == "3" || value == "L3")
                         *var = SerializationProfile::Minified;
                     else throw std::invalid_argument("Invalid SerializationProfile value");
+                }, aliases, description});
+            } else if constexpr (std::is_same_v<T, OutputFormat>) {
+                options_.push_back({name, [var](const std::string& value)
+                {
+                    if (value == "txt" || value == "TXT" || value == "t" || value == "T")
+                    {
+                        *var = OutputFormat::TXT;
+                    } else if (value == "json" || value == "JSON" || value == "j" || value == "J")
+                    {
+                        *var = OutputFormat::JSON;
+                    } else throw std::invalid_argument("Invalid OutputMode value");
                 }, aliases, description});
             } else {
                 static_assert(!std::is_same_v<T, T>, "Unsupported type");

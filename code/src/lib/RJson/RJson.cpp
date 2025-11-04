@@ -136,6 +136,11 @@ namespace rjson {
         return RJType::RJ_UNDEFINED;
     }
 
+    RJValue RJValue::getObjectRJValue(const std::string& objectRawString, const bool& isRange)
+    {
+        return RJValue(RJObject::parseRJObject(objectRawString, isRange));
+    }
+
     RJValue::Value RJValue::parseValueString(const RJType &type, const std::string &value) {
         switch (type) {
             case RJType::RJ_NULL: return Value(RJNull());
@@ -155,7 +160,7 @@ namespace rjson {
         : rjValue(RJType::RJ_NULL) {}
 
     RJValue::RJValue(const RJType &type)
-        : strValue(), rjValue(type) {}
+        : rjValue(type) {}
 
     RJValue::RJValue(const RJType &type, const std::string& value)
         : strValue(value), rjValue(parseValueString(type, value)){}
@@ -179,11 +184,10 @@ namespace rjson {
         : strValue("null"), rjValue(value){}
 
     RJValue::RJValue(const std::vector<std::shared_ptr<RJValue>> &value)
-        : strValue(), rjValue(value) {
-    }
+        : rjValue(value) {}
 
     RJValue::RJValue(const std::vector<std::shared_ptr<RJPair>> &value)
-        : strValue(), rjValue(value){}
+        : rjValue(value){}
 
     std::string RJValue::toString() const {
         return "[RJsonValue: " + rjValue.toString() + "]";
@@ -515,12 +519,21 @@ namespace rjson {
     RJObject::RJObject(const PairList& pairs)
         : RJValue(pairs) {}
 
-    RJObject::PairList RJObject::parseRJObject(const std::string &string) {
-        rj::RJsonParser parser(string);
+    RJObject::PairList RJObject::parseRJObject(const std::string &rawString, const bool& isRange) {
+        auto objectString = rawString;
+        if (isRange)
+        {
+            rj::RJsonParser parser (rawString);
+            parser.parse();
+            objectString = parser.getJsonString();
+            objectString = objectString.substr(1, objectString.size() - 2);
+        }
+        const auto& objectInnerString = objectString;
+        rj::RJsonParser parser(objectInnerString);
         std::stringstream ss;
         PairList pairs;
-        for (size_t i = 0; i < string.size(); i++) {
-            const char &c = string[i];
+        for (size_t i = 0; i < objectInnerString.size(); i++) {
+            const char &c = objectInnerString[i];
             if (StringManager::isSpace(c)) continue;
             if (c == ',') {
                 pairs.push_back(std::make_shared<RJPair>(ss.str()));
@@ -528,11 +541,12 @@ namespace rjson {
                 continue;
             }
             if (const auto &it = rj::RJsonParser::rangerMap.find(c);
-                it != rj::RJsonParser::rangerMap.end()) {
+                it != rj::RJsonParser::rangerMap.end())
+            {
                 const auto &[type, ranger] = parser._collectRangerString(i);
                 ss << it->first << ranger << it->second.second;
                 continue;
-                }
+            }
             ss << c;
         }
         if (!ss.str().empty()) {
@@ -678,6 +692,11 @@ namespace rjson {
         return parsedValue->formatString(indent, level);
     }
 
+    std::shared_ptr<RJValue> rj::RJsonParser::getParsedValue() const
+    {
+        return parsedValue;
+    }
+
     void throwTypeError() {
         throw RJsonError(ErrorType::PARSER_ERROR, "unknown", "",
                 {"Invalid operation for current builder type"},
@@ -708,6 +727,9 @@ namespace rjson {
             insertRJValue(fst, snd);
         }
     }
+
+    rj::RJsonBuilder::RJsonBuilder(const std::shared_ptr<RJValue>& value)
+        : type(value->getType()), value(value) {}
 
     RJValue rj::RJsonBuilder::build() const {
         return *value;

@@ -17,22 +17,20 @@ namespace builtin
         {
             if (extName.find('.') != std::string::npos)
             {
-                if (const auto &outerExtPath = getAbsolutePath(extName, getWindowsRCCDir() + "\\Lib");
+                if (const auto &outerExtPath = getAbsolutePath(extName, base::RCC_LIB_DIR);
                     std::filesystem::exists(outerExtPath))
                 {
                     return {true, outerExtPath};
                 }
                 return {false, ""};
             }
-            // 系统内置扩展文件
-            if (const auto &extPath = getAbsolutePath(R"(.\Lib\builtin\)" + extName + ".rio", getWindowsRCCDir());
+            if (const auto &extPath = getAbsolutePath(extName + ".rio", base::RCC_BUILTIN_LIB_DIR);
                 std::filesystem::exists(extPath))
             {
                 return {true, extPath};
             }
-            // 系统外部扩展文件
-            const auto& extDir = getAbsolutePath(".\\Lib\\" + extName, getWindowsRCCDir());
-            if (const auto& extInfoPath = getAbsolutePath("ext_info.json", extDir);
+            const auto& extDir = getAbsolutePath(extName, base::RCC_LIB_DIR);
+            if (const auto& extInfoPath = getAbsolutePath(RCC_EXT_INFO_FILE_NAME, extDir);
                 std::filesystem::exists(extDir) &&
                 std::filesystem::exists(extInfoPath))
             {
@@ -138,12 +136,12 @@ namespace builtin
             }
             raCode += importVisitor.getCompileResult();
             const auto extensionSymbol = std::make_shared<symbol::ClassSymbol>(
-                Pos(1, 1, 0, importedFilePath),
+                Pos{1, 1, 0, tempVarId.getFileField()},
                 tempVarId.getNameField(), tempVarId.getVid(),
                 std::unordered_set<std::shared_ptr<symbol::LabelSymbol>>{},
                 visitor.curScopeLevel(),
                 visitor.getSymbolTable());
-            visitor.getSymbolTable().insert(extensionSymbol, true);
+            visitor.getSymbolTable().insert(extensionSymbol, false);
             raCode += ri::TP_DEF(extensionSymbol->getRaVal()).toRACode();
             raCode += processImportedSymbols(visitor, importVisitor, extensionSymbol);
             extensionSymbol->setCollectionFinished();
@@ -234,14 +232,15 @@ namespace builtin
             const auto &importedFilePath = resolveImportedFilePath(visitor, unescapedExtNameArg);
             const auto &varIDName = generateVariableIdentifier(visitor, ident, importedFilePath, isAutomaticForm);
             const auto &tempVarId = ast::VarID(
-                varIDName, visitor.getProgramTargetFilePath(), visitor.curScopeField(), visitor.curScopeLevel());
+                varIDName, visitor.getCurrentProcessingFilePath(),
+                visitor.curScopeField(), visitor.curScopeLevel());
             ast::CompileVisitor::recordProcessingExtension(importedFilePath, unescapedExtNameArg);
             if (const auto &registeredExtension = ast::CompileVisitor::getRegisteredExtension(importedFilePath)) {
                 raCode += handleRegisteredExtension(visitor, registeredExtension, tempVarId, isAutomaticForm);
             } else {
                 raCode += compileAndProcessNewExtension(visitor, importedFilePath, tempVarId);
             }
-            ast::CompileVisitor::removeProcessingExtension(importedFilePath);
+            ast::CompileVisitor::popProcessingExtension();
         }
         return raCode;
     }

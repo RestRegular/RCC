@@ -7,7 +7,6 @@
 
 namespace builtin
 {
-
     BuiltinFuncRetType rcc_export(ast::CompileVisitor& visitor, const CallInfos& callInfos)
     {
         for (const auto& arg : callInfos.originalArgs | std::views::values)
@@ -16,6 +15,32 @@ namespace builtin
                 level >= 0 && argSymbol)
             {
                 argSymbol->setScopeLevel(0);
+                if (visitor._symbol_flag && visitor._symbol_flag_only_export_option &&
+                    visitor.isVisitingProgramEntry())
+                {
+                    switch (visitor._output_format)
+                    {
+                    case utils::OutputFormat::TXT:
+                        visitor.getAnalyzeBuilder() << argSymbol->toDetailString() << "\n";
+                        break;
+                    case utils::OutputFormat::JSON:
+                        if (visitor.getAnalyzeBuilder().getCurScopeResult().empty())
+                        {
+                            visitor.getAnalyzeBuilder().enterScope();
+                            visitor.getAnalyzeBuilder() << "{}";
+                        }
+                        rjson::rj::RJsonParser parser (visitor.getAnalyzeBuilder().getCurScopeResult());
+                        parser.parse();
+                        visitor.getAnalyzeBuilder().exitScope();
+                        rjson::rj::RJsonBuilder builder (parser.getParsedValue());
+                        builder.insertRJValue(
+                            arg,
+                            rjson::RJValue::getObjectRJValue(argSymbol->toJsonString()));
+                        visitor.getAnalyzeBuilder().enterScope();
+                        visitor.getAnalyzeBuilder() << builder.formatString(4);
+                        break;
+                    }
+                }
                 visitor.getSymbolTable().removeByName(argSymbol->getVal());
                 visitor.getSymbolTable().insert(argSymbol, false);
             } else

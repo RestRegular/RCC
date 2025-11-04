@@ -47,6 +47,8 @@ namespace base
     extern const StringVector OPERATOR_PRECEDENCE_LIST;
     extern const StringSet GROUP_SIGNS;
     extern const StringMap RELATION_MAP;
+    extern const std::string RCC_BUILTIN_LIB_DIR;
+    extern const std::string RCC_LIB_DIR;
 
     // ¿‡∂®“Â
     class RCCError : public std::exception, public utils::Object
