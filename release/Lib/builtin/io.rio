@@ -1,0 +1,67 @@
+/*
+ * INPUT/OUTPUT OPERATIONS MODULE
+ * 
+ * This extension provides functions for standard input and output
+ * operations. It includes utilities for printing to console and
+ * reading user input from the command line.
+ * 
+ * These functions form the basic I/O interface for Rio programs
+ * interacting with the terminal or standard streams.
+ * 
+ * @author: @RestRegular
+ * @version: 1.0.0
+ * @extension: io
+*/
+import(ds="ds")
+
+fun sout(*args, end="\n"): void {
+    /*
+     * Prints arguments to standard output with configurable ending.
+     * 
+     * This function outputs the provided arguments to the console,
+     * similar to print functions in other languages. Multiple
+     * arguments are concatenated with empty string. The end parameter
+     * controls what follows the output (default: newline).
+     * 
+     * @param args: any: Variable arguments to print (any type)
+     * @param end: any: String to append after output (default: "\n")
+     */
+    encapsulated
+}
+
+fun print(*args, end="\n", sep=" "): void {
+    /*
+     * Prints arguments to standard output with configurable separator and ending.
+     *
+     * This function outputs the provided arguments to the console, joining multiple
+     * arguments with the specified separator (default: space). The end parameter
+     * controls what follows the output (default: newline). It utilizes the `sout`
+     * function for the actual output operation.
+     *
+     * @param args: any: Variable arguments to print (any type)
+     * @param end: any: String to append after output (default: "\n")
+     * @param sep: any: String to insert between arguments (default: " ")
+     */
+    sout(ds.join(args, sep), end=end)
+}
+
+fun sin(arg=""): str {
+    /*
+     * Reads input from standard input with optional prompt.
+     * 
+     * This function reads a line of text from the user via
+     * the console. An optional prompt string can be displayed
+     * before waiting for input. The returned value is always
+     * a string and may require type conversion for other uses.
+     * 
+     * @param arg: Optional prompt message to display
+     * @return: String containing the user's input
+     */
+    encapsulated
+}
+
+fun input(prompt=""): str {
+    ret sin(prompt)
+}
+
+export(sout, print, sin, input)

@@ -1,0 +1,383 @@
+/*
+ * DATA STRUCTURES EXTENSION
+ * 
+ * This extension provides functions for working with and manipulating
+ * data structures and collections. It includes utilities for
+ * measuring, inspecting, and transforming structured data.
+ * 
+ * The functions in this extension handle operations on iterables,
+ * series, and other composite data types.
+ * 
+ * @author: @RestRegular
+ * @version: 1.0.0
+ * @extension: ds
+ */
+import(dt="datatype")
+
+fun size(arg): int {
+    /*
+     * Returns the size/length of an iterable data structure.
+     * 
+     * This function works with various iterable types including
+     * arrays, lists, series, maps, and other collections to
+     * determine their element count or length.
+     * 
+     * @param arg: The iterable data structure to measure
+     * @return: Integer representing the number of elements
+     * @throws: TypeError if argument is not iterable
+     */
+    encapsulated
+}
+
+fun copy(arg): any {
+    /*
+     * Creates a shallow copy of the input data structure.
+     *
+     * Returns a new data structure containing the same elements
+     * as the original. For nested structures, only the top-level
+     * elements are copied; nested references remain shared.
+     *
+     * @param arg: The data structure to copy
+     * @return: A new copy of the input data structure
+     * @throws: TypeError if argument cannot be copied
+     */
+    encapsulated
+}
+
+fun unpack(arg): series {
+    /*
+     * Unpacks a data structure into a series format.
+     *
+     * Converts the input argument into a series type, which is
+     * a sequential data structure suitable for iteration and
+     * sequential processing. This is particularly useful for
+     * working with variable argument structures or converting
+     * between different collection types.
+     *
+     * @param arg: The data structure to unpack into a series
+     * @return: Series representation of the input data
+     */
+    dt.setType(arg, "series")
+    ret arg
+}
+
+fun isEmpty(arg): bool {
+    /*
+     * Checks if a data structure is empty.
+     *
+     * Determines whether the given iterable contains no elements.
+     * This is equivalent to checking if size(arg) == 0.
+     *
+     * @param arg: The data structure to check
+     * @return: True if the structure has no elements, false otherwise
+     * @throws: TypeError if argument is not iterable
+     */
+    ret size(arg) == 0
+}
+
+fun top(arg): any {
+    /*
+     * Returns the last element of a data structure.
+     *
+     * For sequential data structures (arrays, lists, series, etc.),
+     * returns the element at the highest index. If the structure
+     * is empty, returns null.
+     *
+     * @param arg: The data structure to get the last element from
+     * @return: The last element or null if empty
+     * @throws: TypeError if argument is not iterable
+     */
+    if (isEmpty(arg)) {
+        ret null
+    }
+    ret arg[size(arg) - 1]
+}
+
+fun repStr(arg, times: int): str {
+    /*
+     * Repeats a string multiple times and concatenates the results.
+     *
+     * Creates a new string by repeating the input string the specified
+     * number of times. If times is 0 or negative, returns an empty string.
+     *
+     * @param arg: The string to repeat
+     * @param times: The number of times to repeat the string
+     * @return: Concatenated string result of the repetition
+     */
+    var result: str = ""
+    for ({var i: int = 0; i < times; i++}) {
+        result += arg
+    }
+    ret result
+}
+
+fun repList(arg, times: int): list {
+    /*
+     * Creates a list by repeating an element multiple times.
+     *
+     * Generates a new list containing the specified element repeated
+     * the given number of times. The resulting list will have 'times'
+     * elements, all equal to the input argument.
+     *
+     * @param arg: The element to repeat in the list
+     * @param times: The number of times to repeat the element
+     * @return: List containing the repeated elements
+     */
+    var result: list = []
+    for ({var i: int = 0; i < times; i++}) {
+        result += i
+    }
+    ret result
+}
+
+fun repeat(times: int, handler: funi[int][any]): void {
+    /*
+     * Executes a handler function repeatedly for a specified number of times.
+     *
+     * The handler function receives three parameters:
+     * - current iteration index
+     *
+     * @param times: The number of times to execute the handler
+     * @param handler: Callback function with signature (index: int): any
+     */
+    encapsulated
+}
+
+fun forInRange(start: int, end: int, handler: funi[int, bool, bool][any],
+               sep: int = 1): void {
+    /*
+     * Iterates over a numeric range with a specified step size.
+     *
+     * Executes the handler function for each value in the range [start, end)
+     * with the specified step increment. The handler receives:
+     * - current value
+     * - boolean indicating if this is the first iteration
+     * - boolean indicating if this is the last iteration
+     *
+     * @param start: Starting value of the range (inclusive)
+     * @param end: Ending value of the range (exclusive)
+     * @param handler: Callback function with signature (value: int, isFirst: bool,
+     *                 isLast: bool): any
+     * @param sep: Step size between iterations (cannot be 0)
+     */
+    if sep == 0 {
+        fun sout(*args, end="\n"): void {
+            encapsulated
+        }
+        sout("The sep cannot be 0")
+        ret
+    }
+    var isIncreasing: bool = sep > 0
+    var next: int = 0
+    for ({var i: int = start; i < end; i += sep}) {
+        next = i + sep
+        var isEnd = false
+        if (isIncreasing && next > end) || (isIncreasing == false && \
+            next < end) {
+            isEnd = true
+        }
+        if handler(i, i == start, isEnd) == false {
+            break
+        }
+    }
+}
+
+fun iter(iterData, handler: funi[any, int, int, .*][any],
+         reverse: bool = false): void {
+    /*
+     * Iterates through iterable data and applies handler to each item.
+     *
+     * Processes each element in the iterable data structure by calling
+     * the handler function with the current element, its index, and
+     * the total length of the iterable.
+     *
+     * @param iterData: any: The iterable data structure to process
+     * @param handler: funi[any, int, int, .*][any]: Callback function
+     *                 The processing function for each element,
+     *                 return false to stop iteration.
+     * @param reverse: bool: If true, iterates in reverse order. Default:
+     *                 false (forward iteration)
+     * @throws: TypeError if iterData is not iterable
+     */
+    if dt.isIter(iterData) {
+        var iterLength: int = size(iterData)
+        if (reverse) {
+            for ({var i = iterLength - 1; i >= 0; i--}) {
+                if handler(iterData[i], i, iterLength, isStart=i == iterLength - 1,
+                    isEnd=i == 0) == false {
+                    break
+                }
+            }
+        } else {
+            for ({var i = 0; i < iterLength; i++}) {
+                if handler(iterData[i], i, iterLength, isStart=i == 0,
+                    isEnd=i == iterLength - 1) == false {
+                    break
+                }
+            }
+        }
+    }
+}
+
+fun join(iterData, sep: str = ""): str {
+    /*
+     * Joins elements of an iterable into a single string.
+     *
+     * Concatenates all elements of the iterable data structure into
+     * a string, with the specified separator between each element.
+     *
+     * @param iterData: The iterable containing elements to join
+     * @param sep: The separator string to place between elements
+     * @return: String containing all joined elements
+     * @throws: TypeError if iterData is not iterable
+     */
+    var result: str = ""
+    iter(iterData, (item, index, length, _) -> {
+        result += item
+        if index < length - 1 {
+            result += sep
+        }
+    })
+    ret result
+}
+
+fun joins(*args, sep: str = ""): str {
+    /*
+     * Joins multiple arguments into a single string.
+     *
+     * Concatenates all provided arguments into a string, with the
+     * specified separator between each argument. This function
+     * accepts variable arguments rather than a single iterable.
+     *
+     * @param args: Variable number of arguments to join
+     * @param sep: The separator string to place between arguments
+     * @return: String containing all joined arguments
+     */
+    ret join(args, sep)
+}
+
+fun listRemove(listData, index: int): void {
+    /*
+     * Removes an element from a list by its index.
+     *
+     * Modifies the original list by removing the element at the
+     * specified index.
+     * The list will be re-indexed after removal, so subsequent
+     * elements will shift left.
+     *
+     * @param listData: The list to modify
+     * @param index: The position of the element to remove (0-based)
+     * @throws: TypeError if listData is not a list
+     * @throws: IndexError if index is out of bounds
+     */
+    encapsulated
+}
+
+fun dictRemove(dictData: dict, key): void {
+    /*
+     * Removes a key-value pair from a dictionary by its key.
+     *
+     * Modifies the original dictionary by removing the entry associated
+     * with the specified key.
+     * No error is thrown if the key does not exist in the dictionary.
+     *
+     * @param dictData: The dictionary to modify
+     * @param key: The key of the entry to remove
+     * @throws: TypeError if dictData is not a dictionary
+     */
+    encapsulated
+}
+
+fun iterRemove(iterData, index): void {
+    /*
+     * Removes an element from an iterable data structure based on its type.
+     *
+     * Dispatches to the appropriate removal function based on the type of
+     * iterable:
+     * - Uses listRemove() for lists and strings
+     * - Uses dictRemove() for dictionaries (where index acts as the key)
+     *
+     * Prints an error message if the iterable type is unsupported.
+     *
+     * @param iterData: The iterable to modify (list, string, or dictionary)
+     * @param index: For lists/strings: 0-based index of element to remove;
+     *               For dictionaries: key of entry to remove
+     */
+    var iterType = dt.type(iterData)
+    if dt.isIter(iterData) {
+        if iterType == dt.DT.TP_LIST || iterType == dt.DT.TP_STR {
+            listRemove(iterData, index)
+            ret
+        } elif iterType == dt.DT.TP_DICT {
+            dictRemove(iterData, index)
+            ret
+        }
+    }
+    fun sout(*args, end="\n"): void {
+        encapsulated
+    }
+    sout("Invalid iterable data type: ", iterType)
+}
+
+fun dictKeys(dictData: dict): list {
+    /*
+     * Retrieves a list of all keys from a dictionary.
+     *
+     * Extracts and returns a list containing all keys from the input
+     * dictionary.
+     * The order of keys in the list matches their internal storage
+     * order in the dictionary.
+     *
+     * @param dictData: The dictionary to extract keys from
+     * @return: A list containing all keys of the dictionary
+     * @throws: TypeError if the input is not a dictionary type
+     */
+    encapsulated
+}
+
+fun dictValues(dictData: dict): list {
+    /*
+     * Retrieves a list of all values from a dictionary.
+     *
+     * Extracts and returns a list containing all values from the input
+     * dictionary.
+     * The order of values in the list matches the storage order of their
+     * corresponding keys in the dictionary.
+     *
+     * @param dictData: The dictionary to extract values from
+     * @return: A list containing all values of the dictionary
+     * @throws: TypeError if the input is not a dictionary type
+     */
+    encapsulated
+}
+
+fun iterContains(iterData, checkItem): bool {
+    /*
+     * Checks if an iterable data structure contains a specified item.
+     *
+     * Iterates through the iterable data structure to determine if the target
+     * item exists.
+     * For dictionaries, it checks for the existence of the item as a key; for
+     * other iterables (lists, arrays, strings, etc.),
+     * it checks for the existence of the item as an element.
+     *
+     * @param iterData: The iterable data structure to check
+     * @param checkItem: The target item to search for
+     * @return: True if the target item exists, false otherwise
+     * @throws: TypeError if the input is not an iterable type
+     */
+    var result: bool = false
+    iter(iterData, (item, _, _, _) -> {
+        if item == checkItem {
+            result = true
+        }
+    })
+    ret result
+}
+
+export(
+    size, copy, unpack, isEmpty, top, repStr, repList,
+    repeat, forInRange, join, joins, iter, listRemove,
+    dictRemove, iterRemove, dictKeys, dictValues,
+    iterContains
+)

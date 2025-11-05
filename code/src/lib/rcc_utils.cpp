@@ -1969,10 +1969,10 @@ namespace utils
         return true;
     }
 
-    // 添加标志参数（支持别名）
-    ProgArgParser& ProgArgParser::addFlag(const std::string& name, bool* var, bool defaultValue,
-                                          [[maybe_unused]] bool whenPresent,
-                                          const std::string& description, const std::vector<std::string>& aliases)
+    // 添加标志参数
+    ProgArgParser& ProgArgParser::addFlag(const std::string& name, bool* var, const bool defaultValue,
+                                          bool whenPresent, const std::string& description,
+                                          const std::vector<std::string>& aliases)
     {
         *var = defaultValue;
         flags_.emplace_back(name, var, whenPresent, aliases, description);
@@ -1985,21 +1985,13 @@ namespace utils
 
         for (int i = 1; i < argc;)
         {
-            if (std::string arg = argv[i]; arg.size() >= 2 && arg.substr(0, 2) == "--")
-            {
-                std::string name_part = arg.substr(2);
-                const size_t eq_pos = name_part.find('=');
-                std::string name = name_part.substr(0, eq_pos);
-
-                // 将选项的主名称加入 providedOptions
-                providedOptions.insert(getOptionMainName(name));
-
-                handleOption(arg, argc, argv, i);
-            }
-            else
-            {
-                throw std::runtime_error("Unexpected argument: " + arg);
-            }
+            std::string arg = argv[i];
+            const auto& [argType, name_part] = parseArgTypeAndNamePart(arg);
+            const size_t eq_pos = name_part.find('=');
+            std::string name = name_part.substr(0, eq_pos);
+            // 将选项的主名称加入 providedOptions
+            providedOptions.insert(getOptionMainName(name));
+            handleOption(name_part, argc, argv, i);
         }
 
         // 检查互斥规则
@@ -2053,9 +2045,8 @@ namespace utils
         }
     }
 
-    void ProgArgParser::handleOption(const std::string& arg, int argc, char* argv[], int& i)
+    void ProgArgParser::handleOption(const std::string& name_part, const int argc, char* argv[], int& i)
     {
-        std::string name_part = arg.substr(2);
         const size_t eq_pos = name_part.find('=');
         const std::string name = name_part.substr(0, eq_pos);
         const bool has_value = (eq_pos != std::string::npos);
@@ -2204,6 +2195,52 @@ namespace utils
             }
         }
         return nullptr;
+    }
+
+    std::pair<ProgArgParser::ProgArgType, std::string> ProgArgParser::parseArgTypeAndNamePart(const std::string& arg)
+    {
+        ProgArgType argType;
+        std::string name_part;
+
+        if (arg.starts_with("--"))
+        {
+            argType = ProgArgType::OPTION;
+            name_part = arg.substr(2);
+        } else if (arg.starts_with("-"))
+        {
+            argType = ProgArgType::FLAG_ALIAS;
+            name_part = arg.substr(1);
+        } else
+        {
+            argType = ProgArgType::FLAG;
+            name_part = arg;
+        }
+
+        const std::string validate_name = (argType == ProgArgType::OPTION) ?
+            parseOptionNamePartFromArg(arg) : name_part;
+        validateArgument(argType, arg, validate_name);
+
+        return {argType, name_part};
+    }
+
+    std::string ProgArgParser::parseOptionNamePartFromArg(const std::string& arg)
+    {
+        std::string name_part = arg.substr(2);
+        return name_part.substr(0, name_part.find("="));
+    }
+
+    void ProgArgParser::validateArgument(const ProgArgType& type, const std::string& arg, const std::string& name_part)
+    {
+        switch (type)
+        {
+        case ProgArgType::FLAG:
+        case ProgArgType::FLAG_ALIAS:
+            if (!findFlag(name_part)) throw std::runtime_error("Unexpected flag: " + arg);
+            break;
+        case ProgArgType::OPTION:
+            if (!findOption(name_part)) throw std::runtime_error("Unexpected option: " + arg);
+            break;
+        }
     }
 
     ProgArgParser::OptionInfo* ProgArgParser::findOption(const std::string& name)

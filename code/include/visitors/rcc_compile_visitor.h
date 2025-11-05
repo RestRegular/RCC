@@ -187,10 +187,12 @@ namespace ast
     {
     public:
         // =========================== 标志属性 ============================
-        static OutputFormat _output_format;
-        static bool _symbol_flag;
-        static bool _symbol_flag_only_export_option;
+        static bool __symbol_flag__;
+        static bool _symbol_flag_export__;
 
+        static bool __compile_flag__;
+
+        static OutputFormat __symbol_option_format__;
     private:
 
         // ========================== 静态成员属性 ==========================

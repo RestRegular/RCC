@@ -1,15 +1,17 @@
 {
   "validate": true,
   "version": {
-    "vs_desc": "优化了帮助信息",
+    "vs_desc": "优化了命令行参数解析，新增了获取符号信息功能",
     "change_type": [
-      "opt"
+      "ref",
+      "feat"
     ]
   },
   "update_log": {
     "author": "RestRegular",
     "log_contents": [
-      "优化了帮助信息。"
+      "优化了命令行参数解析逻辑。",
+      "新增了获取指定文件、扩展或目录定义的符号信息的功能。"
     ]
   },
   "annotation": {

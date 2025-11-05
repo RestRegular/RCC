@@ -15,10 +15,10 @@ namespace builtin
                 level >= 0 && argSymbol)
             {
                 argSymbol->setScopeLevel(0);
-                if (visitor._symbol_flag && visitor._symbol_flag_only_export_option &&
+                if (visitor.__symbol_flag__ && visitor._symbol_flag_export__ &&
                     visitor.isVisitingProgramEntry())
                 {
-                    switch (visitor._output_format)
+                    switch (visitor.__symbol_option_format__)
                     {
                     case utils::OutputFormat::TXT:
                         visitor.getAnalyzeBuilder() << argSymbol->toDetailString() << "\n";

@@ -1,0 +1,121 @@
+/*
+ * DATA TYPES MODULE
+ * 
+ * This extension provides type introspection and manipulation utilities.
+ * It includes functions for determining data types at runtime and
+ * dynamically modifying type information.
+ * 
+ * These functions are essential for metaprogramming, validation,
+ * and dynamic type handling in Rio programs.
+ * 
+ * @author: @RestRegular
+ * @version: 1.0.0
+ * @extension: datatype
+ */
+
+fun type(arg): str {
+    /*
+     * Returns the runtime type of the given argument as a string.
+     * 
+     * This function performs type introspection, returning the
+     * actual type name of the provided value. Useful for type
+     * checking, validation, and dynamic dispatch based on types.
+     * 
+     * Common return values: "int", "str", "float", "bool", 
+     * "array", "series", "map", "function", etc.
+     * 
+     * @param arg: any: The value to inspect
+     * @return: str: String representation of the value's type
+     */
+     encapsulated
+}
+
+fun setType(arg1, arg2): void {
+    /*
+     * Dynamically sets the type of the given argument.
+     * 
+     * This advanced function allows runtime type modification,
+     * which can be useful for metaprogramming, creating custom
+     * types, or working with dynamic data structures. Use with
+     * caution as improper type setting can lead to runtime errors.
+     * 
+     * @param arg1: any: The value whose type should be modified
+     * @param arg2: str: The target type (as string or type reference)
+     * @throws: TypeError if the type conversion is invalid
+     */
+     encapsulated
+}
+
+class DT: public {
+    var TP_INT: str static = type(0),
+        TP_FLOAT: str static = type(0.01),
+        TP_STR: str static = type(""),
+        TP_CHAR: str static = ((): str -> {
+            var temp = ' '
+            setType(temp, "char")
+            ret type(temp)
+        })(),
+        TP_BOOL: str static = type(true),
+        TP_LIST: str static = type([]),
+        TP_DICT: str static = type({}),
+        TP_NULL: str static = type(null),
+        TP_FUNC: str static = type(setType),
+        TP_FUNI: str static = type(type),
+        TP_SERIES: str static = ((): str -> {
+            var temp = []
+            setType(temp, "series")
+            ret type(temp)
+        })()
+
+    var ITERABLE_TPS: list static = [
+        DT.TP_LIST, DT.TP_DICT, DT.TP_STR, DT.TP_SERIES
+    ]
+}
+
+fun checkType(arg1, arg2): bool {
+    /*
+     * This function is used to check whether the type of the first
+     * parameter is the type specified by the second parameter.
+     *
+     * @param arg1: any: The variables that need type checking.
+     * @param arg2: [str | list[str]]: The specified type or list
+     *              of types.
+     * @return: bool: Return `true` if the type check passes;
+     *                otherwise, return `false`.
+     */
+    if type(arg2) == DT.TP_LIST {
+        fun size(arg): int {
+            encapsulated
+        }
+        var length: int = size(arg2),
+            typeOfArg1: str = type(arg1)
+        for({var i: int = 0; i < length; i ++}) {
+            if typeOfArg1 == arg2[i] {
+                ret true
+            }
+        }
+        ret false
+    } elif type(arg2) == DT.TP_STR {
+        ret type(arg1) == arg2
+    } else {
+        ret false
+    }
+}
+
+fun isIter(arg): bool {
+    fun size(arg): int {
+        encapsulated
+    }
+    var length: int = size(DT.ITERABLE_TPS)
+    var argType: str = type(arg)
+    var result: bool = false
+    for({var i = 0; i < length; i++}) {
+        if argType == (DT.ITERABLE_TPS)[i] {
+            result = true
+            break
+        }
+    }
+    ret result
+}
+
+export(type, setType, checkType, isIter, DT)

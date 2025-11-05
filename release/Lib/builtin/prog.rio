@@ -1,0 +1,40 @@
+/*
+ * PROGRAM EXECUTION CONTROL MODULE
+ * 
+ * This extension provides functions for controlling program flow
+ * and execution entry points. It handles the distinction between
+ * running a file as main program versus importing it as a extension.
+ * 
+ * Essential for creating reusable extensions that can also serve
+ * as executable scripts.
+ * 
+ * @author: @RestRegular
+ * @version: 1.0.0
+ * @extension: prog
+ */
+fun entry(arg, *args, **kwargs): void {
+    /*
+     * Executes a function when the file is run as main program.
+     * 
+     * This function serves as an entry point controller. When
+     * the containing file is executed directly (as the main
+     * program), it calls the provided function. When the file
+     * is imported as a extension, the function is not called.
+     * 
+     * The target function must accept exactly two parameters:
+     * variable-length positional arguments (*args) and
+     * variable-length keyword arguments (**kwargs).
+     * 
+     * @param arg: The function to execute (must accept *args, **kwargs)
+     * @param args: Positional arguments to pass to the function
+     * @param kwargs: Keyword arguments to pass to the function
+     * @throws: TypeError if target function doesn't have correct signature
+     */
+    encapsulated
+}
+
+fun breakpoint(): void {
+    encapsulated
+}
+
+export(entry, breakpoint)

@@ -1,0 +1,134 @@
+/*
+ * MATH CONSTANTS AND UTILITIES EXTENSION
+ * 
+ * This extension provides fundamental mathematical constants and basic
+ * arithmetic operations. It includes functions for exponentiation,
+ * comparison, and absolute value calculations.
+ * 
+ * The module handles multiple numeric data types including integers,
+ * floats, and provides type-safe mathematical operations.
+ * 
+ * @author: @RestRegular
+ * @version: 1.0.0
+ * @extension: math
+ */
+import(io="io", prog="prog", ds="ds", dt="datatype")
+
+// Mathematical constant ¦Ð (pi)
+// Represents the ratio of a circle's circumference to its diameter.
+// Approximately equal to 3.141593.
+var pi: float const = 3.141593
+
+// Mathematical constant e (Euler's number)
+// The base of the natural logarithm. Approximately equal to 2.718282.
+var e: float const = 2.718282
+
+fun pow(a, times: int): any {
+    /*
+     * Calculates the power of a number raised to an integer exponent.
+     *
+     * Computes a raised to the power of times using iterative multiplication.
+     * Currently supports only non-negative exponents. For negative exponents,
+     * displays a message about future compiler support.
+     *
+     * @param a: The base number
+     * @param times: The exponent (must be non-negative in current version)
+     * @return: The result of a^times
+     * @example: pow(2, 3) returns 8
+     * @note: Negative exponents will be supported in future compiler versions
+     */
+    var result = 1
+    if times >= 0 {
+        ds.repeat(times, (_, _, _) -> {
+            result *= a
+        })
+    } else {
+        io.sout("The current version of the RCC compiler does not support this",
+            " calculation temporarily, and subsequent versions will gradually update",
+            " functions to support this calculation.")
+    }
+    ret result
+}
+
+fun max(a, b): any {
+    /*
+     * Returns the maximum of two values.
+     *
+     * Compares two values and returns the larger one. Works with any
+     * comparable data types including numbers and strings.
+     *
+     * @param a: First value to compare
+     * @param b: Second value to compare
+     * @return: The larger of the two values
+     * @example: max(5, 3) returns 5
+     */
+    if a >= b {
+        ret a
+    } else {
+        ret b
+    }
+}
+
+fun min(a, b): any {
+    /*
+     * Returns the minimum of two values.
+     *
+     * Compares two values and returns the smaller one. Works with any
+     * comparable data types including numbers and strings.
+     *
+     * @param a: First value to compare
+     * @param b: Second value to compare
+     * @return: The smaller of the two values
+     * @example: min(5, 3) returns 3
+     */
+    if a <= b {
+        ret a
+    } else {
+        ret b
+    }
+}
+
+fun opp(arg): any {
+    /*
+     * Returns the additive inverse (opposite) of a number.
+     *
+     * Calculates the negative of the input value by multiplying by -1.
+     *
+     * @param arg: The input number
+     * @return: The opposite value (-arg)
+     * @example: opp(5) returns -5
+     */
+    ret 0 - arg
+}
+
+fun abs(arg): any {
+    /*
+     * Returns the absolute value of a number.
+     *
+     * Calculates the non-negative value of the input. Supports integer,
+     * float, boolean, and character types. For negative inputs, returns
+     * the positive equivalent.
+     *
+     * @param arg: The input value
+     * @return: The absolute value of the input
+     * @throws: Displays error message for unsupported types
+     * @example: abs(-5) returns 5
+     */
+    var argType = dt.type(arg)
+    if (ds.iterContains([dt.DT.TP_INT, dt.DT.TP_BOOL, dt.DT.TP_CHAR], argType) || \
+        argType == dt.DT.TP_FLOAT) {
+        if arg < 0 {
+            ret opp(arg)
+        }
+        ret arg
+    }
+    // TODO: There need to throw an error.
+    io.sout("Cannot get the absolute data of ", argType, " type.")
+    ret arg
+}
+
+prog.entry((*args, **kwargs) -> {
+    io.sout(abs(false))
+})
+
+export(pi, e, pow, max, min, opp, abs)

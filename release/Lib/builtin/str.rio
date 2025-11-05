@@ -1,0 +1,285 @@
+/*
+ * STRING MANIPULATION EXTENSION
+ * 
+ * This extension provides comprehensive functions for string operations and manipulations.
+ * It includes utilities for converting, slicing, searching, and splitting string data.
+ * 
+ * The functions in this extension handle various string processing tasks including
+ * type conversion, substring extraction, pattern matching, and string segmentation.
+ * 
+ * @author: @RestRegular
+ * @version: 1.0.0
+ * @extension: str
+ */
+import(io="io", ds="ds", dt="datatype")
+
+fun toStr(arg: any): str {
+    /*
+     * Converts the input argument to string type.
+     * 
+     * This function transforms any data type into its string representation.
+     * It ensures consistent string conversion across different data types
+     * by explicitly setting the type metadata.
+     * 
+     * @param arg: any: The input value of any type to be converted to string
+     * @return: str: String representation of the input argument
+     */
+    dt.setType(arg, "str")
+    ret arg
+}
+
+fun toChar(arg: any): str {
+    arg = toStr(arg)
+    if ds.size(arg) != 1 {
+        ret toChar("\000")
+    }
+    ret arg[0]
+}
+
+fun subStr(content: str, startIndex: int = 0, length: int = -1): str {
+    /*
+     * Extracts a substring from the given string.
+     * 
+     * This function returns a portion of the input string starting at the
+     * specified index. If length is provided, it limits the number of characters
+     * returned. Negative length means extract until the end of the string.
+     * 
+     * @param content: str: The original string to extract substring from
+     * @param startIndex: int: The starting position (default: 0)
+     * @param length: int: Number of characters to extract (default: -1, meaning until end)
+     * @return: str: Extracted substring
+     * @throws: RangeError if startIndex is out of bounds
+     */
+    var contentLen: int = ds.size(content),
+        endIndex: int = contentLen,
+        result: str = ""
+    if length >= 0 && startIndex + length <= contentLen {
+        endIndex = startIndex + length
+    }
+    while startIndex < endIndex {
+        result += toStr(content[startIndex])
+        startIndex ++
+    }
+    ret result
+}
+
+fun find(content: str, part: str, startIndex: int = 0): int {
+    /*
+     * Searches for the first occurrence of a substring.
+     * 
+     * This function locates the first position where the specified substring
+     * appears within the main string, starting from the given index.
+     * 
+     * @param content: str: The main string to search within
+     * @param part: str: The substring to search for
+     * @param startIndex: int: The position to start searching from (default: 0)
+     * @return: int: Index of the first occurrence, or -1 if not found
+     */
+    var contentLen: int = ds.size(content),
+        partLen: int = ds.size(part)
+    for ({var i = startIndex; i + partLen <= contentLen; i ++}) {
+        var tempPart: str = toStr(subStr(content, i, partLen))
+        if tempPart == part {
+            ret i
+        }
+    }
+    ret -1
+}
+
+fun split(content: str, del: str,
+          keepDel: bool = false,
+          keepEmpty: bool = false): list {
+    /*
+     * Splits a string into a list using a delimiter.
+     * 
+     * This function divides the input string into substrings wherever the
+     * delimiter occurs. It provides options to keep the delimiter in the
+     * result and to preserve empty strings from consecutive delimiters.
+     * 
+     * @param content: str: The string to be split
+     * @param del: str: The delimiter string to use for splitting
+     * @param keepDel: bool: Whether to include the delimiter in the result (default: false)
+     * @param keepEmpty: bool: Whether to keep empty strings from consecutive delimiters (default: false)
+     * @return: list: List of substrings resulting from the split operation
+     */
+    var delLen: int = ds.size(del),
+        contentLen: int = ds.size(content),
+        result: list = [],
+        restContent: str = content
+    while true {
+        var index: int = find(restContent, del)
+        if index < 0 {
+            break
+        }
+        var front: str = subStr(restContent, 0, index)
+        if ds.size(front) > 0 || keepSpace {
+            result += front
+        }
+        if keepDel {
+            result += del
+        }
+        restContent = subStr(restContent, index + delLen)
+    }
+    if ds.size(restContent) > 0 || keepSpace {
+        result += restContent
+    }
+    ret result
+}
+
+fun chunk(content: str, num: int): list {
+    var res: list = [],
+        index: int = 0,
+        contentSize: int = ds.size(content)
+    while index + num <= contentSize {
+        res += subStr(content, index, num)
+        index += num
+    }
+    res += subStr(content, index)
+    ret res
+}
+
+fun replace(content: str, old: str, new: str, once: bool = false): str {
+    /*
+     * Replaces occurrences of a substring with a new substring in a string.
+     *
+     * Searches for all occurrences of the 'old' substring in the 'content' string
+     * and replaces them with the 'new' substring. If 'once' is true, only the first
+     * occurrence will be replaced.
+     *
+     * @param content: str: The original string to modify
+     * @param old: str: The substring to be replaced
+     * @param new: str: The substring to replace with
+     * @param once: bool: If true, replace only the first occurrence (default: false)
+     * @return: str: A new string with the specified replacements
+     */
+    var index: int = find(content, old)
+    var res: str = ""
+    while index >= 0 {
+        res += subStr(content, 0, index) + new
+        content = subStr(content, index + ds.size(old))
+        index = find(content, old)
+        if once {
+            break
+        }
+    }
+    ret res + content
+}
+
+fun toLowerCase(data) {
+    /*
+     * Converts a character, ASCII code, or string to lowercase.
+     *
+     * Handles different data types:
+     * - For strings: Converts all uppercase characters to lowercase
+     * - For characters: Converts to lowercase equivalent
+     * - For integers (ASCII codes): Converts to lowercase ASCII code
+     * - Returns original value for unsupported types
+     *
+     * @param data: str|char|int: The input to convert (string, char, int, or other type)
+     * @return: Lowercase version of the input (or original for unsupported types)
+     */
+    var dataTp = dt.type(data)
+    if dataTp == dt.DT.TP_STR {
+        var res: str = ""
+        ds.iter(data, (c: char, _, _, _) -> {
+            res += toLowerCase(c)
+        })
+        ret res
+    } elif dataTp == dt.DT.TP_CHAR {
+        var asciiVal = data
+        dt.setType(asciiVal, "int")
+        data = toLowerCase(asciiVal)
+        dt.setType(data, "char")
+        ret data
+    } elif dataTp == dt.DT.TP_INT {
+        if data <= 122 && data >= 97 {
+            ret data
+        } elif data >= 65 && data <= 90 {
+            ret data + 32
+        } else {
+            ret data
+        }
+    } else {
+        ret data
+    }
+}
+
+fun toUpperCase(data) {
+    /*
+     * Converts a character, ASCII code, or string to uppercase.
+     *
+     * Handles different data types:
+     * - For strings: Converts all lowercase characters to uppercase
+     * - For characters: Converts to uppercase equivalent
+     * - For integers (ASCII codes): Converts to uppercase ASCII code
+     * - Returns original value for unsupported types
+     *
+     * @param data: str|char|int: The input to convert (string, char, int, or other type)
+     * @return: Uppercase version of the input (or original for unsupported types)
+     */
+    var dataTp = dt.type(data)
+    if dataTp == dt.DT.TP_STR {
+        var res: str = ""
+        ds.iter(data, (c: char, _, _, _) -> {
+            res += toUpperCase(c)
+        })
+        ret res
+    } elif dataTp == dt.DT.TP_CHAR {
+        var asciiVal = data
+        dt.setType(asciiVal, "int")
+        data = toUpperCase(asciiVal)
+        dt.setType(data, "char")
+        ret data
+    } elif dataTp == dt.DT.TP_INT {
+        if data >= 65 && data <= 90 {
+            ret data
+        } elif data >= 97 && data <= 122 {
+            ret data - 32
+        } else {
+            ret data
+        }
+    } else {
+        ret data
+    }
+}
+
+fun charToInt(c): int {
+    if dt.type(c) == dt.DT.TP_STR {
+        c = toChar(c)
+    } elif dt.type(c) != dt.DT.TP_CHAR {
+        io.sout("Error: charToInt() requires a character or a string as input.")
+        // TODO: There need to throw an error.
+    }
+    dt.setType(c, "int")
+    ret c
+}
+
+fun intToChar(i: int): char {
+    dt.setType(i, "char")
+    ret i
+}
+
+fun trim(content: str, extraChars: str = " ", onLeft: bool = true, onRight: bool = true): str {
+    var startIndex: int = 0,
+        endIndex: int = -1
+    if onLeft {
+        ds.iter(content, (ch: char, i, _, _) -> {
+            if !ds.iterContains(extraChars, ch) {
+                startIndex = i
+                ret false
+            }
+        })
+    }
+    if onRight {
+        ds.iter(content, (ch: char, i, _, _) -> {
+            if !ds.iterContains(extraChars, ch) {
+                endIndex = i
+                ret false
+            }
+        }, true)
+    }
+    ret subStr(content, startIndex, endIndex - startIndex + 1)
+}
+
+export(toStr, toChar, subStr, find, split, replace, toLowerCase, toUpperCase,
+    charToInt, intToChar, trim)

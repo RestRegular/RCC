@@ -293,6 +293,13 @@ namespace utils {
     // === 命令行参数解析器 ===
     class ProgArgParser final : Object {
     public:
+        enum class ProgArgType
+        {
+            FLAG,
+            OPTION,
+            FLAG_ALIAS
+        };
+
         enum class CheckDir {
             UniDir,
             BiDir,
@@ -368,6 +375,9 @@ namespace utils {
         std::vector<OptionInfo> options_;
         OptionInfo* findOption(const std::string& name);
         FlagInfo* findFlag(const std::string& name);
+        std::pair<ProgArgType, std::string> parseArgTypeAndNamePart(const std::string &arg);
+        static std::string parseOptionNamePartFromArg(const std::string &arg);
+        void validateArgument(const ProgArgType &type, const std::string &arg, const std::string& name_part);
         [[nodiscard]] std::string getOptionMainName(const std::string& name) const;
 
         class MutuallyExclusiveRule final : Object {
@@ -438,7 +448,7 @@ namespace utils {
             }
         }
 
-        void handleOption(const std::string& arg, int argc, char* argv[], int& i);
+        void handleOption(const std::string& name_part, int argc, char* argv[], int& i);
     };
 
     // === 数值处理 ===

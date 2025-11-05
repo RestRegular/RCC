@@ -1,9 +1,7 @@
-fun sout(args: .., end="\n"): void {
-    encapsulated
+import(io="io", sm="str")
+
+fun main(): void {
+    io.sout(sm.split("Hello world from Rio! ", " ", keepDel=true, keepEmpty=true))
 }
 
-fun test(a: int): void {
-    sout(a)
-}
-
-test((): str -> { ret "Hello" }() + 5)
+main()

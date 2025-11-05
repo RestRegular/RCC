@@ -1,0 +1,87 @@
+/*
+ * PURE BUILT-IN FUNCTIONS MODULE
+ * 
+ * This extension contains declarations for pure built-in functions that are
+ * intrinsically implemented within the Rio compiler or virtual machine.
+ * Pure built-in functions require no explicit import and can be called
+ * directly anywhere in the program.
+ * 
+ * These functions form the core runtime infrastructure and cannot be
+ * overridden or modified by user code.
+ * 
+ * @author: @RestRegular
+ * @version: 1.0.0
+ * @extension: core
+ */
+
+//
+// Pure built-in function: import
+// fun import(*args, **kwargs): any {
+//     /*
+//      * Imports a Rio file as an extension.
+//      *
+//      * This function dynamically loads and returns an extension class
+//      * from the specified Rio file or builtin extension. The imported
+//      * extension's functions become available for use in the current
+//      * scope.
+//      *
+//      * Usage patterns:
+//      * 1. Explicit variable definition:
+//      *    `var lib: clas = import("io")`
+//      *    Imports the pure-static extension class of the specified extension (e.g., "io"),
+//      *    and assigns the returned result to a manually defined variable (e.g., `lib`).
+//      *
+//      * 2. Automatic variable definition:
+//      *    import(io="io")
+//      *    Imports the pure static extension class of the specified extension but returns `null`.
+//      *    Automatically defines a variable with the same name as the keyword parameter (e.g., `io` from `io=`)
+//      *    and stores the extension class in this variable.
+//      *
+//      * @param args: Variable arguments for import configuration (e.g., extension path in explicit form)
+//      * @param kwargs: Keyword arguments for import options (e.g., variable name=extension path in automatic form)
+//      * @return: Extension pure-static class in explicit form, null in automatic form
+//      */
+//     encapsulated
+// }
+//
+
+//
+// Pure built-in function: export
+// fun export(*args, **kwargs): any {
+//     /*
+//      * Exports symbols from the current extension for external use.
+//      * 
+//      * Only functions explicitly exported using this function
+//      * can be called from external extensions. Unexported functions
+//      * remain private to the extension.
+//      * 
+//      * @param args: Symbols to export (function references)
+//      * @param kwargs: Export configuration options
+//      */
+//     encapsulated
+// }
+//
+
+//
+// Pure built-in function: super
+// fun super(arg, *args, **kwargs): void {
+//     /*
+//      * Calls the parent class constructor in a subclass constructor.
+//      *
+//      * This function must be used within a class constructor that inherits from a parent class,
+//      * and must appear as the first statement in the constructor. It enables the subclass
+//      * to initialize the parent class's properties and methods.
+//      *
+//      * @param arg: The 'this' instance of the current subclass
+//      * @param *args: Positional arguments to pass to the parent class constructor
+//      * @param **kwargs: Keyword arguments to pass to the parent class constructor
+//      *
+//      * @throws Error: If used outside a subclass constructor or not as the first statement
+//      */
+//     encapsulated
+// }
+//
+
+//
+// export(import, export, super)
+//

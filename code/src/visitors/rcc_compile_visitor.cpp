@@ -484,11 +484,13 @@ namespace ast
 
     std::stack<std::string> CompileVisitor::processingExtensionStack = {};
 
-    OutputFormat CompileVisitor::_output_format = OutputFormat::TXT;
+    OutputFormat CompileVisitor::__symbol_option_format__ = OutputFormat::TXT;
 
-    bool CompileVisitor::_symbol_flag = false;
+    bool CompileVisitor::__symbol_flag__ = false;
 
-    bool CompileVisitor::_symbol_flag_only_export_option = false;
+    bool CompileVisitor::_symbol_flag_export__ = false;
+
+    bool CompileVisitor::__compile_flag__ = false;
 
     // 辅助函数：获取符号的类型标签
     std::shared_ptr<TypeLabelSymbol> CompileVisitor::getTypeLabelFromSymbol(const std::shared_ptr<Symbol>& symbol)
@@ -550,10 +552,10 @@ namespace ast
 
     void CompileVisitor::processSymbolFlagOperation()
     {
-        if (_symbol_flag && !_symbol_flag_only_export_option)
+        if (__symbol_flag__ && !_symbol_flag_export__)
         {
             std::string result;
-            if (_output_format == OutputFormat::JSON)
+            if (__symbol_option_format__ == OutputFormat::JSON)
             {
                 if (analyzeBuilder.getCurScopeResult().empty())
                 {
@@ -570,10 +572,10 @@ namespace ast
                 {
                     continue;
                 }
-                if (_output_format == OutputFormat::TXT)
+                if (__symbol_option_format__ == OutputFormat::TXT)
                 {
                     analyzeBuilder << st->toDetailString() << "\n";
-                } else if (_output_format == OutputFormat::JSON)
+                } else if (__symbol_option_format__ == OutputFormat::JSON)
                 {
 
                     RJsonParser rjParser (result);
@@ -583,7 +585,7 @@ namespace ast
                     result = builder.formatString(4);
                 }
             }
-            if (_output_format == OutputFormat::JSON)
+            if (__symbol_option_format__ == OutputFormat::JSON)
             {
                 analyzeBuilder.enterScope();
                 analyzeBuilder << result;
@@ -2601,7 +2603,7 @@ namespace ast
                     const auto& typeLabelSymbol = getTypeLabelFromSymbol(memberSymbol);
                     const VarID attrVarID(getNewTempVarName(), node.getPos().getFileField(), curScopeField(),
                                           curScopeLevel());
-                    pushIdentItem(attrVarID, typeLabelSymbol, typeLabelSymbol, memberSymbol);
+                    pushIdentItem(attrVarID, typeLabelSymbol, typeLabelSymbol, memberSymbol, node.getPos());
                     topOpItemPtr()->setBelonging(getSymbolFromOpItem(left), memberSymbol->getRaVal());
                     std::shared_ptr<Symbol> attrSymbol;
                     if (memberSymbol->is(SymbolType::VARIABLE) || memberSymbol->is(SymbolType::CLASS))

@@ -1,0 +1,72 @@
+/*
+ * LOW-LEVEL OPERATIONS MODULE
+ *
+ * This extension provides fundamental low-level utility functions
+ * for identifier handling and raw data manipulation in Rio programs.
+ * These core operations serve as building blocks for higher-level
+ * functionality across various program domains.
+ *
+ * @author: @RestRegular
+ * @version: 1.0.0
+ * @extension: lowlevel
+ */
+import(io="io", ds="ds", prog="prog")
+
+fun id(arg): str {
+    /*
+     * Process a argument and return the RA code identifier assigned to it
+     * by the compiler.
+     *
+     * This function handles the conversion or extraction of an identifier
+     * from the provided argument, ensuring consistent identifier formatting
+     * across low-level operations. The resulting string can be used for
+     * `rasm` function which defined below.
+     *
+     * @param arg: Input value to process into an identifier
+     * @return: String representation of the processed identifier
+     */
+    encapsulated
+}
+
+fun rasm(racode: str): void {
+    /*
+     * Embeds inline assembly instructions from provided arguments into the
+     * compiled code.
+     *
+     * This function processes the input arguments as RVM assembly instructions
+     * and inserts them directly into the generated RA code during compilation.
+     *
+     * It enables low-level hardware operations by allowing direct injection of
+     * assembly instructions, which are integrated into the program's instruction
+     * stream without intermediate processing or abstraction.
+     *
+     * Variable arguments support multiple assembly instructions or instruction-
+     * operand pairs, which are concatenated and inserted as-is after validation
+     * /processing.
+     *
+     * @param racode: inlined ra code
+     */
+    encapsulated
+}
+
+fun ri(i: str, *args): str {
+    var riString: str = i + ": "
+    ds.iter(args, (arg, index: int, iterLength: int, args: .*) -> {
+        riString += arg
+        if index < iterLength - 1 {
+            riString += ", "
+        }
+    })
+    riString += "\n"
+    ret riString
+}
+
+fun bindDllExt(dllPath: str): str {
+    encapsulated
+}
+
+fun unbindDllExt(ident: str): void {
+    encapsulated
+}
+
+export(id, rasm, ri, bindDllExt, unbindDllExt)

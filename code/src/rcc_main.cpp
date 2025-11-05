@@ -18,14 +18,15 @@ using namespace utils;
 
 // 全局参数变量
 std::string __help_option_name__;
-std::string __target__;
-std::string __output__;
+std::string __general_option_path__;
+std::string __symbol_option_extension__;
+std::string __general_option_output__;
 std::string __working_directory__;
-std::string __specify__;
+std::string __symbol_option_spec_symbol__;
 bool __help_option__ = false;
 bool __version_option__ = false;
 bool __time_info__ = false;
-bool __builtin__ = false;
+bool __symbol_flag_builtin__ = false;
 
 // 参数解析器实例
 ProgArgParser argParser{};
@@ -37,9 +38,9 @@ void initializeArgumentParser() {
                       "Use this flag to show a list of available options, flags, and their descriptions.",
                       {"h"})
     .addFlag("version", &__version_option__, false, true,
-                      "Displays the version information and exits. "
-                      "Use this flag to check the current version of the program.",
-                      {"v"})
+             "Displays the version information and exits. "
+             "Use this flag to check the current version of the program.",
+             {"v"})
     .addOption<std::string>("help-option", &__help_option_name__,
                                                      "",
                                                      "Specifies the name of the help option. "
@@ -47,37 +48,48 @@ void initializeArgumentParser() {
                                                      {"ho"});
 
     // Symbol flag
-    argParser.addFlag("symbol", &ast::CompileVisitor::_symbol_flag, false, true,
+    argParser.addFlag("symbol", &ast::CompileVisitor::__symbol_flag__, false, true,
                       "Parse the file at the specified path and output all exported symbol declarations.",
                       {"s"})
-    .addOption<std::string>("file", &__target__,
+    .addOption<std::string>("path", &__general_option_path__,
                                      "",
-                                     "Specifies the target file path for the operation. ",
-                                     {"f"})
-    .addOption<OutputFormat>("format", &ast::CompileVisitor::_output_format,
+                                     "Specifies the target file path or directory path for the operation. ",
+                                     {"p"})
+    .addOption<std::string>("extension", &__symbol_option_extension__,
+        "", "", {"e", "ext"})
+    .addOption<OutputFormat>("format", &ast::CompileVisitor::__symbol_option_format__,
                                     OutputFormat::TXT,
                                     "Specify the output mode for the analyzed content. The default mode is 'txt',"
                                     " and the supported modes include: 'json', 'txt'.",
                                     {"fmt"})
-    .addFlag("only-export", &ast::CompileVisitor::_symbol_flag_only_export_option, false,
-        true, "Only display exported symbols (all symbols are displayed by default)",
-        {"e"})
-    .addOption<std::string>("output", &__output__, "console",
+    .addFlag("export", &ast::CompileVisitor::_symbol_flag_export__, false,
+             true, "Only display exported symbols (all symbols are displayed by default)",
+             {"exp"})
+    .addOption<std::string>("output", &__general_option_output__, "console",
         "Output results to a specified file (print to the console by default)",
         {"o"})
-    .addOption<std::string>("spec-symbol", &__specify__, "",
+    .addOption<std::string>("spec-symbol", &__symbol_option_spec_symbol__, "",
         "This option is used to specify the specific symbol name to be viewed for the symbol command and display a detailed description."
         "Multiple name split by spaces and the value need to be surrounded by quotes.",
         {"sp-sy", "sp-symbol", "ss"})
-    .addFlag("builtin", &__builtin__, false, true,
-        "This flag is used to specify the target of analysis as a built-in extension.",
-        {"b"})
-    .addDependent(std::vector<std::string>{"symbol"},
-        std::vector<std::string>{"file"}, ProgArgParser::CheckDir::UniDir)
+    .addFlag("builtin", &__symbol_flag_builtin__, false, true,
+             "This flag is used to specify the target of analysis as a built-in extension.",
+             {"b"})
     .addDependent(StringVector{"only-export", "specify-symbol"}, "symbol", ProgArgParser::CheckDir::UniDir)
+    .addDependent("format", "output", ProgArgParser::CheckDir::UniDir)
     .addMutuallyExclusive("spec-symbol", "fmt", ProgArgParser::CheckDir::BiDir)
-    .addDependent("builtin", "file");
+    .addMutuallyExclusive("path", "extension", ProgArgParser::CheckDir::BiDir)
+    .addDependent("builtin", "extension", ProgArgParser::CheckDir::UniDir)
+    .addDependent("export", "symbol", ProgArgParser::CheckDir::UniDir);
 
+    // 单独添加 compile flag 及相关配置
+    argParser.addFlag("compile", &ast::CompileVisitor::__compile_flag__, false, true,
+                      "Compile the target file or directory specified by path",
+                      {"c"})
+    .addDependent("compile", "output", ProgArgParser::CheckDir::UniDir)
+    .addMutuallyExclusive("compile",
+        std::vector<std::string>{"extension", "export", "format", "builtin", "spec-symbol", "symbol"},
+        ProgArgParser::CheckDir::BiDir);
 
     argParser.addFlag("time-info", &__time_info__, false, true,
                       "Enables timing information during execution. "
@@ -89,7 +101,91 @@ void initializeArgumentParser() {
 
     // Core flag option exclusives
     argParser.addMutuallyExclusive(std::vector<std::string>{"help", "version"},
-        std::vector<std::string>{"time-info", "check-export-symbol"});
+        std::vector<std::string>{"time-info", "symbol", "compile", "path",
+            "extension", "export", "format", "output", "builtin", "spec-symbol"});
+}
+
+void handleSymbolFlag()
+{
+    if (!__symbol_option_spec_symbol__.empty())
+    {
+        ast::CompileVisitor::__symbol_option_format__ = OutputFormat::JSON;
+    }
+
+    std::string targetPath;
+    if (!__general_option_path__.empty())
+    {
+        targetPath = getAbsolutePath(__general_option_path__, __working_directory__);
+    } else if (!__symbol_option_extension__.empty())
+    {
+        targetPath = getAbsolutePath(__symbol_flag_builtin__
+            ? (__symbol_option_extension__.ends_with(".rio")
+                ? __symbol_option_extension__
+                : __symbol_option_extension__ + ".rio")
+                : __symbol_option_extension__,
+            __symbol_flag_builtin__ ? RCC_BUILTIN_LIB_DIR : RCC_LIB_DIR);
+    } else
+    {
+        throw std::runtime_error("Missing option: --file or --extension.");
+    }
+
+    std::string outputPath = __general_option_output__.empty() ? "console" : __general_option_output__;
+    if (outputPath != "console")
+    {
+        outputPath = getAbsolutePath(outputPath, __working_directory__);
+    }
+
+    if (ast::CompileVisitor visitor(targetPath, targetPath,
+        outputPath, false);
+        visitor.compile())
+    {
+        const auto& result = visitor.getAnalyzeBuilder().buildAll();
+        if (__symbol_option_spec_symbol__.empty())
+        {
+            if (outputPath == "console")
+            {
+                std::cout << result;
+            } else if (writeFile(outputPath, result))
+            {
+                std::cout << "Analyze succeeded!\nOutput is saved to: " << outputPath << std::endl;
+            }
+        } else
+        {
+            const auto& specifiedNames = StringManager::split(__symbol_option_spec_symbol__, ' ');
+            rjson::rj::RJsonParser parser (result);
+            rjson::rj::RJsonBuilder builder (rjson::RJType::RJ_OBJECT);
+            parser.parse();
+            std::string errorName;
+            try {
+                for (const auto& name: specifiedNames)
+                {
+                    errorName = name;
+                    builder.insertRJValue(name, *parser.getAtKey(name));
+                }
+                if (__general_option_output__ == "console")
+                {
+                    std::cout << builder.formatString(4);
+                } else if (writeFile(outputPath, result))
+                {
+                    std::cout << "Analyze succeeded!\nOutput is saved to: " << outputPath << std::endl;
+                }
+            } catch (const error::RJsonError& e)
+            {
+                throw std::runtime_error(e.toString() + "\nNot find the specified symbol name: " + errorName);
+            }
+        }
+    }
+}
+
+void handleCompileFlag()
+{
+    const auto& targetPath = getAbsolutePath(__general_option_path__, __working_directory__);
+    const auto& outputPath = getAbsolutePath(__general_option_output__, __working_directory__);
+    if (ast::CompileVisitor visitor (targetPath, targetPath, outputPath);
+        visitor.compile())
+    {
+        std::cout << "Compilation succeeded!\nOutput is saved to: " << outputPath << std::endl;
+    }
 }
 
 int main(const int argc, char *argv[]) {
@@ -110,72 +206,14 @@ int main(const int argc, char *argv[]) {
         }
 
         // 检查导出符号信息
-        if (ast::CompileVisitor::_symbol_flag)
+        if (ast::CompileVisitor::__symbol_flag__)
         {
-            if (!__specify__.empty())
-            {
-                ast::CompileVisitor::_output_format = OutputFormat::JSON;
-            }
+            handleSymbolFlag();
+        }
 
-            // 处理目标文件绝对路径
-            const std::string targetPath = getAbsolutePath(
-                __builtin__
-                    ? (__target__.ends_with(".rio")
-                           ? __target__
-                           : __target__ + ".rio")
-                    : __target__,
-                __builtin__
-                    ? RCC_BUILTIN_LIB_DIR
-                    : __working_directory__);
-
-            // 确定输出方式（控制台或文件）
-            std::string outputPath = __output__.empty() ? "console" : __output__;
-            if (outputPath != "console")
-            {
-                outputPath = getAbsolutePath(outputPath, __working_directory__);
-            }
-
-            // 执行符号分析
-            if (ast::CompileVisitor visitor(targetPath, targetPath,
-                outputPath, false);
-                visitor.compile())
-            {
-                const auto& result = visitor.getAnalyzeBuilder().buildAll();
-                if (__specify__.empty())
-                {
-                    if (outputPath == "console")
-                    {
-                        std::cout << result;
-                    } else if (writeFile(outputPath, result))
-                    {
-                        std::cout << "Analyze succeeded!\nOutput is saved to: " << outputPath << std::endl;
-                    }
-                } else
-                {
-                    const auto& specifiedNames = StringManager::split(__specify__, ' ');
-                    rjson::rj::RJsonParser parser (result);
-                    rjson::rj::RJsonBuilder builder (rjson::RJType::RJ_OBJECT);
-                    parser.parse();
-                    std::string errorName;
-                    try {
-                        for (const auto& name: specifiedNames)
-                        {
-                            errorName = name;
-                            builder.insertRJValue(name, *parser.getAtKey(name));
-                        }
-                        if (__output__ == "console")
-                        {
-                            std::cout << builder.formatString(4);
-                        } else if (writeFile(outputPath, result))
-                        {
-                            std::cout << "Analyze succeeded!\nOutput is saved to: " << outputPath << std::endl;
-                        }
-                    } catch (const error::RJsonError& e)
-                    {
-                        throw std::runtime_error(e.toString() + "\nNot find the specified symbol name: " + errorName);
-                    }
-                }
-            }
+        if (ast::CompileVisitor::__compile_flag__)
+        {
+            handleCompileFlag();
         }
 
         // 输出程序运行时间信息
