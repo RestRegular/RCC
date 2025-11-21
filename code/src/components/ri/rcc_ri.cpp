@@ -90,6 +90,9 @@ namespace ri {
         return opRI;
     }
 
+    EXE_RASM::EXE_RASM(const std::vector<std::string>& idents)
+        : PARALLEL("EXE_RASM", idents) {}
+
     ALLOT::ALLOT(const std::vector<std::string> &idents)
         : PARALLEL("ALLOT", idents) {}
 

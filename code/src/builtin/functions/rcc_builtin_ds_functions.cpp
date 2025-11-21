@@ -27,6 +27,26 @@ namespace builtin
         return ri::COPY(callInfos.processedArgs[0], visitor.topOpRaVal()).toRACode();
     }
 
+    BuiltinFuncRetType rcc_listAppend(ast::CompileVisitor& visitor, const CallInfos& callInfos)
+    {
+        if (const auto &[typeLabel, valueType] = visitor.getTypesFromOpItem(callInfos.posArgOpItems.front());
+            typeLabel->is("list") || typeLabel->is("str") ||
+            (typeLabel->is("any") && (valueType->is("list") ||
+                valueType->is("str") || valueType->is("any"))))
+        {
+            return ri::ITER_APND(
+                {callInfos.processedArgs.back()},
+                callInfos.processedArgs.front()).toRACode();
+        }
+        const auto &firstSymbol = visitor.getSymbolFromOpItem(callInfos.posArgOpItems.front());
+        const auto &errorPos = firstSymbol ? firstSymbol->getPos() : callInfos.callPos;
+        throw base::RCCCompilerError::typeMissmatchError(errorPos.toString(), visitor.getCodeLine(errorPos),
+            "The builtin function 'listAppend' expected the first argument to be a list or a str.",
+            visitor.getListFormatString({"list", "str", "any"}),
+            firstSymbol ? visitor.getTypeLabelFromSymbol(firstSymbol)->toString() :
+            callInfos.posArgOpItems.front().getValueType()->toString(), {});
+    }
+
     BuiltinFuncRetType rcc_listRemove(ast::CompileVisitor& visitor, const CallInfos& callInfos)
     {
         if (const auto &[typeLabel, valueType] = visitor.getTypesFromOpItem(callInfos.posArgOpItems.front());

@@ -68,6 +68,12 @@ namespace ri {
         std::string getOpRI() const override;
     };
 
+    class EXE_RASM final : public PARALLEL
+    {
+    public:
+        explicit EXE_RASM(const std::vector<std::string> & idents);
+    };
+
     class ALLOT final : public PARALLEL {
     public:
         explicit ALLOT(const std::vector<std::string> &idents);

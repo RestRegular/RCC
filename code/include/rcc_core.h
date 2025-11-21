@@ -45,7 +45,7 @@ namespace core {
         KV_SEP, // :
         ASSIGN, // =, +=, -=, *=, /=, %=, &=, |=, !=, ^=
         LOGIC, // &, |, ^, &&, ||
-        TERNARY, // ?:
+        TERNARY, // ... ? ... : ...
         COMPARE, // <, <=, >, >=, ==, !=
         SUM, // +, -
         PRODUCT, // *, /, %

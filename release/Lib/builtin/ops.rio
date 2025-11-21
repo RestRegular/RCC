@@ -1,0 +1,31 @@
+fun ternary(condition: bool, trueValue, falseValue) {
+    if condition {
+        ret trueValue
+    } else {
+        ret falseValue
+    }
+}
+
+fun ternaryLazy(condition, trueFuni: funi[][any], falseFuni: funi[][any]) {
+    if condition {
+        ret trueFuni()
+    } else {
+        ret falseFuni()
+    }
+}
+
+fun orVal(default, spare) {
+    ret ternary(default == null || default == false, spare, default)
+}
+
+fun orLazy(front, back: funi[][any]) {
+    if front == true {
+        ret front
+    } elif back == true {
+        ret back()
+    } else {
+        ret false
+    }
+}
+
+export(ternary, ternaryLazy, orVal, orLazy)

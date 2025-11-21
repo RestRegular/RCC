@@ -102,6 +102,16 @@ fun split(content: str, del: str,
      * @param keepEmpty: bool: Whether to keep empty strings from consecutive delimiters (default: false)
      * @return: list: List of substrings resulting from the split operation
      */
+    if del == "" {
+        var result = []
+        ds.iter(content, (ch: char, index: int, _, _) -> {
+            result += toStr(ch)
+        })
+        if keepEmpty {
+            result = [""] + result + ""
+        }
+        ret result
+    }
     var delLen: int = ds.size(del),
         contentLen: int = ds.size(content),
         result: list = [],
@@ -112,7 +122,7 @@ fun split(content: str, del: str,
             break
         }
         var front: str = subStr(restContent, 0, index)
-        if ds.size(front) > 0 || keepSpace {
+        if ds.size(front) > 0 || keepEmpty {
             result += front
         }
         if keepDel {
@@ -120,7 +130,7 @@ fun split(content: str, del: str,
         }
         restContent = subStr(restContent, index + delLen)
     }
-    if ds.size(restContent) > 0 || keepSpace {
+    if ds.size(restContent) > 0 || keepEmpty {
         result += restContent
     }
     ret result

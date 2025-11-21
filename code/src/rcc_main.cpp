@@ -62,7 +62,7 @@ void initializeArgumentParser() {
                                     "Specify the output mode for the analyzed content. The default mode is 'txt',"
                                     " and the supported modes include: 'json', 'txt'.",
                                     {"fmt"})
-    .addFlag("export", &ast::CompileVisitor::_symbol_flag_export__, false,
+    .addFlag("export", &ast::CompileVisitor::__symbol_flag_export__, false,
              true, "Only display exported symbols (all symbols are displayed by default)",
              {"exp"})
     .addOption<std::string>("output", &__general_option_output__, "console",
@@ -86,10 +86,15 @@ void initializeArgumentParser() {
     argParser.addFlag("compile", &ast::CompileVisitor::__compile_flag__, false, true,
                       "Compile the target file or directory specified by path",
                       {"c"})
+    .addOption<int>("compile-level", &ast::CompileVisitor::__compile_option_compile_level__, 0,
+        "This option is used to specify the compile level for RCC."
+        "0 -> Debug, 1 -> Testing, 2 -> Release, 3 -> Minified",
+        {"cl"})
     .addDependent("compile", "output", ProgArgParser::CheckDir::UniDir)
     .addMutuallyExclusive("compile",
         std::vector<std::string>{"extension", "export", "format", "builtin", "spec-symbol", "symbol"},
-        ProgArgParser::CheckDir::BiDir);
+        ProgArgParser::CheckDir::BiDir)
+    .addDependent("compile-level", "compile", ProgArgParser::CheckDir::UniDir);
 
     argParser.addFlag("time-info", &__time_info__, false, true,
                       "Enables timing information during execution. "
@@ -223,7 +228,7 @@ int main(const int argc, char *argv[]) {
 
         // 处理版本选项
         if (__version_option__) {
-            std::cout << "Rio-Kit " RCC_VERSION << std::endl;
+            std::cout << "RCC(Rio Compiler Collection) " RCC_VERSION << std::endl;
             std::cout << "Published on " << std::string(__DATE__) << " at " << std::string(__TIME__) << std::endl;
             std::cout << "Copyright (C) 2025 RestRegular" << std::endl;
         }

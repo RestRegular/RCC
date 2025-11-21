@@ -341,6 +341,12 @@ namespace parser {
                 }
             }
 
+            if (nextTokenIs(TokenType::TOKEN_SKIP_NEWLINE))
+            {
+                next();
+                skipNextNewLineToken();
+            }
+
             if (precedence < nextTokenPrecedence()) {
                 const auto &infixBuilder = infixExpressionBuilders.find(nextToken().getType());
                 if (infixBuilder == infixExpressionBuilders.end()) {

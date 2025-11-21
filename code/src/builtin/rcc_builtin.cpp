@@ -127,6 +127,7 @@ namespace builtin
         {"size", rcc_size},
         {"copy", rcc_copy},
         {"listRemove", rcc_listRemove},
+        {"listAppend", rcc_listAppend},
         {"dictRemove", rcc_dictRemove},
         {"dictKeys", rcc_dictKeys},
         {"dictValues", rcc_dictValues},

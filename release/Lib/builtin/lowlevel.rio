@@ -51,7 +51,7 @@ fun rasm(racode: str): void {
 
 fun ri(i: str, *args): str {
     var riString: str = i + ": "
-    ds.iter(args, (arg, index: int, iterLength: int, args: .*) -> {
+    ds.iter(args, (arg, index: int, iterLength: int, **args) -> {
         riString += arg
         if index < iterLength - 1 {
             riString += ", "

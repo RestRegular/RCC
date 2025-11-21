@@ -99,7 +99,7 @@ namespace ast
         for (const auto& [name, argItem] : orderedArgs)
         {
             originalArgs.emplace_back(name, argItem.getVal());
-            halfProcessedArgs.push_back(raVal(argItem));
+            halfProcessedArgs.push_back(raVal(argItem, true));
         }
     }
 
@@ -564,7 +564,7 @@ namespace ast
                             const auto& argSymbol = getSymbolFromOpItem(argItem);
                             checkExists(argItem, callPos);
                             item = argItem.getBelonging() ?
-                                raVal(argItem) :
+                                raVal(argItem, true) :
                                 argSymbol->getRaVal();
                             if (argSymbol->is(SymbolType::VARIABLE))
                             {
@@ -578,7 +578,7 @@ namespace ast
                                                                TypeLabelSymbol::listTypeSymbol(
                                                                    getUnknownPos(), curScopeLevel()));
                                     raCodeBuilder
-                                        << ri::COPY(raVal(posArgs.front()), topOpRaVal())
+                                        << ri::COPY(raVal(posArgs.front(), true), topOpRaVal())
                                         << ri::TP_SET(topOpItem().getValueType()->getRaVal(), topOpRaVal());
                                 }
                             }
@@ -586,7 +586,7 @@ namespace ast
                         break;
                     case OpItemType::LITERAL_VALUE:
                         {
-                            item = raVal(argItem);
+                            item = raVal(argItem, true);
                         }
                         break;
                     default:

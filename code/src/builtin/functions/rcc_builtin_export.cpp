@@ -15,7 +15,7 @@ namespace builtin
                 level >= 0 && argSymbol)
             {
                 argSymbol->setScopeLevel(0);
-                if (visitor.__symbol_flag__ && visitor._symbol_flag_export__ &&
+                if (visitor.__symbol_flag__ && visitor.__symbol_flag_export__ &&
                     visitor.isVisitingProgramEntry())
                 {
                     switch (visitor.__symbol_option_format__)

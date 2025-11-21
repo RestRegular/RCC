@@ -188,11 +188,13 @@ namespace ast
     public:
         // =========================== 标志属性 ============================
         static bool __symbol_flag__;
-        static bool _symbol_flag_export__;
+        static bool __symbol_flag_export__;
 
         static bool __compile_flag__;
 
         static OutputFormat __symbol_option_format__;
+
+        static int __compile_option_compile_level__;
     private:
 
         // ========================== 静态成员属性 ==========================
@@ -360,7 +362,7 @@ namespace ast
         // 工具方法
         [[nodiscard]] std::shared_ptr<symbol::Symbol> getSymbolFromOpItem(
             const OpItem& opItem) const; // 从操作数获取符号
-        [[nodiscard]] std::string raVal(const OpItem& opItem) const; // 获取操作数 RA 值
+        [[nodiscard]] std::string raVal(const OpItem& opItem, const bool& needSearch = true) const; // 获取操作数 RA 值
         [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getBuiltinTypeSymbol(
             const Pos& pos, const BuiltinType& type) const; // 获取内置类型符号
         [[nodiscard]] std::pair<std::shared_ptr<symbol::TypeLabelSymbol>, std::shared_ptr<symbol::TypeLabelSymbol>>

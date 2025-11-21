@@ -19,7 +19,7 @@ namespace builtin
 
     BuiltinFuncRetType rcc_rasm(ast::CompileVisitor& visitor, const CallInfos& callInfos)
     {
-        return "";
+        return ri::EXE_RASM(callInfos.processedArgs).toRACode();
     }
 
     BuiltinFuncRetType rcc_bindDllExt(ast::CompileVisitor& visitor, const CallInfos& callInfos)

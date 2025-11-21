@@ -154,7 +154,6 @@ namespace symbol {
         [[nodiscard]] std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
                                           const size_t& scopeLevel) const override;
         const LabelSymbol* TransformToLSI() const override;
-        [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
         bool Is(const SymbolType& tp) const override;
         bool IsNot(const SymbolType& tp) const override;
         const char* GetVal() const override;

@@ -12,7 +12,7 @@
  * @version: 1.0.0
  * @extension: ds
  */
-import(dt="datatype")
+import(dt="datatype", ops="ops")
 
 fun size(arg): int {
     /*
@@ -256,6 +256,10 @@ fun joins(*args, sep: str = ""): str {
     ret join(args, sep)
 }
 
+fun listAppend(listData, item): void {
+    encapsulated
+}
+
 fun listRemove(listData, index: int): void {
     /*
      * Removes an element from a list by its index.
@@ -375,9 +379,207 @@ fun iterContains(iterData, checkItem): bool {
     ret result
 }
 
+fun sort(numList: list, reverse: bool = false): list {
+    var quickSort: funi[list, bool][list] = (arr: list, reverse: bool): list -> {
+        if size(arr) <= 1 {
+            ret arr
+        }
+        var pivot = arr[0],
+            less: list = [],
+            greater: list = [],
+            i = 1
+        while i < size(arr) {
+            if (arr[i] <= pivot && !reverse) || (arr[i] > pivot && reverse) {
+                less += arr[i]
+            } else {
+                greater += arr[i]
+            }
+            i ++
+        }
+        ret quickSort(less, reverse) + [pivot] + quickSort(greater, reverse)
+    }
+    ret quickSort(numList, reverse)
+}
+
+class Iterable {
+    ctor () {
+        pass
+    }
+
+    fun size(): int public virtual {
+        ret null
+    }
+
+    fun get(): any public virtual {
+        ret null
+    }
+
+    fun toStr(): str public virtual {
+        ret null
+    }
+
+    fun empty(): bool public {
+        ret this.size() == 0
+    }
+}
+
+class List: Iterable {
+    var data: list private,
+        length: int private,
+        compareHandler: funi[any, any][int] private = null,
+        plusHandler: funi[any, any][any] private = null
+
+    ctor () {
+        super()
+        this.data = []
+        this.length = 0
+    }
+
+    ctor (data: list) {
+        super()
+        this.data = data
+        this.length = size(data)
+    }
+
+    fun get(): list public overwrite {
+        ret this.data
+    }
+
+    fun sort(sortHandler: funi[any, any][int] = null, reverse: bool = false): void public {
+        sortHandler = ops.orVal(sortHandler, this.compareHandler)
+        if sortHandler == null {
+            this.data = sort(this.data, reverse)
+        } else {
+            var quickSort: funi[list, bool][list] = \
+                (arr: list, reverse: bool): list -> {
+                    if size(arr) <= 1 {
+                        ret arr
+                    }
+                    var pivot = arr[0]
+                    var less: list
+                    var greater: list
+                    var i = 1
+                    while i < size(arr) {
+                        var compareResult = sortHandler(arr[i], pivot)
+                        if (compareResult <= 0 && !reverse) || (compareResult > 0 && reverse) {
+                            less += arr[i]
+                        } else {
+                            greater += arr[i]
+                        }
+                        i ++
+                    }
+                    ret quickSort(less, reverse) + [pivot] + quickSort(greater, reverse)
+                }
+            this.data = quickSort(this.data, reverse)
+        }
+    }
+
+    fun append(item): List {
+        listAppend(this.data, item)
+        this.length += 1
+        ret this
+    }
+
+    fun remove(index: int): List {
+        iterRemove(this.data, index)
+        this.length -= 1
+        ret this
+    }
+
+    fun size(): int public overwrite {
+        ret this.length
+    }
+
+    fun toStr(): str public overwrite {
+        ret "" + this.data
+    }
+
+    fun map(mapper: funi[any][any]): List {
+        var newList: List = List()
+        iter(this.data, (item, _, _, _) -> {
+            newList.append(mapper(copy(item)))
+        })
+        ret newList
+    }
+
+    fun toFmtStr(transHandler: funi[any][any]): str {
+        ret this.map(transHandler).toStr()
+    }
+
+    fun setCompareHandler(handler: funi[any, any][int]): List {
+        this.compareHandler = handler
+        ret this
+    }
+
+    fun max(compareHandler: funi[any, any][int] = null): any public {
+        if this.empty() {
+            ret null
+        }
+        var max = copy((this.data)[0])
+        compareHandler = ops.orVal(compareHandler, this.compareHandler)
+        if compareHandler {
+            iter(this.data, (item, _, _, _) -> {
+                if compareHandler(item, max) > 0 {
+                    max = item
+                }
+            })
+        } else {
+            iter(this.data, (item, _, _, _) -> {
+                if item > max {
+                    max = item
+                }
+            })
+        }
+        ret max
+    }
+
+    fun min(compareHandler: funi[any, any][int] = null): any public {
+        if this.empty() {
+            ret null
+        }
+        var min = copy((this.data)[0])
+        compareHandler = ops.orVal(compareHandler, this.compareHandler)
+        if compareHandler {
+            iter(this.data, (item, _, _, _) -> {
+                if compareHandler(item, min) < 0 {
+                    min = item
+                }
+            })
+        } else {
+            iter(this.data, (item, _, _, _) -> {
+                if item < min {
+                    min = item
+                }
+            })
+        }
+        ret min
+    }
+
+    fun sum(plusHandler: funi[any, any][any] = null): any public {
+        if this.empty() {
+            ret null
+        }
+        var sum = null,
+            length: int = this.length
+        plusHandler = ops.orVal(plusHandler, this.plusHandler)
+        plusHandler = ops.orVal(plusHandler, (front, back) -> { ret front + back })
+        for ({var i = 0; i < length; i ++}) {
+            var item = (this.data)[i]
+            if i == 0 {
+                sum = item
+            } else {
+                sum = plusHandler(sum, item)
+            }
+        }
+        ret sum
+    }
+}
+
 export(
     size, copy, unpack, isEmpty, top, repStr, repList,
-    repeat, forInRange, join, joins, iter, listRemove,
-    dictRemove, iterRemove, dictKeys, dictValues,
-    iterContains
+    repeat, forInRange, join, joins, iter, listAppend,
+    listRemove, dictRemove, iterRemove, dictKeys, sort,
+    dictValues, iterContains,
+
+    Iterable, List
 )

@@ -2128,10 +2128,10 @@ namespace utils
         for (const auto& flag : flags_)
         {
             // 选项名称和别名
-            oss << std::string(optionIndent, ' ') << "['--" << flag.name;
+            oss << std::string(optionIndent, ' ') << "['" << flag.name;
             for (const auto& alias : flag.aliases)
             {
-                oss << "' | '--" << alias;
+                oss << "' | '-" << alias;
             }
             oss << "']\n";
 

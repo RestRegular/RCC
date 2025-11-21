@@ -555,8 +555,11 @@ namespace symbol {
 
     std::shared_ptr<utils::Object> LabelSymbol::copySelf() const
     {
-        return std::make_shared<LabelSymbol>(
+        const auto& ls = std::make_shared<LabelSymbol>(
             getPos(), getVal(), getRaVal(), getScopeLevel(), getLabelType());
+        ls->labelDesS = getLabelDesS();
+        ls->m_labelDesIS = m_labelDesIS;
+        return ls;
     }
 
     const char* LabelSymbol::ToString() const
@@ -888,12 +891,6 @@ namespace symbol {
     const LabelSymbol* TypeLabelSymbol::TransformToLSI() const
     {
         return LabelSymbol::TransformToLSI();
-    }
-
-    std::shared_ptr<utils::Object> TypeLabelSymbol::copySelf() const
-    {
-        return std::make_shared<TypeLabelSymbol>(
-            getPos(), getVal(), getScopeLevel(), getRaVal());
     }
 
     bool TypeLabelSymbol::Is(const SymbolType& tp) const
@@ -2444,7 +2441,15 @@ namespace symbol {
 
     bool ClassSymbol::hasMember(const std::string& name) const
     {
-        return members->contains(name) || staticMembers->contains(name);
+        if (members->contains(name) || staticMembers->contains(name))
+        {
+            return true;
+        }
+        if (const auto& bc = getDirectlyInheritedClassSymbol())
+        {
+            return bc->hasMember(name);
+        }
+        return false;
     }
 
     std::pair<std::shared_ptr<Symbol>, LifeCycleLabel> ClassSymbol::findMemberSymbol(const std::string& name) const
@@ -2456,6 +2461,10 @@ namespace symbol {
         if (const auto &staticMember = staticMembers->find(name))
         {
             return {staticMember, LifeCycleLabel::STATIC};
+        }
+        if (const auto& bc = getDirectlyInheritedClassSymbol())
+        {
+            return bc->findMemberSymbol(name);
         }
         return {nullptr, LifeCycleLabel::COUNT};
     }
@@ -2574,18 +2583,8 @@ namespace symbol {
 
     std::shared_ptr<utils::Object> ClassSymbol::copySelf() const
     {
-        std::vector<std::shared_ptr<ClassSymbol>> baseClasses_ = {};
-        for (const auto &bc: baseClasses)
-        {
-            baseClasses_.push_back(std::static_pointer_cast<ClassSymbol>(copySymbolPtr(bc)));
-        }
-        std::vector<std::shared_ptr<ClassSymbol>> deriveClasses_ = {};
-        for (const auto &dc: derivedClasses)
-        {
-            deriveClasses_.push_back(std::static_pointer_cast<ClassSymbol>(copySymbolPtr(dc)));
-        }
         return std::make_shared<ClassSymbol>(getPos(), getVal(), getRaVal(), labelMarkManager,
-            getScopeLevel(), baseClasses_, deriveClasses_,
+            getScopeLevel(), baseClasses, derivedClasses,
             constructors,
             staticMembers,
             collectionFinished, visitPermission);

@@ -140,7 +140,8 @@ namespace ast
 
     std::string VarID::_toVarID()
     {
-        return rccVarPrefixField + uniqueId();
+        return (CompileVisitor::__compile_option_compile_level__ < 2 ?
+        nameField + "_" : "") + rccVarPrefixField + uniqueId();
     }
 
     VarID::VarID(const std::string& name, const std::string& fileField, const std::string& scopeField,
@@ -193,7 +194,8 @@ namespace ast
 
     std::string SetID::_toSetID()
     {
-        return rccSetPrefixField + uniqueId();
+        return (CompileVisitor::__compile_option_compile_level__ < 2 ?
+        nameField + "_" : "") + rccSetPrefixField + uniqueId();
     }
 
     SetID::SetID(
@@ -488,9 +490,11 @@ namespace ast
 
     bool CompileVisitor::__symbol_flag__ = false;
 
-    bool CompileVisitor::_symbol_flag_export__ = false;
+    bool CompileVisitor::__symbol_flag_export__ = false;
 
     bool CompileVisitor::__compile_flag__ = false;
+
+    int CompileVisitor::__compile_option_compile_level__ = 0;
 
     // 辅助函数：获取符号的类型标签
     std::shared_ptr<TypeLabelSymbol> CompileVisitor::getTypeLabelFromSymbol(const std::shared_ptr<Symbol>& symbol)
@@ -552,7 +556,7 @@ namespace ast
 
     void CompileVisitor::processSymbolFlagOperation()
     {
-        if (__symbol_flag__ && !_symbol_flag_export__)
+        if (__symbol_flag__ && !__symbol_flag_export__)
         {
             std::string result;
             if (__symbol_option_format__ == OutputFormat::JSON)
@@ -647,14 +651,9 @@ namespace ast
         }
 
         // 处理null类型，通常null只能匹配引用类型或any
-        if (leftTypeSymbol->is("nul"))
+        if (leftTypeSymbol->is("nul") || rightTypeSymbol->is("nul"))
         {
-            // 假设引用类型以"*"结尾或有其他标识
-            return /* rightTypeSymbol->isReferenceType() || */ rightTypeSymbol->is("any");
-        }
-        if (rightTypeSymbol->is("nul"))
-        {
-            return /* leftTypeSymbol->isReferenceType() || */ leftTypeSymbol->is("any");
+            return true;
         }
 
         // // 检查类型继承关系（如果支持）
@@ -732,9 +731,9 @@ namespace ast
         return nullptr;
     }
 
-    std::string CompileVisitor::raVal(const OpItem& opItem) const
+    std::string CompileVisitor::raVal(const OpItem& opItem, const bool& needSearch) const
     {
-        return opItem.getRaVal(symbolTable);
+        return opItem.getRaVal(symbolTable, needSearch);
     }
 
     // 检查Symbol与OpItem是否类型匹配
@@ -2092,7 +2091,7 @@ namespace ast
                                                                });
                 }
                 functionSymbol->setScopeLevel(curScopeLevel());
-                symbolTable.insert(functionSymbol, false);
+                // symbolTable.insert(functionSymbol, false);
                 raCodeBuilder.enterScope();
                 functionSymbol->getDefinitionNode()->acceptVisitor(*this);
                 std::string methodCode{};
@@ -2427,20 +2426,22 @@ namespace ast
         node.getLeftNode()->acceptVisitor(*this);
         const auto& left = rPopOpItem();
         checkExists(left, node.getLeftNode()->getPos());
-        const auto& [leftTypeLabel, leftValueType] = getTypesFromOpItem(left);
-        const auto& leftType = leftValueType->equalWith(leftTypeLabel)
-                                   ? leftTypeLabel
-                                   : leftValueType->is("nul")
-                                   ? leftTypeLabel
-                                   : leftValueType;
+        const auto& [leftLabelType, leftValueType] = getTypesFromOpItem(left);
+        const auto& leftType =
+            leftLabelType && leftLabelType->equalWith(leftValueType) && leftLabelType->isNot("any")
+                ? leftLabelType
+                : leftValueType && leftValueType->is("nul")
+                ? leftLabelType
+                : leftValueType;
         node.getRightNode()->acceptVisitor(*this);
         const auto& right = rPopOpItem();
-        const auto& [rightTypeLabel, rightValueType] = getTypesFromOpItem(right);
-        const auto& rightType = rightValueType->equalWith(rightTypeLabel)
-                                    ? rightTypeLabel
-                                    : rightValueType->is("nul")
-                                    ? rightTypeLabel
-                                    : rightValueType;
+        const auto& [rightLabelType, rightValueType] = getTypesFromOpItem(right);
+        const auto& rightType =
+            rightLabelType && rightLabelType->equalWith(rightValueType) && rightLabelType->isNot("any")
+                ? rightLabelType
+                : rightValueType && rightValueType->is("nul")
+                ? rightLabelType
+                : rightValueType;
         std::shared_ptr<TypeLabelSymbol> resultValueType = nullptr;
         switch (node.getInfixType())
         {
@@ -2464,50 +2465,54 @@ namespace ast
                 {
                     resultValueType = TypeLabelSymbol::floatTypeSymbol(node.getPos(), symbolTable.curScopeLevel());
                 }
+                else if (leftType->is("list") || rightType->is("list"))
+                {
+                    resultValueType = TypeLabelSymbol::listTypeSymbol(node.getPos(), symbolTable.curScopeLevel());
+                }
                 else
                 {
                     throw RCCCompilerError::typeMissmatchError(node.getPos().toString(), getCodeLine(node.getPos()),
                                                                "This error is of type mismatch in addition operation operands",
                                                                getListFormatString({
                                                                    "(any, any)", "(str, str)", "(int, int)",
-                                                                   "(float | int, float | int)"
+                                                                   "(float | int, float | int)", "(list | any, any | list)"
                                                                }), "(" + leftType->getVal() + ", " + rightType->getVal()
                                                                + ")",
                                                                {});
                 }
                 pushTemOpVarItemWithRecord(node.getPos(), resultValueType);
-                raCodeBuilder << ri::ADD(raVal(left), raVal(right), topOpRaVal());
+                raCodeBuilder << ri::ADD(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::DIVIDE:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::DIV(raVal(left), raVal(right), topOpRaVal());
+                raCodeBuilder << ri::DIV(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::MINUS:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::OPP(raVal(right), topOpRaVal())
-                    << ri::ADD(raVal(left), topOpRaVal(), topOpRaVal());
+                raCodeBuilder << ri::OPP(raVal(right, true), topOpRaVal())
+                    << ri::ADD(raVal(left, true), topOpRaVal(), topOpRaVal());
             }
             break;
         case NodeType::MULTIPLY:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::MUL(raVal(left), raVal(right), topOpRaVal());
+                raCodeBuilder << ri::MUL(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::MODULO:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::MOD(raVal(left), raVal(right), topOpRaVal());
+                raCodeBuilder << ri::MOD(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::PAIR:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::PAIR_SET(raVal(left), raVal(right), topOpRaVal());
+                raCodeBuilder << ri::PAIR_SET(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::COMPARE:
@@ -2517,7 +2522,7 @@ namespace ast
                 if (const auto& it = RELATION_MAP.find(node.getOpToken().getValue());
                     it != RELATION_MAP.end())
                 {
-                    raCodeBuilder << ri::CMP(raVal(left), raVal(right), topOpRaVal())
+                    raCodeBuilder << ri::CMP(raVal(left, true), raVal(right, true), topOpRaVal())
                         << ri::CREL(topOpRaVal(), it->second, topOpRaVal());
                 }
                 else
@@ -2536,29 +2541,29 @@ namespace ast
                 if (node.getOpToken().getValue() == "+=")
                 {
                     raCodeBuilder
-                        << ri::ADD(raVal(left), raVal(right), raVal(left));
+                        << ri::ADD(raVal(left, true), raVal(right, true), raVal(left, true));
                 }
                 else if (node.getOpToken().getValue() == "-=")
                 {
                     pushTemOpVarItemWithRecord(node.getPos(), rightValueType, right.getReferencedSymbol());
                     raCodeBuilder
-                        << ri::OPP(raVal(right), topOpRaVal())
-                        << ri::ADD(raVal(left), rPopOpItemRaVal(), raVal(left));
+                        << ri::OPP(raVal(right, true), topOpRaVal())
+                        << ri::ADD(raVal(left, true), rPopOpItemRaVal(), raVal(left, true));
                 }
                 else if (node.getOpToken().getValue() == "*=")
                 {
                     raCodeBuilder
-                        << ri::MUL(raVal(left), raVal(right), raVal(left));
+                        << ri::MUL(raVal(left, true), raVal(right, true), raVal(left, true));
                 }
                 else if (node.getOpToken().getValue() == "/=")
                 {
                     raCodeBuilder
-                        << ri::DIV(raVal(left), raVal(right), raVal(left));
+                        << ri::DIV(raVal(left, true), raVal(right, true), raVal(left, true));
                 }
                 else if (node.getOpToken().getValue() == "%=")
                 {
                     raCodeBuilder
-                        << ri::MOD(raVal(left), raVal(right), raVal(left));
+                        << ri::MOD(raVal(left, true), raVal(right, true), raVal(left, true));
                 }
             }
             break;
@@ -2580,7 +2585,7 @@ namespace ast
                                                                       ? std::static_pointer_cast<ClassSymbol>(
                                                                           leftReferencedSymbol)
                                                                       : TypeLabelSymbol::getCustomClassSymbol(
-                                                                          leftTypeLabel->getRaVal());
+                                                                          leftType->getRaVal());
                 if (const auto& [memberSymbol, label] = classSymbol->findMemberSymbolInPermission(right.getVal());
                     memberSymbol)
                 {
@@ -2647,7 +2652,7 @@ namespace ast
                     }
                     raCodeBuilder
                         << ri::ALLOT({attrSymbol->getRaVal()})
-                        << ri::TP_GET_FIELD(raVal(left), "\"" + StringManager::escape(memberSymbol->getRaVal()) + "\"",
+                        << ri::TP_GET_FIELD(raVal(left, true), "\"" + StringManager::escape(memberSymbol->getRaVal()) + "\"",
                                             topOpRaVal());
                 }
                 else
@@ -2688,7 +2693,7 @@ namespace ast
             pushTemOpVarItemWithRecord(node.getPos(), TypeLabelSymbol::boolTypeSymbol(node.getPos(), curScopeLevel()),
                 nullptr, true, nullptr);
             raCodeBuilder
-            << ri::OPP(raVal(resultOpItem), topOpRaVal());
+            << ri::OPP(raVal(resultOpItem, true), topOpRaVal());
             return;
         }
         pass("To visit " + getNodeTypeName(node.getRealType()) + " type node.");
@@ -2975,8 +2980,8 @@ namespace ast
                 }
                 if (classSymbol && classSymbol->hasCollectionFinished())
                 {
-                    const auto& [fst, snd] = symbolTable.findByName(funcNameOpItem.getVal());
-                    if (fst < 0 || snd->getType() != SymbolType::FUNCTION)
+                    const auto& [fst, snd] = classSymbol->findMemberSymbol(funcNameOpItem.getVal());
+                    if (!fst || snd == LifeCycleLabel::COUNT)
                     {
                         throw RCCCompilerError::symbolNotFoundError(node.getPos().toString(),
                                                                     getCodeLine(node.getPos()),
@@ -3005,7 +3010,7 @@ namespace ast
                                                                         "Please ensure that the class member attributes being called have indeed been defined."
                                                                     });
                     }
-                    functionSymbol = std::static_pointer_cast<FunctionSymbol>(snd);
+                    functionSymbol = std::static_pointer_cast<FunctionSymbol>(fst);
                 }
             }
         }
@@ -3029,8 +3034,8 @@ namespace ast
         }
         pushNewProcessingSymbol(functionSymbol);
         raCodeBuilder << (functionSymbol->hasReturnValue()
-                              ? ri::FUNI(funcNameOpItem.getRaVal(symbolTable), paramIdents).toRACode()
-                              : ri::FUNC(funcNameOpItem.getRaVal(symbolTable), paramIdents).toRACode());
+                              ? ri::FUNI(functionSymbol->getRaVal(), paramIdents).toRACode()
+                              : ri::FUNC(functionSymbol->getRaVal(), paramIdents).toRACode());
         node.getBodyNode()->acceptVisitor(*this);
         if (!functionSymbol->is(TypeOfBuiltin::BUILTIN) &&
             functionSymbol->hasReturnValue() && !functionSymbol->hasReturned())
@@ -3050,7 +3055,7 @@ namespace ast
             }
             raCodeBuilder << ri::RET("null");
         }
-        raCodeBuilder << ri::END(funcNameOpItem.getRaVal(symbolTable));
+        raCodeBuilder << ri::END(functionSymbol->getRaVal());
         exitScope(ScopeType::FUNCTION);
         popProcessingSymbol();
     }
@@ -3324,6 +3329,7 @@ namespace ast
         {
             node.getReturnNode()->acceptVisitor(*this);
             const auto& returnVal = rPopOpItem();
+            checkExists(returnVal);
             if (!checkTypeMatch(funcSymbol->getReturnType(), returnVal))
             {
                 throw RCCCompilerError::typeMissmatchError(
@@ -3411,7 +3417,7 @@ namespace ast
             return funcSymbol;
         };
         functionSymbol = createFunctionSymbol(FunctionType::ANONYMOUS);
-        symbolTable.insert(functionSymbol, true);
+        symbolTable.insert(functionSymbol, false);
         if (!functionSymbol->getReturnType())
         {
             functionSymbol->setReturnType(getBuiltinTypeSymbol(functionSymbol->getPos(), BuiltinType::B_ANY));
