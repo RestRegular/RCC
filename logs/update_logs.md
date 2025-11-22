@@ -51,15 +51,25 @@
 |       **`v1.13.6`**       | 2025-11-01 |                        重构了内置扩展的相关函数实现                        |                **[Refactor]**                | RestRegular |
 |       **`v1.13.7`**       | 2025-11-02 |                        修复未检查符号存在性的问题                         |                 **[BugFix]**                 | RestRegular |
 |       **`v1.13.8`**       | 2025-11-02 |                           优化了帮助信息                            |                **[Optimize]**                | RestRegular |
-| **`v1.14.0`** | 2025-11-05 | 优化了命令行参数解析，新增了获取符号信息功能 | **[Refactor] [Feature]** | RestRegular |
-| **`v1.15.0`** | 2025-11-21 | 新增内置扩展函数、优化完善编译相关功能。 | **[Feature] [Optimize]** | RestRegular |
-| **`v1.16.0`** | 2025-11-21 | 完善内置扩展和函数，修复符号循环备份错误 | **[BugFix] [Feature] [Optimize]** | RestRegular |
+|       **`v1.14.0`**       | 2025-11-05 |                    优化了命令行参数解析，新增了获取符号信息功能                    |           **[Refactor] [Feature]**           | RestRegular |
+|       **`v1.15.0`**       | 2025-11-21 |                     新增内置扩展函数、优化完善编译相关功能。                     |           **[Feature] [Optimize]**           | RestRegular |
+|       **`v1.16.0`**       | 2025-11-21 |                     完善内置扩展和函数，修复符号循环备份错误                     |      **[BugFix] [Feature] [Optimize]**       | RestRegular |
+| **`v1.17.0`** | 2025-11-23 | 新增 `series` 类型字面量解析功能并修复嵌套列表相关错误 | **[Feature] [BugFix]** | RestRegular |
 <!-- Add Version Overview -->
 
 ---
 ## 详细日志
 
 <!-- Add Version Details -->
+
+---
+### 版本号 `v1.17.0` (2025-11-23)
+- **类型**：**[Feature] [BugFix]**
+- **作者**：RestRegular
+- **更新时间**：2025/11/23 00:19
+- **更新内容**：
+  - 新增 `series` 字面量解析功能。
+  - 修复了嵌套列表情况下，第一个元素为列表出现解析错误的问题。
 
 ---
 ### 版本号 `v1.16.0` (2025-11-21)

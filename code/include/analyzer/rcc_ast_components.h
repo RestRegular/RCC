@@ -69,7 +69,7 @@ namespace ast {
         StatementNode(Token mainToken, const NodeType type): Node(std::move(mainToken), type) {};
     };
 
-    class ExpressionStatementNode: public StatementNode {
+    class ExpressionStatementNode final : public StatementNode {
         std::shared_ptr<ExpressionNode> expression;
     public:
         ExpressionStatementNode();

@@ -292,11 +292,9 @@ namespace parser {
             std::vector<std::shared_ptr<LabelNode>> labels{};
             if (nextTokenIs(TokenType::TOKEN_COLON)) {
                 next();
-                if (nextTokenIs(TokenType::TOKEN_LABEL)){
-                    /* FixMe: It is necessary to check here whether it is a custom type.
-                    || nextTokenIs(TokenType::TOKEN_IDENTIFIER) */
+                if (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)){
                     const auto &colonToken = std::make_shared<Token>(currentToken());
-                    while (nextTokenIs(TokenType::TOKEN_LABEL)) {
+                    while (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)) {
                         next();
                         labels.push_back(std::make_shared<LabelNode>(currentToken()));
                     }
@@ -454,7 +452,7 @@ namespace parser {
         ExpressionNodePtr bodyNode = nullptr;
         if (!currentTokenIs(TokenType::TOKEN_RBRACKET))
         {
-            bodyNode = buildExpression(currentTokenPrecedence());
+            bodyNode = buildExpression(Precedence::LOWEST);
             next();
         }
         skipCurrentNewLineToken();

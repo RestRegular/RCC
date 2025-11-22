@@ -475,7 +475,7 @@ namespace symbol {
             std::vector<rjson::RJValue> values;
             values.reserve(container.size());
             for (const auto& item : container) {
-                values.emplace_back(rjson::RJType::RJ_OBJECT, item->toJsonString());
+                values.emplace_back(rjson::rj::strRJV(item->toString()));
             }
             return values;
         }

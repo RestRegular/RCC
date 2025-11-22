@@ -1,19 +1,17 @@
 {
   "validate": true,
   "version": {
-    "vs_desc": "完善内置扩展和函数，修复符号循环备份错误",
+    "vs_desc": "新增 `series` 类型字面量解析功能并修复嵌套列表相关错误",
     "change_type": [
-      "fix",
       "feat",
-      "opt"
+      "fix"
     ]
   },
   "update_log": {
     "author": "RestRegular",
     "log_contents": [
-      "完善了 `ds` 内置扩展中的 `List` 类并新增 `listAppend` 内置函数。",
-      "新增了 `ops` 内置扩展。",
-      "修复了自定义类型的标签符号在备份副本时与基类和派生类互相循环备份的错误。"
+      "新增 `series` 字面量解析功能。",
+      "修复了嵌套列表情况下，第一个元素为列表出现解析错误的问题。"
     ]
   },
   "annotation": {

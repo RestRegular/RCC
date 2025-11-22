@@ -47,7 +47,10 @@ namespace ast
         B_FUNC, // 空返回函数类型
         B_FUNI, // 实返回函数类型
         B_CLAS, // 自定义类类型
+        B_SERIES, // 数列类型
     };
+
+    std::string builtinTypeToString(const BuiltinType& type);
 
     class OpItem;
 

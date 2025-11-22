@@ -335,6 +335,7 @@ namespace ast
         [[nodiscard]] std::string rPopOpItemRaVal(); // 弹出并返回操作数RA值
         [[nodiscard]] std::string rPopOpItemVal(); // 弹出并返回操作数原始值
         [[nodiscard]] bool hasNextOpItem() const; // 检查是否有下一个操作数
+        void clearOpItemStack(); // 清空操作项栈
 
         // 临时变量/集合生成
         [[nodiscard]] static std::string getNewTempVarName(); // 获取新临时变量名

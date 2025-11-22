@@ -1401,6 +1401,11 @@ namespace ast
         return !opItemStack.empty();
     }
 
+    void CompileVisitor::clearOpItemStack()
+    {
+        while (hasNextOpItem()) popOpItem();
+    }
+
     CompileVisitor::CompileVisitor(
         const std::string& programEntryFilePath,
         const std::string& programTargetFilePath,
@@ -1482,6 +1487,29 @@ namespace ast
         case ScopeType::FUNCTION: return "function";
         case ScopeType::LOOP: return "loop";
         case ScopeType::CONDITION: return "condition";
+        default: return "unknown";
+        }
+    }
+
+    std::string builtinTypeToString(const BuiltinType& type)
+    {
+        switch (type)
+        {
+        case BuiltinType::B_ANY: return "tp-any";
+        case BuiltinType::B_BOOL: return "tp-bool";
+        case BuiltinType::B_CHAR: return "tp-char";
+        case BuiltinType::B_DICT: return "tp-dict";
+        case BuiltinType::B_FLOAT: return "tp-float";
+        case BuiltinType::B_INT: return "tp-int";
+        case BuiltinType::B_LIST: return "tp-list";
+        case BuiltinType::B_STR: return "tp-str";
+        case BuiltinType::B_VOID: return "tp-void";
+        case BuiltinType::B_NUL: return "tp-null";
+        case BuiltinType::B_FLAG: return "tp-flag";
+        case BuiltinType::B_FUNC: return "tp-func";
+        case BuiltinType::B_FUNI: return "tp-funi";
+        case BuiltinType::B_CLAS: return "tp-class";
+        case BuiltinType::B_SERIES: return "tp-series";
         default: return "unknown";
         }
     }
@@ -2389,6 +2417,7 @@ namespace ast
                 pushProcessingPos(errorPos);
                 statement->acceptVisitor(*this);
                 popProcessingPos();
+                clearOpItemStack();
             }
             processSymbolFlagOperation();
             exitScope(ScopeType::PROGRAM);
@@ -2704,7 +2733,7 @@ namespace ast
         pushProcessingPos(node.getPos());
         annotatePos(node.getPos());
         node.getExpression()->acceptVisitor(*this);
-        while (hasNextOpItem()) popOpItem();
+        clearOpItemStack();
         popProcessingPos();
     }
 
@@ -2738,7 +2767,32 @@ namespace ast
 
     void CompileVisitor::visitParenRangerNode(ParenRangerNode& node)
     {
-        node.getRangerNode()->acceptVisitor(*this);
+        if (node.getRangerNode()->getRealType() == NodeType::PARALLEL)
+        {
+            // series ×ÖÃæÁ¿
+            const auto& seriesNode = std::static_pointer_cast<InfixExpressionNode>(node.getRangerNode());
+            std::vector<std::string> itemIds {};
+            for (const auto& seriesItems = visitParallelNode(seriesNode);
+                const auto& item: seriesItems)
+            {
+                item->acceptVisitor(*this);
+                const auto& opItem = rPopOpItem();
+                checkExists(opItem);
+                itemIds.push_back(raVal(opItem));
+            }
+            const auto& pos = node.getPos();
+            pushTemOpVarItemWithRecord(pos, TypeLabelSymbol::seriesTypeSymbol(pos, curScopeLevel()),
+                nullptr, true);
+            const auto& tempOpItemRaVal = topOpRaVal();
+            raCodeBuilder
+            << ri::TP_SET(builtinTypeToString(BuiltinType::B_SERIES), tempOpItemRaVal)
+            << (itemIds.empty()
+            ? ri::ANNOTATION("Empty series is no need to used `ITER_APND` RI to set value.").toRACode()
+            : ri::ITER_APND(itemIds, tempOpItemRaVal).toRACode());
+        } else
+        {
+            node.getRangerNode()->acceptVisitor(*this);
+        }
     }
 
     void CompileVisitor::visitBlockRangerNode(BlockRangerNode& node)
@@ -3071,6 +3125,9 @@ namespace ast
         {
             // TODO
             pass("Process index expression type label node.");
+        } else if (labelNode->getRealType() == NodeType::IDENTIFIER)
+        {
+            desLabelNodes.push_back(std::make_shared<LabelNode>(labelNode->getMainToken()));
         }
     }
 
@@ -3268,7 +3325,7 @@ namespace ast
             funcSymbol->setBuiltInType(TypeOfBuiltin::BUILTIN);
         }
         raCodeBuilder
-            << ri::PASS("The implementation is encapsulated.");
+            << ri::ANNOTATION("The implementation is encapsulated.");
     }
 
     void CompileVisitor::visitReturnExpressionNode(ReturnExpressionNode& node)
@@ -3451,10 +3508,7 @@ namespace ast
         exitScope(ScopeType::ANONYMOUS);
         popProcessingSymbol();
         pushTemOpVarItemWithRecord(node.getPos(),
-                                   getBuiltinTypeSymbol(getUnknownPos(),
-                                                        functionSymbol->hasReturnValue()
-                                                            ? BuiltinType::B_FUNI
-                                                            : BuiltinType::B_FUNC),
+                                   functionSymbol->getSignature(),
                                    functionSymbol, true);
         raCodeBuilder << ri::PUT(functionSymbol->getRaVal(), topOpRaVal());
     }
@@ -3608,6 +3662,10 @@ namespace ast
 
     void CompileVisitor::visitVariableDefinitionNode(VariableDefinitionNode& node)
     {
+        interruptWhen(node.getId() == 1170, []
+        {
+            pass();
+        });
         std::vector<OpItem> varIDs{};
         std::vector<std::string> vids{};
         std::vector<std::optional<OpItem>> values{};
@@ -3677,7 +3735,7 @@ namespace ast
                             "Processing value: " + value.toString()
                         },
                         symbol->getTypeLabel()->toString(),
-                        value.getTypeLabel()->toString(),
+                        getDefiniteTypeLabelSymbolFromOpItem(value)->toString(),
                         {
                             "Change the value to match the variable type: " + symbol->getTypeLabel()->toString(),
                             "Or modify the variable declaration to match the value type: " + value.getTypeLabel()->
@@ -3733,7 +3791,7 @@ namespace ast
                         "Processing value: " + valueItem.toString()
                     },
                     identSymbol->getTypeLabel()->toString(),
-                    valueItem.getTypeLabel()->toString(),
+                    getDefiniteTypeLabelSymbolFromOpItem(valueItem)->toString(),
                     {
                         "Change the value to match the variable type: " + identSymbol->getTypeLabel()->toString(),
                         "Or modify the variable declaration to match the value type: " + valueItem.getTypeLabel()->

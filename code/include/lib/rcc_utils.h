@@ -46,6 +46,7 @@ namespace utils {
         [[nodiscard]] virtual std::shared_ptr<Object> copySelf() const;
         const IRCCObjectInterface* CopySelf() override;
         const Object* Transform() const override;
+        [[nodiscard]] virtual size_t getId() const;
     };
 
     struct Number;

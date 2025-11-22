@@ -136,6 +136,11 @@ namespace utils
         return this;
     }
 
+    size_t Object::getId() const
+    {
+        return id;
+    }
+
     const auto& program_start_time = std::chrono::high_resolution_clock::now();
 
     // 序列化 ArgType 到二进制文件
@@ -2674,7 +2679,8 @@ namespace utils
 
     std::string makeFileIdentStr(const std::string& content, const bool& isExtension)
     {
-        const auto& ident = isExtension ? content : getFileFromPath(content);
+        const auto& fileName = getFileFromPath(content);
+        const auto& ident = isExtension ? content : fileName;
         return getObjectFormatString(isExtension ? "Extension" : "File", ident);
     }
 

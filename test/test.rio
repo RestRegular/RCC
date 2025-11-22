@@ -1,32 +1,51 @@
-import(io="io", ds="ds", rd="random", nr="newrcc")
+import(io="io", ds="ds", rd="random")
 
 var List: clas = ds.List
 
-fun makeRandomIntList(): List {
+fun makeRandomIntList(elemNum: int = 10, range: list = [0, 150]): List {
     var li: List = List()
-    ds.repeat(10, (_) -> {
-        li.append(rd.randomInt(0, 100))
+    ds.repeat(elemNum, (_) -> {
+        li.append(rd.randomInt(range[0], range[1]))
     })
     ret li
 }
 
 fun main(): void {
-    var li = List()
-    for ({var i = 0; i < 10; i ++}) {
-        li.append(makeRandomIntList())
-    }
+    var li: List = makeRandomIntList(20, [0, 100])
+    io.sout(li.sort().get())
+    io.sout(li \
+        .filter((item: int): bool -> { ret item > 5 }) \
+        .mapper((item: int): int -> { ret item - 5 }) \
+        .get())
+    io.sout(li.find((item, index, _) -> {
+        ret item > 5 && index < 10
+    }))
+    io.sout(li.at(5))
+    io.sout(li.unique().get())
+    io.sout(li.at(-2))
+    io.sout(li.slice(-5, 5).get())
+    io.sout(li.reversed().get())
+    io.sout(li.reverse().at(-2))
+    io.sout(li.sum())
+    io.sout(li.reduce((sum: int, x: int): int -> { ret sum * x }, 1))
 
-    io.sout(nr.ctext("li: ", nr.TextColor.BLUE), li.map((item: List): list -> {
-        ret item.get()
-    }).toStr())
-
-    var maxList: List = li.max((a: List, b: List): int -> {
-        ret a.sum() - b.sum()
+    var a: list = [[1], [2], [3]]
+    ds.iter(a, (item, _, _, _) -> {
+        item += rd.randomInt(0, 10)
     })
-
-    io.sout(nr.ctext("max of li: ", nr.TextColor.YELLOW), maxList.get(),
-        nr.ctext(" sum of this: ", nr.TextColor.CYAN), maxList.sum())
-    io.sout(nr.ctext("max of max of li: ", nr.TextColor.RED), maxList.max())
+    io.sout(a)
 }
 
 main()
+
+// fun sout(*args, end="\n"): void {
+//     encapsulated
+// }
+//
+// fun setType(arg, type: str): void {
+//     encapsulated
+// }
+//
+// var a: series = (1, 2, 3)
+// setType(a, "str")
+// sout(a)

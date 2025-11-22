@@ -125,7 +125,7 @@ fun repList(arg, times: int): list {
      */
     var result: list = []
     for ({var i: int = 0; i < times; i++}) {
-        result += i
+        result += [arg]
     }
     ret result
 }
@@ -134,7 +134,7 @@ fun repeat(times: int, handler: funi[int][any]): void {
     /*
      * Executes a handler function repeatedly for a specified number of times.
      *
-     * The handler function receives three parameters:
+     * The handler function receives one parameter:
      * - current iteration index
      *
      * @param times: The number of times to execute the handler
@@ -159,6 +159,7 @@ fun forInRange(start: int, end: int, handler: funi[int, bool, bool][any],
      * @param handler: Callback function with signature (value: int, isFirst: bool,
      *                 isLast: bool): any
      * @param sep: Step size between iterations (cannot be 0)
+     * @throws: ValueError if step size is zero
      */
     if sep == 0 {
         fun sout(*args, end="\n"): void {
@@ -183,28 +184,30 @@ fun forInRange(start: int, end: int, handler: funi[int, bool, bool][any],
 }
 
 fun iter(iterData, handler: funi[any, int, int, .*][any],
-         reverse: bool = false): void {
+         reverse: bool = false): bool {
     /*
      * Iterates through iterable data and applies handler to each item.
      *
      * Processes each element in the iterable data structure by calling
      * the handler function with the current element, its index, and
-     * the total length of the iterable.
+     * the total length of the iterable. The handler also receives named
+     * parameters isStart and isEnd.
      *
-     * @param iterData: any: The iterable data structure to process
-     * @param handler: funi[any, int, int, .*][any]: Callback function
-     *                 The processing function for each element,
-     *                 return false to stop iteration.
-     * @param reverse: bool: If true, iterates in reverse order. Default:
-     *                 false (forward iteration)
+     * @param iterData: The iterable data structure to process
+     * @param handler: Callback function with signature (item: any, index: int,
+     *                 length: int, ...): any. Return false to stop iteration.
+     * @param reverse: If true, iterates in reverse order. Default: false (forward iteration)
+     * @return: True if iteration completed, false if stopped early
      * @throws: TypeError if iterData is not iterable
      */
+    var res = true, iterLength: int
     if dt.isIter(iterData) {
-        var iterLength: int = size(iterData)
+        iterLength = size(iterData)
         if (reverse) {
             for ({var i = iterLength - 1; i >= 0; i--}) {
                 if handler(iterData[i], i, iterLength, isStart=i == iterLength - 1,
                     isEnd=i == 0) == false {
+                    res = false
                     break
                 }
             }
@@ -212,11 +215,13 @@ fun iter(iterData, handler: funi[any, int, int, .*][any],
             for ({var i = 0; i < iterLength; i++}) {
                 if handler(iterData[i], i, iterLength, isStart=i == 0,
                     isEnd=i == iterLength - 1) == false {
+                    res = false
                     break
                 }
             }
         }
     }
+    ret res
 }
 
 fun join(iterData, sep: str = ""): str {
@@ -227,7 +232,7 @@ fun join(iterData, sep: str = ""): str {
      * a string, with the specified separator between each element.
      *
      * @param iterData: The iterable containing elements to join
-     * @param sep: The separator string to place between elements
+     * @param sep: The separator string to place between elements. Default: ""
      * @return: String containing all joined elements
      * @throws: TypeError if iterData is not iterable
      */
@@ -250,13 +255,22 @@ fun joins(*args, sep: str = ""): str {
      * accepts variable arguments rather than a single iterable.
      *
      * @param args: Variable number of arguments to join
-     * @param sep: The separator string to place between arguments
+     * @param sep: The separator string to place between arguments. Default: ""
      * @return: String containing all joined arguments
      */
     ret join(args, sep)
 }
 
 fun listAppend(listData, item): void {
+    /*
+     * Appends an item to the end of a list.
+     *
+     * Modifies the original list by adding the specified item to the end.
+     *
+     * @param listData: The list to modify
+     * @param item: The item to append to the list
+     * @throws: TypeError if listData is not a list
+     */
     encapsulated
 }
 
@@ -265,9 +279,8 @@ fun listRemove(listData, index: int): void {
      * Removes an element from a list by its index.
      *
      * Modifies the original list by removing the element at the
-     * specified index.
-     * The list will be re-indexed after removal, so subsequent
-     * elements will shift left.
+     * specified index. The list will be re-indexed after removal,
+     * so subsequent elements will shift left.
      *
      * @param listData: The list to modify
      * @param index: The position of the element to remove (0-based)
@@ -282,8 +295,8 @@ fun dictRemove(dictData: dict, key): void {
      * Removes a key-value pair from a dictionary by its key.
      *
      * Modifies the original dictionary by removing the entry associated
-     * with the specified key.
-     * No error is thrown if the key does not exist in the dictionary.
+     * with the specified key. No error is thrown if the key does not exist
+     * in the dictionary.
      *
      * @param dictData: The dictionary to modify
      * @param key: The key of the entry to remove
@@ -328,9 +341,8 @@ fun dictKeys(dictData: dict): list {
      * Retrieves a list of all keys from a dictionary.
      *
      * Extracts and returns a list containing all keys from the input
-     * dictionary.
-     * The order of keys in the list matches their internal storage
-     * order in the dictionary.
+     * dictionary. The order of keys in the list matches their internal
+     * storage order in the dictionary.
      *
      * @param dictData: The dictionary to extract keys from
      * @return: A list containing all keys of the dictionary
@@ -344,9 +356,8 @@ fun dictValues(dictData: dict): list {
      * Retrieves a list of all values from a dictionary.
      *
      * Extracts and returns a list containing all values from the input
-     * dictionary.
-     * The order of values in the list matches the storage order of their
-     * corresponding keys in the dictionary.
+     * dictionary. The order of values in the list matches the storage
+     * order of their corresponding keys in the dictionary.
      *
      * @param dictData: The dictionary to extract values from
      * @return: A list containing all values of the dictionary
@@ -360,9 +371,8 @@ fun iterContains(iterData, checkItem): bool {
      * Checks if an iterable data structure contains a specified item.
      *
      * Iterates through the iterable data structure to determine if the target
-     * item exists.
-     * For dictionaries, it checks for the existence of the item as a key; for
-     * other iterables (lists, arrays, strings, etc.),
+     * item exists. For dictionaries, it checks for the existence of the item
+     * as a key; for other iterables (lists, arrays, strings, etc.),
      * it checks for the existence of the item as an element.
      *
      * @param iterData: The iterable data structure to check
@@ -380,6 +390,16 @@ fun iterContains(iterData, checkItem): bool {
 }
 
 fun sort(numList: list, reverse: bool = false): list {
+    /*
+     * Sorts a list using quicksort algorithm.
+     *
+     * Creates a new sorted list from the input list. By default, sorts in
+     * ascending order. If reverse is true, sorts in descending order.
+     *
+     * @param numList: The list to sort
+     * @param reverse: If true, sorts in descending order. Default: false (ascending)
+     * @return: A new sorted list
+     */
     var quickSort: funi[list, bool][list] = (arr: list, reverse: bool): list -> {
         if size(arr) <= 1 {
             ret arr
@@ -402,50 +422,115 @@ fun sort(numList: list, reverse: bool = false): list {
 }
 
 class Iterable {
+    /*
+     * Abstract base class for iterable data structures.
+     *
+     * Provides a common interface for different types of iterable
+     * data structures. Defines virtual methods that must be implemented
+     * by subclasses.
+     */
     ctor () {
+        /*
+         * Constructor for the Iterable class.
+         * Initializes the base iterable object.
+         */
         pass
     }
 
     fun size(): int public virtual {
+        /*
+         * Virtual method to get the size of the iterable.
+         *
+         * Must be implemented by subclasses.
+         *
+         * @return: The number of elements in the iterable
+         */
         ret null
     }
 
     fun get(): any public virtual {
+        /*
+         * Virtual method to get the underlying data.
+         *
+         * Must be implemented by subclasses.
+         *
+         * @return: The underlying data structure
+         */
         ret null
     }
 
     fun toStr(): str public virtual {
+        /*
+         * Virtual method to convert the iterable to a string representation.
+         *
+         * Must be implemented by subclasses.
+         *
+         * @return: String representation of the iterable
+         */
         ret null
     }
 
     fun empty(): bool public {
+        /*
+         * Checks if the iterable is empty.
+         *
+         * @return: True if the iterable has no elements, false otherwise
+         */
         ret this.size() == 0
     }
 }
 
 class List: Iterable {
+    /*
+     * Enhanced list class that extends the Iterable base class.
+     *
+     * Provides additional functionality for working with lists,
+     * including sorting, mapping, filtering, reducing, and various utility methods.
+     */
     var data: list private,
         length: int private,
         compareHandler: funi[any, any][int] private = null,
         plusHandler: funi[any, any][any] private = null
 
     ctor () {
+        /*
+         * Default constructor for the List class.
+         * Creates an empty list with initial length 0.
+         */
         super()
         this.data = []
         this.length = 0
     }
 
     ctor (data: list) {
+        /*
+         * Constructor for the List class with initial data.
+         *
+         * @param data: Initial list data to populate the List object
+         */
         super()
         this.data = data
         this.length = size(data)
     }
 
     fun get(): list public overwrite {
+        /*
+         * Gets the underlying list data.
+         *
+         * @return: The underlying list data structure
+         */
         ret this.data
     }
 
-    fun sort(sortHandler: funi[any, any][int] = null, reverse: bool = false): void public {
+    fun sort(sortHandler: funi[any, any][int] = null, reverse: bool = false): List public {
+        /*
+         * Sorts the list in place using either a custom sort handler or default comparison.
+         *
+         * @param sortHandler: Optional custom comparison function with signature (a: any, b: any): int
+         *                     Returns negative if a < b, 0 if a == b, positive if a > b
+         * @param reverse: If true, sorts in descending order. Default: false (ascending)
+         * @return: The modified List object
+         */
         sortHandler = ops.orVal(sortHandler, this.compareHandler)
         if sortHandler == null {
             this.data = sort(this.data, reverse)
@@ -472,46 +557,139 @@ class List: Iterable {
                 }
             this.data = quickSort(this.data, reverse)
         }
+        ret this
     }
 
     fun append(item): List {
+        /*
+         * Appends an item to the end of the list.
+         *
+         * Modifies the list in place and returns the modified List object
+         * for method chaining.
+         *
+         * @param item: The item to append
+         * @return: The modified List object
+         */
         listAppend(this.data, item)
         this.length += 1
         ret this
     }
 
     fun remove(index: int): List {
+        /*
+         * Removes an element from the list by its index.
+         *
+         * Modifies the list in place and returns the modified List object
+         * for method chaining.
+         *
+         * @param index: The 0-based index of the element to remove
+         * @return: The modified List object
+         */
         iterRemove(this.data, index)
         this.length -= 1
         ret this
     }
 
     fun size(): int public overwrite {
+        /*
+         * Gets the size of the list.
+         *
+         * @return: The number of elements in the list
+         */
         ret this.length
     }
 
     fun toStr(): str public overwrite {
+        /*
+         * Gets the string representation of the list.
+         *
+         * @return: String representation of the list
+         */
         ret "" + this.data
     }
 
-    fun map(mapper: funi[any][any]): List {
+    fun mapper(handler: funi[any][any]): List {
+        /*
+         * Creates a new List by applying a transformation function to each element.
+         *
+         * @param handler: Transformation function with signature (item: any): any
+         * @return: A new List containing the transformed elements
+         */
         var newList: List = List()
         iter(this.data, (item, _, _, _) -> {
-            newList.append(mapper(copy(item)))
+            newList.append(handler(copy(item)))
+        })
+        ret newList
+    }
+
+    fun filter(handler: funi[any][bool]): List {
+        /*
+         * Filters the list based on a handler function.
+         *
+         * @param handler: A function that takes an element and returns true or false
+         * @return: A new List containing elements for which the handler returns true
+         */
+        var newList: List = List()
+        iter(this.data, (item, _, _, _) -> {
+            var copiedItem = copy(item)
+            if handler(copiedItem) {
+                newList.append(copiedItem)
+            }
         })
         ret newList
     }
 
     fun toFmtStr(transHandler: funi[any][any]): str {
-        ret this.map(transHandler).toStr()
+        /*
+         * Creates a formatted string representation by applying a transformation
+         * function to each element before converting to string.
+         *
+         * @param transHandler: Transformation function with signature (item: any): any
+         * @return: Formatted string representation of the list
+         */
+        ret this.mapper(transHandler).toStr()
+    }
+
+    fun contains(item): bool public {
+        /*
+         * Checks if the list contains a specific item.
+         *
+         * @param item: The item to check for
+         * @return: True if the item exists in the list, false otherwise
+         */
+        ret iterContains(this.data, item)
     }
 
     fun setCompareHandler(handler: funi[any, any][int]): List {
+        /*
+         * Sets a custom comparison handler for sorting operations.
+         *
+         * @param handler: Comparison function with signature (a: any, b: any): int
+         * @return: The List object for method chaining
+         */
         this.compareHandler = handler
         ret this
     }
 
+    fun setPlusHandler(handler: funi[any, any][any]): List {
+        /*
+         * Sets a custom addition handler for sum operations.
+         *
+         * @param handler: Addition function with signature (a: any, b: any): any
+         * @return: The List object for method chaining
+         */
+        this.plusHandler = handler
+        ret this
+    }
+
     fun max(compareHandler: funi[any, any][int] = null): any public {
+        /*
+         * Finds the maximum element in the list.
+         *
+         * @param compareHandler: Optional custom comparison function with signature (a: any, b: any): int
+         *                        If not provided, uses default comparison
+         * @return: The maximum element in the list, or null if the list is empty
+         */
         if this.empty() {
             ret null
         }
@@ -534,6 +712,13 @@ class List: Iterable {
     }
 
     fun min(compareHandler: funi[any, any][int] = null): any public {
+        /*
+         * Finds the minimum element in the list.
+         *
+         * @param compareHandler: Optional custom comparison function with signature (a: any, b: any): int
+         *                        If not provided, uses default comparison
+         * @return: The minimum element in the list, or null if the list is empty
+         */
         if this.empty() {
             ret null
         }
@@ -556,22 +741,194 @@ class List: Iterable {
     }
 
     fun sum(plusHandler: funi[any, any][any] = null): any public {
+        /*
+         * Calculates the sum of all elements in the list using reduce.
+         *
+         * @param plusHandler: Optional custom addition function with signature (a: any, b: any): any
+         *                     If not provided, uses default addition operator
+         * @return: The sum of all elements in the list, or null if the list is empty
+         */
         if this.empty() {
             ret null
         }
-        var sum = null,
-            length: int = this.length
         plusHandler = ops.orVal(plusHandler, this.plusHandler)
         plusHandler = ops.orVal(plusHandler, (front, back) -> { ret front + back })
-        for ({var i = 0; i < length; i ++}) {
-            var item = (this.data)[i]
-            if i == 0 {
-                sum = item
+        ret this.reduce(plusHandler)
+    }
+
+    fun reduce(reducer: funi[any, any][any], initialValue: any = null): any {
+        /*
+         * Reduces the list to a single value by applying a reducer function cumulatively.
+         *
+         * @param reducer: A function that takes two arguments (accumulator and current item)
+         *                 and returns a new accumulator value.
+         * @param initialValue: Optional initial value for the accumulator. If not provided,
+         *                      the first element of the list is used as the initial value.
+         * @return: The final reduced value
+         */
+        var result = initialValue
+        var hasInitialValue = initialValue != null
+        iter(this.data, (item, _, _, _) -> {
+            if !hasInitialValue {
+                result = item
+                hasInitialValue = true
             } else {
-                sum = plusHandler(sum, item)
+                result = reducer(result, item)
             }
+        })
+        ret result
+    }
+
+    fun splice(other): List public {
+        /*
+         * Concatenates this list with another list or List object.
+         *
+         * Creates a new List containing elements from both lists.
+         *
+         * @param other: Another list or List object to concatenate with this list
+         * @return: A new List containing concatenated elements
+         */
+        if dt.type(other) == dt.DT.TP_LIST {
+            ret this.spliceBuiltinList(other)
+        } else {
+            ret this.spliceBuiltinList(other)
         }
-        ret sum
+    }
+
+    fun spliceNR(other): void public {
+        /*
+         * Concatenates this list with another list or List object in place.
+         *
+         * Modifies the current list object by appending elements from the other list.
+         *
+         * @param other: Another list or List object to concatenate with this list
+         */
+        var result = this.splice(other)
+        this.data = result.get()
+        this.length = result.size()
+    }
+
+    fun spliceList(other: List): List {
+        /*
+         * Concatenates this list with another List object.
+         *
+         * Creates a new List containing elements from both lists.
+         *
+         * @param other: Another List object to concatenate with this list
+         * @return: A new List containing concatenated elements
+         */
+        ret List(this.data + other.get())
+    }
+
+    fun spliceBuiltinList(other: list): List {
+        /*
+         * Concatenates this list with a built-in list.
+         *
+         * Creates a new List containing elements from both lists.
+         *
+         * @param other: A built-in list to concatenate with this list
+         * @return: A new List containing concatenated elements
+         */
+        ret List(this.data + other)
+    }
+
+    fun find(predicate: funi[any, int, .*][bool]): any {
+        /*
+         * Finds the first element in the list that satisfies the predicate.
+         *
+         * @param predicate: A function that takes an element, its index and other infos,
+         *                   it returns true or false
+         * @return: The first matching element, or null if no match is found
+         */
+        var result
+        iter(this.data, (item, index, _, kwargs) -> {
+            var copiedItem = copy(item)
+            if predicate(copiedItem, index, unpack(kwargs)) {
+                result = copiedItem
+                ret false
+            }
+        })
+        ret result
+    }
+
+    fun at(index: int): any public {
+        /*
+         * Accesses an element in the list by its index.
+         *
+         * Supports negative indexing, where -1 refers to the last element,
+         * -2 to the second-to-last, and so on.
+         *
+         * @param index: The 0-based index of the element to access
+         * @return: The element at the specified index, or null if index is out of bounds
+         */
+        if index < 1 - this.length || index >= this.length {
+            ret null
+        }
+        if index < 0 {
+            index += this.length
+        }
+        ret (this.data)[index]
+    }
+
+    fun unique(): List public {
+        /*
+         * Removes duplicate elements from the list.
+         *
+         * @return: A new List with unique elements
+         */
+        var uniqueList: List = List()
+        iter(this.data, (item, _, _, _) -> {
+            if !uniqueList.contains(item) {
+                uniqueList.append(item)
+            }
+        })
+        ret uniqueList
+    }
+
+    fun slice(start: int, end: int, sep: int = 1): List public {
+        /*
+         * Returns a new List containing elements from the start index to the end index (exclusive).
+         *
+         * @param start: Start index (inclusive)
+         * @param end: End index (exclusive)
+         * @param sep: Step size between elements (default: 1)
+         * @return: A new List containing the sliced elements
+         */
+        var res: List = List()
+        if end < start {
+            ret res
+        }
+        forInRange(start, end, (index, _, _) -> {
+            res.append(copy(this.at(index)))
+        }, sep)
+        ret res
+    }
+
+    fun reversed(): List public {
+        /*
+         * Returns a new List with elements in reverse order.
+         *
+         * @return: A new List with reversed elements
+         */
+        var res: List = List()
+        iter(this.data, (item, _, _, _) -> {
+            res.append(copy(item))
+        }, true)
+        ret res
+    }
+
+    fun reverse(): List public {
+        /*
+         * Reverse element orders and return self
+         *
+         * @return: List
+         */
+        var res: List = List()
+        iter(this.data, (item, _, _, _) -> {
+            res.append(item)
+        }, true)
+        this.data = res.data
+        ret this
     }
 }
 
