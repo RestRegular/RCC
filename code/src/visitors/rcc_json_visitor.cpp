@@ -360,6 +360,16 @@ namespace ast {
         builder = builderRecord;
     }
 
+    void JsonVisitor::visitTryNode(TryNode& try_node)
+    {
+        pass();
+    }
+
+    void JsonVisitor::visitThrowNode(ThrowNode& node)
+    {
+        pass();
+    }
+
     void JsonVisitor::visitParenRangerNode(ParenRangerNode &node) {
         auto builderRecord = builder;
         builderRecord.insertString("nodeType", getNodeTypeName(node.getRangerType()))

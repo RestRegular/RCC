@@ -452,6 +452,53 @@ namespace ast {
         return NodeType::PROGRAM;
     }
 
+    TryNode::TryNode(const Token &mainToken,
+            const std::shared_ptr<BlockRangerNode> &tryBody,
+            const std::vector<std::pair<std::shared_ptr<IdentifierNode>,
+            std::shared_ptr<BlockRangerNode>>> &catchBodies,
+            const std::shared_ptr<BlockRangerNode> &finallyBody)
+            : ExpressionNode(mainToken, NodeType::TRY),
+    tryBody(tryBody), catchBodies(catchBodies), finallyBody(finallyBody) {}
+
+    void TryNode::acceptVisitor(Visitor& visitor)
+    {
+        visitor.visitTryNode(*this);
+    }
+
+    NodeType TryNode::getRealType() const
+    {
+        return NodeType::TRY;
+    }
+
+    std::shared_ptr<BlockRangerNode> TryNode::getTryBody() const
+    {
+        return tryBody;
+    }
+
+    std::vector<std::pair<std::shared_ptr<IdentifierNode>, std::shared_ptr<BlockRangerNode>>> TryNode::
+    getCatchBodies() const
+    {
+        return catchBodies;
+    }
+
+    std::shared_ptr<BlockRangerNode> TryNode::getFinallyBody() const
+    {
+        return finallyBody;
+    }
+
+    ThrowNode::ThrowNode(const Token& mainToken, const std::shared_ptr<ExpressionNode>& throwExpression)
+        : ExpressionNode(mainToken, NodeType::THROW), throwExpression(throwExpression) {}
+
+    std::shared_ptr<ExpressionNode> ThrowNode::getThrowExpression() const
+    {
+        return throwExpression;
+    }
+
+    void ThrowNode::acceptVisitor(Visitor& visitor)
+    {
+        visitor.visitThrowNode(*this);
+    }
+
     StringLiteralNode::StringLiteralNode(const Token& token)
     : LiteralNode(token, NodeType::STRING),
     value(StringManager::unescape(token.getValue())) {}

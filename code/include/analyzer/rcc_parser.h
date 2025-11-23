@@ -129,6 +129,8 @@ namespace parser {
         ExpressionNodePtr buildListExpression();
         ExpressionNodePtr buildVariableExpression();
         ExpressionNodePtr skipNewLineExpression();
+        ExpressionNodePtr buildTryExpression();
+        ExpressionNodePtr buildThrowExpression();
 
         // 中缀表达式构建函数
         ExpressionNodePtr buildInfixExpression(const ExpressionNodePtr &left);

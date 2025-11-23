@@ -145,6 +145,9 @@ namespace core {
         TOKEN_VAR,
         TOKEN_WHILE,
         TOKEN_SKIP_NEWLINE,
+        TOKEN_CATCH,
+        TOKEN_FINALLY,
+        TOKEN_THROW,
     };
     enum class StatementType {
         VAR_DEF, // Complete

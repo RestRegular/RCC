@@ -42,6 +42,9 @@ namespace core {
         {"break", TokenType::TOKEN_BREAK},
         {"continue", TokenType::TOKEN_CONTINUE},
         {"try", TokenType::TOKEN_TRY},
+        {"catch", TokenType::TOKEN_CATCH},
+        {"finally", TokenType::TOKEN_FINALLY},
+        {"throw", TokenType::TOKEN_THROW},
         {"until", TokenType::TOKEN_UNTIL},
         {"ctor", TokenType::TOKEN_CTOR},
         {"pass", TokenType::TOKEN_PASS},
@@ -327,6 +330,9 @@ namespace core {
         case TokenType::TOKEN_ELIF: return "TOKEN_ELIF";
         case TokenType::TOKEN_INDICATOR: return "TOKEN_INDICATOR";
         case TokenType::TOKEN_SKIP_NEWLINE: return "TOKEN_SKIP_NEWLINE";
+        case TokenType::TOKEN_CATCH: return "TOKEN_CATCH";
+        case TokenType::TOKEN_FINALLY: return "TOKEN_FINALLY";
+        case TokenType::TOKEN_THROW: return "TOKEN_THROW";
         default: return "TOKEN_UNKNOWN";
         }
     }

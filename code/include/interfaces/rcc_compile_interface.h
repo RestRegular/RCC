@@ -28,7 +28,10 @@ namespace ast
         FUNCTION, // 函数作用域
         ANONYMOUS, // 匿名作用域
         LOOP, // 循环作用域
-        CONDITION // 条件作用域
+        CONDITION, // 条件作用域
+        TRY, // try 作用域
+        CATCH, // catch 作用域
+        FINALLY, // finally 作用域
     };
 
     enum class BuiltinType

@@ -62,6 +62,9 @@ namespace ri {
         return opRI;
     }
 
+    ATMP::ATMP()
+        : FLAG("ATMP") {}
+
     PASS::PASS(const std::string& comment)
         : FLAG("PASS", comment) {}
 
@@ -187,6 +190,9 @@ namespace ri {
         return opRI;
     }
 
+    EXPOSE::EXPOSE(const std::string& ident)
+        : UNARY("EXPOSE", ident) {}
+
     SET::SET(const std::string &ident)
         : UNARY("SET", ident) {}
 
@@ -223,6 +229,9 @@ namespace ri {
     {
         return opRI;
     }
+
+    DETECT::DETECT(const std::string& type, const std::string& ident)
+        : BINARY("DETECT", type, ident) {}
 
     TP_NEW::TP_NEW(const std::string& ident, const std::string& lvalue)
         : BINARY("TP_NEW", ident, lvalue) {}

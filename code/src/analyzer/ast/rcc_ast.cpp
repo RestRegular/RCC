@@ -85,6 +85,8 @@ namespace ast {
             case NodeType::CONSTRUCTOR: return "CONSTRUCTOR";
             case NodeType::ANON_FUNCTION_DEFINITION: return "ANON_FUNCTION_DEFINITION";
             case NodeType::PAIR: return "PAIR";
+            case NodeType::TRY: return "TRY";
+            case NodeType::THROW: return "THROW";
             default: return "UNKNOWN_NODE_TYPE";
         }
     }

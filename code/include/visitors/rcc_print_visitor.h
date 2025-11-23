@@ -101,6 +101,10 @@ namespace ast {
 
         void visitIndexExpressionNode(IndexExpressionNode &node) override;
 
+        void visitTryNode(TryNode& try_node) override;
+
+        void visitThrowNode(ThrowNode& node) override;
+
         void visitBracketExpressionNode(BracketExpressionNode &node) override;
     };
 

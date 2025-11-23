@@ -51,6 +51,12 @@ namespace ri {
         std::string getOpRI() const override;
     };
 
+    class ATMP final : public FLAG
+    {
+    public:
+        explicit ATMP();
+    };
+
     class PASS final: public FLAG
     {
     public:
@@ -146,12 +152,20 @@ namespace ri {
         std::string getOpRI() const override;
     };
 
-    class SET final : public UNARY {
+    class EXPOSE final : public UNARY
+    {
+    public:
+        explicit EXPOSE(const std::string &ident);
+    };
+
+    class SET final : public UNARY
+    {
     public:
         explicit SET(const std::string &ident);
     };
 
-    class JMP final : public UNARY {
+    class JMP final : public UNARY
+    {
     public:
         explicit JMP(const std::string &ident);
     };
@@ -185,6 +199,12 @@ namespace ri {
         [[nodiscard]] std::string getRValue() const;
         [[nodiscard]] std::string getLValue() const;
         std::string getOpRI() const override;
+    };
+
+    class DETECT : public BINARY
+    {
+    public:
+        explicit DETECT(const std::string &type, const std::string &ident);
     };
 
     class TP_NEW final : public BINARY {

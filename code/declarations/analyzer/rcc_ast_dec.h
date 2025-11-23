@@ -73,6 +73,8 @@ namespace ast
     class ReturnExpressionNode;
     class BreakExpressionNode;
     class ProgramNode;
+    class ThrowNode;
+    class TryNode;
     // --- Óï·¨Ê÷Àà ---
     class Ast;
 

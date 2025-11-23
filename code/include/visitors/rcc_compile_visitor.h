@@ -571,6 +571,10 @@ namespace ast
 
         void visitIndexExpressionNode(IndexExpressionNode& node) override;
 
+        void visitTryNode(TryNode& node) override;
+
+        void visitThrowNode(ThrowNode& node) override;
+
         void visitVariableDefinitionNode(VariableDefinitionNode& node) override;
 
         void visitAssignmentNode(AssignmentNode& node) override;

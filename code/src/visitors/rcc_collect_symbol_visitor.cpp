@@ -152,6 +152,14 @@ namespace ast {
     void CollectSymbolVisitor::visitIndexExpressionNode(IndexExpressionNode &node) {
     }
 
+    void CollectSymbolVisitor::visitTryNode(TryNode& try_node)
+    {
+    }
+
+    void CollectSymbolVisitor::visitThrowNode(ThrowNode& node)
+    {
+    }
+
     void CollectSymbolVisitor::visitVariableDefinitionNode(VariableDefinitionNode &node) {
     }
 

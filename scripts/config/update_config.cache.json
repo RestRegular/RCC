@@ -1,17 +1,15 @@
 {
   "validate": true,
   "version": {
-    "vs_desc": "新增 `series` 类型字面量解析功能并修复嵌套列表相关错误",
+    "vs_desc": "实现错误处理机制",
     "change_type": [
-      "feat",
-      "fix"
+      "feat"
     ]
   },
   "update_log": {
     "author": "RestRegular",
     "log_contents": [
-      "新增 `series` 字面量解析功能。",
-      "修复了嵌套列表情况下，第一个元素为列表出现解析错误的问题。"
+      "实现了 `try { ... } catch (...) { ... } finally { ... }` 错误处理机制。"
     ]
   },
   "annotation": {

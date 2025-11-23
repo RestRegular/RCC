@@ -191,6 +191,16 @@ namespace ast {
 
     }
 
+    void PrintVisitor::visitTryNode(TryNode& try_node)
+    {
+
+    }
+
+    void PrintVisitor::visitThrowNode(ThrowNode& node)
+    {
+
+    }
+
     PrintVisitor::PrintVisitor(const size_t &indent): indent(indent){}
 
     void PrintVisitor::printAllNode() const {

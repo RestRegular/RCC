@@ -532,6 +532,108 @@ namespace parser {
         return nullptr;
     }
 
+    ExpressionNodePtr Parser::buildTryExpression()
+    {
+        const auto& mainToken = currentToken();
+        skipNextNewLineToken();
+        if (!nextTokenIs(TokenType::TOKEN_LBRACE))
+        {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LBRACE);
+            return nullptr;
+        }
+        next();
+        const auto& tryBodyNode = buildRangerExpression();
+        if (!currentTokenIs(TokenType::TOKEN_RBRACE))
+        {
+            recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_RBRACE);
+            return nullptr;
+        }
+        const auto& tryBody = std::static_pointer_cast<BlockRangerNode>(tryBodyNode);
+        skipNextNewLineToken();
+        std::vector<std::pair<std::shared_ptr<IdentifierNode>,
+            std::shared_ptr<BlockRangerNode>>> catchBodies {};
+        while (nextTokenIs(TokenType::TOKEN_CATCH))
+        {
+            if (nextTokenIs(TokenType::TOKEN_CATCH))
+            {
+                next();
+                const auto& catchToken = currentToken();
+                if (!nextTokenIs(TokenType::TOKEN_LPAREN))
+                {
+                    recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LPAREN);
+                    return nullptr;
+                }
+                next();
+                const auto& catchParenNode = buildRangerExpression();
+                std::shared_ptr<IdentifierNode> catchParamNode = nullptr;
+                if (!currentTokenIs(TokenType::TOKEN_RPAREN))
+                {
+                    recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_RPAREN);
+                    return nullptr;
+                }
+                if (catchParenNode && catchParenNode->getRealType() == NodeType::RANGER)
+                {
+                    const auto& catchParen = std::static_pointer_cast<ParenRangerNode>(catchParenNode);
+                    if (const auto& catchParamNode_ = catchParen->getRangerNode();
+                        catchParamNode_->getRealType() == NodeType::IDENTIFIER)
+                    {
+                        catchParamNode = std::static_pointer_cast<IdentifierNode>(catchParamNode_);
+                    } else
+                    {
+                        recordSyntaxError(catchToken, catchParamNode_->getMainToken(), "Invalid catch item.");
+                        return nullptr;
+                    }
+                } else
+                {
+                    recordSyntaxError(catchToken, catchParenNode->getMainToken(), "Invalid catch item.");
+                    return nullptr;
+                }
+                next();
+                if (!currentTokenIs(TokenType::TOKEN_LBRACE))
+                {
+                    recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_LBRACE);
+                    return nullptr;
+                }
+                const auto& catchBodyNode = buildRangerExpression();
+                if (!currentTokenIs(TokenType::TOKEN_RBRACE))
+                {
+                    recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_RBRACE);
+                    return nullptr;
+                }
+                const auto& catchBody = std::static_pointer_cast<BlockRangerNode>(catchBodyNode);
+                catchBodies.push_back({catchParamNode, catchBody});
+            }
+            skipNextNewLineToken();
+        }
+        std::shared_ptr<BlockRangerNode> finallyBody = {};
+        if (nextTokenIs(TokenType::TOKEN_FINALLY))
+        {
+            next();
+            if (!nextTokenIs(TokenType::TOKEN_LBRACE))
+            {
+                recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LBRACE);
+                return nullptr;
+            }
+            next();
+            const auto& finallyBodyNode = buildRangerExpression();
+            if (!currentTokenIs(TokenType::TOKEN_RBRACE))
+            {
+                recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_RBRACE);
+                return nullptr;
+            }
+            finallyBody = std::static_pointer_cast<BlockRangerNode>(finallyBodyNode);
+        }
+        return std::make_shared<TryNode>(mainToken, tryBody, catchBodies, finallyBody);
+    }
+
+    ExpressionNodePtr Parser::buildThrowExpression()
+    {
+        const auto& mainToken = currentToken();
+        next();
+        const auto& throwExpression = buildExpression(Precedence::LOWEST);
+        return std::make_shared<ThrowNode>(mainToken, throwExpression);
+    }
+
     ExpressionNodePtr Parser::buildForExpression() {
         const auto& forToken = currentToken();
         if (!expectedNextTokenAndConsume(TokenType::TOKEN_LPAREN))

@@ -82,6 +82,8 @@ namespace ast {
         UNKNOWN, // 未知类型节点（错误处理或预留）
         VAR, // 变量定义节点
         WHILE, // while循环控制结构节点
+        TRY, // try 语句
+        THROW, // throw 语句
     };
 
 } // analyzer

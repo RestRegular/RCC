@@ -1,51 +1,27 @@
-import(io="io", ds="ds", rd="random")
+import(io="io", ll="lowlevel")
 
-var List: clas = ds.List
-
-fun makeRandomIntList(elemNum: int = 10, range: list = [0, 150]): List {
-    var li: List = List()
-    ds.repeat(elemNum, (_) -> {
-        li.append(rd.randomInt(range[0], range[1]))
-    })
-    ret li
+class Error {
+    ctor () {}
+    fun toString(): str public virtual {
+        ret "[Error]"
+    }
 }
 
-fun main(): void {
-    var li: List = makeRandomIntList(20, [0, 100])
-    io.sout(li.sort().get())
-    io.sout(li \
-        .filter((item: int): bool -> { ret item > 5 }) \
-        .mapper((item: int): int -> { ret item - 5 }) \
-        .get())
-    io.sout(li.find((item, index, _) -> {
-        ret item > 5 && index < 10
-    }))
-    io.sout(li.at(5))
-    io.sout(li.unique().get())
-    io.sout(li.at(-2))
-    io.sout(li.slice(-5, 5).get())
-    io.sout(li.reversed().get())
-    io.sout(li.reverse().at(-2))
-    io.sout(li.sum())
-    io.sout(li.reduce((sum: int, x: int): int -> { ret sum * x }, 1))
-
-    var a: list = [[1], [2], [3]]
-    ds.iter(a, (item, _, _, _) -> {
-        item += rd.randomInt(0, 10)
-    })
-    io.sout(a)
+class FileError: Error {
+    ctor () {
+        super()
+    }
+    fun toString(): str public overwrite {
+        ret "[FileError]"
+    }
 }
 
-main()
-
-// fun sout(*args, end="\n"): void {
-//     encapsulated
-// }
-//
-// fun setType(arg, type: str): void {
-//     encapsulated
-// }
-//
-// var a: series = (1, 2, 3)
-// setType(a, "str")
-// sout(a)
+try {
+    var error: Error = Error()
+    io.sout("Running try block, expose an error: ", error.toString())
+    throw error
+} catch (error: FileError) {
+    io.sout("Running catch block, caught an error: ", error.toString())
+} finally {
+    io.sout("Running finally block")
+}

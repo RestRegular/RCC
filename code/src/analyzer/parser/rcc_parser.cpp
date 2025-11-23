@@ -76,6 +76,10 @@ namespace parser {
         {TokenType::TOKEN_BREAK, &Parser::buildBreakExpression},
         // Ìø¹ýÐÂÐÐ
         {TokenType::TOKEN_SKIP_NEWLINE, &Parser::skipNewLineExpression},
+        // try Óï¾ä
+        {TokenType::TOKEN_TRY, &Parser::buildTryExpression},
+        // throw Óï¾ä
+        {TokenType::TOKEN_THROW, &Parser::buildThrowExpression}
     };
 
     std::map<TokenType, InfixExpressionBuilder> Parser::infixExpressionBuilders {

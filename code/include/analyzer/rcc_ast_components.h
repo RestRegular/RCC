@@ -645,6 +645,38 @@ namespace ast {
 
         [[nodiscard]] NodeType getRealType() const override;
     };
+
+    class TryNode final : public ExpressionNode
+    {
+        std::shared_ptr<BlockRangerNode> tryBody;
+        std::vector<std::pair<std::shared_ptr<IdentifierNode>,
+        std::shared_ptr<BlockRangerNode>>> catchBodies;
+        std::shared_ptr<BlockRangerNode> finallyBody;
+    public:
+        explicit TryNode(
+            const Token &mainToken,
+            const std::shared_ptr<BlockRangerNode> &tryBody,
+            const std::vector<std::pair<std::shared_ptr<IdentifierNode>,
+            std::shared_ptr<BlockRangerNode>>> &catchBodies,
+            const std::shared_ptr<BlockRangerNode> &finallyBody);
+        void acceptVisitor(Visitor& visitor) override;
+        [[nodiscard]] NodeType getRealType() const override;
+        [[nodiscard]] std::shared_ptr<BlockRangerNode> getTryBody() const;
+        [[nodiscard]] std::vector<std::pair<std::shared_ptr<IdentifierNode>,
+        std::shared_ptr<BlockRangerNode>>> getCatchBodies() const;
+        [[nodiscard]] std::shared_ptr<BlockRangerNode> getFinallyBody() const;
+    };
+
+    class ThrowNode final : public ExpressionNode
+    {
+        std::shared_ptr<ExpressionNode> throwExpression;
+    public:
+        explicit ThrowNode(const Token &mainToken,
+            const std::shared_ptr<ExpressionNode>& throwExpression);
+
+        [[nodiscard]] std::shared_ptr<ExpressionNode> getThrowExpression() const;
+        void acceptVisitor(Visitor& visitor) override;
+    };
 }
 
 

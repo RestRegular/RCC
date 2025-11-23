@@ -1487,6 +1487,9 @@ namespace ast
         case ScopeType::FUNCTION: return "function";
         case ScopeType::LOOP: return "loop";
         case ScopeType::CONDITION: return "condition";
+        case ScopeType::TRY: return "try";
+        case ScopeType::CATCH: return "catch";
+        case ScopeType::FINALLY: return "finally";
         default: return "unknown";
         }
     }
@@ -3660,12 +3663,54 @@ namespace ast
         }
     }
 
+    void CompileVisitor::visitTryNode(TryNode& node)
+    {
+        enterScope(ScopeType::TRY);
+        raCodeBuilder
+        << ri::ATMP();
+        node.getTryBody()->acceptVisitor(*this);
+        for (const auto& [catchParam,
+            catchBody] : node.getCatchBodies())
+        {
+            enterScope(ScopeType::CATCH);
+            catchParam->acceptVisitor(*this);
+            const auto& catchParamItem = rPopOpItem();
+            VarID catchParamVarID (catchParamItem.getVal(), catchParamItem.getPos().getFileField(),
+                curScopeField(), curScopeLevel());
+            const auto& labels = processLabelNodes(catchParam->getLabels());
+            const auto& catchParamSymbol = std::make_shared<ParameterSymbol>(
+                ParamType::PARAM_POSITIONAL, catchParam->getPos(), catchParamVarID.getNameField(),
+                catchParamVarID.getVid(), labels, std::nullopt, curScopeLevel());
+            symbolTable.insert(catchParamSymbol, false);
+            raCodeBuilder
+            << ri::DETECT(catchParamSymbol->getTypeLabel()->getRaVal(), catchParamSymbol->getRaVal());
+            catchBody->acceptVisitor(*this);
+            raCodeBuilder
+            << ri::END("DETECT");
+            exitScope(ScopeType::CATCH);
+        }
+        if (const auto& finallyBody = node.getFinallyBody())
+        {
+            enterScope(ScopeType::FINALLY);
+            finallyBody->acceptVisitor(*this);
+            exitScope(ScopeType::FINALLY);
+        }
+        raCodeBuilder
+        << ri::END("ATMP");
+        exitScope(ScopeType::TRY);
+    }
+
+    void CompileVisitor::visitThrowNode(ThrowNode& node)
+    {
+        node.getThrowExpression()->acceptVisitor(*this);
+        const auto& throwExpression = rPopOpItem();
+        checkExists(throwExpression);
+        raCodeBuilder
+        << ri::EXPOSE(raVal(throwExpression));
+    }
+
     void CompileVisitor::visitVariableDefinitionNode(VariableDefinitionNode& node)
     {
-        interruptWhen(node.getId() == 1170, []
-        {
-            pass();
-        });
         std::vector<OpItem> varIDs{};
         std::vector<std::string> vids{};
         std::vector<std::optional<OpItem>> values{};

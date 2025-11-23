@@ -100,6 +100,10 @@ namespace ast {
         virtual void visitBracketExpressionNode(BracketExpressionNode &node) = 0;
 
         virtual void visitIndexExpressionNode(IndexExpressionNode &node) = 0;
+
+        virtual void visitTryNode(TryNode& node) = 0;
+
+        virtual void visitThrowNode(ThrowNode& node) = 0;
     };
 
 }
