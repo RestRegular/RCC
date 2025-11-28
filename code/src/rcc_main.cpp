@@ -102,7 +102,7 @@ void initializeArgumentParser() {
                       "useful for performance analysis and optimization.",
                       {"ti"})
     .addOption<std::string>("working-dir", &__working_directory__,
-                                     getWindowsDefaultDir(), "Specify working directory", {"wd"});
+                                     getDefaultDir(), "Specify working directory", {"wd"});
 
     // Core flag option exclusives
     argParser.addMutuallyExclusive(std::vector<std::string>{"help", "version"},

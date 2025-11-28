@@ -51,7 +51,13 @@ namespace builtin
         return "";
     }
 
-    const PureBuiltinFunction EXPORT (false, "export",
-        {getPosVarArgsParam("args"), getKeywordVarArgsParam("kwargs")},
-        rcc_export);
+    const PureBuiltinFunction& getExportFunction()
+    {
+        static const PureBuiltinFunction EXPORT(
+            false, "export",
+            {getPosVarArgsParam("args"), getKeywordVarArgsParam("kwargs")},
+            rcc_export);
+        return EXPORT;
+    }
+
 }

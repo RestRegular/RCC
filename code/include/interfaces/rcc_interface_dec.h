@@ -7,8 +7,11 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 #define SYS_INTERFACE_CALL __stdcall
-#else
+#define DLL_EXPORT __declspec(dllexport)
+#include <windows.h>
+#elif defined(__linux__)
 #define SYS_INTERFACE_CALL
+#define DLL_EXPORT __attribute__((visibility("default")))
 #endif
 
 namespace utils
@@ -99,11 +102,11 @@ namespace rinterface
         };
 
         // 系统调用，DLL实现
-        bool SYS_INTERFACE_CALL DllLoadin();
-        void SYS_INTERFACE_CALL DllUnload();
-        ExtFuncs SYS_INTERFACE_CALL DllObtainExtFuncs();
-        void SYS_INTERFACE_CALL DllFreeExtFuncs(ExtFuncs* extFuncs);
-        void SYS_INTERFACE_CALL DllFreeCharP(const char* data);
+        DLL_EXPORT bool SYS_INTERFACE_CALL DllLoadin();
+        DLL_EXPORT void SYS_INTERFACE_CALL DllUnload();
+        DLL_EXPORT ExtFuncs SYS_INTERFACE_CALL DllObtainExtFuncs();
+        DLL_EXPORT void SYS_INTERFACE_CALL DllFreeExtFuncs(ExtFuncs* extFuncs);
+        DLL_EXPORT void SYS_INTERFACE_CALL DllFreeCharP(const char* data);
     }
 }
 

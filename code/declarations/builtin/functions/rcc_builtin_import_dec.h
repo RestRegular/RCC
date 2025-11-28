@@ -27,7 +27,7 @@ namespace builtin
 
     BuiltinFuncRetType rcc_import(ast::CompileVisitor &visitor, const CallInfos& callInfos);
 
-    extern const PureBuiltinFunction IMPORT;
+    const PureBuiltinFunction& getImportFunction();
 }
 
 #endif //RCC_BUILTIN_IMPORT_H

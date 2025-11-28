@@ -50,9 +50,17 @@ namespace builtin
         return raCode;
     }
 
-    const PureBuiltinFunction SUPER (false, "super",
-        {
-            getPosVarArgsParam("args"),
-            getKeywordVarArgsParam("kwargs")},
-        rcc_super);
+    const PureBuiltinFunction& getSupperFunction()
+    {
+        static const PureBuiltinFunction SUPER(
+            false, "super",
+            {
+                getPosVarArgsParam("args"),
+                getKeywordVarArgsParam("kwargs")
+            },
+            rcc_super);
+        return SUPER;
+    }
+
+
 }

@@ -11,7 +11,7 @@
 
 namespace lexer {
     Lexer::Lexer(const std::string& filepath, const std::string &dirpath)
-        : _filepath(dirpath.empty() ? utils::getAbsolutePath(filepath, utils::getWindowsDefaultDir()) : utils::getAbsolutePath(filepath, dirpath)){
+        : _filepath(dirpath.empty() ? utils::getAbsolutePath(filepath, utils::getDefaultDir()) : utils::getAbsolutePath(filepath, dirpath)){
         _filecode = utils::readFile(filepath);
         splitCodeToLines();
     }

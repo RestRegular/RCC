@@ -335,11 +335,9 @@ namespace builtin
         return _call(visitor, callInfos);
     }
 
-    const auto& globalScopeField = ast::CompileVisitor::scopeTypeToString(ast::ScopeType::GLOBAL);
-
     ast::VarID getParamVarId(const std::string& argName)
     {
-        return {argName, utils::getUnknownPos().getFileField(), globalScopeField, 0};
+        return {argName, utils::getUnknownPos().getFileField(), "global", 0};
     }
 
     std::shared_ptr<symbol::ParameterSymbol> getPosVarArgsParam(const std::string& argName)

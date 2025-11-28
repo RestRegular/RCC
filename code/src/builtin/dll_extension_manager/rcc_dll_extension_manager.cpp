@@ -2,8 +2,6 @@
 // Created by RestRegular on 2025/10/24.
 //
 
-#include <windows.h>
-
 #include "../../../include/builtin/dll_extension_manager/rcc_dll_extension_manager.h"
 
 #include "../../../declarations/builtin/rcc_builtin_dec.h"
@@ -29,14 +27,22 @@ namespace rccdll
     DLLExtension::DLLExtension(const std::string& dllFilepath_, ast::IRCCCompileInterface* pCompileInterface)
         :dllFilepath(dllFilepath_)
     {
+#ifdef _WIN32
         dllExt = LoadLibraryA(dllFilepath.c_str());
+        const auto& errorMsg = std::to_string(GetLastError());
+#elif __linux__
+        dllExt = dlopen(dllFilepath.c_str(), RTLD_LAZY | RTLD_GLOBAL);
+        auto errorMsg = std::string(dlerror());
+        errorMsg = errorMsg.empty() ? RCC_UNKNOWN_CONST : errorMsg;
+#endif
         if (!dllExt)
         {
             throw base::RCCCompilerError::extensionLoadinError(
                 ast::CompileVisitor::currentPos().toString(),
                 ast::CompileVisitor::getCodeLine(ast::CompileVisitor::currentPos()),
                 {
-                    "Error dll extension: " + dllFilepath_
+                    "Error dll extension: " + dllFilepath_,
+                    "Error info: " + errorMsg
                 }, {
                     "Ensure the DLL extension file path is correct and meets the requirements."
                 });
@@ -67,7 +73,11 @@ namespace rccdll
         }
         if (dllExt)
         {
+#ifdef _WIN32
             FreeLibrary(dllExt);
+#elif __linux__
+            dlclose(dllExt);
+#endif
             dllExt = nullptr;
         }
     }

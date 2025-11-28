@@ -6,7 +6,7 @@
 
 namespace parser {
 
-    void Parser::recordUnexpectedTokenTypeError(const Token& token, TokenType expectedType) {
+    void Parser::recordUnexpectedTokenTypeError(const Token& token, core::TokenType expectedType) {
         appendErrorMsg(RCCParserError::unexpectedTokenTypeError(
                 token.getPosString(), RCC_UNKNOWN_CONST,
                 token.briefString(),
@@ -22,13 +22,13 @@ namespace parser {
     }
 
 
-    void Parser::recordPrefixBuilderNotFoundError(const Token& token, TokenType errorType) {
+    void Parser::recordPrefixBuilderNotFoundError(const Token& token, core::TokenType errorType) {
         appendErrorMsg(RCCParserError::expressionBuilderNotFoundError(
                 token.getPosString(), "prefix",
                 getTokenTypeName(errorType)));
     }
 
-    void Parser::recordInfixBuilderNotFoundError(const Token& token, TokenType errorType) {
+    void Parser::recordInfixBuilderNotFoundError(const Token& token, core::TokenType errorType) {
         appendErrorMsg(RCCParserError::expressionBuilderNotFoundError(
                 token.getPosString(), "infix",
                 getTokenTypeName(errorType)));
@@ -39,7 +39,7 @@ namespace parser {
             "Error occurred at " + errorToken.getPosString()));
     }
 
-    void Parser::recordUnclosedExpressionError(const Token &beginToken, const Token &endToken, TokenType expectedType) {
+    void Parser::recordUnclosedExpressionError(const Token &beginToken, const Token &endToken, core::TokenType expectedType) {
         appendErrorMsg(RCCParserError::unclosedExpressionError(
                 beginToken.getPosString(),
                 beginToken.briefString(),

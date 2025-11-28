@@ -8,9 +8,15 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <windows.h>
 
 #include "../../interfaces/rcc_interface_dec.h"
+
+#ifdef _WIN32
+typedef HINSTANCE DllHandle;  // Windows 句柄类型
+#elif __linux__
+#include <dlfcn.h>  // 包含 dlopen、dlsym、dlclose 声明
+typedef void* DllHandle;      // Linux 句柄类型（用 void* 表示）
+#endif
 
 namespace rccdll
 {
@@ -21,7 +27,7 @@ namespace rccdll
     class DLLExtension
     {
         std::string dllFilepath = nullptr;
-        HINSTANCE dllExt;
+        DllHandle dllExt;
         rinterface::DLL_LOADIN dllLoadin;
         rinterface::DLL_UNLOAD dllUnload;
         DllExtFuncs dllExtFuncs {};
@@ -37,8 +43,15 @@ namespace rccdll
         template<typename ExtFuncT>
         ExtFuncT loadExtFunc(const std::string &funcName)
         {
-            if (const auto &extFunc = reinterpret_cast<ExtFuncT>(GetProcAddress(dllExt, funcName.c_str()));
-                extFunc != nullptr)
+            if (!dllExt) {
+                throw std::runtime_error("Dynamic library not loaded");
+            }
+#if defined(_WIN32) || defined(_WIN64)
+            auto extFunc = reinterpret_cast<ExtFuncT>(GetProcAddress(dllExt, funcName.c_str()));
+#else
+            auto extFunc = reinterpret_cast<ExtFuncT>(dlsym(dllExt, funcName.c_str()));
+#endif
+            if (extFunc != nullptr)
             {
                 return extFunc;
             }

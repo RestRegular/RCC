@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 3.20)
 project(RCC)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -8,7 +8,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../release")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++")
+set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -g -O0")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -g -O0")
+
+#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++")
 
 add_executable(RCC code/src/rcc_main.cpp
         code/src/analyzer/lexer/rcc_lexer.cpp
@@ -92,3 +96,7 @@ add_executable(RCC code/src/rcc_main.cpp
         code/src/builtin/dll_extension_manager/rcc_dll_extension_manager.cpp
         code/include/interfaces/rcc_builtin_interface.h
 )
+
+if(UNIX AND NOT APPLE)  # Linux ϵͳ
+    target_link_libraries(RCC PRIVATE dl)
+endif()

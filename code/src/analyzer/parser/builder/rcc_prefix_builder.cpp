@@ -6,7 +6,7 @@
 #include "../../../../include/analyzer/rcc_parser.h"
 
 namespace parser {
-    static std::unordered_map<TokenType, NodeType> prefixExpressionNodeTypeMap = {
+    static std::unordered_map<core::TokenType, NodeType> prefixExpressionNodeTypeMap = {
         {TokenType::TOKEN_VAR, NodeType::VAR},
         {TokenType::TOKEN_PLUS, NodeType::UNARY},
         {TokenType::TOKEN_MINUS, NodeType::UNARY},
@@ -277,7 +277,7 @@ namespace parser {
         return nullptr;
     }
 
-    std::unordered_map<TokenType, std::pair<TokenType, NodeType>> rangerExpressionTypeMap = {
+    std::unordered_map<core::TokenType, std::pair<core::TokenType, NodeType>> rangerExpressionTypeMap = {
         {TokenType::TOKEN_LPAREN, {TokenType::TOKEN_RPAREN, NodeType::PAREN}},
         {TokenType::TOKEN_LBRACE, {TokenType::TOKEN_RBRACE, NodeType::BLOCK}},
         {TokenType::TOKEN_LBRACKET, {TokenType::TOKEN_RBRACKET, NodeType::BRACKET}},

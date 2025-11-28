@@ -154,8 +154,8 @@ namespace utils {
     std::pair<std::string, std::string> getFileInfoFromPath(const std::string &path);
     std::string getFileFromPath(const std::string &path);
     std::string getFileDirFromPath(const std::string &path);
-    std::string getWindowsRCCDir();
-    std::string getWindowsDefaultDir();
+    std::string getRCCDir();
+    std::string getDefaultDir();
     std::string getAbsolutePath(const std::string& relPath, const std::string &dir_path = "");
     bool isValidPath(const std::string &path);
     bool isAbsolutePath(const std::string &path);

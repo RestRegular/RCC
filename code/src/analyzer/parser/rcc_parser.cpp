@@ -30,7 +30,7 @@ namespace parser {
     Token Parser::STREAM_START_TOKEN = Token(Pos(), RCC_TOKEN_STREAM_START);
     Token Parser::STREAM_END_TOKEN = Token(Pos(), RCC_TOKEN_STREAM_END);
 
-    std::map<TokenType, PrefixExpressionBuilder> Parser::prefixExpressionBuilders {
+    std::map<core::TokenType, PrefixExpressionBuilder> Parser::prefixExpressionBuilders {
         // 字面量
         {TokenType::TOKEN_INTEGER, &Parser::buildIntegerExpression},
         {TokenType::TOKEN_FLOAT, &Parser::buildFloatExpression},
@@ -82,7 +82,7 @@ namespace parser {
         {TokenType::TOKEN_THROW, &Parser::buildThrowExpression}
     };
 
-    std::map<TokenType, InfixExpressionBuilder> Parser::infixExpressionBuilders {
+    std::map<core::TokenType, InfixExpressionBuilder> Parser::infixExpressionBuilders {
             {TokenType::TOKEN_PLUS, &Parser::buildInfixExpression},
             {TokenType::TOKEN_MINUS, &Parser::buildInfixExpression},
             {TokenType::TOKEN_STAR, &Parser::buildInfixExpression},
@@ -110,13 +110,13 @@ namespace parser {
             {TokenType::TOKEN_LBRACKET, &Parser::buildIndexExpression}
     };
 
-    std::map<TokenType, PostfixExpressionBuilder> Parser::postfixExpressionBuilders {
+    std::map<core::TokenType, PostfixExpressionBuilder> Parser::postfixExpressionBuilders {
             {TokenType::TOKEN_DOUBLE_PLUS, &Parser::buildPostfixExpression},
             {TokenType::TOKEN_DOUBLE_MINUS, &Parser::buildPostfixExpression},
             {TokenType::TOKEN_LBRACKET, &Parser::buildIndexExpression}
     };
 
-    std::map<TokenType, Precedence> Parser::precedenceMap = {
+    std::map<core::TokenType, Precedence> Parser::precedenceMap = {
             {TokenType::TOKEN_PLUS, Precedence::SUM},
             {TokenType::TOKEN_MINUS, Precedence::SUM},
             {TokenType::TOKEN_STAR, Precedence::PRODUCT},
@@ -224,30 +224,30 @@ namespace parser {
         return _next_token != nullptr;
     }
 
-    bool Parser::previousTokenIs(TokenType type) const {
+    bool Parser::previousTokenIs(core::TokenType type) const {
         return previousToken().getType() == type;
     }
 
-    bool Parser::currentTokenIs(TokenType type) {
+    bool Parser::currentTokenIs(core::TokenType type) {
         return currentToken().getType() == type;
     }
 
-    bool Parser::nextTokenIs(TokenType type) const {
+    bool Parser::nextTokenIs(core::TokenType type) const {
         return nextToken().getType() == type;
     }
 
     void Parser::skipCurrentNewLineToken()
     {
-        while (currentTokenIs(TokenType::TOKEN_NEWLINE)) next();
+        while (currentTokenIs(core::TokenType::TOKEN_NEWLINE)) next();
     }
 
     void Parser::skipNextNewLineToken()
     {
-        while (nextTokenIs(TokenType::TOKEN_NEWLINE)) next();
+        while (nextTokenIs(core::TokenType::TOKEN_NEWLINE)) next();
     }
 
     // 检查下一个 token 的类型，如果是，则消耗当前 token ，否则记录错误
-    bool Parser::expectedNextTokenAndConsume(TokenType type) {
+    bool Parser::expectedNextTokenAndConsume(core::TokenType type) {
         if (nextTokenIs(type)) {
             next();
             return true;
@@ -256,14 +256,14 @@ namespace parser {
         return false;
     }
 
-    void Parser::consumeNextIfNextTokenIs(TokenType type) {
+    void Parser::consumeNextIfNextTokenIs(core::TokenType type) {
         if (nextTokenIs(type)) {
             next();
         }
     }
 
     // 检查下一个 token 的类型，如果不是，则记录错误
-    bool Parser::expectedNextToken(TokenType type) {
+    bool Parser::expectedNextToken(core::TokenType type) {
         if (nextTokenIs(type)) {
             return true;
         }
@@ -318,7 +318,7 @@ namespace parser {
             return nullptr;
         }
         auto expressionNode = prefixBuilder->second(this);
-        while (!isAtEnd() && !nextTokenIs(TokenType::TOKEN_NEWLINE)){
+        while (!isAtEnd() && !nextTokenIs(core::TokenType::TOKEN_NEWLINE)){
             // 检查当前 token 是否为后缀运算符
             if (const auto &it = postfixExpressionBuilders.find(nextToken().getType());
                 it != postfixExpressionBuilders.end()) {
@@ -327,7 +327,7 @@ namespace parser {
                 continue;
             }
 
-            if (nextTokenIs(TokenType::TOKEN_INTEGER) || nextTokenIs(TokenType::TOKEN_FLOAT)) {
+            if (nextTokenIs(core::TokenType::TOKEN_INTEGER) || nextTokenIs(core::TokenType::TOKEN_FLOAT)) {
                 if (const std::string &value = nextToken().getValue();
                     value.starts_with("-")) {
                     // 处理：当后一个 Token 是负数且省略中缀运算符时，将负号调整为减法运算符
@@ -345,7 +345,7 @@ namespace parser {
                 }
             }
 
-            if (nextTokenIs(TokenType::TOKEN_SKIP_NEWLINE))
+            if (nextTokenIs(core::TokenType::TOKEN_SKIP_NEWLINE))
             {
                 next();
                 skipNextNewLineToken();
@@ -366,14 +366,14 @@ namespace parser {
     }
 
     std::shared_ptr<ProgramNode> Parser::buildProgram() {
-        if (!currentTokenIs(TokenType::TOKEN_PROGRAM)) {
-            recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_PROGRAM);
+        if (!currentTokenIs(core::TokenType::TOKEN_PROGRAM)) {
+            recordUnexpectedTokenTypeError(currentToken(), core::TokenType::TOKEN_PROGRAM);
         }
         const auto &programToken = currentToken();
         next();
         std::vector<std::shared_ptr<StatementNode>> statementNodes;
         while (hasNext()) {
-            if (!currentTokenIs(TokenType::TOKEN_NEWLINE)){
+            if (!currentTokenIs(core::TokenType::TOKEN_NEWLINE)){
                 if (auto statement = buildStatement()) {
                     statementNodes.emplace_back(statement);
                 }

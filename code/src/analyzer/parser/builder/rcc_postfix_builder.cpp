@@ -7,7 +7,7 @@
 
 namespace parser {
 
-    static std::unordered_map<TokenType, NodeType> postfixNodeTypeMap = {
+    static std::unordered_map<core::TokenType, NodeType> postfixNodeTypeMap = {
         {TokenType::TOKEN_DOUBLE_PLUS, NodeType::INCREMENT},
         {TokenType::TOKEN_DOUBLE_MINUS, NodeType::DECREMENT},
     };

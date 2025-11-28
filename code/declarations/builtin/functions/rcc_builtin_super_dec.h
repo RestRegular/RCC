@@ -11,8 +11,7 @@ namespace builtin
 {
 
     BuiltinFuncRetType rcc_super(ast::CompileVisitor &visitor, const CallInfos& callInfos);
-
-    extern const PureBuiltinFunction SUPER;
+    const PureBuiltinFunction& getSupperFunction();
 }
 
 #endif //RCC_RCC_BUILTIN_SUPER_H

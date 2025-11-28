@@ -25,7 +25,8 @@
 #elif __linux__
 
 #include <pwd.h>
-#inclue <unistd.h>
+#include <cstring>
+#include <unistd.h>
 
 #endif
 
@@ -237,14 +238,33 @@ namespace utils
         return "[" + type + ": " + name + "]";
     }
 
-    std::string getWindowsRCCDir()
+    std::string getRCCDir()
     {
+#ifdef _WIN32
         char path[MAX_PATH];
         GetModuleFileNameA(nullptr, path, MAX_PATH);
         return std::filesystem::path(path).parent_path().string();
+#elif __linux__
+        const size_t PATH_MAX_LEN = 1024;
+        char path[PATH_MAX_LEN];
+        memset(path, 0, sizeof(path));
+        ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
+        if (len == -1) {
+            throw std::runtime_error(
+                std::string("Failed to get linux RCC path: ") + strerror(errno) +
+                "(Error code: " + std::to_string(errno) + ")"
+            );
+        }
+        path[len] = '\0';
+        try {
+            return std::filesystem::path(path).parent_path().string();
+        } catch (const std::filesystem::filesystem_error& e) {
+            throw std::runtime_error("Failed to parse linux RCC path: " + std::string(e.what()));
+        }
+#endif
     }
 
-    std::string getWindowsDefaultDir()
+    std::string getDefaultDir()
     {
         const std::filesystem::path current_path = std::filesystem::current_path();
         return current_path.string();
@@ -2595,9 +2615,15 @@ namespace utils
 
     std::string processRCCPath(const std::string& path)
     {
+#ifdef _WIN32
         std::string result = path;
         std::replace(result.begin(), result.end(), '/', '\\');
         return result;
+#else
+        std::string result = path;
+        std::replace(result.begin(), result.end(), '\\', '/');
+        return result;
+#endif
     }
 
     ProgArgParser::OptionInfo::OptionInfo(std::string name, std::function<void(const std::string&)> setter,

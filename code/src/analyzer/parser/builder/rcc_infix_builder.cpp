@@ -6,7 +6,7 @@
 
 namespace parser {
 
-    static std::unordered_map<TokenType, NodeType> infixExpressionNodeTypeMap = {
+    static std::unordered_map<core::TokenType, NodeType> infixExpressionNodeTypeMap = {
         {TokenType::TOKEN_PLUS, NodeType::PLUS},
         {TokenType::TOKEN_MINUS, NodeType::MINUS},
         {TokenType::TOKEN_STAR, NodeType::MULTIPLY},

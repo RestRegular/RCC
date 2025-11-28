@@ -112,9 +112,9 @@ namespace builtin
 
     std::unordered_map<std::string, PureBuiltinFunction> pureBuiltinFunctionMap = {
         // pure-built-in functions
-        {"import", IMPORT},
-        {"export", EXPORT},
-        {"super", SUPER}
+        {"import", getImportFunction()},
+        {"export", getExportFunction()},
+        {"super", getSupperFunction()}
     };
 
     std::unordered_map<std::string, BuiltinFunc> builtinFunctionMap = {

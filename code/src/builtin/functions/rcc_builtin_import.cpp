@@ -245,10 +245,15 @@ namespace builtin
         return raCode;
     }
 
-    const PureBuiltinFunction IMPORT (true, "import",
-        {
-            getPosVarArgsParam("args"),
-            getKeywordVarArgsParam("kwargs")
-        }, rcc_import);
+    const PureBuiltinFunction& getImportFunction()
+    {
+        static const PureBuiltinFunction IMPORT(
+            true, "import",
+            {
+                getPosVarArgsParam("args"),
+                getKeywordVarArgsParam("kwargs")
+            }, rcc_import);
+        return IMPORT;
+    }
 
 }

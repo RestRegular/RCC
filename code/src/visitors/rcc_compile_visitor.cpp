@@ -5,7 +5,12 @@
 #include <cstring>
 #include <numeric>
 #include <ranges>
+
+#ifdef _WIN32
 #include <windows.h>
+#elif __linux__
+
+#endif
 
 #include "../../include/rcc_base.h"
 #include "../../include/builtin/rcc_builtin.h"
@@ -1115,7 +1120,7 @@ namespace ast
     {
         if (pos.getFilepath() != topLexerPath())
         {
-            return getLineFromFile(getAbsolutePath(pos.getFilepath(), getWindowsDefaultDir()),
+            return getLineFromFile(getAbsolutePath(pos.getFilepath(), getDefaultDir()),
                                    pos.getLine());
         }
         return topLexer()->getCodeLine(pos);
@@ -1814,9 +1819,9 @@ namespace ast
             raCodeBuilder
                 << ri::ANNOTATION(std::vector<std::string>{
                     RIO_PROGRAM_SIGN " " RCC_VERSION,
-                    "Source file: " + getAbsolutePath(processRCCPath(programTagetFilePath), getWindowsDefaultDir()) +
+                    "Source file: " + getAbsolutePath(processRCCPath(programTagetFilePath), getDefaultDir()) +
                     ":1:1",
-                    "Target file: " + getAbsolutePath(processRCCPath(compileOutputFilePath), getWindowsDefaultDir()) +
+                    "Target file: " + getAbsolutePath(processRCCPath(compileOutputFilePath), getDefaultDir()) +
                     ":1:1",
                     "Author: @" + getSystemUserName(),
                     "Time: " + getCurrentTime(TimeFormat::ISO_WITH_TIME),

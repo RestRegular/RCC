@@ -1,12 +1,5 @@
-import(io="io")
+import(io="io", nr="newrcc")
 
-var sout: func[.., str] = io.sout
+var a = 0
 
-(fc: func[funi[int], int], fi1: funi[int], fi2: funi[int], a: int) -> {
-    fc(fi1, fi2(a))
-}(
-    (fi: funi[int], a: int): void -> { sout(fi(a)) },
-    (b: int) -> "Res: " + b;,
-    (a: int) -> a * a;,
-    10
-)
+io.sout(nr.ctext("Hello world", nr.TextColor.BLUE))
