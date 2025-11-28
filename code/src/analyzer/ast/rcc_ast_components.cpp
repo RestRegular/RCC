@@ -638,8 +638,14 @@ namespace ast {
         return labels;
     }
 
-    LabelNode::LabelNode(const Token &token)
-        : ExpressionNode(token, NodeType::LABEL), label(token.getValue()) {}
+    LabelNode::LabelNode(const std::vector<Token>& labelPathToken)
+        : ExpressionNode(labelPathToken.back(), NodeType::LABEL) {
+        labelPath = {};
+        for (const auto& l: labelPathToken)
+        {
+            labelPath.push_back(l.getValue());
+        }
+    }
 
     void LabelNode::appendLabelDesNode(const std::shared_ptr<ListExpressionNode>& labelDesNode)
     {
@@ -650,13 +656,29 @@ namespace ast {
         visitor.visitLabelNode(*this);
     }
 
-    std::string LabelNode::getLabel() const {
-        return label;
+    std::string LabelNode::getFullLabel() const {
+        std::string full;
+        for (size_t i = 0; i < labelPath.size(); ++i) {
+            if (i > 0) full += ".";
+            full += labelPath[i];
+        }
+        return full;
+    }
+
+    std::vector<std::string> LabelNode::getLabelPath() const
+    {
+        return labelPath;
     }
 
     std::vector<std::shared_ptr<ListExpressionNode>> LabelNode::getLabelDesNodes() const
     {
         return labelDesNodes;
+    }
+
+    void LabelNode::appendLabelPath(const Token& token)
+    {
+        setMainToken(token);
+        labelPath.push_back(token.getValue());
     }
 
     RangerNode::RangerNode(const NodeType rangerType_,

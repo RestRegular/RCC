@@ -51,7 +51,19 @@ namespace parser {
         }
         ExpressionNodePtr right = nullptr;
         if (it->second == NodeType::ANON_FUNCTION_DEFINITION) {
-             right = buildBraceExpression();
+            if (currentTokenIs(TokenType::TOKEN_LBRACE))
+            {
+                right = buildBraceExpression();
+            } else if (currentTokenIs(TokenType::TOKEN_RETURN))
+            {
+                right = buildReturnExpression();
+                skipNextNewLineToken();
+            } else
+            {
+                const auto &expression = buildExpression(Precedence::LOWEST);
+                right = std::make_shared<ReturnExpressionNode>(expression->getMainToken(), expression);
+                skipNextNewLineToken();
+            }
             return std::make_shared<AnonFunctionDefinitionNode>(opToken, left, nullptr, std::vector<std::shared_ptr<LabelNode>>{}, opToken, right);
         }
         right = buildExpression(precedence);

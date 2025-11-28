@@ -3,5 +3,6 @@
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/code/src/builtin/functions/rcc_builtin_import.cpp" charset="GB18030" />
     <file url="file://$PROJECT_DIR$/scripts/config/update_config.json" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/test/py/choose.py" charset="UTF-8" />
   </component>
 </project>

@@ -425,13 +425,13 @@ namespace base {
             : RCCError(ErrorType::COMPILER_ERROR, std::move(error_position), std::move(error_line),
                 std::move(error_info), std::move(repair_tips)) {}
 
-    RCCCompilerError RCCCompilerError::labelDesError(const std::string& error_position, const std::string& error_line,
+    RCCCompilerError RCCCompilerError::labelError(const std::string& error_position, const std::string& error_line,
         const StringVector& error_infos, const StringVector& repair_tips)
     {
         return RCCCompilerError(error_position, error_line, [error_infos]
         {
             std::vector<std::string> infos {
-                "This error is caused by a label description error."
+                "This error is caused by a label error."
             };
             for (const auto &info: error_infos)
             {

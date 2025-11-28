@@ -7,6 +7,10 @@ fun main() {
     while true {
         var input = io.sin(nr.TextColor.YELLOW + "<<< ")
         totalTimes ++
+        if input == "exit" {
+            io.sout(nr.ctext("Game has interrupt by user.", nr.TextColor.PURPLE))
+            ret
+        }
         dt.setType(input, "int")
         if input == answer {
             break

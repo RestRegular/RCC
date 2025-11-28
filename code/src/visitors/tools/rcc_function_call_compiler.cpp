@@ -341,7 +341,7 @@ namespace ast
     {
         if (secondDes.size() != 1)
         {
-            throw RCCCompilerError::labelDesError(
+            throw RCCCompilerError::labelError(
                 "", getCodeLine(currentPos()),
                 {
                     "The number of the description part of the main label is wrong.",
@@ -363,7 +363,7 @@ namespace ast
                                                const std::shared_ptr<LabelSymbol>& typeLabel,
                                                const size_t currentCount, const std::string& expected)
     {
-        throw RCCCompilerError::labelDesError(
+        throw RCCCompilerError::labelError(
             typeLabel->getPos().toString(), getCodeLine(currentPos()),
             {
                 "The number of the description of the main label is wrong.",
@@ -422,12 +422,22 @@ namespace ast
             pushTemOpVarItemWithRecord(node.getPos(), getBuiltinTypeSymbol(getUnknownPos(), BuiltinType::B_ANY));
             raCodeBuilder << ri::IVOK(funcNameSymbol->getRaVal(), halfProcessedArgs, topOpRaVal());
         }
-        else
+        else if (funcType->is("any"))
         {
             throw RCCCompilerError::typeMissmatchError(node.getPos().toString(), getCodeLine(node.getPos()),
                                                        "It is not clear whether the called function has a return value.",
                                                        getListFormatString({"func", "funi"}), funcType->getVal(), {
                                                            "Please ensure that the called function can clearly indicate whether there is a return value."
+                                                       });
+        } else
+        {
+            throw RCCCompilerError::typeMissmatchError(node.getPos().toString(), getCodeLine(node.getPos()),
+                                                       std::vector<std::string>{
+                                                           "This symbol need to be a callable type.",
+                                                           "Processing symbol: " + funcNameSymbol->toString()
+                                                       },
+                                                       getListFormatString({"func", "funi"}), funcType->getVal(), {
+                                                           "Please ensure that the processing symbol to be callable type."
                                                        });
         }
     }
@@ -458,7 +468,6 @@ namespace ast
                     if (!checkTypeMatch(param, posArgs.front()))
                     {
                         const auto& frontArgSymbol = getSymbolFromOpItem(posArgs.front());
-                        const auto& [fst, snd] = getTypesFromOpItem(posArgs.front());
                         throw RCCCompilerError::typeMissmatchError(
                             posArgs.front().getPos().toString(),
                             getCodeLine(callPos),
@@ -479,11 +488,7 @@ namespace ast
                                                                ? frontArgSymbol->toString()
                                                                : posArgs.front().toString())
                             }, param->getTypeLabel()->toString(),
-                            fst
-                                ? fst->toString()
-                                : snd
-                                ? snd->toString()
-                                : RCC_UNKNOWN_CONST,
+                            getDefiniteTypeLabelSymbolFromOpItem(posArgs.front())->toString(),
                             {
                                 "You can try using the `any` type to set the parameter types more loosely."
                             });

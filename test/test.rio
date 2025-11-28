@@ -1,27 +1,12 @@
-import(io="io", ll="lowlevel")
+import(io="io")
 
-class Error {
-    ctor () {}
-    fun toString(): str public virtual {
-        ret "[Error]"
-    }
-}
+var sout: func[.., str] = io.sout
 
-class FileError: Error {
-    ctor () {
-        super()
-    }
-    fun toString(): str public overwrite {
-        ret "[FileError]"
-    }
-}
-
-try {
-    var error: Error = Error()
-    io.sout("Running try block, expose an error: ", error.toString())
-    throw error
-} catch (error: FileError) {
-    io.sout("Running catch block, caught an error: ", error.toString())
-} finally {
-    io.sout("Running finally block")
-}
+(fc: func[funi[int], int], fi1: funi[int], fi2: funi[int], a: int) -> {
+    fc(fi1, fi2(a))
+}(
+    (fi: funi[int], a: int): void -> { sout(fi(a)) },
+    (b: int) -> "Res: " + b;,
+    (a: int) -> a * a;,
+    10
+)

@@ -1778,11 +1778,11 @@ namespace ast
         for (const auto& label : labels)
         {
             label->acceptVisitor(*this);
-            if (const auto& [_, symbol] = symbolTable.findByName(label->getLabel());
+            if (const auto& [_, symbol] = symbolTable.findByName(label->getFullLabel());
                 symbol->is(SymbolType::LABEL))
             {
                 result.push_back(std::static_pointer_cast<LabelSymbol>(symbol));
-                symbolTable.removeByName(label->getLabel());
+                symbolTable.removeByName(label->getFullLabel());
             }
             else
             {
@@ -2773,7 +2773,10 @@ namespace ast
         if (node.getRangerNode()->getRealType() == NodeType::PARALLEL)
         {
             // series ×ÖÃæÁ¿
+            const auto& pos = node.getPos();
             const auto& seriesNode = std::static_pointer_cast<InfixExpressionNode>(node.getRangerNode());
+            const auto& seriesTypeLabel = TypeLabelSymbol::seriesTypeSymbol(pos, curScopeLevel());
+            LabelSymbol::LabelDes seriesLabelDes {};
             std::vector<std::string> itemIds {};
             for (const auto& seriesItems = visitParallelNode(seriesNode);
                 const auto& item: seriesItems)
@@ -2782,9 +2785,10 @@ namespace ast
                 const auto& opItem = rPopOpItem();
                 checkExists(opItem);
                 itemIds.push_back(raVal(opItem));
+                seriesLabelDes.push_back(getDefiniteTypeLabelSymbolFromOpItem(opItem));
             }
-            const auto& pos = node.getPos();
-            pushTemOpVarItemWithRecord(pos, TypeLabelSymbol::seriesTypeSymbol(pos, curScopeLevel()),
+            seriesTypeLabel->appendLastLabelDes(seriesLabelDes);
+            pushTemOpVarItemWithRecord(pos, seriesTypeLabel,
                 nullptr, true);
             const auto& tempOpItemRaVal = topOpRaVal();
             raCodeBuilder
@@ -3130,7 +3134,7 @@ namespace ast
             pass("Process index expression type label node.");
         } else if (labelNode->getRealType() == NodeType::IDENTIFIER)
         {
-            desLabelNodes.push_back(std::make_shared<LabelNode>(labelNode->getMainToken()));
+            desLabelNodes.push_back(std::make_shared<LabelNode>(std::vector{labelNode->getMainToken()}));
         }
     }
 
@@ -3139,9 +3143,44 @@ namespace ast
         return getCurrentProcessingFilePath() == programEntryFilePath;
     }
 
+    std::shared_ptr<Symbol> CompileVisitor::processAttribute(const std::shared_ptr<Symbol> &leftSymbol, const std::string &attr, const LifeCycleLabel& lifeCycleLabel)
+    {
+        if (leftSymbol->is(SymbolType::CLASS))
+        {
+            const auto& classSymbol = std::static_pointer_cast<ClassSymbol>(leftSymbol);
+            if (const auto& [attrSymbol, lifeCycle] = classSymbol->findMemberSymbolInPermission(attr);
+                attrSymbol && lifeCycle == lifeCycleLabel)
+            {
+                return attrSymbol;
+            }
+            throw std::runtime_error("");
+        }
+        if (leftSymbol->is(SymbolType::VARIABLE))
+        {
+            const auto &variableSymbol = std::static_pointer_cast<VariableSymbol>(leftSymbol);
+            if (const auto &refSymbol = getReferenceTargetSymbol(variableSymbol))
+            {
+                return processAttribute(refSymbol, attr, lifeCycleLabel);
+            }
+            if (const auto& labelType = variableSymbol->getTypeLabel();
+                                TypeLabelSymbol::isCustomType(labelType->getRaVal()))
+            {
+                const auto&classSymbol = TypeLabelSymbol::getCustomClassSymbol(labelType->getRaVal());
+                return processAttribute(classSymbol, attr, LifeCycleLabel::INSTANCE);
+            }
+            if (const auto& valueType = variableSymbol->getValueType();
+                TypeLabelSymbol::isCustomType(valueType->getRaVal()))
+            {
+                const auto&classSymbol = TypeLabelSymbol::getCustomClassSymbol(valueType->getRaVal());
+                return processAttribute(classSymbol, attr, LifeCycleLabel::INSTANCE);
+            }
+        }
+        throw std::runtime_error("");
+    }
+
     void CompileVisitor::visitLabelNode(LabelNode& node)
     {
-        if (const auto& label = node.getLabel();
+        if (const auto& label = node.getFullLabel();
             TypeLabelSymbol::isTypeLabel(label))
         {
             const auto& labelSymbol = std::make_shared<TypeLabelSymbol>(
@@ -3160,7 +3199,38 @@ namespace ast
             symbolTable.insert(labelSymbol, true);
             // ToDo: type label
         }
-        else
+        else if (const auto& labelPath = node.getLabelPath();
+            labelPath.size() > 1)
+        {
+            std::shared_ptr<Symbol> leftSymbol = nullptr;
+            for (const auto& lp: labelPath)
+            {
+                if (!leftSymbol) {
+                    if (const auto& [level, symbol] = symbolTable.findByName(lp);
+                       level >= 0 && symbol)
+                    {
+                        leftSymbol = symbol;
+                    }
+                }
+                else
+                {
+                    leftSymbol = processAttribute(leftSymbol, lp);
+                }
+                if (!leftSymbol)
+                {
+                    throw RCCCompilerError::labelError(node.getPos().toString(),
+                        getCodeLine(node.getPos()), {
+                            "Full label: " + node.getFullLabel(),
+                            "Error part: " + lp
+                        }, {
+                            "Please ensure the label you used is correct."
+                        });
+                }
+            }
+            symbolTable.insert(std::make_shared<TypeLabelSymbol>(
+                node.getPos(), leftSymbol->getVal(), curScopeLevel(), leftSymbol->getRaVal()),
+                false);
+        } else
         {
             if (const auto& [fst, snd] = symbolTable.findByName(label);
                 fst >= 0)
@@ -3201,10 +3271,21 @@ namespace ast
             }
             else
             {
-                symbolTable.insert(std::make_shared<LabelSymbol>(
+                try
+                {
+                    symbolTable.insert(std::make_shared<LabelSymbol>(
                                        node.getPos(), label, "RID-" + label,
                                        symbolTable.curScopeLevel(), LabelType::UNKNOWN_TYPE_LABEL),
                                    false);
+                } catch (...)
+                {
+                    throw RCCCompilerError::labelError(node.getPos().toString(),
+                        getCodeLine(node.getPos()), {
+                            "Error label: " + node.getFullLabel()
+                        }, {
+                            "Please ensure the label you used is correct."
+                        });
+                }
             }
         }
     }

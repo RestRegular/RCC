@@ -462,6 +462,9 @@ namespace ast
 
         bool isVisitingProgramEntry() const;
 
+        static std::shared_ptr<symbol::Symbol> processAttribute(const std::shared_ptr<symbol::Symbol>& leftSymbol,
+                                                                const std::string& attr, const symbol::LifeCycleLabel& lifeCycleLabel = symbol::LifeCycleLabel::STATIC);
+
         bool compile();
 
         std::string getCompileResult();

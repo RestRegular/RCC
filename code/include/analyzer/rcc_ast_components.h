@@ -261,14 +261,16 @@ namespace ast {
     };
 
     class LabelNode final : public ExpressionNode {
-        std::string label;
+        std::vector<std::string> labelPath;
         std::vector<std::shared_ptr<ListExpressionNode>> labelDesNodes {};
     public:
-        explicit LabelNode(const Token& token);
+        explicit LabelNode(const std::vector<Token> &labelPathToken);
         void appendLabelDesNode(const std::shared_ptr<ListExpressionNode> &labelDesNode);
         void acceptVisitor(Visitor &visitor) override;
-        [[nodiscard]] std::string getLabel() const;
+        [[nodiscard]] std::string getFullLabel() const;
+        [[nodiscard]] std::vector<std::string> getLabelPath() const;
         [[nodiscard]] std::vector<std::shared_ptr<ListExpressionNode>> getLabelDesNodes() const;
+        void appendLabelPath(const Token& token);
     };
 
     class RangerNode : public ExpressionNode {

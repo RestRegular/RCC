@@ -72,7 +72,9 @@ namespace symbol {
     class LabelSymbol:
     public Symbol,
     public IRCCLabelSymbolInterface {
+    public:
         using LabelDes = std::vector<std::shared_ptr<LabelSymbol>>;
+    private:
         bool isBuiltIn_;
         LabelType labelType;
         std::vector<LabelDes> labelDesS{};

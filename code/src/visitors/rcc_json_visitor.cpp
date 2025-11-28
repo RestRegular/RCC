@@ -436,7 +436,7 @@ namespace ast {
         builder.insertString("nodeType", getNodeTypeName(node.getType()))
         .insertObject("node", {
             node.getMainToken().toRJPair(),
-            {"label", node.getLabel()}
+            {"label", node.getFullLabel()}
         });
     }
 

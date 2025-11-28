@@ -146,7 +146,7 @@ namespace base
                          StringVector error_info, StringVector repair_tips);
 
     public:
-        static RCCCompilerError labelDesError(const std::string& error_position, const std::string& error_line,
+        static RCCCompilerError labelError(const std::string& error_position, const std::string& error_line,
                                               const StringVector& error_infos, const StringVector& repair_tips);
         static RCCCompilerError typeMissmatchError(const std::string& error_position, const std::string& error_line,
                                                    const std::string& error_info, const std::string& expected_type,

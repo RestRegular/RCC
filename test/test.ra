@@ -1,8 +1,8 @@
-; Rio Program & compiled by RCC(Rio Compiler Collection) v1.18.0
+; Rio Program & compiled by RCC(Rio Compiler Collection) v1.20.0
 ~ Source file: D:\ClionProjects\RCC\test\test.rio:1:1
 ~ Target file: D:\ClionProjects\RCC\test\test.ra:1:1
 ~ Author: @RestRegular
-~ Time: 2025-11-23 15:46:19
+~ Time: 2025-11-28 15:51:25
 
 FUNC: super_vid6
 ; This is a pure-built-in function: `super`
@@ -17,2312 +17,2167 @@ FUNI: import_vid8
 PASS: ; Function implementation is encapsulated.
 END: import_vid8
 ; D:\ClionProjects\RCC\test\test.rio:1:1, line 1
-ALLOT: tv1_vid11
-TP_SET: tp-list, tv1_vid11
-ALLOT: tv2_vid12
-PAIR_SET: "ll", "lowlevel", tv2_vid12
-ALLOT: tv3_vid13
-PAIR_SET: "io", "io", tv3_vid13
-ALLOT: tv4_vid14
-TP_SET: tp-dict, tv4_vid14
-ITER_APND: tv2_vid12, tv3_vid13, tv4_vid14
+ALLOT: tv1_vid10
+TP_SET: tp-list, tv1_vid10
+ALLOT: tv2_vid11
+PAIR_SET: "io", "io", tv2_vid11
+ALLOT: tv3_vid12
+TP_SET: tp-dict, tv3_vid12
+ITER_APND: tv2_vid11, tv3_vid12
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:15:1, line 15
-ALLOT: tv5_vid20
-TP_SET: tp-list, tv5_vid20
-ALLOT: tv6_vid21
-PAIR_SET: "ds", "ds", tv6_vid21
-ALLOT: tv7_vid22
-TP_SET: tp-dict, tv7_vid22
-ITER_APND: tv6_vid21, tv7_vid22
+ALLOT: tv4_vid18
+TP_SET: tp-list, tv4_vid18
+ALLOT: tv5_vid19
+PAIR_SET: "ds", "ds", tv5_vid19
+ALLOT: tv6_vid20
+TP_SET: tp-dict, tv6_vid20
+ITER_APND: tv5_vid19, tv6_vid20
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:15:1, line 15
-ALLOT: tv8_vid29
-TP_SET: tp-list, tv8_vid29
-ALLOT: tv9_vid30
-PAIR_SET: "ops", "ops", tv9_vid30
-ALLOT: tv10_vid31
-PAIR_SET: "dt", "datatype", tv10_vid31
-ALLOT: tv11_vid32
-TP_SET: tp-dict, tv11_vid32
-ITER_APND: tv9_vid30, tv10_vid31, tv11_vid32
+ALLOT: tv7_vid27
+TP_SET: tp-list, tv7_vid27
+ALLOT: tv8_vid28
+PAIR_SET: "ops", "ops", tv8_vid28
+ALLOT: tv9_vid29
+PAIR_SET: "dt", "datatype", tv9_vid29
+ALLOT: tv10_vid30
+TP_SET: tp-dict, tv10_vid30
+ITER_APND: tv8_vid28, tv9_vid29, tv10_vid30
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:16:1, line 16
-FUNI: type_vid38, arg_vid39
+FUNI: type_vid36, arg_vid37
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:30:6, line 30, column 6
 ; The implementation is encapsulated.
-END: type_vid38
+END: type_vid36
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:33:1, line 33
-FUNC: setType_vid41, arg1_vid42, arg2_vid43
+FUNC: setType_vid39, arg1_vid40, arg2_vid41
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:46:6, line 46, column 6
 ; The implementation is encapsulated.
-END: setType_vid41
+END: setType_vid39
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:49:1, line 49
-TP_DEF: DT_vid44
-ALLOT: tv12_vid57
-TP_GET: 0, tv12_vid57
+TP_DEF: DT_vid42
+ALLOT: tv11_vid55
+TP_GET: 0, tv11_vid55
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:50:9, line 50, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_INT_vid45", tv12_vid57
-ALLOT: tv13_vid58
-TP_GET: 0.01, tv13_vid58
+TP_ADD_TP_FIELD: DT_vid42, "TP_INT_vid43", tv11_vid55
+ALLOT: tv12_vid56
+TP_GET: 0.01, tv12_vid56
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:51:9, line 51, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_FLOAT_vid46", tv13_vid58
-ALLOT: tv14_vid59
-TP_GET: "", tv14_vid59
+TP_ADD_TP_FIELD: DT_vid42, "TP_FLOAT_vid44", tv12_vid56
+ALLOT: tv13_vid57
+TP_GET: "", tv13_vid57
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:52:9, line 52, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_STR_vid47", tv14_vid59
-FUNI: anon_func_tv15_vid60
+TP_ADD_TP_FIELD: DT_vid42, "TP_STR_vid45", tv13_vid57
+FUNI: anon_func_tv14_vid58
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:54:13, line 54, column 13
-ALLOT: temp_vid61
+ALLOT: temp_vid59
 ; No need to set 'tp-any' type.
-PUT: " ", temp_vid61
+PUT: " ", temp_vid59
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:55:13, line 55, column 13
-TP_SET: tp-char, temp_vid61
+TP_SET: tp-char, temp_vid59
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:56:13, line 56, column 13
-ALLOT: tv16_vid62
-TP_GET: temp_vid61, tv16_vid62
-RET: tv16_vid62
-END: anon_func_tv15_vid60
-ALLOT: tv17_vid63
-PUT: anon_func_tv15_vid60, tv17_vid63
-ALLOT: tv18_vid64
-IVOK: anon_func_tv15_vid60, tv18_vid64
+ALLOT: tv15_vid60
+TP_GET: temp_vid59, tv15_vid60
+RET: tv15_vid60
+END: anon_func_tv14_vid58
+ALLOT: tv16_vid61
+PUT: anon_func_tv14_vid58, tv16_vid61
+ALLOT: tv17_vid62
+IVOK: anon_func_tv14_vid58, tv17_vid62
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:53:9, line 53, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_CHAR_vid48", tv18_vid64
-ALLOT: tv19_vid65
-TP_GET: true, tv19_vid65
+TP_ADD_TP_FIELD: DT_vid42, "TP_CHAR_vid46", tv17_vid62
+ALLOT: tv18_vid63
+TP_GET: true, tv18_vid63
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:58:9, line 58, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_BOOL_vid49", tv19_vid65
-ALLOT: tv20_vid66
-TP_SET: tp-list, tv20_vid66
+TP_ADD_TP_FIELD: DT_vid42, "TP_BOOL_vid47", tv18_vid63
+ALLOT: tv19_vid64
+TP_SET: tp-list, tv19_vid64
 ; To generate an empty list does not need to use the [ITER_APND] ri.
-ALLOT: tv21_vid67
-TP_GET: tv20_vid66, tv21_vid67
+ALLOT: tv20_vid65
+TP_GET: tv19_vid64, tv20_vid65
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:59:9, line 59, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_LIST_vid50", tv21_vid67
-ALLOT: tv22_vid68
-TP_SET: tp-dict, tv22_vid68
+TP_ADD_TP_FIELD: DT_vid42, "TP_LIST_vid48", tv20_vid65
+ALLOT: tv21_vid66
+TP_SET: tp-dict, tv21_vid66
 ; To generate an empty list does not need to use the [ITER_APND] ri.
-ALLOT: tv23_vid69
-TP_GET: tv22_vid68, tv23_vid69
+ALLOT: tv22_vid67
+TP_GET: tv21_vid66, tv22_vid67
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:60:9, line 60, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_DICT_vid51", tv23_vid69
-ALLOT: tv24_vid70
-TP_GET: null, tv24_vid70
+TP_ADD_TP_FIELD: DT_vid42, "TP_DICT_vid49", tv22_vid67
+ALLOT: tv23_vid68
+TP_GET: null, tv23_vid68
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:61:9, line 61, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_NULL_vid52", tv24_vid70
-ALLOT: tv25_vid71
-TP_GET: setType_vid41, tv25_vid71
+TP_ADD_TP_FIELD: DT_vid42, "TP_NULL_vid50", tv23_vid68
+ALLOT: tv24_vid69
+TP_GET: setType_vid39, tv24_vid69
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:62:9, line 62, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_FUNC_vid53", tv25_vid71
-ALLOT: tv26_vid72
-TP_GET: type_vid38, tv26_vid72
+TP_ADD_TP_FIELD: DT_vid42, "TP_FUNC_vid51", tv24_vid69
+ALLOT: tv25_vid70
+TP_GET: type_vid36, tv25_vid70
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:63:9, line 63, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_FUNI_vid54", tv26_vid72
-FUNI: anon_func_tv27_vid73
+TP_ADD_TP_FIELD: DT_vid42, "TP_FUNI_vid52", tv25_vid70
+FUNI: anon_func_tv26_vid71
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:65:13, line 65, column 13
-ALLOT: tv28_vid75
-TP_SET: tp-list, tv28_vid75
+ALLOT: tv27_vid73
+TP_SET: tp-list, tv27_vid73
 ; To generate an empty list does not need to use the [ITER_APND] ri.
-ALLOT: temp_vid74
+ALLOT: temp_vid72
 ; No need to set 'tp-any' type.
-PUT: tv28_vid75, temp_vid74
+PUT: tv27_vid73, temp_vid72
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:66:13, line 66, column 13
-TP_SET: tp-series, temp_vid74
+TP_SET: tp-series, temp_vid72
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:67:13, line 67, column 13
-ALLOT: tv29_vid76
-TP_GET: temp_vid74, tv29_vid76
-RET: tv29_vid76
-END: anon_func_tv27_vid73
-ALLOT: tv30_vid77
-PUT: anon_func_tv27_vid73, tv30_vid77
-ALLOT: tv31_vid78
-IVOK: anon_func_tv27_vid73, tv31_vid78
+ALLOT: tv28_vid74
+TP_GET: temp_vid72, tv28_vid74
+RET: tv28_vid74
+END: anon_func_tv26_vid71
+ALLOT: tv29_vid75
+PUT: anon_func_tv26_vid71, tv29_vid75
+ALLOT: tv30_vid76
+IVOK: anon_func_tv26_vid71, tv30_vid76
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:64:9, line 64, column 9
-TP_ADD_TP_FIELD: DT_vid44, "TP_SERIES_vid55", tv31_vid78
+TP_ADD_TP_FIELD: DT_vid42, "TP_SERIES_vid53", tv30_vid76
+ALLOT: tv31_vid78
+TP_GET_FIELD: DT_vid42, "TP_LIST_vid48", tv31_vid78
 ALLOT: tv32_vid80
-TP_GET_FIELD: DT_vid44, "TP_LIST_vid50", tv32_vid80
+TP_GET_FIELD: DT_vid42, "TP_DICT_vid49", tv32_vid80
 ALLOT: tv33_vid82
-TP_GET_FIELD: DT_vid44, "TP_DICT_vid51", tv33_vid82
+TP_GET_FIELD: DT_vid42, "TP_STR_vid45", tv33_vid82
 ALLOT: tv34_vid84
-TP_GET_FIELD: DT_vid44, "TP_STR_vid47", tv34_vid84
-ALLOT: tv35_vid86
-TP_GET_FIELD: DT_vid44, "TP_SERIES_vid55", tv35_vid86
-ALLOT: tv36_vid87
-TP_SET: tp-list, tv36_vid87
-ITER_APND: tv32_vid80, tv33_vid82, tv34_vid84, tv35_vid86, tv36_vid87
+TP_GET_FIELD: DT_vid42, "TP_SERIES_vid53", tv34_vid84
+ALLOT: tv35_vid85
+TP_SET: tp-list, tv35_vid85
+ITER_APND: tv31_vid78, tv32_vid80, tv33_vid82, tv34_vid84, tv35_vid85
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:70:9, line 70, column 9
-TP_ADD_TP_FIELD: DT_vid44, "ITERABLE_TPS_vid56", tv36_vid87
+TP_ADD_TP_FIELD: DT_vid42, "ITERABLE_TPS_vid54", tv35_vid85
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:75:1, line 75
-FUNI: checkType_vid89, arg1_vid90, arg2_vid91
+FUNI: checkType_vid87, arg1_vid88, arg2_vid89
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:86:5, line 86, column 5
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:86:5, line 86, column 5
+ALLOT: tv36_vid91
+TP_GET: arg2_vid89, tv36_vid91
 ALLOT: tv37_vid93
-TP_GET: arg2_vid91, tv37_vid93
-ALLOT: tv38_vid95
-TP_GET_FIELD: DT_vid44, "TP_LIST_vid50", tv38_vid95
-ALLOT: tv39_vid96
-CMP: tv37_vid93, tv38_vid95, tv39_vid96
-CREL: tv39_vid96, RE, tv39_vid96
-JF: tv39_vid96, sl2_sid97
+TP_GET_FIELD: DT_vid42, "TP_LIST_vid48", tv37_vid93
+ALLOT: tv38_vid94
+CMP: tv36_vid91, tv37_vid93, tv38_vid94
+CREL: tv38_vid94, RE, tv38_vid94
+JF: tv38_vid94, sl2_sid95
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:87:9, line 87, column 9
-FUNI: size_vid99, arg_vid100
+FUNI: size_vid97, arg_vid98
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:88:13, line 88, column 13
 ; The implementation is encapsulated.
-END: size_vid99
+END: size_vid97
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:90:9, line 90, column 9
+ALLOT: tv39_vid100
+ITER_SIZE: arg2_vid89, tv39_vid100
 ALLOT: tv40_vid102
-ITER_SIZE: arg2_vid91, tv40_vid102
-ALLOT: tv41_vid104
-TP_GET: arg1_vid90, tv41_vid104
-ALLOT: length_vid101, typeOfArg1_vid103
-TP_SET: tp-int, length_vid101
-PUT: tv40_vid102, length_vid101
-TP_SET: tp-str, typeOfArg1_vid103
-PUT: tv41_vid104, typeOfArg1_vid103
+TP_GET: arg1_vid88, tv40_vid102
+ALLOT: length_vid99, typeOfArg1_vid101
+TP_SET: tp-int, length_vid99
+PUT: tv39_vid100, length_vid99
+TP_SET: tp-str, typeOfArg1_vid101
+PUT: tv40_vid102, typeOfArg1_vid101
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:92:9, line 92, column 9
-ALLOT: i_vid105
-TP_SET: tp-int, i_vid105
-PUT: 0, i_vid105
-ALLOT: tv42_vid106
-CMP: true, false, tv42_vid106
-UNTIL: tv42_vid106, RE
-ALLOT: tv43_vid107
-CMP: i_vid105, length_vid101, tv43_vid107
-CREL: tv43_vid107, RL, tv43_vid107
-JT: tv43_vid107, sl3_sid108
+ALLOT: i_vid103
+TP_SET: tp-int, i_vid103
+PUT: 0, i_vid103
+ALLOT: tv41_vid104
+CMP: true, false, tv41_vid104
+UNTIL: tv41_vid104, RE
+ALLOT: tv42_vid105
+CMP: i_vid103, length_vid99, tv42_vid105
+CREL: tv42_vid105, RL, tv42_vid105
+JT: tv42_vid105, sl3_sid106
 EXIT: UNTIL
-SET: sl3_sid108
+SET: sl3_sid106
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:93:13, line 93, column 13
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:93:13, line 93, column 13
-ALLOT: tv44_vid110
-ITER_GET: arg2_vid91, i_vid105, tv44_vid110
-ALLOT: tv45_vid111
-CMP: typeOfArg1_vid103, tv44_vid110, tv45_vid111
-CREL: tv45_vid111, RE, tv45_vid111
-JF: tv45_vid111, sl5_sid112
+ALLOT: tv43_vid108
+ITER_GET: arg2_vid89, i_vid103, tv43_vid108
+ALLOT: tv44_vid109
+CMP: typeOfArg1_vid101, tv43_vid108, tv44_vid109
+CREL: tv44_vid109, RE, tv44_vid109
+JF: tv44_vid109, sl5_sid110
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:94:17, line 94, column 17
 RET: true
-JMP: sl4_sid109
-SET: sl5_sid112
-SET: sl4_sid109
-ADD: i_vid105, 1, i_vid105
+JMP: sl4_sid107
+SET: sl5_sid110
+SET: sl4_sid107
+ADD: i_vid103, 1, i_vid103
 END: UNTIL
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:97:9, line 97, column 9
 RET: false
-JMP: sl1_sid92
-SET: sl2_sid97
+JMP: sl1_sid90
+SET: sl2_sid95
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:98:7, line 98, column 7
+ALLOT: tv45_vid111
+TP_GET: arg2_vid89, tv45_vid111
 ALLOT: tv46_vid113
-TP_GET: arg2_vid91, tv46_vid113
-ALLOT: tv47_vid115
-TP_GET_FIELD: DT_vid44, "TP_STR_vid47", tv47_vid115
-ALLOT: tv48_vid116
-CMP: tv46_vid113, tv47_vid115, tv48_vid116
-CREL: tv48_vid116, RE, tv48_vid116
-JF: tv48_vid116, sl6_sid117
+TP_GET_FIELD: DT_vid42, "TP_STR_vid45", tv46_vid113
+ALLOT: tv47_vid114
+CMP: tv45_vid111, tv46_vid113, tv47_vid114
+CREL: tv47_vid114, RE, tv47_vid114
+JF: tv47_vid114, sl6_sid115
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:99:9, line 99, column 9
-ALLOT: tv49_vid118
-TP_GET: arg1_vid90, tv49_vid118
-ALLOT: tv50_vid119
-CMP: tv49_vid118, arg2_vid91, tv50_vid119
-CREL: tv50_vid119, RE, tv50_vid119
-RET: tv50_vid119
-JMP: sl1_sid92
-SET: sl6_sid117
+ALLOT: tv48_vid116
+TP_GET: arg1_vid88, tv48_vid116
+ALLOT: tv49_vid117
+CMP: tv48_vid116, arg2_vid89, tv49_vid117
+CREL: tv49_vid117, RE, tv49_vid117
+RET: tv49_vid117
+JMP: sl1_sid90
+SET: sl6_sid115
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:100:7, line 100, column 7
-JF: true, sl7_sid120
+JF: true, sl7_sid118
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:101:9, line 101, column 9
 RET: false
-JMP: sl1_sid92
-SET: sl7_sid120
-SET: sl1_sid92
-END: checkType_vid89
+JMP: sl1_sid90
+SET: sl7_sid118
+SET: sl1_sid90
+END: checkType_vid87
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:105:1, line 105
-FUNI: isIter_vid122, arg_vid123
+FUNI: isIter_vid120, arg_vid121
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:106:5, line 106, column 5
-FUNI: size_vid125, arg_vid123
+FUNI: size_vid123, arg_vid121
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:107:9, line 107, column 9
 ; The implementation is encapsulated.
-END: size_vid125
+END: size_vid123
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:109:5, line 109, column 5
-ALLOT: tv51_vid128
-TP_GET_FIELD: DT_vid44, "ITERABLE_TPS_vid56", tv51_vid128
-ALLOT: tv52_vid129
-ITER_SIZE: tv51_vid128, tv52_vid129
-ALLOT: length_vid126
-TP_SET: tp-int, length_vid126
-PUT: tv52_vid129, length_vid126
+ALLOT: tv50_vid126
+TP_GET_FIELD: DT_vid42, "ITERABLE_TPS_vid54", tv50_vid126
+ALLOT: tv51_vid127
+ITER_SIZE: tv50_vid126, tv51_vid127
+ALLOT: length_vid124
+TP_SET: tp-int, length_vid124
+PUT: tv51_vid127, length_vid124
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:110:5, line 110, column 5
-ALLOT: tv53_vid131
-TP_GET: arg_vid123, tv53_vid131
-ALLOT: argType_vid130
-TP_SET: tp-str, argType_vid130
-PUT: tv53_vid131, argType_vid130
+ALLOT: tv52_vid129
+TP_GET: arg_vid121, tv52_vid129
+ALLOT: argType_vid128
+TP_SET: tp-str, argType_vid128
+PUT: tv52_vid129, argType_vid128
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:111:5, line 111, column 5
-ALLOT: result_vid132
-TP_SET: tp-bool, result_vid132
-PUT: false, result_vid132
+ALLOT: result_vid130
+TP_SET: tp-bool, result_vid130
+PUT: false, result_vid130
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:112:5, line 112, column 5
-ALLOT: i_vid133
+ALLOT: i_vid131
 ; No need to set 'tp-any' type.
-PUT: 0, i_vid133
-ALLOT: tv54_vid134
-CMP: true, false, tv54_vid134
-UNTIL: tv54_vid134, RE
-ALLOT: tv55_vid135
-CMP: i_vid133, length_vid126, tv55_vid135
-CREL: tv55_vid135, RL, tv55_vid135
-JT: tv55_vid135, sl8_sid136
+PUT: 0, i_vid131
+ALLOT: tv53_vid132
+CMP: true, false, tv53_vid132
+UNTIL: tv53_vid132, RE
+ALLOT: tv54_vid133
+CMP: i_vid131, length_vid124, tv54_vid133
+CREL: tv54_vid133, RL, tv54_vid133
+JT: tv54_vid133, sl8_sid134
 EXIT: UNTIL
-SET: sl8_sid136
+SET: sl8_sid134
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:113:9, line 113, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:113:9, line 113, column 9
-ALLOT: tv56_vid139
-TP_GET_FIELD: DT_vid44, "ITERABLE_TPS_vid56", tv56_vid139
-ALLOT: tv57_vid140
-ITER_GET: tv56_vid139, i_vid133, tv57_vid140
-ALLOT: tv58_vid141
-CMP: argType_vid130, tv57_vid140, tv58_vid141
-CREL: tv58_vid141, RE, tv58_vid141
-JF: tv58_vid141, sl10_sid142
+ALLOT: tv55_vid137
+TP_GET_FIELD: DT_vid42, "ITERABLE_TPS_vid54", tv55_vid137
+ALLOT: tv56_vid138
+ITER_GET: tv55_vid137, i_vid131, tv56_vid138
+ALLOT: tv57_vid139
+CMP: argType_vid128, tv56_vid138, tv57_vid139
+CREL: tv57_vid139, RE, tv57_vid139
+JF: tv57_vid139, sl10_sid140
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:114:20, line 114, column 20
-PUT: true, result_vid132
+PUT: true, result_vid130
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:115:13, line 115, column 13
 EXIT: LOOP
-JMP: sl9_sid137
-SET: sl10_sid142
-SET: sl9_sid137
-ADD: i_vid133, 1, i_vid133
+JMP: sl9_sid135
+SET: sl10_sid140
+SET: sl9_sid135
+ADD: i_vid131, 1, i_vid131
 END: UNTIL
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:118:5, line 118, column 5
-RET: result_vid132
-END: isIter_vid122
+RET: result_vid130
+END: isIter_vid120
 ; D:\ClionProjects\RCC\release\Lib\builtin\datatype.rio:121:1, line 121
-ALLOT: tv59_vid143
-TP_SET: tp-list, tv59_vid143
-ITER_APND: type_vid38, setType_vid41, checkType_vid89, isIter_vid122, DT_vid44, tv59_vid143
-ALLOT: tv60_vid144
-TP_SET: tp-dict, tv60_vid144
-TP_DEF: dt_vid33
-TP_ADD_TP_FIELD: dt_vid33, "DT_vid44", DT_vid44
-TP_ADD_TP_FIELD: dt_vid33, "isIter_vid122", isIter_vid122
-TP_ADD_TP_FIELD: dt_vid33, "checkType_vid89", checkType_vid89
-TP_ADD_TP_FIELD: dt_vid33, "setType_vid41", setType_vid41
-TP_ADD_TP_FIELD: dt_vid33, "type_vid38", type_vid38
+ALLOT: tv58_vid141
+TP_SET: tp-list, tv58_vid141
+ITER_APND: type_vid36, setType_vid39, checkType_vid87, isIter_vid120, DT_vid42, tv58_vid141
+ALLOT: tv59_vid142
+TP_SET: tp-dict, tv59_vid142
+TP_DEF: dt_vid31
+TP_ADD_TP_FIELD: dt_vid31, "DT_vid42", DT_vid42
+TP_ADD_TP_FIELD: dt_vid31, "isIter_vid120", isIter_vid120
+TP_ADD_TP_FIELD: dt_vid31, "checkType_vid87", checkType_vid87
+TP_ADD_TP_FIELD: dt_vid31, "setType_vid39", setType_vid39
+TP_ADD_TP_FIELD: dt_vid31, "type_vid36", type_vid36
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:1:1, line 1
-FUNI: ternary_vid150, condition_vid151, trueValue_vid152, falseValue_vid153
+FUNI: ternary_vid148, condition_vid149, trueValue_vid150, falseValue_vid151
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:2:5, line 2, column 5
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:2:5, line 2, column 5
-JF: condition_vid151, sl12_sid155
+JF: condition_vid149, sl12_sid153
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:3:9, line 3, column 9
-RET: trueValue_vid152
-JMP: sl11_sid154
-SET: sl12_sid155
+RET: trueValue_vid150
+JMP: sl11_sid152
+SET: sl12_sid153
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:4:7, line 4, column 7
-JF: true, sl13_sid156
+JF: true, sl13_sid154
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:5:9, line 5, column 9
-RET: falseValue_vid153
-JMP: sl11_sid154
-SET: sl13_sid156
-SET: sl11_sid154
-END: ternary_vid150
+RET: falseValue_vid151
+JMP: sl11_sid152
+SET: sl13_sid154
+SET: sl11_sid152
+END: ternary_vid148
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:9:1, line 9
-FUNI: ternaryLazy_vid158, condition_vid159, trueFuni_vid160, falseFuni_vid161
+FUNI: ternaryLazy_vid156, condition_vid157, trueFuni_vid158, falseFuni_vid159
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:10:5, line 10, column 5
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:10:5, line 10, column 5
-JF: condition_vid159, sl15_sid163
+JF: condition_vid157, sl15_sid161
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:11:9, line 11, column 9
-ALLOT: tv61_vid164
-IVOK: trueFuni_vid160, tv61_vid164
-RET: tv61_vid164
-JMP: sl14_sid162
-SET: sl15_sid163
+ALLOT: tv60_vid162
+IVOK: trueFuni_vid158, tv60_vid162
+RET: tv60_vid162
+JMP: sl14_sid160
+SET: sl15_sid161
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:12:7, line 12, column 7
-JF: true, sl16_sid165
+JF: true, sl16_sid163
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:13:9, line 13, column 9
-ALLOT: tv62_vid166
-IVOK: falseFuni_vid161, tv62_vid166
-RET: tv62_vid166
-JMP: sl14_sid162
-SET: sl16_sid165
-SET: sl14_sid162
-END: ternaryLazy_vid158
+ALLOT: tv61_vid164
+IVOK: falseFuni_vid159, tv61_vid164
+RET: tv61_vid164
+JMP: sl14_sid160
+SET: sl16_sid163
+SET: sl14_sid160
+END: ternaryLazy_vid156
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:17:1, line 17
-FUNI: orVal_vid168, default_vid169, spare_vid170
+FUNI: orVal_vid166, default_vid167, spare_vid168
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:18:5, line 18, column 5
-ALLOT: tv63_vid171
-CMP: default_vid169, null, tv63_vid171
-CREL: tv63_vid171, RE, tv63_vid171
-ALLOT: tv64_vid172
-CMP: default_vid169, false, tv64_vid172
-CREL: tv64_vid172, RE, tv64_vid172
-ALLOT: tv65_vid173
-CMP: tv63_vid171, tv64_vid172, tv65_vid173
-CREL: tv65_vid173, OR, tv65_vid173
-ALLOT: tv66_vid174
-IVOK: ternary_vid150, tv65_vid173, spare_vid170, default_vid169, tv66_vid174
-RET: tv66_vid174
-END: orVal_vid168
+ALLOT: tv62_vid169
+CMP: default_vid167, null, tv62_vid169
+CREL: tv62_vid169, RE, tv62_vid169
+ALLOT: tv63_vid170
+CMP: default_vid167, false, tv63_vid170
+CREL: tv63_vid170, RE, tv63_vid170
+ALLOT: tv64_vid171
+CMP: tv62_vid169, tv63_vid170, tv64_vid171
+CREL: tv64_vid171, OR, tv64_vid171
+ALLOT: tv65_vid172
+IVOK: ternary_vid148, tv64_vid171, spare_vid168, default_vid167, tv65_vid172
+RET: tv65_vid172
+END: orVal_vid166
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:21:1, line 21
-FUNI: orLazy_vid176, front_vid177, back_vid178
+FUNI: orLazy_vid174, front_vid175, back_vid176
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:22:5, line 22, column 5
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:22:5, line 22, column 5
-ALLOT: tv67_vid180
-CMP: front_vid177, true, tv67_vid180
-CREL: tv67_vid180, RE, tv67_vid180
-JF: tv67_vid180, sl18_sid181
+ALLOT: tv66_vid178
+CMP: front_vid175, true, tv66_vid178
+CREL: tv66_vid178, RE, tv66_vid178
+JF: tv66_vid178, sl18_sid179
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:23:9, line 23, column 9
-RET: front_vid177
-JMP: sl17_sid179
-SET: sl18_sid181
+RET: front_vid175
+JMP: sl17_sid177
+SET: sl18_sid179
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:24:7, line 24, column 7
-ALLOT: tv68_vid182
-CMP: back_vid178, true, tv68_vid182
-CREL: tv68_vid182, RE, tv68_vid182
-JF: tv68_vid182, sl19_sid183
+ALLOT: tv67_vid180
+CMP: back_vid176, true, tv67_vid180
+CREL: tv67_vid180, RE, tv67_vid180
+JF: tv67_vid180, sl19_sid181
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:25:9, line 25, column 9
-ALLOT: tv69_vid184
-IVOK: back_vid178, tv69_vid184
-RET: tv69_vid184
-JMP: sl17_sid179
-SET: sl19_sid183
+ALLOT: tv68_vid182
+IVOK: back_vid176, tv68_vid182
+RET: tv68_vid182
+JMP: sl17_sid177
+SET: sl19_sid181
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:26:7, line 26, column 7
-JF: true, sl20_sid185
+JF: true, sl20_sid183
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:27:9, line 27, column 9
 RET: false
-JMP: sl17_sid179
-SET: sl20_sid185
-SET: sl17_sid179
-END: orLazy_vid176
+JMP: sl17_sid177
+SET: sl20_sid183
+SET: sl17_sid177
+END: orLazy_vid174
 ; D:\ClionProjects\RCC\release\Lib\builtin\ops.rio:31:1, line 31
-ALLOT: tv70_vid186
-TP_SET: tp-list, tv70_vid186
-ITER_APND: ternary_vid150, ternaryLazy_vid158, orVal_vid168, orLazy_vid176, tv70_vid186
-ALLOT: tv71_vid187
-TP_SET: tp-dict, tv71_vid187
-TP_DEF: ops_vid145
-TP_ADD_TP_FIELD: ops_vid145, "orVal_vid168", orVal_vid168
-TP_ADD_TP_FIELD: ops_vid145, "ternaryLazy_vid158", ternaryLazy_vid158
-TP_ADD_TP_FIELD: ops_vid145, "orLazy_vid176", orLazy_vid176
-TP_ADD_TP_FIELD: ops_vid145, "ternary_vid150", ternary_vid150
+ALLOT: tv69_vid184
+TP_SET: tp-list, tv69_vid184
+ITER_APND: ternary_vid148, ternaryLazy_vid156, orVal_vid166, orLazy_vid174, tv69_vid184
+ALLOT: tv70_vid185
+TP_SET: tp-dict, tv70_vid185
+TP_DEF: ops_vid143
+TP_ADD_TP_FIELD: ops_vid143, "orVal_vid166", orVal_vid166
+TP_ADD_TP_FIELD: ops_vid143, "ternaryLazy_vid156", ternaryLazy_vid156
+TP_ADD_TP_FIELD: ops_vid143, "orLazy_vid174", orLazy_vid174
+TP_ADD_TP_FIELD: ops_vid143, "ternary_vid148", ternary_vid148
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:17:1, line 17
-FUNI: size_vid189, arg_vid190
+FUNI: size_vid187, arg_vid188
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:29:5, line 29, column 5
 ; The implementation is encapsulated.
-END: size_vid189
+END: size_vid187
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:32:1, line 32
-FUNI: copy_vid192, arg_vid193
+FUNI: copy_vid190, arg_vid191
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:44:5, line 44, column 5
 ; The implementation is encapsulated.
-END: copy_vid192
+END: copy_vid190
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:47:1, line 47
-FUNI: unpack_vid195, arg_vid196
+FUNI: unpack_vid193, arg_vid194
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:60:7, line 60, column 7
-ALLOT: tv72_vid198
-TP_GET_FIELD: dt_vid33, "setType_vid41", tv72_vid198
-TP_SET: tp-series, arg_vid196
+ALLOT: tv71_vid196
+TP_GET_FIELD: dt_vid31, "setType_vid39", tv71_vid196
+TP_SET: tp-series, arg_vid194
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:61:5, line 61, column 5
-RET: arg_vid196
-END: unpack_vid195
+RET: arg_vid194
+END: unpack_vid193
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:64:1, line 64
-FUNI: isEmpty_vid200, arg_vid201
+FUNI: isEmpty_vid198, arg_vid199
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:75:5, line 75, column 5
-ALLOT: tv73_vid202
-ITER_SIZE: arg_vid201, tv73_vid202
-ALLOT: tv74_vid203
-CMP: tv73_vid202, 0, tv74_vid203
-CREL: tv74_vid203, RE, tv74_vid203
-RET: tv74_vid203
-END: isEmpty_vid200
+ALLOT: tv72_vid200
+ITER_SIZE: arg_vid199, tv72_vid200
+ALLOT: tv73_vid201
+CMP: tv72_vid200, 0, tv73_vid201
+CREL: tv73_vid201, RE, tv73_vid201
+RET: tv73_vid201
+END: isEmpty_vid198
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:78:1, line 78
-FUNI: top_vid205, arg_vid206
+FUNI: top_vid203, arg_vid204
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:90:5, line 90, column 5
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:90:5, line 90, column 5
-ALLOT: tv75_vid208
-IVOK: isEmpty_vid200, arg_vid206, tv75_vid208
-JF: tv75_vid208, sl22_sid209
+ALLOT: tv74_vid206
+IVOK: isEmpty_vid198, arg_vid204, tv74_vid206
+JF: tv74_vid206, sl22_sid207
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:91:9, line 91, column 9
 RET: null
-JMP: sl21_sid207
-SET: sl22_sid209
-SET: sl21_sid207
+JMP: sl21_sid205
+SET: sl22_sid207
+SET: sl21_sid205
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:93:5, line 93, column 5
-ALLOT: tv76_vid210
-ITER_SIZE: arg_vid206, tv76_vid210
-ALLOT: tv77_vid211
-OPP: 1, tv77_vid211
-ADD: tv76_vid210, tv77_vid211, tv77_vid211
-ALLOT: tv78_vid212
-ITER_GET: arg_vid206, tv77_vid211, tv78_vid212
-RET: tv78_vid212
-END: top_vid205
+ALLOT: tv75_vid208
+ITER_SIZE: arg_vid204, tv75_vid208
+ALLOT: tv76_vid209
+OPP: 1, tv76_vid209
+ADD: tv75_vid208, tv76_vid209, tv76_vid209
+ALLOT: tv77_vid210
+ITER_GET: arg_vid204, tv76_vid209, tv77_vid210
+RET: tv77_vid210
+END: top_vid203
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:96:1, line 96
-FUNI: repStr_vid214, arg_vid215, times_vid216
+FUNI: repStr_vid212, arg_vid213, times_vid214
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:107:5, line 107, column 5
-ALLOT: result_vid217
-TP_SET: tp-str, result_vid217
-PUT: "", result_vid217
+ALLOT: result_vid215
+TP_SET: tp-str, result_vid215
+PUT: "", result_vid215
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:108:5, line 108, column 5
-ALLOT: i_vid218
-TP_SET: tp-int, i_vid218
-PUT: 0, i_vid218
-ALLOT: tv79_vid219
-CMP: true, false, tv79_vid219
-UNTIL: tv79_vid219, RE
-ALLOT: tv80_vid220
-CMP: i_vid218, times_vid216, tv80_vid220
-CREL: tv80_vid220, RL, tv80_vid220
-JT: tv80_vid220, sl23_sid221
+ALLOT: i_vid216
+TP_SET: tp-int, i_vid216
+PUT: 0, i_vid216
+ALLOT: tv78_vid217
+CMP: true, false, tv78_vid217
+UNTIL: tv78_vid217, RE
+ALLOT: tv79_vid218
+CMP: i_vid216, times_vid214, tv79_vid218
+CREL: tv79_vid218, RL, tv79_vid218
+JT: tv79_vid218, sl23_sid219
 EXIT: UNTIL
-SET: sl23_sid221
+SET: sl23_sid219
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:109:16, line 109, column 16
-ADD: result_vid217, arg_vid215, result_vid217
-ADD: i_vid218, 1, i_vid218
+ADD: result_vid215, arg_vid213, result_vid215
+ADD: i_vid216, 1, i_vid216
 END: UNTIL
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:111:5, line 111, column 5
-RET: result_vid217
-END: repStr_vid214
+RET: result_vid215
+END: repStr_vid212
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:114:1, line 114
-FUNI: repList_vid223, arg_vid224, times_vid225
+FUNI: repList_vid221, arg_vid222, times_vid223
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:126:5, line 126, column 5
-ALLOT: tv81_vid227
-TP_SET: tp-list, tv81_vid227
+ALLOT: tv80_vid225
+TP_SET: tp-list, tv80_vid225
 ; To generate an empty list does not need to use the [ITER_APND] ri.
-ALLOT: result_vid226
-TP_SET: tp-list, result_vid226
-PUT: tv81_vid227, result_vid226
+ALLOT: result_vid224
+TP_SET: tp-list, result_vid224
+PUT: tv80_vid225, result_vid224
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:127:5, line 127, column 5
-ALLOT: i_vid228
-TP_SET: tp-int, i_vid228
-PUT: 0, i_vid228
-ALLOT: tv82_vid229
-CMP: true, false, tv82_vid229
-UNTIL: tv82_vid229, RE
-ALLOT: tv83_vid230
-CMP: i_vid228, times_vid225, tv83_vid230
-CREL: tv83_vid230, RL, tv83_vid230
-JT: tv83_vid230, sl24_sid231
+ALLOT: i_vid226
+TP_SET: tp-int, i_vid226
+PUT: 0, i_vid226
+ALLOT: tv81_vid227
+CMP: true, false, tv81_vid227
+UNTIL: tv81_vid227, RE
+ALLOT: tv82_vid228
+CMP: i_vid226, times_vid223, tv82_vid228
+CREL: tv82_vid228, RL, tv82_vid228
+JT: tv82_vid228, sl24_sid229
 EXIT: UNTIL
-SET: sl24_sid231
+SET: sl24_sid229
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:128:16, line 128, column 16
-ALLOT: tv84_vid232
-TP_SET: tp-list, tv84_vid232
-ITER_APND: arg_vid224, tv84_vid232
-ADD: result_vid226, tv84_vid232, result_vid226
-ADD: i_vid228, 1, i_vid228
+ALLOT: tv83_vid230
+TP_SET: tp-list, tv83_vid230
+ITER_APND: arg_vid222, tv83_vid230
+ADD: result_vid224, tv83_vid230, result_vid224
+ADD: i_vid226, 1, i_vid226
 END: UNTIL
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:130:5, line 130, column 5
-RET: result_vid226
-END: repList_vid223
+RET: result_vid224
+END: repList_vid221
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:133:1, line 133
-FUNC: repeat_vid234, times_vid235, handler_vid236
+FUNC: repeat_vid232, times_vid233, handler_vid234
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:143:5, line 143, column 5
 ; The implementation is encapsulated.
-END: repeat_vid234
+END: repeat_vid232
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:146:1, line 146
-FUNC: forInRange_vid238, start_vid239, end_vid240, handler_vid241, sep_vid242
+FUNC: forInRange_vid236, start_vid237, end_vid238, handler_vid239, sep_vid240
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:164:5, line 164, column 5
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:164:5, line 164, column 5
-ALLOT: tv85_vid244
-CMP: sep_vid242, 0, tv85_vid244
-CREL: tv85_vid244, RE, tv85_vid244
-JF: tv85_vid244, sl26_sid245
+ALLOT: tv84_vid242
+CMP: sep_vid240, 0, tv84_vid242
+CREL: tv84_vid242, RE, tv84_vid242
+JF: tv84_vid242, sl26_sid243
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:165:9, line 165, column 9
-FUNC: sout_vid247, args_vid248, end_vid240
+FUNC: sout_vid245, args_vid246, end_vid238
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:166:13, line 166, column 13
 ; The implementation is encapsulated.
-END: sout_vid247
+END: sout_vid245
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:168:9, line 168, column 9
-ALLOT: tv86_vid249
-TP_SET: tp-list, tv86_vid249
-ITER_APND: "The sep cannot be 0", tv86_vid249
-SOUT: s-l, s-unpack, tv86_vid249, "\n"
+ALLOT: tv85_vid247
+TP_SET: tp-list, tv85_vid247
+ITER_APND: "The sep cannot be 0", tv85_vid247
+SOUT: s-l, s-unpack, tv85_vid247, "\n"
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:169:9, line 169, column 9
 RET: ;
-JMP: sl25_sid243
-SET: sl26_sid245
-SET: sl25_sid243
+JMP: sl25_sid241
+SET: sl26_sid243
+SET: sl25_sid241
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:171:5, line 171, column 5
-ALLOT: tv87_vid251
-CMP: sep_vid242, 0, tv87_vid251
-CREL: tv87_vid251, RG, tv87_vid251
-ALLOT: isIncreasing_vid250
-TP_SET: tp-bool, isIncreasing_vid250
-PUT: tv87_vid251, isIncreasing_vid250
+ALLOT: tv86_vid249
+CMP: sep_vid240, 0, tv86_vid249
+CREL: tv86_vid249, RG, tv86_vid249
+ALLOT: isIncreasing_vid248
+TP_SET: tp-bool, isIncreasing_vid248
+PUT: tv86_vid249, isIncreasing_vid248
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:172:5, line 172, column 5
-ALLOT: next_vid252
-TP_SET: tp-int, next_vid252
-PUT: 0, next_vid252
+ALLOT: next_vid250
+TP_SET: tp-int, next_vid250
+PUT: 0, next_vid250
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:173:5, line 173, column 5
-ALLOT: i_vid253
-TP_SET: tp-int, i_vid253
-PUT: start_vid239, i_vid253
-ALLOT: tv88_vid254
-CMP: true, false, tv88_vid254
-UNTIL: tv88_vid254, RE
-ALLOT: tv89_vid255
-CMP: i_vid253, end_vid240, tv89_vid255
-CREL: tv89_vid255, RL, tv89_vid255
-JT: tv89_vid255, sl27_sid256
+ALLOT: i_vid251
+TP_SET: tp-int, i_vid251
+PUT: start_vid237, i_vid251
+ALLOT: tv87_vid252
+CMP: true, false, tv87_vid252
+UNTIL: tv87_vid252, RE
+ALLOT: tv88_vid253
+CMP: i_vid251, end_vid238, tv88_vid253
+CREL: tv88_vid253, RL, tv88_vid253
+JT: tv88_vid253, sl27_sid254
 EXIT: UNTIL
-SET: sl27_sid256
+SET: sl27_sid254
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:174:14, line 174, column 14
-ALLOT: tv90_vid257
-ADD: i_vid253, sep_vid242, tv90_vid257
-PUT: tv90_vid257, next_vid252
+ALLOT: tv89_vid255
+ADD: i_vid251, sep_vid240, tv89_vid255
+PUT: tv89_vid255, next_vid250
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:175:9, line 175, column 9
-ALLOT: isEnd_vid258
+ALLOT: isEnd_vid256
 ; No need to set 'tp-any' type.
-PUT: false, isEnd_vid258
+PUT: false, isEnd_vid256
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:176:9, line 176, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:176:9, line 176, column 9
-ALLOT: tv91_vid260
-CMP: next_vid252, end_vid240, tv91_vid260
-CREL: tv91_vid260, RG, tv91_vid260
-ALLOT: tv92_vid261
-CMP: isIncreasing_vid250, tv91_vid260, tv92_vid261
-CREL: tv92_vid261, AND, tv92_vid261
-ALLOT: tv93_vid262
-CMP: isIncreasing_vid250, false, tv93_vid262
-CREL: tv93_vid262, RE, tv93_vid262
-ALLOT: tv94_vid263
-CMP: next_vid252, end_vid240, tv94_vid263
-CREL: tv94_vid263, RL, tv94_vid263
-ALLOT: tv95_vid264
-CMP: tv93_vid262, tv94_vid263, tv95_vid264
-CREL: tv95_vid264, AND, tv95_vid264
-ALLOT: tv96_vid265
-CMP: tv92_vid261, tv95_vid264, tv96_vid265
-CREL: tv96_vid265, OR, tv96_vid265
-JF: tv96_vid265, sl29_sid266
+ALLOT: tv90_vid258
+CMP: next_vid250, end_vid238, tv90_vid258
+CREL: tv90_vid258, RG, tv90_vid258
+ALLOT: tv91_vid259
+CMP: isIncreasing_vid248, tv90_vid258, tv91_vid259
+CREL: tv91_vid259, AND, tv91_vid259
+ALLOT: tv92_vid260
+CMP: isIncreasing_vid248, false, tv92_vid260
+CREL: tv92_vid260, RE, tv92_vid260
+ALLOT: tv93_vid261
+CMP: next_vid250, end_vid238, tv93_vid261
+CREL: tv93_vid261, RL, tv93_vid261
+ALLOT: tv94_vid262
+CMP: tv92_vid260, tv93_vid261, tv94_vid262
+CREL: tv94_vid262, AND, tv94_vid262
+ALLOT: tv95_vid263
+CMP: tv91_vid259, tv94_vid262, tv95_vid263
+CREL: tv95_vid263, OR, tv95_vid263
+JF: tv95_vid263, sl29_sid264
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:178:19, line 178, column 19
-PUT: true, isEnd_vid258
-JMP: sl28_sid259
-SET: sl29_sid266
-SET: sl28_sid259
+PUT: true, isEnd_vid256
+JMP: sl28_sid257
+SET: sl29_sid264
+SET: sl28_sid257
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:180:9, line 180, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:180:9, line 180, column 9
-ALLOT: tv97_vid268
-CMP: i_vid253, start_vid239, tv97_vid268
-CREL: tv97_vid268, RE, tv97_vid268
-ALLOT: tv98_vid272
-IVOK: handler_vid241, i_vid253, tv97_vid268, isEnd_vid258, tv98_vid272
-ALLOT: tv99_vid273
-CMP: tv98_vid272, false, tv99_vid273
-CREL: tv99_vid273, RE, tv99_vid273
-JF: tv99_vid273, sl31_sid274
+ALLOT: tv96_vid266
+CMP: i_vid251, start_vid237, tv96_vid266
+CREL: tv96_vid266, RE, tv96_vid266
+ALLOT: tv97_vid270
+IVOK: handler_vid239, i_vid251, tv96_vid266, isEnd_vid256, tv97_vid270
+ALLOT: tv98_vid271
+CMP: tv97_vid270, false, tv98_vid271
+CREL: tv98_vid271, RE, tv98_vid271
+JF: tv98_vid271, sl31_sid272
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:181:13, line 181, column 13
 EXIT: LOOP
-JMP: sl30_sid267
-SET: sl31_sid274
-SET: sl30_sid267
-ADD: i_vid253, sep_vid242, i_vid253
+JMP: sl30_sid265
+SET: sl31_sid272
+SET: sl30_sid265
+ADD: i_vid251, sep_vid240, i_vid251
 END: UNTIL
-END: forInRange_vid238
+END: forInRange_vid236
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:186:1, line 186
-FUNI: iter_vid276, iterData_vid277, handler_vid278, reverse_vid279
+FUNI: iter_vid274, iterData_vid275, handler_vid276, reverse_vid277
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:203:5, line 203, column 5
-ALLOT: res_vid280, iterLength_vid281
+ALLOT: res_vid278, iterLength_vid279
 ; No need to set 'tp-any' type.
-PUT: true, res_vid280
-TP_SET: tp-int, iterLength_vid281
+PUT: true, res_vid278
+TP_SET: tp-int, iterLength_vid279
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:204:5, line 204, column 5
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:204:5, line 204, column 5
-ALLOT: tv100_vid284
-TP_GET_FIELD: dt_vid33, "isIter_vid122", tv100_vid284
-ALLOT: tv101_vid285
-IVOK: isIter_vid122, iterData_vid277, tv101_vid285
-JF: tv101_vid285, sl33_sid286
+ALLOT: tv99_vid282
+TP_GET_FIELD: dt_vid31, "isIter_vid120", tv99_vid282
+ALLOT: tv100_vid283
+IVOK: isIter_vid120, iterData_vid275, tv100_vid283
+JF: tv100_vid283, sl33_sid284
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:205:20, line 205, column 20
-ALLOT: tv102_vid287
-ITER_SIZE: iterData_vid277, tv102_vid287
-PUT: tv102_vid287, iterLength_vid281
+ALLOT: tv101_vid285
+ITER_SIZE: iterData_vid275, tv101_vid285
+PUT: tv101_vid285, iterLength_vid279
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:206:9, line 206, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:206:9, line 206, column 9
-JF: reverse_vid279, sl35_sid289
+JF: reverse_vid277, sl35_sid287
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:207:13, line 207, column 13
-ALLOT: tv103_vid291
-OPP: 1, tv103_vid291
-ADD: iterLength_vid281, tv103_vid291, tv103_vid291
-ALLOT: i_vid290
+ALLOT: tv102_vid289
+OPP: 1, tv102_vid289
+ADD: iterLength_vid279, tv102_vid289, tv102_vid289
+ALLOT: i_vid288
 ; No need to set 'tp-any' type.
-PUT: tv103_vid291, i_vid290
-ALLOT: tv104_vid292
-CMP: true, false, tv104_vid292
-UNTIL: tv104_vid292, RE
-ALLOT: tv105_vid293
-CMP: i_vid290, 0, tv105_vid293
-CREL: tv105_vid293, RGE, tv105_vid293
-JT: tv105_vid293, sl36_sid294
+PUT: tv102_vid289, i_vid288
+ALLOT: tv103_vid290
+CMP: true, false, tv103_vid290
+UNTIL: tv103_vid290, RE
+ALLOT: tv104_vid291
+CMP: i_vid288, 0, tv104_vid291
+CREL: tv104_vid291, RGE, tv104_vid291
+JT: tv104_vid291, sl36_sid292
 EXIT: UNTIL
-SET: sl36_sid294
+SET: sl36_sid292
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:208:17, line 208, column 17
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:208:17, line 208, column 17
+ALLOT: tv105_vid294
+ITER_GET: iterData_vid275, i_vid288, tv105_vid294
 ALLOT: tv106_vid296
-ITER_GET: iterData_vid277, i_vid290, tv106_vid296
-ALLOT: tv107_vid298
-OPP: 1, tv107_vid298
-ADD: iterLength_vid281, tv107_vid298, tv107_vid298
+OPP: 1, tv106_vid296
+ADD: iterLength_vid279, tv106_vid296, tv106_vid296
+ALLOT: tv107_vid297
+CMP: i_vid288, tv106_vid296, tv107_vid297
+CREL: tv107_vid297, RE, tv107_vid297
 ALLOT: tv108_vid299
-CMP: i_vid290, tv107_vid298, tv108_vid299
+CMP: i_vid288, 0, tv108_vid299
 CREL: tv108_vid299, RE, tv108_vid299
-ALLOT: tv109_vid301
-CMP: i_vid290, 0, tv109_vid301
-CREL: tv109_vid301, RE, tv109_vid301
-ALLOT: tv110_vid306
-PAIR_SET: "isEnd", tv109_vid301, tv110_vid306
-ALLOT: tv111_vid307
-PAIR_SET: "isStart", tv108_vid299, tv111_vid307
-ALLOT: tv112_vid308
-TP_SET: tp-dict, tv112_vid308
-ITER_APND: tv110_vid306, tv111_vid307, tv112_vid308
-ALLOT: tv113_vid309
-IVOK: handler_vid278, tv106_vid296, i_vid290, iterLength_vid281, tv112_vid308, tv113_vid309
-ALLOT: tv114_vid310
-CMP: tv113_vid309, false, tv114_vid310
-CREL: tv114_vid310, RE, tv114_vid310
-JF: tv114_vid310, sl38_sid311
+ALLOT: tv109_vid304
+PAIR_SET: "isEnd", tv108_vid299, tv109_vid304
+ALLOT: tv110_vid305
+PAIR_SET: "isStart", tv107_vid297, tv110_vid305
+ALLOT: tv111_vid306
+TP_SET: tp-dict, tv111_vid306
+ITER_APND: tv109_vid304, tv110_vid305, tv111_vid306
+ALLOT: tv112_vid307
+IVOK: handler_vid276, tv105_vid294, i_vid288, iterLength_vid279, tv111_vid306, tv112_vid307
+ALLOT: tv113_vid308
+CMP: tv112_vid307, false, tv113_vid308
+CREL: tv113_vid308, RE, tv113_vid308
+JF: tv113_vid308, sl38_sid309
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:210:25, line 210, column 25
-PUT: false, res_vid280
+PUT: false, res_vid278
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:211:21, line 211, column 21
 EXIT: LOOP
-JMP: sl37_sid295
-SET: sl38_sid311
-SET: sl37_sid295
-ADD: i_vid290, -1, i_vid290
+JMP: sl37_sid293
+SET: sl38_sid309
+SET: sl37_sid293
+ADD: i_vid288, -1, i_vid288
 END: UNTIL
-JMP: sl34_sid288
-SET: sl35_sid289
+JMP: sl34_sid286
+SET: sl35_sid287
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:214:11, line 214, column 11
-JF: true, sl39_sid312
+JF: true, sl39_sid310
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:215:13, line 215, column 13
-ALLOT: i_vid313
+ALLOT: i_vid311
 ; No need to set 'tp-any' type.
-PUT: 0, i_vid313
-ALLOT: tv115_vid314
-CMP: true, false, tv115_vid314
-UNTIL: tv115_vid314, RE
-ALLOT: tv116_vid315
-CMP: i_vid313, iterLength_vid281, tv116_vid315
-CREL: tv116_vid315, RL, tv116_vid315
-JT: tv116_vid315, sl40_sid316
+PUT: 0, i_vid311
+ALLOT: tv114_vid312
+CMP: true, false, tv114_vid312
+UNTIL: tv114_vid312, RE
+ALLOT: tv115_vid313
+CMP: i_vid311, iterLength_vid279, tv115_vid313
+CREL: tv115_vid313, RL, tv115_vid313
+JT: tv115_vid313, sl40_sid314
 EXIT: UNTIL
-SET: sl40_sid316
+SET: sl40_sid314
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:216:17, line 216, column 17
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:216:17, line 216, column 17
+ALLOT: tv116_vid316
+ITER_GET: iterData_vid275, i_vid311, tv116_vid316
 ALLOT: tv117_vid318
-ITER_GET: iterData_vid277, i_vid313, tv117_vid318
+CMP: i_vid311, 0, tv117_vid318
+CREL: tv117_vid318, RE, tv117_vid318
 ALLOT: tv118_vid320
-CMP: i_vid313, 0, tv118_vid320
-CREL: tv118_vid320, RE, tv118_vid320
-ALLOT: tv119_vid322
-OPP: 1, tv119_vid322
-ADD: iterLength_vid281, tv119_vid322, tv119_vid322
-ALLOT: tv120_vid323
-CMP: i_vid313, tv119_vid322, tv120_vid323
-CREL: tv120_vid323, RE, tv120_vid323
-ALLOT: tv121_vid328
-PAIR_SET: "isEnd", tv120_vid323, tv121_vid328
-ALLOT: tv122_vid329
-PAIR_SET: "isStart", tv118_vid320, tv122_vid329
-ALLOT: tv123_vid330
-TP_SET: tp-dict, tv123_vid330
-ITER_APND: tv121_vid328, tv122_vid329, tv123_vid330
-ALLOT: tv124_vid331
-IVOK: handler_vid278, tv117_vid318, i_vid313, iterLength_vid281, tv123_vid330, tv124_vid331
-ALLOT: tv125_vid332
-CMP: tv124_vid331, false, tv125_vid332
-CREL: tv125_vid332, RE, tv125_vid332
-JF: tv125_vid332, sl42_sid333
+OPP: 1, tv118_vid320
+ADD: iterLength_vid279, tv118_vid320, tv118_vid320
+ALLOT: tv119_vid321
+CMP: i_vid311, tv118_vid320, tv119_vid321
+CREL: tv119_vid321, RE, tv119_vid321
+ALLOT: tv120_vid326
+PAIR_SET: "isEnd", tv119_vid321, tv120_vid326
+ALLOT: tv121_vid327
+PAIR_SET: "isStart", tv117_vid318, tv121_vid327
+ALLOT: tv122_vid328
+TP_SET: tp-dict, tv122_vid328
+ITER_APND: tv120_vid326, tv121_vid327, tv122_vid328
+ALLOT: tv123_vid329
+IVOK: handler_vid276, tv116_vid316, i_vid311, iterLength_vid279, tv122_vid328, tv123_vid329
+ALLOT: tv124_vid330
+CMP: tv123_vid329, false, tv124_vid330
+CREL: tv124_vid330, RE, tv124_vid330
+JF: tv124_vid330, sl42_sid331
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:218:25, line 218, column 25
-PUT: false, res_vid280
+PUT: false, res_vid278
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:219:21, line 219, column 21
 EXIT: LOOP
-JMP: sl41_sid317
-SET: sl42_sid333
-SET: sl41_sid317
-ADD: i_vid313, 1, i_vid313
+JMP: sl41_sid315
+SET: sl42_sid331
+SET: sl41_sid315
+ADD: i_vid311, 1, i_vid311
 END: UNTIL
-JMP: sl34_sid288
-SET: sl39_sid312
-SET: sl34_sid288
-JMP: sl32_sid282
-SET: sl33_sid286
-SET: sl32_sid282
+JMP: sl34_sid286
+SET: sl39_sid310
+SET: sl34_sid286
+JMP: sl32_sid280
+SET: sl33_sid284
+SET: sl32_sid280
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:224:5, line 224, column 5
-RET: res_vid280
-END: iter_vid276
+RET: res_vid278
+END: iter_vid274
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:227:1, line 227
-FUNI: join_vid335, iterData_vid336, sep_vid337
+FUNI: join_vid333, iterData_vid334, sep_vid335
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:239:5, line 239, column 5
-ALLOT: result_vid338
-TP_SET: tp-str, result_vid338
-PUT: "", result_vid338
+ALLOT: result_vid336
+TP_SET: tp-str, result_vid336
+PUT: "", result_vid336
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:240:5, line 240, column 5
-FUNI: anon_func_tv126_vid343, item_vid339, index_vid340, length_vid341, __vid342
+FUNI: anon_func_tv125_vid341, item_vid337, index_vid338, length_vid339, __vid340
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:241:16, line 241, column 16
-ADD: result_vid338, item_vid339, result_vid338
+ADD: result_vid336, item_vid337, result_vid336
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:242:9, line 242, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:242:9, line 242, column 9
-ALLOT: tv127_vid345
-OPP: 1, tv127_vid345
-ADD: length_vid341, tv127_vid345, tv127_vid345
-ALLOT: tv128_vid346
-CMP: index_vid340, tv127_vid345, tv128_vid346
-CREL: tv128_vid346, RL, tv128_vid346
-JF: tv128_vid346, sl44_sid347
+ALLOT: tv126_vid343
+OPP: 1, tv126_vid343
+ADD: length_vid339, tv126_vid343, tv126_vid343
+ALLOT: tv127_vid344
+CMP: index_vid338, tv126_vid343, tv127_vid344
+CREL: tv127_vid344, RL, tv127_vid344
+JF: tv127_vid344, sl44_sid345
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:243:20, line 243, column 20
-ADD: result_vid338, sep_vid337, result_vid338
-JMP: sl43_sid344
-SET: sl44_sid347
-SET: sl43_sid344
+ADD: result_vid336, sep_vid335, result_vid336
+JMP: sl43_sid342
+SET: sl44_sid345
+SET: sl43_sid342
 RET: null
-END: anon_func_tv126_vid343
-ALLOT: tv129_vid348
-PUT: anon_func_tv126_vid343, tv129_vid348
-ALLOT: tv130_vid349
-IVOK: iter_vid276, iterData_vid336, tv129_vid348, false, tv130_vid349
+END: anon_func_tv125_vid341
+ALLOT: tv128_vid346
+PUT: anon_func_tv125_vid341, tv128_vid346
+ALLOT: tv129_vid347
+IVOK: iter_vid274, iterData_vid334, tv128_vid346, false, tv129_vid347
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:246:5, line 246, column 5
-RET: result_vid338
-END: join_vid335
+RET: result_vid336
+END: join_vid333
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:249:1, line 249
-FUNI: joins_vid351, args_vid352, sep_vid353
+FUNI: joins_vid349, args_vid350, sep_vid351
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:261:5, line 261, column 5
-ALLOT: tv131_vid354
-IVOK: join_vid335, args_vid352, sep_vid353, tv131_vid354
-RET: tv131_vid354
-END: joins_vid351
+ALLOT: tv130_vid352
+IVOK: join_vid333, args_vid350, sep_vid351, tv130_vid352
+RET: tv130_vid352
+END: joins_vid349
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:264:1, line 264
-FUNC: listAppend_vid356, listData_vid357, item_vid358
+FUNC: listAppend_vid354, listData_vid355, item_vid356
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:274:5, line 274, column 5
 ; The implementation is encapsulated.
-END: listAppend_vid356
+END: listAppend_vid354
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:277:1, line 277
-FUNC: listRemove_vid360, listData_vid361, index_vid362
+FUNC: listRemove_vid358, listData_vid359, index_vid360
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:290:5, line 290, column 5
 ; The implementation is encapsulated.
-END: listRemove_vid360
+END: listRemove_vid358
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:293:1, line 293
-FUNC: dictRemove_vid364, dictData_vid365, key_vid366
+FUNC: dictRemove_vid362, dictData_vid363, key_vid364
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:305:5, line 305, column 5
 ; The implementation is encapsulated.
-END: dictRemove_vid364
+END: dictRemove_vid362
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:308:1, line 308
-FUNC: iterRemove_vid368, iterData_vid369, index_vid370
+FUNC: iterRemove_vid366, iterData_vid367, index_vid368
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:323:5, line 323, column 5
-ALLOT: tv132_vid373
-TP_GET_FIELD: dt_vid33, "type_vid38", tv132_vid373
-ALLOT: tv133_vid374
-TP_GET: iterData_vid369, tv133_vid374
-ALLOT: iterType_vid371
+ALLOT: tv131_vid371
+TP_GET_FIELD: dt_vid31, "type_vid36", tv131_vid371
+ALLOT: tv132_vid372
+TP_GET: iterData_vid367, tv132_vid372
+ALLOT: iterType_vid369
 ; No need to set 'tp-any' type.
-PUT: tv133_vid374, iterType_vid371
+PUT: tv132_vid372, iterType_vid369
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:324:5, line 324, column 5
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:324:5, line 324, column 5
-ALLOT: tv134_vid377
-TP_GET_FIELD: dt_vid33, "isIter_vid122", tv134_vid377
-ALLOT: tv135_vid378
-IVOK: isIter_vid122, iterData_vid369, tv135_vid378
-JF: tv135_vid378, sl46_sid379
+ALLOT: tv133_vid375
+TP_GET_FIELD: dt_vid31, "isIter_vid120", tv133_vid375
+ALLOT: tv134_vid376
+IVOK: isIter_vid120, iterData_vid367, tv134_vid376
+JF: tv134_vid376, sl46_sid377
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:325:9, line 325, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:325:9, line 325, column 9
+ALLOT: tv135_vid380
+TP_GET_FIELD: dt_vid31, "DT_vid42", tv135_vid380
 ALLOT: tv136_vid382
-TP_GET_FIELD: dt_vid33, "DT_vid44", tv136_vid382
-ALLOT: tv137_vid384
-TP_GET_FIELD: tv136_vid382, "TP_LIST_vid50", tv137_vid384
+TP_GET_FIELD: tv135_vid380, "TP_LIST_vid48", tv136_vid382
+ALLOT: tv137_vid383
+CMP: iterType_vid369, tv136_vid382, tv137_vid383
+CREL: tv137_vid383, RE, tv137_vid383
 ALLOT: tv138_vid385
-CMP: iterType_vid371, tv137_vid384, tv138_vid385
-CREL: tv138_vid385, RE, tv138_vid385
+TP_GET_FIELD: dt_vid31, "DT_vid42", tv138_vid385
 ALLOT: tv139_vid387
-TP_GET_FIELD: dt_vid33, "DT_vid44", tv139_vid387
-ALLOT: tv140_vid389
-TP_GET_FIELD: tv139_vid387, "TP_STR_vid47", tv140_vid389
-ALLOT: tv141_vid390
-CMP: iterType_vid371, tv140_vid389, tv141_vid390
-CREL: tv141_vid390, RE, tv141_vid390
-ALLOT: tv142_vid391
-CMP: tv138_vid385, tv141_vid390, tv142_vid391
-CREL: tv142_vid391, OR, tv142_vid391
-JF: tv142_vid391, sl48_sid392
+TP_GET_FIELD: tv138_vid385, "TP_STR_vid45", tv139_vid387
+ALLOT: tv140_vid388
+CMP: iterType_vid369, tv139_vid387, tv140_vid388
+CREL: tv140_vid388, RE, tv140_vid388
+ALLOT: tv141_vid389
+CMP: tv137_vid383, tv140_vid388, tv141_vid389
+CREL: tv141_vid389, OR, tv141_vid389
+JF: tv141_vid389, sl48_sid390
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:326:13, line 326, column 13
-ITER_DEL: iterData_vid369, index_vid370
+ITER_DEL: iterData_vid367, index_vid368
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:327:13, line 327, column 13
 RET: ;
-JMP: sl47_sid380
-SET: sl48_sid392
+JMP: sl47_sid378
+SET: sl48_sid390
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:328:11, line 328, column 11
+ALLOT: tv142_vid392
+TP_GET_FIELD: dt_vid31, "DT_vid42", tv142_vid392
 ALLOT: tv143_vid394
-TP_GET_FIELD: dt_vid33, "DT_vid44", tv143_vid394
-ALLOT: tv144_vid396
-TP_GET_FIELD: tv143_vid394, "TP_DICT_vid51", tv144_vid396
-ALLOT: tv145_vid397
-CMP: iterType_vid371, tv144_vid396, tv145_vid397
-CREL: tv145_vid397, RE, tv145_vid397
-JF: tv145_vid397, sl49_sid398
+TP_GET_FIELD: tv142_vid392, "TP_DICT_vid49", tv143_vid394
+ALLOT: tv144_vid395
+CMP: iterType_vid369, tv143_vid394, tv144_vid395
+CREL: tv144_vid395, RE, tv144_vid395
+JF: tv144_vid395, sl49_sid396
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:329:13, line 329, column 13
-DICT_DEL: iterData_vid369, index_vid370
+DICT_DEL: iterData_vid367, index_vid368
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:330:13, line 330, column 13
 RET: ;
-JMP: sl47_sid380
-SET: sl49_sid398
-SET: sl47_sid380
-JMP: sl45_sid375
-SET: sl46_sid379
-SET: sl45_sid375
+JMP: sl47_sid378
+SET: sl49_sid396
+SET: sl47_sid378
+JMP: sl45_sid373
+SET: sl46_sid377
+SET: sl45_sid373
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:333:5, line 333, column 5
-FUNC: sout_vid400, args_vid401, end_vid402
+FUNC: sout_vid398, args_vid399, end_vid400
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:334:9, line 334, column 9
 ; The implementation is encapsulated.
-END: sout_vid400
+END: sout_vid398
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:336:5, line 336, column 5
-ALLOT: tv146_vid403
-TP_SET: tp-list, tv146_vid403
-ITER_APND: "Invalid iterable data type: ", iterType_vid371, tv146_vid403
-SOUT: s-l, s-unpack, tv146_vid403, "\n"
-END: iterRemove_vid368
+ALLOT: tv145_vid401
+TP_SET: tp-list, tv145_vid401
+ITER_APND: "Invalid iterable data type: ", iterType_vid369, tv145_vid401
+SOUT: s-l, s-unpack, tv145_vid401, "\n"
+END: iterRemove_vid366
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:339:1, line 339
-FUNI: dictKeys_vid405, dictData_vid406
+FUNI: dictKeys_vid403, dictData_vid404
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:351:5, line 351, column 5
 ; The implementation is encapsulated.
-END: dictKeys_vid405
+END: dictKeys_vid403
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:354:1, line 354
-FUNI: dictValues_vid408, dictData_vid409
+FUNI: dictValues_vid406, dictData_vid407
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:366:5, line 366, column 5
 ; The implementation is encapsulated.
-END: dictValues_vid408
+END: dictValues_vid406
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:369:1, line 369
-FUNI: iterContains_vid411, iterData_vid412, checkItem_vid413
+FUNI: iterContains_vid409, iterData_vid410, checkItem_vid411
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:383:5, line 383, column 5
-ALLOT: result_vid414
-TP_SET: tp-bool, result_vid414
-PUT: false, result_vid414
+ALLOT: result_vid412
+TP_SET: tp-bool, result_vid412
+PUT: false, result_vid412
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:384:5, line 384, column 5
-FUNI: anon_func_tv147_vid417, item_vid415, __vid416, __vid416, __vid416
+FUNI: anon_func_tv146_vid415, item_vid413, __vid414, __vid414, __vid414
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:385:9, line 385, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:385:9, line 385, column 9
-ALLOT: tv148_vid419
-CMP: item_vid415, checkItem_vid413, tv148_vid419
-CREL: tv148_vid419, RE, tv148_vid419
-JF: tv148_vid419, sl51_sid420
+ALLOT: tv147_vid417
+CMP: item_vid413, checkItem_vid411, tv147_vid417
+CREL: tv147_vid417, RE, tv147_vid417
+JF: tv147_vid417, sl51_sid418
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:386:20, line 386, column 20
-PUT: true, result_vid414
-JMP: sl50_sid418
-SET: sl51_sid420
-SET: sl50_sid418
+PUT: true, result_vid412
+JMP: sl50_sid416
+SET: sl51_sid418
+SET: sl50_sid416
 RET: null
-END: anon_func_tv147_vid417
-ALLOT: tv149_vid421
-PUT: anon_func_tv147_vid417, tv149_vid421
-ALLOT: tv150_vid422
-IVOK: iter_vid276, iterData_vid412, tv149_vid421, false, tv150_vid422
+END: anon_func_tv146_vid415
+ALLOT: tv148_vid419
+PUT: anon_func_tv146_vid415, tv148_vid419
+ALLOT: tv149_vid420
+IVOK: iter_vid274, iterData_vid410, tv148_vid419, false, tv149_vid420
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:389:5, line 389, column 5
-RET: result_vid414
-END: iterContains_vid411
+RET: result_vid412
+END: iterContains_vid409
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:392:1, line 392
-FUNI: sort_vid424, numList_vid425, reverse_vid426
+FUNI: sort_vid422, numList_vid423, reverse_vid424
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:403:5, line 403, column 5
-FUNI: anon_func_tv151_vid429, arr_vid428, reverse_vid426
+FUNI: anon_func_tv150_vid427, arr_vid426, reverse_vid424
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:404:9, line 404, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:404:9, line 404, column 9
-ALLOT: tv152_vid431
-ITER_SIZE: arr_vid428, tv152_vid431
-ALLOT: tv153_vid432
-CMP: tv152_vid431, 1, tv153_vid432
-CREL: tv153_vid432, RLE, tv153_vid432
-JF: tv153_vid432, sl53_sid433
+ALLOT: tv151_vid429
+ITER_SIZE: arr_vid426, tv151_vid429
+ALLOT: tv152_vid430
+CMP: tv151_vid429, 1, tv152_vid430
+CREL: tv152_vid430, RLE, tv152_vid430
+JF: tv152_vid430, sl53_sid431
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:405:13, line 405, column 13
-RET: arr_vid428
-JMP: sl52_sid430
-SET: sl53_sid433
-SET: sl52_sid430
+RET: arr_vid426
+JMP: sl52_sid428
+SET: sl53_sid431
+SET: sl52_sid428
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:407:9, line 407, column 9
+ALLOT: tv153_vid433
+ITER_GET: arr_vid426, 0, tv153_vid433
 ALLOT: tv154_vid435
-ITER_GET: arr_vid428, 0, tv154_vid435
+TP_SET: tp-list, tv154_vid435
+; To generate an empty list does not need to use the [ITER_APND] ri.
 ALLOT: tv155_vid437
 TP_SET: tp-list, tv155_vid437
 ; To generate an empty list does not need to use the [ITER_APND] ri.
-ALLOT: tv156_vid439
-TP_SET: tp-list, tv156_vid439
-; To generate an empty list does not need to use the [ITER_APND] ri.
-ALLOT: pivot_vid434, less_vid436, greater_vid438, i_vid440
+ALLOT: pivot_vid432, less_vid434, greater_vid436, i_vid438
 ; No need to set 'tp-any' type.
-PUT: tv154_vid435, pivot_vid434
-TP_SET: tp-list, less_vid436
-PUT: tv155_vid437, less_vid436
-TP_SET: tp-list, greater_vid438
-PUT: tv156_vid439, greater_vid438
+PUT: tv153_vid433, pivot_vid432
+TP_SET: tp-list, less_vid434
+PUT: tv154_vid435, less_vid434
+TP_SET: tp-list, greater_vid436
+PUT: tv155_vid437, greater_vid436
 ; No need to set 'tp-any' type.
-PUT: 1, i_vid440
+PUT: 1, i_vid438
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:411:9, line 411, column 9
-ALLOT: tv157_vid441
-CMP: true, false, tv157_vid441
-UNTIL: tv157_vid441, RE
-ALLOT: tv158_vid442
-ITER_SIZE: arr_vid428, tv158_vid442
-ALLOT: tv159_vid443
-CMP: i_vid440, tv158_vid442, tv159_vid443
-CREL: tv159_vid443, RL, tv159_vid443
-JT: tv159_vid443, sl54_sid444
+ALLOT: tv156_vid439
+CMP: true, false, tv156_vid439
+UNTIL: tv156_vid439, RE
+ALLOT: tv157_vid440
+ITER_SIZE: arr_vid426, tv157_vid440
+ALLOT: tv158_vid441
+CMP: i_vid438, tv157_vid440, tv158_vid441
+CREL: tv158_vid441, RL, tv158_vid441
+JT: tv158_vid441, sl54_sid442
 EXIT: UNTIL
-SET: sl54_sid444
+SET: sl54_sid442
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:412:13, line 412, column 13
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:412:13, line 412, column 13
-ALLOT: tv160_vid446
-ITER_GET: arr_vid428, i_vid440, tv160_vid446
-ALLOT: tv161_vid447
-CMP: tv160_vid446, pivot_vid434, tv161_vid447
-CREL: tv161_vid447, RLE, tv161_vid447
-ALLOT: tv162_vid448
-OPP: reverse_vid426, tv162_vid448
-ALLOT: tv163_vid449
-CMP: tv161_vid447, tv162_vid448, tv163_vid449
-CREL: tv163_vid449, AND, tv163_vid449
-ALLOT: tv164_vid450
-ITER_GET: arr_vid428, i_vid440, tv164_vid450
-ALLOT: tv165_vid451
-CMP: tv164_vid450, pivot_vid434, tv165_vid451
-CREL: tv165_vid451, RG, tv165_vid451
-ALLOT: tv166_vid452
-CMP: tv165_vid451, reverse_vid426, tv166_vid452
-CREL: tv166_vid452, AND, tv166_vid452
-ALLOT: tv167_vid453
-CMP: tv163_vid449, tv166_vid452, tv167_vid453
-CREL: tv167_vid453, OR, tv167_vid453
-JF: tv167_vid453, sl56_sid454
+ALLOT: tv159_vid444
+ITER_GET: arr_vid426, i_vid438, tv159_vid444
+ALLOT: tv160_vid445
+CMP: tv159_vid444, pivot_vid432, tv160_vid445
+CREL: tv160_vid445, RLE, tv160_vid445
+ALLOT: tv161_vid446
+OPP: reverse_vid424, tv161_vid446
+ALLOT: tv162_vid447
+CMP: tv160_vid445, tv161_vid446, tv162_vid447
+CREL: tv162_vid447, AND, tv162_vid447
+ALLOT: tv163_vid448
+ITER_GET: arr_vid426, i_vid438, tv163_vid448
+ALLOT: tv164_vid449
+CMP: tv163_vid448, pivot_vid432, tv164_vid449
+CREL: tv164_vid449, RG, tv164_vid449
+ALLOT: tv165_vid450
+CMP: tv164_vid449, reverse_vid424, tv165_vid450
+CREL: tv165_vid450, AND, tv165_vid450
+ALLOT: tv166_vid451
+CMP: tv162_vid447, tv165_vid450, tv166_vid451
+CREL: tv166_vid451, OR, tv166_vid451
+JF: tv166_vid451, sl56_sid452
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:413:22, line 413, column 22
-ALLOT: tv168_vid455
-ITER_GET: arr_vid428, i_vid440, tv168_vid455
-ADD: less_vid436, tv168_vid455, less_vid436
-JMP: sl55_sid445
-SET: sl56_sid454
+ALLOT: tv167_vid453
+ITER_GET: arr_vid426, i_vid438, tv167_vid453
+ADD: less_vid434, tv167_vid453, less_vid434
+JMP: sl55_sid443
+SET: sl56_sid452
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:414:15, line 414, column 15
-JF: true, sl57_sid456
+JF: true, sl57_sid454
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:415:25, line 415, column 25
-ALLOT: tv169_vid457
-ITER_GET: arr_vid428, i_vid440, tv169_vid457
-ADD: greater_vid438, tv169_vid457, greater_vid438
-JMP: sl55_sid445
-SET: sl57_sid456
-SET: sl55_sid445
+ALLOT: tv168_vid455
+ITER_GET: arr_vid426, i_vid438, tv168_vid455
+ADD: greater_vid436, tv168_vid455, greater_vid436
+JMP: sl55_sid443
+SET: sl57_sid454
+SET: sl55_sid443
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:417:15, line 417, column 15
-ADD: i_vid440, 1, i_vid440
+ADD: i_vid438, 1, i_vid438
 END: UNTIL
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:419:9, line 419, column 9
-ALLOT: tv170_vid460
-IVOK: quickSort_vid427, less_vid436, reverse_vid426, tv170_vid460
-ALLOT: tv171_vid461
-TP_SET: tp-list, tv171_vid461
-ITER_APND: pivot_vid434, tv171_vid461
-ALLOT: tv172_vid462
-ADD: tv170_vid460, tv171_vid461, tv172_vid462
-ALLOT: tv173_vid465
-IVOK: quickSort_vid427, greater_vid438, reverse_vid426, tv173_vid465
-ALLOT: tv174_vid466
-ADD: tv172_vid462, tv173_vid465, tv174_vid466
-RET: tv174_vid466
-END: anon_func_tv151_vid429
-ALLOT: tv175_vid467
-PUT: anon_func_tv151_vid429, tv175_vid467
-ALLOT: quickSort_vid427
+ALLOT: tv169_vid458
+IVOK: quickSort_vid425, less_vid434, reverse_vid424, tv169_vid458
+ALLOT: tv170_vid459
+TP_SET: tp-list, tv170_vid459
+ITER_APND: pivot_vid432, tv170_vid459
+ALLOT: tv171_vid460
+ADD: tv169_vid458, tv170_vid459, tv171_vid460
+ALLOT: tv172_vid463
+IVOK: quickSort_vid425, greater_vid436, reverse_vid424, tv172_vid463
+ALLOT: tv173_vid464
+ADD: tv171_vid460, tv172_vid463, tv173_vid464
+RET: tv173_vid464
+END: anon_func_tv150_vid427
+ALLOT: tv174_vid465
+PUT: anon_func_tv150_vid427, tv174_vid465
+ALLOT: quickSort_vid425
 ; No need to set 'tp-funi' type.
-PUT: tv175_vid467, quickSort_vid427
+PUT: tv174_vid465, quickSort_vid425
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:421:5, line 421, column 5
-ALLOT: tv176_vid468
-IVOK: anon_func_tv151_vid429, numList_vid425, reverse_vid426, tv176_vid468
-RET: tv176_vid468
-END: sort_vid424
+ALLOT: tv175_vid466
+IVOK: anon_func_tv150_vid427, numList_vid423, reverse_vid424, tv175_vid466
+RET: tv175_vid466
+END: sort_vid422
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:424:1, line 424
-TP_DEF: Iterable_vid469
+TP_DEF: Iterable_vid467
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:440:5, line 440, column 5
-FUNI: size_vid471, this_vid479
+FUNI: size_vid469, this_vid477
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:448:9, line 448, column 9
 RET: null
-END: size_vid471
+END: size_vid469
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:440:5, line 440, column 5
-TP_ADD_INST_FIELD: Iterable_vid469, "size_vid471", size_vid471
+TP_ADD_INST_FIELD: Iterable_vid467, "size_vid469", size_vid469
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:451:5, line 451, column 5
-FUNI: get_vid473, this_vid482
+FUNI: get_vid471, this_vid480
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:459:9, line 459, column 9
 RET: null
-END: get_vid473
+END: get_vid471
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:451:5, line 451, column 5
-TP_ADD_INST_FIELD: Iterable_vid469, "get_vid473", get_vid473
+TP_ADD_INST_FIELD: Iterable_vid467, "get_vid471", get_vid471
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:462:5, line 462, column 5
-FUNI: toStr_vid475, this_vid485
+FUNI: toStr_vid473, this_vid483
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:470:9, line 470, column 9
 RET: null
-END: toStr_vid475
+END: toStr_vid473
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:462:5, line 462, column 5
-TP_ADD_INST_FIELD: Iterable_vid469, "toStr_vid475", toStr_vid475
+TP_ADD_INST_FIELD: Iterable_vid467, "toStr_vid473", toStr_vid473
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:473:5, line 473, column 5
-FUNI: empty_vid477, this_vid488
+FUNI: empty_vid475, this_vid486
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:479:9, line 479, column 9
-ALLOT: tv177_vid489
-TP_GET_FIELD: this_vid488, "size_vid471", tv177_vid489
-ALLOT: tv178_vid490
-IVOK: size_vid471, this_vid488, tv178_vid490
-ALLOT: tv179_vid491
-CMP: tv178_vid490, 0, tv179_vid491
-CREL: tv179_vid491, RE, tv179_vid491
-RET: tv179_vid491
-END: empty_vid477
+ALLOT: tv176_vid487
+TP_GET_FIELD: this_vid486, "size_vid469", tv176_vid487
+ALLOT: tv177_vid488
+IVOK: size_vid469, this_vid486, tv177_vid488
+ALLOT: tv178_vid489
+CMP: tv177_vid488, 0, tv178_vid489
+CREL: tv178_vid489, RE, tv178_vid489
+RET: tv178_vid489
+END: empty_vid475
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:473:5, line 473, column 5
-TP_ADD_INST_FIELD: Iterable_vid469, "empty_vid477", empty_vid477
+TP_ADD_INST_FIELD: Iterable_vid467, "empty_vid475", empty_vid475
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:432:5, line 432, column 5
-FUNI: Iterable_empty_vid470
-ALLOT: this_vid492
-TP_NEW: Iterable_vid469, this_vid492
+FUNI: Iterable_empty_vid468
+ALLOT: this_vid490
+TP_NEW: Iterable_vid467, this_vid490
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:437:9, line 437, column 9
-RET: this_vid492
-END: Iterable_empty_vid470
+RET: this_vid490
+END: Iterable_empty_vid468
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:483:1, line 483
-TP_DEF: List_vid493, Iterable_vid469
+TP_DEF: List_vid491, Iterable_vid467
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:490:9, line 490, column 9
-TP_ADD_INST_FIELD: List_vid493, "data_vid494", null
+TP_ADD_INST_FIELD: List_vid491, "data_vid492", null
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:491:9, line 491, column 9
-TP_ADD_INST_FIELD: List_vid493, "length_vid495", null
+TP_ADD_INST_FIELD: List_vid491, "length_vid493", null
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:492:9, line 492, column 9
-TP_ADD_INST_FIELD: List_vid493, "compareHandler_vid496", null
+TP_ADD_INST_FIELD: List_vid491, "compareHandler_vid494", null
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:493:9, line 493, column 9
-TP_ADD_INST_FIELD: List_vid493, "plusHandler_vid497", null
+TP_ADD_INST_FIELD: List_vid491, "plusHandler_vid495", null
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:516:5, line 516, column 5
-FUNI: get_vid502, this_vid577
+FUNI: get_vid500, this_vid575
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:522:9, line 522, column 9
-ALLOT: tv180_vid579
-TP_GET_FIELD: this_vid577, "data_vid494", tv180_vid579
-RET: tv180_vid579
-END: get_vid502
+ALLOT: tv179_vid577
+TP_GET_FIELD: this_vid575, "data_vid492", tv179_vid577
+RET: tv179_vid577
+END: get_vid500
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:516:5, line 516, column 5
-TP_ADD_INST_FIELD: List_vid493, "get_vid502", get_vid502
+TP_ADD_INST_FIELD: List_vid491, "get_vid500", get_vid500
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:525:5, line 525, column 5
-FUNI: sort_vid503, this_vid583, sortHandler_vid581, reverse_vid582
+FUNI: sort_vid501, this_vid581, sortHandler_vid579, reverse_vid580
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:534:21, line 534, column 21
+ALLOT: tv180_vid583
+TP_GET_FIELD: this_vid581, "compareHandler_vid494", tv180_vid583
 ALLOT: tv181_vid585
-TP_GET_FIELD: this_vid583, "compareHandler_vid496", tv181_vid585
-ALLOT: tv182_vid587
-TP_GET_FIELD: ops_vid145, "orVal_vid168", tv182_vid587
+TP_GET_FIELD: ops_vid143, "orVal_vid166", tv181_vid585
+ALLOT: tv182_vid586
+IVOK: orVal_vid166, sortHandler_vid579, tv180_vid583, tv182_vid586
+PUT: tv182_vid586, sortHandler_vid579
+; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:535:9, line 535, column 9
+; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:535:9, line 535, column 9
 ALLOT: tv183_vid588
-IVOK: orVal_vid168, sortHandler_vid581, tv181_vid585, tv183_vid588
-PUT: tv183_vid588, sortHandler_vid581
-; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:535:9, line 535, column 9
-; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:535:9, line 535, column 9
-ALLOT: tv184_vid590
-CMP: sortHandler_vid581, null, tv184_vid590
-CREL: tv184_vid590, RE, tv184_vid590
-JF: tv184_vid590, sl59_sid591
+CMP: sortHandler_vid579, null, tv183_vid588
+CREL: tv183_vid588, RE, tv183_vid588
+JF: tv183_vid588, sl59_sid589
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:536:23, line 536, column 23
+ALLOT: tv184_vid591
+TP_GET_FIELD: this_vid581, "data_vid492", tv184_vid591
 ALLOT: tv185_vid593
-TP_GET_FIELD: this_vid583, "data_vid494", tv185_vid593
-ALLOT: tv186_vid595
-TP_GET_FIELD: this_vid583, "data_vid494", tv186_vid595
-ALLOT: tv187_vid596
-IVOK: sort_vid424, tv186_vid595, reverse_vid582, tv187_vid596
-TP_SET_FIELD: this_vid583, "data_vid494", tv187_vid596
-JMP: sl58_sid589
-SET: sl59_sid591
+TP_GET_FIELD: this_vid581, "data_vid492", tv185_vid593
+ALLOT: tv186_vid594
+IVOK: sort_vid422, tv185_vid593, reverse_vid580, tv186_vid594
+TP_SET_FIELD: this_vid581, "data_vid492", tv186_vid594
+JMP: sl58_sid587
+SET: sl59_sid589
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:537:11, line 537, column 11
-JF: true, sl60_sid597
+JF: true, sl60_sid595
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:538:13, line 538, column 13
-FUNI: anon_func_tv188_vid600, arr_vid599, reverse_vid582
+FUNI: anon_func_tv187_vid598, arr_vid597, reverse_vid580
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:540:21, line 540, column 21
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:540:21, line 540, column 21
-ALLOT: tv189_vid602
-ITER_SIZE: arr_vid599, tv189_vid602
-ALLOT: tv190_vid603
-CMP: tv189_vid602, 1, tv190_vid603
-CREL: tv190_vid603, RLE, tv190_vid603
-JF: tv190_vid603, sl62_sid604
+ALLOT: tv188_vid600
+ITER_SIZE: arr_vid597, tv188_vid600
+ALLOT: tv189_vid601
+CMP: tv188_vid600, 1, tv189_vid601
+CREL: tv189_vid601, RLE, tv189_vid601
+JF: tv189_vid601, sl62_sid602
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:541:25, line 541, column 25
-RET: arr_vid599
-JMP: sl61_sid601
-SET: sl62_sid604
-SET: sl61_sid601
+RET: arr_vid597
+JMP: sl61_sid599
+SET: sl62_sid602
+SET: sl61_sid599
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:543:21, line 543, column 21
-ALLOT: tv191_vid606
-ITER_GET: arr_vid599, 0, tv191_vid606
-ALLOT: pivot_vid605
+ALLOT: tv190_vid604
+ITER_GET: arr_vid597, 0, tv190_vid604
+ALLOT: pivot_vid603
 ; No need to set 'tp-any' type.
-PUT: tv191_vid606, pivot_vid605
+PUT: tv190_vid604, pivot_vid603
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:544:21, line 544, column 21
-ALLOT: less_vid607
-TP_SET: tp-list, less_vid607
+ALLOT: less_vid605
+TP_SET: tp-list, less_vid605
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:545:21, line 545, column 21
-ALLOT: greater_vid608
-TP_SET: tp-list, greater_vid608
+ALLOT: greater_vid606
+TP_SET: tp-list, greater_vid606
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:546:21, line 546, column 21
-ALLOT: i_vid609
+ALLOT: i_vid607
 ; No need to set 'tp-any' type.
-PUT: 1, i_vid609
+PUT: 1, i_vid607
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:547:21, line 547, column 21
-ALLOT: tv192_vid610
-CMP: true, false, tv192_vid610
-UNTIL: tv192_vid610, RE
-ALLOT: tv193_vid611
-ITER_SIZE: arr_vid599, tv193_vid611
-ALLOT: tv194_vid612
-CMP: i_vid609, tv193_vid611, tv194_vid612
-CREL: tv194_vid612, RL, tv194_vid612
-JT: tv194_vid612, sl63_sid613
+ALLOT: tv191_vid608
+CMP: true, false, tv191_vid608
+UNTIL: tv191_vid608, RE
+ALLOT: tv192_vid609
+ITER_SIZE: arr_vid597, tv192_vid609
+ALLOT: tv193_vid610
+CMP: i_vid607, tv192_vid609, tv193_vid610
+CREL: tv193_vid610, RL, tv193_vid610
+JT: tv193_vid610, sl63_sid611
 EXIT: UNTIL
-SET: sl63_sid613
+SET: sl63_sid611
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:548:25, line 548, column 25
-ALLOT: tv195_vid615
-ITER_GET: arr_vid599, i_vid609, tv195_vid615
-ALLOT: tv196_vid618
-IVOK: sortHandler_vid581, tv195_vid615, pivot_vid605, tv196_vid618
-ALLOT: compareResult_vid614
+ALLOT: tv194_vid613
+ITER_GET: arr_vid597, i_vid607, tv194_vid613
+ALLOT: tv195_vid616
+IVOK: sortHandler_vid579, tv194_vid613, pivot_vid603, tv195_vid616
+ALLOT: compareResult_vid612
 ; No need to set 'tp-any' type.
-PUT: tv196_vid618, compareResult_vid614
+PUT: tv195_vid616, compareResult_vid612
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:549:25, line 549, column 25
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:549:25, line 549, column 25
-ALLOT: tv197_vid620
-CMP: compareResult_vid614, 0, tv197_vid620
-CREL: tv197_vid620, RLE, tv197_vid620
-ALLOT: tv198_vid621
-OPP: reverse_vid582, tv198_vid621
-ALLOT: tv199_vid622
-CMP: tv197_vid620, tv198_vid621, tv199_vid622
-CREL: tv199_vid622, AND, tv199_vid622
-ALLOT: tv200_vid623
-CMP: compareResult_vid614, 0, tv200_vid623
-CREL: tv200_vid623, RG, tv200_vid623
-ALLOT: tv201_vid624
-CMP: tv200_vid623, reverse_vid582, tv201_vid624
-CREL: tv201_vid624, AND, tv201_vid624
-ALLOT: tv202_vid625
-CMP: tv199_vid622, tv201_vid624, tv202_vid625
-CREL: tv202_vid625, OR, tv202_vid625
-JF: tv202_vid625, sl65_sid626
+ALLOT: tv196_vid618
+CMP: compareResult_vid612, 0, tv196_vid618
+CREL: tv196_vid618, RLE, tv196_vid618
+ALLOT: tv197_vid619
+OPP: reverse_vid580, tv197_vid619
+ALLOT: tv198_vid620
+CMP: tv196_vid618, tv197_vid619, tv198_vid620
+CREL: tv198_vid620, AND, tv198_vid620
+ALLOT: tv199_vid621
+CMP: compareResult_vid612, 0, tv199_vid621
+CREL: tv199_vid621, RG, tv199_vid621
+ALLOT: tv200_vid622
+CMP: tv199_vid621, reverse_vid580, tv200_vid622
+CREL: tv200_vid622, AND, tv200_vid622
+ALLOT: tv201_vid623
+CMP: tv198_vid620, tv200_vid622, tv201_vid623
+CREL: tv201_vid623, OR, tv201_vid623
+JF: tv201_vid623, sl65_sid624
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:550:34, line 550, column 34
-ALLOT: tv203_vid627
-ITER_GET: arr_vid599, i_vid609, tv203_vid627
-ADD: less_vid607, tv203_vid627, less_vid607
-JMP: sl64_sid619
-SET: sl65_sid626
+ALLOT: tv202_vid625
+ITER_GET: arr_vid597, i_vid607, tv202_vid625
+ADD: less_vid605, tv202_vid625, less_vid605
+JMP: sl64_sid617
+SET: sl65_sid624
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:551:27, line 551, column 27
-JF: true, sl66_sid628
+JF: true, sl66_sid626
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:552:37, line 552, column 37
-ALLOT: tv204_vid629
-ITER_GET: arr_vid599, i_vid609, tv204_vid629
-ADD: greater_vid608, tv204_vid629, greater_vid608
-JMP: sl64_sid619
-SET: sl66_sid628
-SET: sl64_sid619
+ALLOT: tv203_vid627
+ITER_GET: arr_vid597, i_vid607, tv203_vid627
+ADD: greater_vid606, tv203_vid627, greater_vid606
+JMP: sl64_sid617
+SET: sl66_sid626
+SET: sl64_sid617
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:554:27, line 554, column 27
-ADD: i_vid609, 1, i_vid609
+ADD: i_vid607, 1, i_vid607
 END: UNTIL
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:556:21, line 556, column 21
-ALLOT: tv205_vid632
-IVOK: quickSort_vid598, less_vid607, reverse_vid582, tv205_vid632
-ALLOT: tv206_vid633
-TP_SET: tp-list, tv206_vid633
-ITER_APND: pivot_vid605, tv206_vid633
-ALLOT: tv207_vid634
-ADD: tv205_vid632, tv206_vid633, tv207_vid634
-ALLOT: tv208_vid637
-IVOK: quickSort_vid598, greater_vid608, reverse_vid582, tv208_vid637
-ALLOT: tv209_vid638
-ADD: tv207_vid634, tv208_vid637, tv209_vid638
-RET: tv209_vid638
-END: anon_func_tv188_vid600
-ALLOT: tv210_vid639
-PUT: anon_func_tv188_vid600, tv210_vid639
-ALLOT: quickSort_vid598
+ALLOT: tv204_vid630
+IVOK: quickSort_vid596, less_vid605, reverse_vid580, tv204_vid630
+ALLOT: tv205_vid631
+TP_SET: tp-list, tv205_vid631
+ITER_APND: pivot_vid603, tv205_vid631
+ALLOT: tv206_vid632
+ADD: tv204_vid630, tv205_vid631, tv206_vid632
+ALLOT: tv207_vid635
+IVOK: quickSort_vid596, greater_vid606, reverse_vid580, tv207_vid635
+ALLOT: tv208_vid636
+ADD: tv206_vid632, tv207_vid635, tv208_vid636
+RET: tv208_vid636
+END: anon_func_tv187_vid598
+ALLOT: tv209_vid637
+PUT: anon_func_tv187_vid598, tv209_vid637
+ALLOT: quickSort_vid596
 ; No need to set 'tp-funi' type.
-PUT: tv210_vid639, quickSort_vid598
+PUT: tv209_vid637, quickSort_vid596
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:558:23, line 558, column 23
+ALLOT: tv210_vid639
+TP_GET_FIELD: this_vid581, "data_vid492", tv210_vid639
 ALLOT: tv211_vid641
-TP_GET_FIELD: this_vid583, "data_vid494", tv211_vid641
-ALLOT: tv212_vid643
-TP_GET_FIELD: this_vid583, "data_vid494", tv212_vid643
-ALLOT: tv213_vid644
-IVOK: anon_func_tv188_vid600, tv212_vid643, reverse_vid582, tv213_vid644
-TP_SET_FIELD: this_vid583, "data_vid494", tv213_vid644
-JMP: sl58_sid589
-SET: sl60_sid597
-SET: sl58_sid589
+TP_GET_FIELD: this_vid581, "data_vid492", tv211_vid641
+ALLOT: tv212_vid642
+IVOK: anon_func_tv187_vid598, tv211_vid641, reverse_vid580, tv212_vid642
+TP_SET_FIELD: this_vid581, "data_vid492", tv212_vid642
+JMP: sl58_sid587
+SET: sl60_sid595
+SET: sl58_sid587
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:560:9, line 560, column 9
-RET: this_vid583
-END: sort_vid503
+RET: this_vid581
+END: sort_vid501
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:525:5, line 525, column 5
-TP_ADD_INST_FIELD: List_vid493, "sort_vid503", sort_vid503
+TP_ADD_INST_FIELD: List_vid491, "sort_vid501", sort_vid501
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:563:5, line 563, column 5
-FUNI: append_vid507, this_vid648, item_vid647
+FUNI: append_vid505, this_vid646, item_vid645
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:573:9, line 573, column 9
-ALLOT: tv214_vid650
-TP_GET_FIELD: this_vid648, "data_vid494", tv214_vid650
-ITER_APND: item_vid647, tv214_vid650
+ALLOT: tv213_vid648
+TP_GET_FIELD: this_vid646, "data_vid492", tv213_vid648
+ITER_APND: item_vid645, tv213_vid648
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:574:21, line 574, column 21
-ALLOT: tv215_vid652
-TP_GET_FIELD: this_vid648, "length_vid495", tv215_vid652
-ADD: tv215_vid652, 1, tv215_vid652
+ALLOT: tv214_vid650
+TP_GET_FIELD: this_vid646, "length_vid493", tv214_vid650
+ADD: tv214_vid650, 1, tv214_vid650
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:575:9, line 575, column 9
-RET: this_vid648
-END: append_vid507
+RET: this_vid646
+END: append_vid505
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:563:5, line 563, column 5
-TP_ADD_INST_FIELD: List_vid493, "append_vid507", append_vid507
+TP_ADD_INST_FIELD: List_vid491, "append_vid505", append_vid505
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:578:5, line 578, column 5
-FUNI: remove_vid510, this_vid656, index_vid655
+FUNI: remove_vid508, this_vid654, index_vid653
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:588:9, line 588, column 9
-ALLOT: tv216_vid658
-TP_GET_FIELD: this_vid656, "data_vid494", tv216_vid658
-CALL: iterRemove_vid368, tv216_vid658, index_vid655
+ALLOT: tv215_vid656
+TP_GET_FIELD: this_vid654, "data_vid492", tv215_vid656
+CALL: iterRemove_vid366, tv215_vid656, index_vid653
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:589:21, line 589, column 21
-ALLOT: tv217_vid660
-TP_GET_FIELD: this_vid656, "length_vid495", tv217_vid660
-ALLOT: tv218_vid661
-OPP: 1, tv218_vid661
-ADD: tv217_vid660, tv218_vid661, tv217_vid660
+ALLOT: tv216_vid658
+TP_GET_FIELD: this_vid654, "length_vid493", tv216_vid658
+ALLOT: tv217_vid659
+OPP: 1, tv217_vid659
+ADD: tv216_vid658, tv217_vid659, tv216_vid658
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:590:9, line 590, column 9
-RET: this_vid656
-END: remove_vid510
+RET: this_vid654
+END: remove_vid508
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:578:5, line 578, column 5
-TP_ADD_INST_FIELD: List_vid493, "remove_vid510", remove_vid510
+TP_ADD_INST_FIELD: List_vid491, "remove_vid508", remove_vid508
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:593:5, line 593, column 5
-FUNI: size_vid512, this_vid663
+FUNI: size_vid510, this_vid661
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:599:9, line 599, column 9
-ALLOT: tv219_vid665
-TP_GET_FIELD: this_vid663, "length_vid495", tv219_vid665
-RET: tv219_vid665
-END: size_vid512
+ALLOT: tv218_vid663
+TP_GET_FIELD: this_vid661, "length_vid493", tv218_vid663
+RET: tv218_vid663
+END: size_vid510
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:593:5, line 593, column 5
-TP_ADD_INST_FIELD: List_vid493, "size_vid512", size_vid512
+TP_ADD_INST_FIELD: List_vid491, "size_vid510", size_vid510
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:602:5, line 602, column 5
-FUNI: toStr_vid514, this_vid668
+FUNI: toStr_vid512, this_vid666
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:608:9, line 608, column 9
-ALLOT: tv220_vid670
-TP_GET_FIELD: this_vid668, "data_vid494", tv220_vid670
-ALLOT: tv221_vid671
-ADD: "", tv220_vid670, tv221_vid671
-RET: tv221_vid671
-END: toStr_vid514
+ALLOT: tv219_vid668
+TP_GET_FIELD: this_vid666, "data_vid492", tv219_vid668
+ALLOT: tv220_vid669
+ADD: "", tv219_vid668, tv220_vid669
+RET: tv220_vid669
+END: toStr_vid512
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:602:5, line 602, column 5
-TP_ADD_INST_FIELD: List_vid493, "toStr_vid514", toStr_vid514
+TP_ADD_INST_FIELD: List_vid491, "toStr_vid512", toStr_vid512
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:611:5, line 611, column 5
-FUNI: mapper_vid516, this_vid675, handler_vid674
+FUNI: mapper_vid514, this_vid673, handler_vid672
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:618:9, line 618, column 9
-ALLOT: tv222_vid677
-IVOK: List_empty_vid498, tv222_vid677
-ALLOT: newList_vid676
-PUT: tv222_vid677, newList_vid676
+ALLOT: tv221_vid675
+IVOK: List_empty_vid496, tv221_vid675
+ALLOT: newList_vid674
+PUT: tv221_vid675, newList_vid674
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:619:9, line 619, column 9
-ALLOT: tv223_vid679
-TP_GET_FIELD: this_vid675, "data_vid494", tv223_vid679
-FUNI: anon_func_tv224_vid682, item_vid680, __vid681, __vid681, __vid681
+ALLOT: tv222_vid677
+TP_GET_FIELD: this_vid673, "data_vid492", tv222_vid677
+FUNI: anon_func_tv223_vid680, item_vid678, __vid679, __vid679, __vid679
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:620:20, line 620, column 20
+ALLOT: tv224_vid681
+COPY: item_vid678, tv224_vid681
 ALLOT: tv225_vid683
-COPY: item_vid680, tv225_vid683
+IVOK: handler_vid672, tv224_vid681, tv225_vid683
 ALLOT: tv226_vid685
-IVOK: handler_vid674, tv225_vid683, tv226_vid685
-ALLOT: tv227_vid687
-TP_GET_FIELD: newList_vid676, "append_vid507", tv227_vid687
-ALLOT: tv228_vid688
-IVOK: append_vid507, newList_vid676, tv226_vid685, tv228_vid688
+TP_GET_FIELD: newList_vid674, "append_vid505", tv226_vid685
+ALLOT: tv227_vid686
+IVOK: append_vid505, newList_vid674, tv225_vid683, tv227_vid686
 RET: null
-END: anon_func_tv224_vid682
-ALLOT: tv229_vid689
-PUT: anon_func_tv224_vid682, tv229_vid689
-ALLOT: tv230_vid690
-IVOK: iter_vid276, tv223_vid679, tv229_vid689, false, tv230_vid690
+END: anon_func_tv223_vid680
+ALLOT: tv228_vid687
+PUT: anon_func_tv223_vid680, tv228_vid687
+ALLOT: tv229_vid688
+IVOK: iter_vid274, tv222_vid677, tv228_vid687, false, tv229_vid688
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:622:9, line 622, column 9
-RET: newList_vid676
-END: mapper_vid516
+RET: newList_vid674
+END: mapper_vid514
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:611:5, line 611, column 5
-TP_ADD_INST_FIELD: List_vid493, "mapper_vid516", mapper_vid516
+TP_ADD_INST_FIELD: List_vid491, "mapper_vid514", mapper_vid514
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:625:5, line 625, column 5
-FUNI: filter_vid519, this_vid694, handler_vid693
+FUNI: filter_vid517, this_vid692, handler_vid691
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:632:9, line 632, column 9
-ALLOT: tv231_vid696
-IVOK: List_empty_vid498, tv231_vid696
-ALLOT: newList_vid695
-PUT: tv231_vid696, newList_vid695
+ALLOT: tv230_vid694
+IVOK: List_empty_vid496, tv230_vid694
+ALLOT: newList_vid693
+PUT: tv230_vid694, newList_vid693
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:633:9, line 633, column 9
-ALLOT: tv232_vid698
-TP_GET_FIELD: this_vid694, "data_vid494", tv232_vid698
-FUNI: anon_func_tv233_vid701, item_vid699, __vid700, __vid700, __vid700
+ALLOT: tv231_vid696
+TP_GET_FIELD: this_vid692, "data_vid492", tv231_vid696
+FUNI: anon_func_tv232_vid699, item_vid697, __vid698, __vid698, __vid698
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:634:13, line 634, column 13
-ALLOT: tv234_vid703
-COPY: item_vid699, tv234_vid703
-ALLOT: copiedItem_vid702
+ALLOT: tv233_vid701
+COPY: item_vid697, tv233_vid701
+ALLOT: copiedItem_vid700
 ; No need to set 'tp-any' type.
-PUT: tv234_vid703, copiedItem_vid702
+PUT: tv233_vid701, copiedItem_vid700
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:635:13, line 635, column 13
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:635:13, line 635, column 13
-ALLOT: tv235_vid706
-IVOK: handler_vid693, copiedItem_vid702, tv235_vid706
-JF: tv235_vid706, sl68_sid707
+ALLOT: tv234_vid704
+IVOK: handler_vid691, copiedItem_vid700, tv234_vid704
+JF: tv234_vid704, sl68_sid705
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:636:24, line 636, column 24
-ALLOT: tv236_vid709
-TP_GET_FIELD: newList_vid695, "append_vid507", tv236_vid709
-ALLOT: tv237_vid710
-IVOK: append_vid507, newList_vid695, copiedItem_vid702, tv237_vid710
-JMP: sl67_sid704
-SET: sl68_sid707
-SET: sl67_sid704
+ALLOT: tv235_vid707
+TP_GET_FIELD: newList_vid693, "append_vid505", tv235_vid707
+ALLOT: tv236_vid708
+IVOK: append_vid505, newList_vid693, copiedItem_vid700, tv236_vid708
+JMP: sl67_sid702
+SET: sl68_sid705
+SET: sl67_sid702
 RET: null
-END: anon_func_tv233_vid701
-ALLOT: tv238_vid711
-PUT: anon_func_tv233_vid701, tv238_vid711
-ALLOT: tv239_vid712
-IVOK: iter_vid276, tv232_vid698, tv238_vid711, false, tv239_vid712
+END: anon_func_tv232_vid699
+ALLOT: tv237_vid709
+PUT: anon_func_tv232_vid699, tv237_vid709
+ALLOT: tv238_vid710
+IVOK: iter_vid274, tv231_vid696, tv237_vid709, false, tv238_vid710
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:639:9, line 639, column 9
-RET: newList_vid695
-END: filter_vid519
+RET: newList_vid693
+END: filter_vid517
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:625:5, line 625, column 5
-TP_ADD_INST_FIELD: List_vid493, "filter_vid519", filter_vid519
+TP_ADD_INST_FIELD: List_vid491, "filter_vid517", filter_vid517
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:642:5, line 642, column 5
-FUNI: toFmtStr_vid522, this_vid716, transHandler_vid715
+FUNI: toFmtStr_vid520, this_vid714, transHandler_vid713
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:650:9, line 650, column 9
-ALLOT: tv240_vid718
-TP_GET_FIELD: this_vid716, "mapper_vid516", tv240_vid718
+ALLOT: tv239_vid716
+TP_GET_FIELD: this_vid714, "mapper_vid514", tv239_vid716
+ALLOT: tv240_vid717
+IVOK: mapper_vid514, this_vid714, transHandler_vid713, tv240_vid717
 ALLOT: tv241_vid719
-IVOK: mapper_vid516, this_vid716, transHandler_vid715, tv241_vid719
-ALLOT: tv242_vid721
-TP_GET_FIELD: tv241_vid719, "toStr_vid514", tv242_vid721
-ALLOT: tv243_vid722
-IVOK: toStr_vid514, tv241_vid719, tv243_vid722
-RET: tv243_vid722
-END: toFmtStr_vid522
+TP_GET_FIELD: tv240_vid717, "toStr_vid512", tv241_vid719
+ALLOT: tv242_vid720
+IVOK: toStr_vid512, tv240_vid717, tv242_vid720
+RET: tv242_vid720
+END: toFmtStr_vid520
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:642:5, line 642, column 5
-TP_ADD_INST_FIELD: List_vid493, "toFmtStr_vid522", toFmtStr_vid522
+TP_ADD_INST_FIELD: List_vid491, "toFmtStr_vid520", toFmtStr_vid520
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:653:5, line 653, column 5
-FUNI: contains_vid525, this_vid726, item_vid725
+FUNI: contains_vid523, this_vid724, item_vid723
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:660:9, line 660, column 9
-ALLOT: tv244_vid728
-TP_GET_FIELD: this_vid726, "data_vid494", tv244_vid728
-ALLOT: tv245_vid729
-IVOK: iterContains_vid411, tv244_vid728, item_vid725, tv245_vid729
-RET: tv245_vid729
-END: contains_vid525
+ALLOT: tv243_vid726
+TP_GET_FIELD: this_vid724, "data_vid492", tv243_vid726
+ALLOT: tv244_vid727
+IVOK: iterContains_vid409, tv243_vid726, item_vid723, tv244_vid727
+RET: tv244_vid727
+END: contains_vid523
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:653:5, line 653, column 5
-TP_ADD_INST_FIELD: List_vid493, "contains_vid525", contains_vid525
+TP_ADD_INST_FIELD: List_vid491, "contains_vid523", contains_vid523
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:663:5, line 663, column 5
-FUNI: setCompareHandler_vid528, this_vid733, handler_vid732
+FUNI: setCompareHandler_vid526, this_vid731, handler_vid730
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:670:29, line 670, column 29
-ALLOT: tv246_vid735
-TP_GET_FIELD: this_vid733, "compareHandler_vid496", tv246_vid735
-TP_SET_FIELD: this_vid733, "compareHandler_vid496", handler_vid732
+ALLOT: tv245_vid733
+TP_GET_FIELD: this_vid731, "compareHandler_vid494", tv245_vid733
+TP_SET_FIELD: this_vid731, "compareHandler_vid494", handler_vid730
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:671:9, line 671, column 9
-RET: this_vid733
-END: setCompareHandler_vid528
+RET: this_vid731
+END: setCompareHandler_vid526
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:663:5, line 663, column 5
-TP_ADD_INST_FIELD: List_vid493, "setCompareHandler_vid528", setCompareHandler_vid528
+TP_ADD_INST_FIELD: List_vid491, "setCompareHandler_vid526", setCompareHandler_vid526
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:674:5, line 674, column 5
-FUNI: setPlusHandler_vid531, this_vid739, handler_vid738
+FUNI: setPlusHandler_vid529, this_vid737, handler_vid736
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:681:26, line 681, column 26
-ALLOT: tv247_vid741
-TP_GET_FIELD: this_vid739, "plusHandler_vid497", tv247_vid741
-TP_SET_FIELD: this_vid739, "plusHandler_vid497", handler_vid738
+ALLOT: tv246_vid739
+TP_GET_FIELD: this_vid737, "plusHandler_vid495", tv246_vid739
+TP_SET_FIELD: this_vid737, "plusHandler_vid495", handler_vid736
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:682:9, line 682, column 9
-RET: this_vid739
-END: setPlusHandler_vid531
+RET: this_vid737
+END: setPlusHandler_vid529
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:674:5, line 674, column 5
-TP_ADD_INST_FIELD: List_vid493, "setPlusHandler_vid531", setPlusHandler_vid531
+TP_ADD_INST_FIELD: List_vid491, "setPlusHandler_vid529", setPlusHandler_vid529
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:685:5, line 685, column 5
-FUNI: max_vid534, this_vid745, compareHandler_vid744
+FUNI: max_vid532, this_vid743, compareHandler_vid742
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:693:9, line 693, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:693:9, line 693, column 9
-ALLOT: tv248_vid748
-TP_GET_FIELD: this_vid745, "empty_vid477", tv248_vid748
-ALLOT: tv249_vid749
-IVOK: empty_vid477, this_vid745, tv249_vid749
-JF: tv249_vid749, sl70_sid750
+ALLOT: tv247_vid746
+TP_GET_FIELD: this_vid743, "empty_vid475", tv247_vid746
+ALLOT: tv248_vid747
+IVOK: empty_vid475, this_vid743, tv248_vid747
+JF: tv248_vid747, sl70_sid748
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:694:13, line 694, column 13
 RET: null
-JMP: sl69_sid746
-SET: sl70_sid750
-SET: sl69_sid746
+JMP: sl69_sid744
+SET: sl70_sid748
+SET: sl69_sid744
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:696:9, line 696, column 9
-ALLOT: tv250_vid753
-TP_GET_FIELD: this_vid745, "data_vid494", tv250_vid753
-ALLOT: tv251_vid754
-ITER_GET: tv250_vid753, 0, tv251_vid754
-ALLOT: tv252_vid755
-COPY: tv251_vid754, tv252_vid755
-ALLOT: max_vid751
+ALLOT: tv249_vid751
+TP_GET_FIELD: this_vid743, "data_vid492", tv249_vid751
+ALLOT: tv250_vid752
+ITER_GET: tv249_vid751, 0, tv250_vid752
+ALLOT: tv251_vid753
+COPY: tv250_vid752, tv251_vid753
+ALLOT: max_vid749
 ; No need to set 'tp-any' type.
-PUT: tv252_vid755, max_vid751
+PUT: tv251_vid753, max_vid749
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:697:24, line 697, column 24
+ALLOT: tv252_vid754
+TP_GET_FIELD: this_vid743, "compareHandler_vid494", tv252_vid754
 ALLOT: tv253_vid756
-TP_GET_FIELD: this_vid745, "compareHandler_vid496", tv253_vid756
-ALLOT: tv254_vid758
-TP_GET_FIELD: ops_vid145, "orVal_vid168", tv254_vid758
-ALLOT: tv255_vid759
-IVOK: orVal_vid168, compareHandler_vid744, tv253_vid756, tv255_vid759
-PUT: tv255_vid759, compareHandler_vid744
+TP_GET_FIELD: ops_vid143, "orVal_vid166", tv253_vid756
+ALLOT: tv254_vid757
+IVOK: orVal_vid166, compareHandler_vid742, tv252_vid754, tv254_vid757
+PUT: tv254_vid757, compareHandler_vid742
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:698:9, line 698, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:698:9, line 698, column 9
-JF: compareHandler_vid744, sl72_sid761
+JF: compareHandler_vid742, sl72_sid759
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:699:13, line 699, column 13
-ALLOT: tv256_vid763
-TP_GET_FIELD: this_vid745, "data_vid494", tv256_vid763
-FUNI: anon_func_tv257_vid766, item_vid764, __vid765, __vid765, __vid765
+ALLOT: tv255_vid761
+TP_GET_FIELD: this_vid743, "data_vid492", tv255_vid761
+FUNI: anon_func_tv256_vid764, item_vid762, __vid763, __vid763, __vid763
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:700:17, line 700, column 17
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:700:17, line 700, column 17
-ALLOT: tv258_vid770
-IVOK: compareHandler_vid744, item_vid764, max_vid751, tv258_vid770
-ALLOT: tv259_vid771
-CMP: tv258_vid770, 0, tv259_vid771
-CREL: tv259_vid771, RG, tv259_vid771
-JF: tv259_vid771, sl74_sid772
+ALLOT: tv257_vid768
+IVOK: compareHandler_vid742, item_vid762, max_vid749, tv257_vid768
+ALLOT: tv258_vid769
+CMP: tv257_vid768, 0, tv258_vid769
+CREL: tv258_vid769, RG, tv258_vid769
+JF: tv258_vid769, sl74_sid770
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:701:25, line 701, column 25
-PUT: item_vid764, max_vid751
-JMP: sl73_sid767
-SET: sl74_sid772
-SET: sl73_sid767
+PUT: item_vid762, max_vid749
+JMP: sl73_sid765
+SET: sl74_sid770
+SET: sl73_sid765
 RET: null
-END: anon_func_tv257_vid766
-ALLOT: tv260_vid773
-PUT: anon_func_tv257_vid766, tv260_vid773
-ALLOT: tv261_vid774
-IVOK: iter_vid276, tv256_vid763, tv260_vid773, false, tv261_vid774
-JMP: sl71_sid760
-SET: sl72_sid761
+END: anon_func_tv256_vid764
+ALLOT: tv259_vid771
+PUT: anon_func_tv256_vid764, tv259_vid771
+ALLOT: tv260_vid772
+IVOK: iter_vid274, tv255_vid761, tv259_vid771, false, tv260_vid772
+JMP: sl71_sid758
+SET: sl72_sid759
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:704:11, line 704, column 11
-JF: true, sl75_sid775
+JF: true, sl75_sid773
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:705:13, line 705, column 13
-ALLOT: tv262_vid777
-TP_GET_FIELD: this_vid745, "data_vid494", tv262_vid777
-FUNI: anon_func_tv263_vid780, item_vid778, __vid779, __vid779, __vid779
+ALLOT: tv261_vid775
+TP_GET_FIELD: this_vid743, "data_vid492", tv261_vid775
+FUNI: anon_func_tv262_vid778, item_vid776, __vid777, __vid777, __vid777
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:706:17, line 706, column 17
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:706:17, line 706, column 17
-ALLOT: tv264_vid782
-CMP: item_vid778, max_vid751, tv264_vid782
-CREL: tv264_vid782, RG, tv264_vid782
-JF: tv264_vid782, sl77_sid783
+ALLOT: tv263_vid780
+CMP: item_vid776, max_vid749, tv263_vid780
+CREL: tv263_vid780, RG, tv263_vid780
+JF: tv263_vid780, sl77_sid781
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:707:25, line 707, column 25
-PUT: item_vid778, max_vid751
-JMP: sl76_sid781
-SET: sl77_sid783
-SET: sl76_sid781
+PUT: item_vid776, max_vid749
+JMP: sl76_sid779
+SET: sl77_sid781
+SET: sl76_sid779
 RET: null
-END: anon_func_tv263_vid780
-ALLOT: tv265_vid784
-PUT: anon_func_tv263_vid780, tv265_vid784
-ALLOT: tv266_vid785
-IVOK: iter_vid276, tv262_vid777, tv265_vid784, false, tv266_vid785
-JMP: sl71_sid760
-SET: sl75_sid775
-SET: sl71_sid760
+END: anon_func_tv262_vid778
+ALLOT: tv264_vid782
+PUT: anon_func_tv262_vid778, tv264_vid782
+ALLOT: tv265_vid783
+IVOK: iter_vid274, tv261_vid775, tv264_vid782, false, tv265_vid783
+JMP: sl71_sid758
+SET: sl75_sid773
+SET: sl71_sid758
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:711:9, line 711, column 9
-RET: max_vid751
-END: max_vid534
+RET: max_vid749
+END: max_vid532
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:685:5, line 685, column 5
-TP_ADD_INST_FIELD: List_vid493, "max_vid534", max_vid534
+TP_ADD_INST_FIELD: List_vid491, "max_vid532", max_vid532
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:714:5, line 714, column 5
-FUNI: min_vid537, this_vid789, compareHandler_vid788
+FUNI: min_vid535, this_vid787, compareHandler_vid786
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:722:9, line 722, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:722:9, line 722, column 9
-ALLOT: tv267_vid792
-TP_GET_FIELD: this_vid789, "empty_vid477", tv267_vid792
-ALLOT: tv268_vid793
-IVOK: empty_vid477, this_vid789, tv268_vid793
-JF: tv268_vid793, sl79_sid794
+ALLOT: tv266_vid790
+TP_GET_FIELD: this_vid787, "empty_vid475", tv266_vid790
+ALLOT: tv267_vid791
+IVOK: empty_vid475, this_vid787, tv267_vid791
+JF: tv267_vid791, sl79_sid792
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:723:13, line 723, column 13
 RET: null
-JMP: sl78_sid790
-SET: sl79_sid794
-SET: sl78_sid790
+JMP: sl78_sid788
+SET: sl79_sid792
+SET: sl78_sid788
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:725:9, line 725, column 9
-ALLOT: tv269_vid797
-TP_GET_FIELD: this_vid789, "data_vid494", tv269_vid797
-ALLOT: tv270_vid798
-ITER_GET: tv269_vid797, 0, tv270_vid798
-ALLOT: tv271_vid799
-COPY: tv270_vid798, tv271_vid799
-ALLOT: min_vid795
+ALLOT: tv268_vid795
+TP_GET_FIELD: this_vid787, "data_vid492", tv268_vid795
+ALLOT: tv269_vid796
+ITER_GET: tv268_vid795, 0, tv269_vid796
+ALLOT: tv270_vid797
+COPY: tv269_vid796, tv270_vid797
+ALLOT: min_vid793
 ; No need to set 'tp-any' type.
-PUT: tv271_vid799, min_vid795
+PUT: tv270_vid797, min_vid793
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:726:24, line 726, column 24
+ALLOT: tv271_vid798
+TP_GET_FIELD: this_vid787, "compareHandler_vid494", tv271_vid798
 ALLOT: tv272_vid800
-TP_GET_FIELD: this_vid789, "compareHandler_vid496", tv272_vid800
-ALLOT: tv273_vid802
-TP_GET_FIELD: ops_vid145, "orVal_vid168", tv273_vid802
-ALLOT: tv274_vid803
-IVOK: orVal_vid168, compareHandler_vid788, tv272_vid800, tv274_vid803
-PUT: tv274_vid803, compareHandler_vid788
+TP_GET_FIELD: ops_vid143, "orVal_vid166", tv272_vid800
+ALLOT: tv273_vid801
+IVOK: orVal_vid166, compareHandler_vid786, tv271_vid798, tv273_vid801
+PUT: tv273_vid801, compareHandler_vid786
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:727:9, line 727, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:727:9, line 727, column 9
-JF: compareHandler_vid788, sl81_sid805
+JF: compareHandler_vid786, sl81_sid803
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:728:13, line 728, column 13
-ALLOT: tv275_vid807
-TP_GET_FIELD: this_vid789, "data_vid494", tv275_vid807
-FUNI: anon_func_tv276_vid810, item_vid808, __vid809, __vid809, __vid809
+ALLOT: tv274_vid805
+TP_GET_FIELD: this_vid787, "data_vid492", tv274_vid805
+FUNI: anon_func_tv275_vid808, item_vid806, __vid807, __vid807, __vid807
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:729:17, line 729, column 17
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:729:17, line 729, column 17
-ALLOT: tv277_vid814
-IVOK: compareHandler_vid788, item_vid808, min_vid795, tv277_vid814
-ALLOT: tv278_vid815
-CMP: tv277_vid814, 0, tv278_vid815
-CREL: tv278_vid815, RL, tv278_vid815
-JF: tv278_vid815, sl83_sid816
+ALLOT: tv276_vid812
+IVOK: compareHandler_vid786, item_vid806, min_vid793, tv276_vid812
+ALLOT: tv277_vid813
+CMP: tv276_vid812, 0, tv277_vid813
+CREL: tv277_vid813, RL, tv277_vid813
+JF: tv277_vid813, sl83_sid814
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:730:25, line 730, column 25
-PUT: item_vid808, min_vid795
-JMP: sl82_sid811
-SET: sl83_sid816
-SET: sl82_sid811
+PUT: item_vid806, min_vid793
+JMP: sl82_sid809
+SET: sl83_sid814
+SET: sl82_sid809
 RET: null
-END: anon_func_tv276_vid810
-ALLOT: tv279_vid817
-PUT: anon_func_tv276_vid810, tv279_vid817
-ALLOT: tv280_vid818
-IVOK: iter_vid276, tv275_vid807, tv279_vid817, false, tv280_vid818
-JMP: sl80_sid804
-SET: sl81_sid805
+END: anon_func_tv275_vid808
+ALLOT: tv278_vid815
+PUT: anon_func_tv275_vid808, tv278_vid815
+ALLOT: tv279_vid816
+IVOK: iter_vid274, tv274_vid805, tv278_vid815, false, tv279_vid816
+JMP: sl80_sid802
+SET: sl81_sid803
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:733:11, line 733, column 11
-JF: true, sl84_sid819
+JF: true, sl84_sid817
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:734:13, line 734, column 13
-ALLOT: tv281_vid821
-TP_GET_FIELD: this_vid789, "data_vid494", tv281_vid821
-FUNI: anon_func_tv282_vid824, item_vid822, __vid823, __vid823, __vid823
+ALLOT: tv280_vid819
+TP_GET_FIELD: this_vid787, "data_vid492", tv280_vid819
+FUNI: anon_func_tv281_vid822, item_vid820, __vid821, __vid821, __vid821
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:735:17, line 735, column 17
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:735:17, line 735, column 17
-ALLOT: tv283_vid826
-CMP: item_vid822, min_vid795, tv283_vid826
-CREL: tv283_vid826, RL, tv283_vid826
-JF: tv283_vid826, sl86_sid827
+ALLOT: tv282_vid824
+CMP: item_vid820, min_vid793, tv282_vid824
+CREL: tv282_vid824, RL, tv282_vid824
+JF: tv282_vid824, sl86_sid825
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:736:25, line 736, column 25
-PUT: item_vid822, min_vid795
-JMP: sl85_sid825
-SET: sl86_sid827
-SET: sl85_sid825
+PUT: item_vid820, min_vid793
+JMP: sl85_sid823
+SET: sl86_sid825
+SET: sl85_sid823
 RET: null
-END: anon_func_tv282_vid824
-ALLOT: tv284_vid828
-PUT: anon_func_tv282_vid824, tv284_vid828
-ALLOT: tv285_vid829
-IVOK: iter_vid276, tv281_vid821, tv284_vid828, false, tv285_vid829
-JMP: sl80_sid804
-SET: sl84_sid819
-SET: sl80_sid804
+END: anon_func_tv281_vid822
+ALLOT: tv283_vid826
+PUT: anon_func_tv281_vid822, tv283_vid826
+ALLOT: tv284_vid827
+IVOK: iter_vid274, tv280_vid819, tv283_vid826, false, tv284_vid827
+JMP: sl80_sid802
+SET: sl84_sid817
+SET: sl80_sid802
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:740:9, line 740, column 9
-RET: min_vid795
-END: min_vid537
+RET: min_vid793
+END: min_vid535
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:714:5, line 714, column 5
-TP_ADD_INST_FIELD: List_vid493, "min_vid537", min_vid537
+TP_ADD_INST_FIELD: List_vid491, "min_vid535", min_vid535
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:743:5, line 743, column 5
-FUNI: sum_vid540, this_vid833, plusHandler_vid832
+FUNI: sum_vid538, this_vid831, plusHandler_vid830
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:751:9, line 751, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:751:9, line 751, column 9
-ALLOT: tv286_vid836
-TP_GET_FIELD: this_vid833, "empty_vid477", tv286_vid836
-ALLOT: tv287_vid837
-IVOK: empty_vid477, this_vid833, tv287_vid837
-JF: tv287_vid837, sl88_sid838
+ALLOT: tv285_vid834
+TP_GET_FIELD: this_vid831, "empty_vid475", tv285_vid834
+ALLOT: tv286_vid835
+IVOK: empty_vid475, this_vid831, tv286_vid835
+JF: tv286_vid835, sl88_sid836
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:752:13, line 752, column 13
 RET: null
-JMP: sl87_sid834
-SET: sl88_sid838
-SET: sl87_sid834
+JMP: sl87_sid832
+SET: sl88_sid836
+SET: sl87_sid832
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:754:21, line 754, column 21
+ALLOT: tv287_vid837
+TP_GET_FIELD: this_vid831, "plusHandler_vid495", tv287_vid837
 ALLOT: tv288_vid839
-TP_GET_FIELD: this_vid833, "plusHandler_vid497", tv288_vid839
-ALLOT: tv289_vid841
-TP_GET_FIELD: ops_vid145, "orVal_vid168", tv289_vid841
-ALLOT: tv290_vid842
-IVOK: orVal_vid168, plusHandler_vid832, tv288_vid839, tv290_vid842
-PUT: tv290_vid842, plusHandler_vid832
+TP_GET_FIELD: ops_vid143, "orVal_vid166", tv288_vid839
+ALLOT: tv289_vid840
+IVOK: orVal_vid166, plusHandler_vid830, tv287_vid837, tv289_vid840
+PUT: tv289_vid840, plusHandler_vid830
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:755:21, line 755, column 21
-FUNI: anon_func_tv291_vid845, front_vid843, back_vid844
+FUNI: anon_func_tv290_vid843, front_vid841, back_vid842
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:755:65, line 755, column 65
-ALLOT: tv292_vid846
-ADD: front_vid843, back_vid844, tv292_vid846
-RET: tv292_vid846
-END: anon_func_tv291_vid845
+ALLOT: tv291_vid844
+ADD: front_vid841, back_vid842, tv291_vid844
+RET: tv291_vid844
+END: anon_func_tv290_vid843
+ALLOT: tv292_vid845
+PUT: anon_func_tv290_vid843, tv292_vid845
 ALLOT: tv293_vid847
-PUT: anon_func_tv291_vid845, tv293_vid847
-ALLOT: tv294_vid849
-TP_GET_FIELD: ops_vid145, "orVal_vid168", tv294_vid849
-ALLOT: tv295_vid850
-IVOK: orVal_vid168, plusHandler_vid832, tv293_vid847, tv295_vid850
-PUT: tv295_vid850, plusHandler_vid832
+TP_GET_FIELD: ops_vid143, "orVal_vid166", tv293_vid847
+ALLOT: tv294_vid848
+IVOK: orVal_vid166, plusHandler_vid830, tv292_vid845, tv294_vid848
+PUT: tv294_vid848, plusHandler_vid830
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:756:9, line 756, column 9
-ALLOT: tv296_vid852
-TP_GET_FIELD: this_vid833, "reduce_vid543", tv296_vid852
-ALLOT: tv297_vid853
-IVOK: reduce_vid543, this_vid833, plusHandler_vid832, null, tv297_vid853
-RET: tv297_vid853
-END: sum_vid540
+ALLOT: tv295_vid850
+TP_GET_FIELD: this_vid831, "reduce_vid541", tv295_vid850
+ALLOT: tv296_vid851
+IVOK: reduce_vid541, this_vid831, plusHandler_vid830, null, tv296_vid851
+RET: tv296_vid851
+END: sum_vid538
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:743:5, line 743, column 5
-TP_ADD_INST_FIELD: List_vid493, "sum_vid540", sum_vid540
+TP_ADD_INST_FIELD: List_vid491, "sum_vid538", sum_vid538
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:759:5, line 759, column 5
-FUNI: reduce_vid543, this_vid858, reducer_vid856, initialValue_vid857
+FUNI: reduce_vid541, this_vid856, reducer_vid854, initialValue_vid855
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:769:9, line 769, column 9
-ALLOT: result_vid859
+ALLOT: result_vid857
 ; No need to set 'tp-any' type.
-PUT: initialValue_vid857, result_vid859
+PUT: initialValue_vid855, result_vid857
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:770:9, line 770, column 9
-ALLOT: tv298_vid861
-CMP: initialValue_vid857, null, tv298_vid861
-CREL: tv298_vid861, RNE, tv298_vid861
-ALLOT: hasInitialValue_vid860
+ALLOT: tv297_vid859
+CMP: initialValue_vid855, null, tv297_vid859
+CREL: tv297_vid859, RNE, tv297_vid859
+ALLOT: hasInitialValue_vid858
 ; No need to set 'tp-any' type.
-PUT: tv298_vid861, hasInitialValue_vid860
+PUT: tv297_vid859, hasInitialValue_vid858
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:771:9, line 771, column 9
-ALLOT: tv299_vid863
-TP_GET_FIELD: this_vid858, "data_vid494", tv299_vid863
-FUNI: anon_func_tv300_vid866, item_vid864, __vid865, __vid865, __vid865
+ALLOT: tv298_vid861
+TP_GET_FIELD: this_vid856, "data_vid492", tv298_vid861
+FUNI: anon_func_tv299_vid864, item_vid862, __vid863, __vid863, __vid863
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:772:13, line 772, column 13
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:772:13, line 772, column 13
-ALLOT: tv301_vid868
-OPP: hasInitialValue_vid860, tv301_vid868
-JF: tv301_vid868, sl90_sid869
+ALLOT: tv300_vid866
+OPP: hasInitialValue_vid858, tv300_vid866
+JF: tv300_vid866, sl90_sid867
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:773:24, line 773, column 24
-PUT: item_vid864, result_vid859
+PUT: item_vid862, result_vid857
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:774:33, line 774, column 33
-PUT: true, hasInitialValue_vid860
-JMP: sl89_sid867
-SET: sl90_sid869
+PUT: true, hasInitialValue_vid858
+JMP: sl89_sid865
+SET: sl90_sid867
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:775:15, line 775, column 15
-JF: true, sl91_sid870
+JF: true, sl91_sid868
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:776:24, line 776, column 24
-ALLOT: tv302_vid873
-IVOK: reducer_vid856, result_vid859, item_vid864, tv302_vid873
-PUT: tv302_vid873, result_vid859
-JMP: sl89_sid867
-SET: sl91_sid870
-SET: sl89_sid867
+ALLOT: tv301_vid871
+IVOK: reducer_vid854, result_vid857, item_vid862, tv301_vid871
+PUT: tv301_vid871, result_vid857
+JMP: sl89_sid865
+SET: sl91_sid868
+SET: sl89_sid865
 RET: null
-END: anon_func_tv300_vid866
-ALLOT: tv303_vid874
-PUT: anon_func_tv300_vid866, tv303_vid874
-ALLOT: tv304_vid875
-IVOK: iter_vid276, tv299_vid863, tv303_vid874, false, tv304_vid875
+END: anon_func_tv299_vid864
+ALLOT: tv302_vid872
+PUT: anon_func_tv299_vid864, tv302_vid872
+ALLOT: tv303_vid873
+IVOK: iter_vid274, tv298_vid861, tv302_vid872, false, tv303_vid873
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:779:9, line 779, column 9
-RET: result_vid859
-END: reduce_vid543
+RET: result_vid857
+END: reduce_vid541
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:759:5, line 759, column 5
-TP_ADD_INST_FIELD: List_vid493, "reduce_vid543", reduce_vid543
+TP_ADD_INST_FIELD: List_vid491, "reduce_vid541", reduce_vid541
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:782:5, line 782, column 5
-FUNI: splice_vid547, this_vid879, other_vid878
+FUNI: splice_vid545, this_vid877, other_vid876
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:791:9, line 791, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:791:9, line 791, column 9
-ALLOT: tv305_vid882
-TP_GET_FIELD: dt_vid33, "type_vid38", tv305_vid882
+ALLOT: tv304_vid880
+TP_GET_FIELD: dt_vid31, "type_vid36", tv304_vid880
+ALLOT: tv305_vid881
+TP_GET: other_vid876, tv305_vid881
 ALLOT: tv306_vid883
-TP_GET: other_vid878, tv306_vid883
+TP_GET_FIELD: dt_vid31, "DT_vid42", tv306_vid883
 ALLOT: tv307_vid885
-TP_GET_FIELD: dt_vid33, "DT_vid44", tv307_vid885
-ALLOT: tv308_vid887
-TP_GET_FIELD: tv307_vid885, "TP_LIST_vid50", tv308_vid887
-ALLOT: tv309_vid888
-CMP: tv306_vid883, tv308_vid887, tv309_vid888
-CREL: tv309_vid888, RE, tv309_vid888
-JF: tv309_vid888, sl93_sid889
+TP_GET_FIELD: tv306_vid883, "TP_LIST_vid48", tv307_vid885
+ALLOT: tv308_vid886
+CMP: tv305_vid881, tv307_vid885, tv308_vid886
+CREL: tv308_vid886, RE, tv308_vid886
+JF: tv308_vid886, sl93_sid887
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:792:13, line 792, column 13
-ALLOT: tv310_vid891
-TP_GET_FIELD: this_vid879, "spliceBuiltinList_vid556", tv310_vid891
-ALLOT: tv311_vid892
-IVOK: spliceBuiltinList_vid556, this_vid879, other_vid878, tv311_vid892
-RET: tv311_vid892
-JMP: sl92_sid880
-SET: sl93_sid889
+ALLOT: tv309_vid889
+TP_GET_FIELD: this_vid877, "spliceBuiltinList_vid554", tv309_vid889
+ALLOT: tv310_vid890
+IVOK: spliceBuiltinList_vid554, this_vid877, other_vid876, tv310_vid890
+RET: tv310_vid890
+JMP: sl92_sid878
+SET: sl93_sid887
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:793:11, line 793, column 11
-JF: true, sl94_sid893
+JF: true, sl94_sid891
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:794:13, line 794, column 13
-ALLOT: tv312_vid895
-TP_GET_FIELD: this_vid879, "spliceBuiltinList_vid556", tv312_vid895
-ALLOT: tv313_vid896
-IVOK: spliceBuiltinList_vid556, this_vid879, other_vid878, tv313_vid896
-RET: tv313_vid896
-JMP: sl92_sid880
-SET: sl94_sid893
-SET: sl92_sid880
-END: splice_vid547
+ALLOT: tv311_vid893
+TP_GET_FIELD: this_vid877, "spliceBuiltinList_vid554", tv311_vid893
+ALLOT: tv312_vid894
+IVOK: spliceBuiltinList_vid554, this_vid877, other_vid876, tv312_vid894
+RET: tv312_vid894
+JMP: sl92_sid878
+SET: sl94_sid891
+SET: sl92_sid878
+END: splice_vid545
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:782:5, line 782, column 5
-TP_ADD_INST_FIELD: List_vid493, "splice_vid547", splice_vid547
+TP_ADD_INST_FIELD: List_vid491, "splice_vid545", splice_vid545
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:798:5, line 798, column 5
-FUNC: spliceNR_vid550, this_vid900, other_vid899
+FUNC: spliceNR_vid548, this_vid898, other_vid897
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:806:9, line 806, column 9
-ALLOT: tv314_vid903
-TP_GET_FIELD: this_vid900, "splice_vid547", tv314_vid903
-ALLOT: tv315_vid904
-IVOK: splice_vid547, this_vid900, other_vid899, tv315_vid904
-ALLOT: result_vid901
+ALLOT: tv313_vid901
+TP_GET_FIELD: this_vid898, "splice_vid545", tv313_vid901
+ALLOT: tv314_vid902
+IVOK: splice_vid545, this_vid898, other_vid897, tv314_vid902
+ALLOT: result_vid899
 ; No need to set 'tp-any' type.
-PUT: tv315_vid904, result_vid901
+PUT: tv314_vid902, result_vid899
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:807:19, line 807, column 19
+ALLOT: tv315_vid904
+TP_GET_FIELD: this_vid898, "data_vid492", tv315_vid904
 ALLOT: tv316_vid906
-TP_GET_FIELD: this_vid900, "data_vid494", tv316_vid906
-ALLOT: tv317_vid908
-TP_GET_FIELD: result_vid901, "get_vid502", tv317_vid908
-ALLOT: tv318_vid909
-IVOK: get_vid502, result_vid901, tv318_vid909
-TP_SET_FIELD: this_vid900, "data_vid494", tv318_vid909
+TP_GET_FIELD: result_vid899, "get_vid500", tv316_vid906
+ALLOT: tv317_vid907
+IVOK: get_vid500, result_vid899, tv317_vid907
+TP_SET_FIELD: this_vid898, "data_vid492", tv317_vid907
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:808:21, line 808, column 21
-ALLOT: tv319_vid911
-TP_GET_FIELD: this_vid900, "length_vid495", tv319_vid911
-ALLOT: tv320_vid912
-TP_GET_FIELD: result_vid901, "size_vid512", tv320_vid912
-ALLOT: tv321_vid913
-IVOK: size_vid512, result_vid901, tv321_vid913
-TP_SET_FIELD: this_vid900, "length_vid495", tv321_vid913
-END: spliceNR_vid550
+ALLOT: tv318_vid909
+TP_GET_FIELD: this_vid898, "length_vid493", tv318_vid909
+ALLOT: tv319_vid910
+TP_GET_FIELD: result_vid899, "size_vid510", tv319_vid910
+ALLOT: tv320_vid911
+IVOK: size_vid510, result_vid899, tv320_vid911
+TP_SET_FIELD: this_vid898, "length_vid493", tv320_vid911
+END: spliceNR_vid548
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:798:5, line 798, column 5
-TP_ADD_INST_FIELD: List_vid493, "spliceNR_vid550", spliceNR_vid550
+TP_ADD_INST_FIELD: List_vid491, "spliceNR_vid548", spliceNR_vid548
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:811:5, line 811, column 5
-FUNI: spliceList_vid553, this_vid917, other_vid916
+FUNI: spliceList_vid551, this_vid915, other_vid914
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:820:9, line 820, column 9
+ALLOT: tv321_vid917
+TP_GET_FIELD: this_vid915, "data_vid492", tv321_vid917
 ALLOT: tv322_vid919
-TP_GET_FIELD: this_vid917, "data_vid494", tv322_vid919
-ALLOT: tv323_vid921
-TP_GET_FIELD: other_vid916, "get_vid502", tv323_vid921
-ALLOT: tv324_vid922
-IVOK: get_vid502, other_vid916, tv324_vid922
-ALLOT: tv325_vid923
-ADD: tv322_vid919, tv324_vid922, tv325_vid923
-ALLOT: tv326_vid924
-IVOK: List_list_vid500, tv325_vid923, tv326_vid924
-RET: tv326_vid924
-END: spliceList_vid553
+TP_GET_FIELD: other_vid914, "get_vid500", tv322_vid919
+ALLOT: tv323_vid920
+IVOK: get_vid500, other_vid914, tv323_vid920
+ALLOT: tv324_vid921
+ADD: tv321_vid917, tv323_vid920, tv324_vid921
+ALLOT: tv325_vid922
+IVOK: List_list_vid498, tv324_vid921, tv325_vid922
+RET: tv325_vid922
+END: spliceList_vid551
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:811:5, line 811, column 5
-TP_ADD_INST_FIELD: List_vid493, "spliceList_vid553", spliceList_vid553
+TP_ADD_INST_FIELD: List_vid491, "spliceList_vid551", spliceList_vid551
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:823:5, line 823, column 5
-FUNI: spliceBuiltinList_vid556, this_vid928, other_vid927
+FUNI: spliceBuiltinList_vid554, this_vid926, other_vid925
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:832:9, line 832, column 9
-ALLOT: tv327_vid930
-TP_GET_FIELD: this_vid928, "data_vid494", tv327_vid930
-ALLOT: tv328_vid931
-ADD: tv327_vid930, other_vid927, tv328_vid931
-ALLOT: tv329_vid932
-IVOK: List_list_vid500, tv328_vid931, tv329_vid932
-RET: tv329_vid932
-END: spliceBuiltinList_vid556
+ALLOT: tv326_vid928
+TP_GET_FIELD: this_vid926, "data_vid492", tv326_vid928
+ALLOT: tv327_vid929
+ADD: tv326_vid928, other_vid925, tv327_vid929
+ALLOT: tv328_vid930
+IVOK: List_list_vid498, tv327_vid929, tv328_vid930
+RET: tv328_vid930
+END: spliceBuiltinList_vid554
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:823:5, line 823, column 5
-TP_ADD_INST_FIELD: List_vid493, "spliceBuiltinList_vid556", spliceBuiltinList_vid556
+TP_ADD_INST_FIELD: List_vid491, "spliceBuiltinList_vid554", spliceBuiltinList_vid554
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:835:5, line 835, column 5
-FUNI: find_vid559, this_vid936, predicate_vid935
+FUNI: find_vid557, this_vid934, predicate_vid933
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:843:9, line 843, column 9
-ALLOT: result_vid937
+ALLOT: result_vid935
 ; No need to set 'tp-any' type.
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:844:9, line 844, column 9
-ALLOT: tv330_vid939
-TP_GET_FIELD: this_vid936, "data_vid494", tv330_vid939
-FUNI: anon_func_tv331_vid944, item_vid940, index_vid941, __vid942, kwargs_vid943
+ALLOT: tv329_vid937
+TP_GET_FIELD: this_vid934, "data_vid492", tv329_vid937
+FUNI: anon_func_tv330_vid942, item_vid938, index_vid939, __vid940, kwargs_vid941
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:845:13, line 845, column 13
-ALLOT: tv332_vid946
-COPY: item_vid940, tv332_vid946
-ALLOT: copiedItem_vid945
+ALLOT: tv331_vid944
+COPY: item_vid938, tv331_vid944
+ALLOT: copiedItem_vid943
 ; No need to set 'tp-any' type.
-PUT: tv332_vid946, copiedItem_vid945
+PUT: tv331_vid944, copiedItem_vid943
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:846:13, line 846, column 13
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:846:13, line 846, column 13
-ALLOT: tv333_vid948
-IVOK: unpack_vid195, kwargs_vid943, tv333_vid948
-ALLOT: tv334_vid952
-TP_SET: tp-dict, tv334_vid952
-ALLOT: tv335_vid953
-IVOK: predicate_vid935, copiedItem_vid945, index_vid941, tv334_vid952, tv335_vid953
-JF: tv335_vid953, sl96_sid954
+ALLOT: tv332_vid946
+IVOK: unpack_vid193, kwargs_vid941, tv332_vid946
+ALLOT: tv333_vid950
+TP_SET: tp-dict, tv333_vid950
+ALLOT: tv334_vid951
+IVOK: predicate_vid933, copiedItem_vid943, index_vid939, tv333_vid950, tv334_vid951
+JF: tv334_vid951, sl96_sid952
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:847:24, line 847, column 24
-PUT: copiedItem_vid945, result_vid937
+PUT: copiedItem_vid943, result_vid935
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:848:17, line 848, column 17
 RET: false
-JMP: sl95_sid947
-SET: sl96_sid954
-SET: sl95_sid947
-END: anon_func_tv331_vid944
-ALLOT: tv336_vid955
-PUT: anon_func_tv331_vid944, tv336_vid955
-ALLOT: tv337_vid956
-IVOK: iter_vid276, tv330_vid939, tv336_vid955, false, tv337_vid956
+JMP: sl95_sid945
+SET: sl96_sid952
+SET: sl95_sid945
+END: anon_func_tv330_vid942
+ALLOT: tv335_vid953
+PUT: anon_func_tv330_vid942, tv335_vid953
+ALLOT: tv336_vid954
+IVOK: iter_vid274, tv329_vid937, tv335_vid953, false, tv336_vid954
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:851:9, line 851, column 9
-RET: result_vid937
-END: find_vid559
+RET: result_vid935
+END: find_vid557
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:835:5, line 835, column 5
-TP_ADD_INST_FIELD: List_vid493, "find_vid559", find_vid559
+TP_ADD_INST_FIELD: List_vid491, "find_vid557", find_vid557
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:854:5, line 854, column 5
-FUNI: at_vid562, this_vid960, index_vid959
+FUNI: at_vid560, this_vid958, index_vid957
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:864:9, line 864, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:864:9, line 864, column 9
-ALLOT: tv338_vid963
-TP_GET_FIELD: this_vid960, "length_vid495", tv338_vid963
-ALLOT: tv339_vid964
-OPP: tv338_vid963, tv339_vid964
-ADD: 1, tv339_vid964, tv339_vid964
+ALLOT: tv337_vid961
+TP_GET_FIELD: this_vid958, "length_vid493", tv337_vid961
+ALLOT: tv338_vid962
+OPP: tv337_vid961, tv338_vid962
+ADD: 1, tv338_vid962, tv338_vid962
+ALLOT: tv339_vid963
+CMP: index_vid957, tv338_vid962, tv339_vid963
+CREL: tv339_vid963, RL, tv339_vid963
 ALLOT: tv340_vid965
-CMP: index_vid959, tv339_vid964, tv340_vid965
-CREL: tv340_vid965, RL, tv340_vid965
-ALLOT: tv341_vid967
-TP_GET_FIELD: this_vid960, "length_vid495", tv341_vid967
-ALLOT: tv342_vid968
-CMP: index_vid959, tv341_vid967, tv342_vid968
-CREL: tv342_vid968, RGE, tv342_vid968
-ALLOT: tv343_vid969
-CMP: tv340_vid965, tv342_vid968, tv343_vid969
-CREL: tv343_vid969, OR, tv343_vid969
-JF: tv343_vid969, sl98_sid970
+TP_GET_FIELD: this_vid958, "length_vid493", tv340_vid965
+ALLOT: tv341_vid966
+CMP: index_vid957, tv340_vid965, tv341_vid966
+CREL: tv341_vid966, RGE, tv341_vid966
+ALLOT: tv342_vid967
+CMP: tv339_vid963, tv341_vid966, tv342_vid967
+CREL: tv342_vid967, OR, tv342_vid967
+JF: tv342_vid967, sl98_sid968
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:865:13, line 865, column 13
 RET: null
-JMP: sl97_sid961
-SET: sl98_sid970
-SET: sl97_sid961
+JMP: sl97_sid959
+SET: sl98_sid968
+SET: sl97_sid959
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:867:9, line 867, column 9
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:867:9, line 867, column 9
-ALLOT: tv344_vid972
-CMP: index_vid959, 0, tv344_vid972
-CREL: tv344_vid972, RL, tv344_vid972
-JF: tv344_vid972, sl100_sid973
+ALLOT: tv343_vid970
+CMP: index_vid957, 0, tv343_vid970
+CREL: tv343_vid970, RL, tv343_vid970
+JF: tv343_vid970, sl100_sid971
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:868:19, line 868, column 19
-ALLOT: tv345_vid975
-TP_GET_FIELD: this_vid960, "length_vid495", tv345_vid975
-ADD: index_vid959, tv345_vid975, index_vid959
-JMP: sl99_sid971
-SET: sl100_sid973
-SET: sl99_sid971
+ALLOT: tv344_vid973
+TP_GET_FIELD: this_vid958, "length_vid493", tv344_vid973
+ADD: index_vid957, tv344_vid973, index_vid957
+JMP: sl99_sid969
+SET: sl100_sid971
+SET: sl99_sid969
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:870:9, line 870, column 9
-ALLOT: tv346_vid977
-TP_GET_FIELD: this_vid960, "data_vid494", tv346_vid977
-ALLOT: tv347_vid978
-ITER_GET: tv346_vid977, index_vid959, tv347_vid978
-RET: tv347_vid978
-END: at_vid562
+ALLOT: tv345_vid975
+TP_GET_FIELD: this_vid958, "data_vid492", tv345_vid975
+ALLOT: tv346_vid976
+ITER_GET: tv345_vid975, index_vid957, tv346_vid976
+RET: tv346_vid976
+END: at_vid560
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:854:5, line 854, column 5
-TP_ADD_INST_FIELD: List_vid493, "at_vid562", at_vid562
+TP_ADD_INST_FIELD: List_vid491, "at_vid560", at_vid560
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:873:5, line 873, column 5
-FUNI: unique_vid565, this_vid981
+FUNI: unique_vid563, this_vid979
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:879:9, line 879, column 9
-ALLOT: tv348_vid983
-IVOK: List_empty_vid498, tv348_vid983
-ALLOT: uniqueList_vid982
-PUT: tv348_vid983, uniqueList_vid982
+ALLOT: tv347_vid981
+IVOK: List_empty_vid496, tv347_vid981
+ALLOT: uniqueList_vid980
+PUT: tv347_vid981, uniqueList_vid980
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:880:9, line 880, column 9
-ALLOT: tv349_vid985
-TP_GET_FIELD: this_vid981, "data_vid494", tv349_vid985
-FUNI: anon_func_tv350_vid988, item_vid986, __vid987, __vid987, __vid987
+ALLOT: tv348_vid983
+TP_GET_FIELD: this_vid979, "data_vid492", tv348_vid983
+FUNI: anon_func_tv349_vid986, item_vid984, __vid985, __vid985, __vid985
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:881:13, line 881, column 13
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:881:13, line 881, column 13
-ALLOT: tv351_vid991
-TP_GET_FIELD: uniqueList_vid982, "contains_vid525", tv351_vid991
-ALLOT: tv352_vid992
-IVOK: contains_vid525, uniqueList_vid982, item_vid986, tv352_vid992
-ALLOT: tv353_vid993
-OPP: tv352_vid992, tv353_vid993
-JF: tv353_vid993, sl102_sid994
+ALLOT: tv350_vid989
+TP_GET_FIELD: uniqueList_vid980, "contains_vid523", tv350_vid989
+ALLOT: tv351_vid990
+IVOK: contains_vid523, uniqueList_vid980, item_vid984, tv351_vid990
+ALLOT: tv352_vid991
+OPP: tv351_vid990, tv352_vid991
+JF: tv352_vid991, sl102_sid992
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:882:27, line 882, column 27
-ALLOT: tv354_vid996
-TP_GET_FIELD: uniqueList_vid982, "append_vid507", tv354_vid996
-ALLOT: tv355_vid997
-IVOK: append_vid507, uniqueList_vid982, item_vid986, tv355_vid997
-JMP: sl101_sid989
-SET: sl102_sid994
-SET: sl101_sid989
+ALLOT: tv353_vid994
+TP_GET_FIELD: uniqueList_vid980, "append_vid505", tv353_vid994
+ALLOT: tv354_vid995
+IVOK: append_vid505, uniqueList_vid980, item_vid984, tv354_vid995
+JMP: sl101_sid987
+SET: sl102_sid992
+SET: sl101_sid987
 RET: null
-END: anon_func_tv350_vid988
-ALLOT: tv356_vid998
-PUT: anon_func_tv350_vid988, tv356_vid998
-ALLOT: tv357_vid999
-IVOK: iter_vid276, tv349_vid985, tv356_vid998, false, tv357_vid999
+END: anon_func_tv349_vid986
+ALLOT: tv355_vid996
+PUT: anon_func_tv349_vid986, tv355_vid996
+ALLOT: tv356_vid997
+IVOK: iter_vid274, tv348_vid983, tv355_vid996, false, tv356_vid997
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:885:9, line 885, column 9
-RET: uniqueList_vid982
-END: unique_vid565
+RET: uniqueList_vid980
+END: unique_vid563
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:873:5, line 873, column 5
-TP_ADD_INST_FIELD: List_vid493, "unique_vid565", unique_vid565
+TP_ADD_INST_FIELD: List_vid491, "unique_vid563", unique_vid563
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:888:5, line 888, column 5
-FUNI: slice_vid567, this_vid1005, start_vid1002, end_vid1003, sep_vid1004
+FUNI: slice_vid565, this_vid1003, start_vid1000, end_vid1001, sep_vid1002
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:897:9, line 897, column 9
+ALLOT: tv357_vid1005
+IVOK: List_empty_vid496, tv357_vid1005
+ALLOT: res_vid1004
+PUT: tv357_vid1005, res_vid1004
+; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:898:9, line 898, column 9
+; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:898:9, line 898, column 9
 ALLOT: tv358_vid1007
-IVOK: List_empty_vid498, tv358_vid1007
-ALLOT: res_vid1006
-PUT: tv358_vid1007, res_vid1006
-; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:898:9, line 898, column 9
-; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:898:9, line 898, column 9
-ALLOT: tv359_vid1009
-CMP: end_vid1003, start_vid1002, tv359_vid1009
-CREL: tv359_vid1009, RL, tv359_vid1009
-JF: tv359_vid1009, sl104_sid1010
+CMP: end_vid1001, start_vid1000, tv358_vid1007
+CREL: tv358_vid1007, RL, tv358_vid1007
+JF: tv358_vid1007, sl104_sid1008
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:899:13, line 899, column 13
-RET: res_vid1006
-JMP: sl103_sid1008
-SET: sl104_sid1010
-SET: sl103_sid1008
+RET: res_vid1004
+JMP: sl103_sid1006
+SET: sl104_sid1008
+SET: sl103_sid1006
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:901:9, line 901, column 9
-FUNI: anon_func_tv360_vid1013, index_vid1011, __vid1012, __vid1012
+FUNI: anon_func_tv359_vid1011, index_vid1009, __vid1010, __vid1010
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:902:16, line 902, column 16
-ALLOT: tv361_vid1015
-TP_GET_FIELD: this_vid1005, "at_vid562", tv361_vid1015
-ALLOT: tv362_vid1016
-IVOK: at_vid562, this_vid1005, index_vid1011, tv362_vid1016
+ALLOT: tv360_vid1013
+TP_GET_FIELD: this_vid1003, "at_vid560", tv360_vid1013
+ALLOT: tv361_vid1014
+IVOK: at_vid560, this_vid1003, index_vid1009, tv361_vid1014
+ALLOT: tv362_vid1015
+COPY: tv361_vid1014, tv362_vid1015
 ALLOT: tv363_vid1017
-COPY: tv362_vid1016, tv363_vid1017
-ALLOT: tv364_vid1019
-TP_GET_FIELD: res_vid1006, "append_vid507", tv364_vid1019
-ALLOT: tv365_vid1020
-IVOK: append_vid507, res_vid1006, tv363_vid1017, tv365_vid1020
+TP_GET_FIELD: res_vid1004, "append_vid505", tv363_vid1017
+ALLOT: tv364_vid1018
+IVOK: append_vid505, res_vid1004, tv362_vid1015, tv364_vid1018
 RET: null
-END: anon_func_tv360_vid1013
-ALLOT: tv366_vid1021
-PUT: anon_func_tv360_vid1013, tv366_vid1021
-CALL: forInRange_vid238, start_vid1002, end_vid1003, tv366_vid1021, sep_vid1004
+END: anon_func_tv359_vid1011
+ALLOT: tv365_vid1019
+PUT: anon_func_tv359_vid1011, tv365_vid1019
+CALL: forInRange_vid236, start_vid1000, end_vid1001, tv365_vid1019, sep_vid1002
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:904:9, line 904, column 9
-RET: res_vid1006
-END: slice_vid567
+RET: res_vid1004
+END: slice_vid565
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:888:5, line 888, column 5
-TP_ADD_INST_FIELD: List_vid493, "slice_vid567", slice_vid567
+TP_ADD_INST_FIELD: List_vid491, "slice_vid565", slice_vid565
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:907:5, line 907, column 5
-FUNI: reversed_vid572, this_vid1024
+FUNI: reversed_vid570, this_vid1022
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:913:9, line 913, column 9
-ALLOT: tv367_vid1026
-IVOK: List_empty_vid498, tv367_vid1026
-ALLOT: res_vid1025
-PUT: tv367_vid1026, res_vid1025
+ALLOT: tv366_vid1024
+IVOK: List_empty_vid496, tv366_vid1024
+ALLOT: res_vid1023
+PUT: tv366_vid1024, res_vid1023
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:914:9, line 914, column 9
-ALLOT: tv368_vid1028
-TP_GET_FIELD: this_vid1024, "data_vid494", tv368_vid1028
-FUNI: anon_func_tv369_vid1031, item_vid1029, __vid1030, __vid1030, __vid1030
+ALLOT: tv367_vid1026
+TP_GET_FIELD: this_vid1022, "data_vid492", tv367_vid1026
+FUNI: anon_func_tv368_vid1029, item_vid1027, __vid1028, __vid1028, __vid1028
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:915:16, line 915, column 16
+ALLOT: tv369_vid1030
+COPY: item_vid1027, tv369_vid1030
 ALLOT: tv370_vid1032
-COPY: item_vid1029, tv370_vid1032
-ALLOT: tv371_vid1034
-TP_GET_FIELD: res_vid1025, "append_vid507", tv371_vid1034
-ALLOT: tv372_vid1035
-IVOK: append_vid507, res_vid1025, tv370_vid1032, tv372_vid1035
+TP_GET_FIELD: res_vid1023, "append_vid505", tv370_vid1032
+ALLOT: tv371_vid1033
+IVOK: append_vid505, res_vid1023, tv369_vid1030, tv371_vid1033
 RET: null
-END: anon_func_tv369_vid1031
-ALLOT: tv373_vid1036
-PUT: anon_func_tv369_vid1031, tv373_vid1036
-ALLOT: tv374_vid1037
-IVOK: iter_vid276, tv368_vid1028, tv373_vid1036, true, tv374_vid1037
+END: anon_func_tv368_vid1029
+ALLOT: tv372_vid1034
+PUT: anon_func_tv368_vid1029, tv372_vid1034
+ALLOT: tv373_vid1035
+IVOK: iter_vid274, tv367_vid1026, tv372_vid1034, true, tv373_vid1035
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:917:9, line 917, column 9
-RET: res_vid1025
-END: reversed_vid572
+RET: res_vid1023
+END: reversed_vid570
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:907:5, line 907, column 5
-TP_ADD_INST_FIELD: List_vid493, "reversed_vid572", reversed_vid572
+TP_ADD_INST_FIELD: List_vid491, "reversed_vid570", reversed_vid570
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:920:5, line 920, column 5
-FUNI: reverse_vid574, this_vid1040
+FUNI: reverse_vid572, this_vid1038
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:926:9, line 926, column 9
-ALLOT: tv375_vid1042
-IVOK: List_empty_vid498, tv375_vid1042
-ALLOT: res_vid1041
-PUT: tv375_vid1042, res_vid1041
+ALLOT: tv374_vid1040
+IVOK: List_empty_vid496, tv374_vid1040
+ALLOT: res_vid1039
+PUT: tv374_vid1040, res_vid1039
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:927:9, line 927, column 9
-ALLOT: tv376_vid1044
-TP_GET_FIELD: this_vid1040, "data_vid494", tv376_vid1044
-FUNI: anon_func_tv377_vid1047, item_vid1045, __vid1046, __vid1046, __vid1046
+ALLOT: tv375_vid1042
+TP_GET_FIELD: this_vid1038, "data_vid492", tv375_vid1042
+FUNI: anon_func_tv376_vid1045, item_vid1043, __vid1044, __vid1044, __vid1044
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:928:16, line 928, column 16
-ALLOT: tv378_vid1049
-TP_GET_FIELD: res_vid1041, "append_vid507", tv378_vid1049
-ALLOT: tv379_vid1050
-IVOK: append_vid507, res_vid1041, item_vid1045, tv379_vid1050
+ALLOT: tv377_vid1047
+TP_GET_FIELD: res_vid1039, "append_vid505", tv377_vid1047
+ALLOT: tv378_vid1048
+IVOK: append_vid505, res_vid1039, item_vid1043, tv378_vid1048
 RET: null
-END: anon_func_tv377_vid1047
-ALLOT: tv380_vid1051
-PUT: anon_func_tv377_vid1047, tv380_vid1051
-ALLOT: tv381_vid1052
-IVOK: iter_vid276, tv376_vid1044, tv380_vid1051, true, tv381_vid1052
+END: anon_func_tv376_vid1045
+ALLOT: tv379_vid1049
+PUT: anon_func_tv376_vid1045, tv379_vid1049
+ALLOT: tv380_vid1050
+IVOK: iter_vid274, tv375_vid1042, tv379_vid1049, true, tv380_vid1050
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:930:19, line 930, column 19
+ALLOT: tv381_vid1052
+TP_GET_FIELD: this_vid1038, "data_vid492", tv381_vid1052
 ALLOT: tv382_vid1054
-TP_GET_FIELD: this_vid1040, "data_vid494", tv382_vid1054
-ALLOT: tv383_vid1056
-TP_GET_FIELD: res_vid1041, "data_vid494", tv383_vid1056
-TP_SET_FIELD: this_vid1040, "data_vid494", tv383_vid1056
+TP_GET_FIELD: res_vid1039, "data_vid492", tv382_vid1054
+TP_SET_FIELD: this_vid1038, "data_vid492", tv382_vid1054
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:931:9, line 931, column 9
-RET: this_vid1040
-END: reverse_vid574
+RET: this_vid1038
+END: reverse_vid572
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:920:5, line 920, column 5
-TP_ADD_INST_FIELD: List_vid493, "reverse_vid574", reverse_vid574
+TP_ADD_INST_FIELD: List_vid491, "reverse_vid572", reverse_vid572
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:505:5, line 505, column 5
-FUNI: List_list_vid500, data_vid499
-ALLOT: this_vid1057
-TP_NEW: List_vid493, this_vid1057
+FUNI: List_list_vid498, data_vid497
+ALLOT: this_vid1055
+TP_NEW: List_vid491, this_vid1055
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:511:9, line 511, column 9
-ALLOT: tv384_vid1058
-TP_SET: tp-list, tv384_vid1058
-ALLOT: tv385_vid1059
-TP_SET: tp-dict, tv385_vid1059
-ALLOT: tv386_vid1060
-IVOK: Iterable_empty_vid470, tv386_vid1060
-PUT: tv386_vid1060, this_vid1057
-TP_DERIVE: this_vid1057, List_vid493
+ALLOT: tv383_vid1056
+TP_SET: tp-list, tv383_vid1056
+ALLOT: tv384_vid1057
+TP_SET: tp-dict, tv384_vid1057
+ALLOT: tv385_vid1058
+IVOK: Iterable_empty_vid468, tv385_vid1058
+PUT: tv385_vid1058, this_vid1055
+TP_DERIVE: this_vid1055, List_vid491
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:512:19, line 512, column 19
-ALLOT: tv387_vid1061
-TP_GET_FIELD: this_vid1057, "data_vid494", tv387_vid1061
-TP_SET_FIELD: this_vid1057, "data_vid494", data_vid499
+ALLOT: tv386_vid1059
+TP_GET_FIELD: this_vid1055, "data_vid492", tv386_vid1059
+TP_SET_FIELD: this_vid1055, "data_vid492", data_vid497
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:513:21, line 513, column 21
-ALLOT: tv388_vid1063
-TP_GET_FIELD: this_vid1057, "length_vid495", tv388_vid1063
-ALLOT: tv389_vid1064
-ITER_SIZE: data_vid499, tv389_vid1064
-TP_SET_FIELD: this_vid1057, "length_vid495", tv389_vid1064
-RET: this_vid1057
-END: List_list_vid500
+ALLOT: tv387_vid1061
+TP_GET_FIELD: this_vid1055, "length_vid493", tv387_vid1061
+ALLOT: tv388_vid1062
+ITER_SIZE: data_vid497, tv388_vid1062
+TP_SET_FIELD: this_vid1055, "length_vid493", tv388_vid1062
+RET: this_vid1055
+END: List_list_vid498
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:495:5, line 495, column 5
-FUNI: List_empty_vid498
-ALLOT: this_vid1065
-TP_NEW: List_vid493, this_vid1065
+FUNI: List_empty_vid496
+ALLOT: this_vid1063
+TP_NEW: List_vid491, this_vid1063
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:500:9, line 500, column 9
-ALLOT: tv390_vid1066
-TP_SET: tp-list, tv390_vid1066
-ALLOT: tv391_vid1067
-TP_SET: tp-dict, tv391_vid1067
-ALLOT: tv392_vid1068
-IVOK: Iterable_empty_vid470, tv392_vid1068
-PUT: tv392_vid1068, this_vid1065
-TP_DERIVE: this_vid1065, List_vid493
+ALLOT: tv389_vid1064
+TP_SET: tp-list, tv389_vid1064
+ALLOT: tv390_vid1065
+TP_SET: tp-dict, tv390_vid1065
+ALLOT: tv391_vid1066
+IVOK: Iterable_empty_vid468, tv391_vid1066
+PUT: tv391_vid1066, this_vid1063
+TP_DERIVE: this_vid1063, List_vid491
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:501:19, line 501, column 19
-ALLOT: tv393_vid1070
-TP_GET_FIELD: this_vid1065, "data_vid494", tv393_vid1070
-ALLOT: tv394_vid1071
-TP_SET: tp-list, tv394_vid1071
+ALLOT: tv392_vid1068
+TP_GET_FIELD: this_vid1063, "data_vid492", tv392_vid1068
+ALLOT: tv393_vid1069
+TP_SET: tp-list, tv393_vid1069
 ; To generate an empty list does not need to use the [ITER_APND] ri.
-TP_SET_FIELD: this_vid1065, "data_vid494", tv394_vid1071
+TP_SET_FIELD: this_vid1063, "data_vid492", tv393_vid1069
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:502:21, line 502, column 21
-ALLOT: tv395_vid1073
-TP_GET_FIELD: this_vid1065, "length_vid495", tv395_vid1073
-TP_SET_FIELD: this_vid1065, "length_vid495", 0
-RET: this_vid1065
-END: List_empty_vid498
+ALLOT: tv394_vid1071
+TP_GET_FIELD: this_vid1063, "length_vid493", tv394_vid1071
+TP_SET_FIELD: this_vid1063, "length_vid493", 0
+RET: this_vid1063
+END: List_empty_vid496
 ; D:\ClionProjects\RCC\release\Lib\builtin\ds.rio:935:1, line 935
-ALLOT: tv396_vid1074
-TP_SET: tp-list, tv396_vid1074
-ITER_APND: size_vid189, copy_vid192, unpack_vid195, isEmpty_vid200, top_vid205, repStr_vid214, repList_vid223, repeat_vid234, forInRange_vid238, join_vid335, joins_vid351, iter_vid276, listAppend_vid356, listRemove_vid360, dictRemove_vid364, iterRemove_vid368, dictKeys_vid405, sort_vid424, dictValues_vid408, iterContains_vid411, Iterable_vid469, List_vid493, tv396_vid1074
-ALLOT: tv397_vid1075
-TP_SET: tp-dict, tv397_vid1075
-TP_DEF: ds_vid23
-TP_ADD_TP_FIELD: ds_vid23, "Iterable_vid469", Iterable_vid469
-TP_ADD_TP_FIELD: ds_vid23, "dictKeys_vid405", dictKeys_vid405
-TP_ADD_TP_FIELD: ds_vid23, "iterRemove_vid368", iterRemove_vid368
-TP_ADD_TP_FIELD: ds_vid23, "dictRemove_vid364", dictRemove_vid364
-TP_ADD_TP_FIELD: ds_vid23, "listRemove_vid360", listRemove_vid360
-TP_ADD_TP_FIELD: ds_vid23, "listAppend_vid356", listAppend_vid356
-TP_ADD_TP_FIELD: ds_vid23, "iter_vid276", iter_vid276
-TP_ADD_TP_FIELD: ds_vid23, "joins_vid351", joins_vid351
-TP_ADD_TP_FIELD: ds_vid23, "iterContains_vid411", iterContains_vid411
-TP_ADD_TP_FIELD: ds_vid23, "sort_vid424", sort_vid424
-TP_ADD_TP_FIELD: ds_vid23, "size_vid189", size_vid189
-TP_ADD_TP_FIELD: ds_vid23, "unpack_vid195", unpack_vid195
-TP_ADD_TP_FIELD: ds_vid23, "copy_vid192", copy_vid192
-TP_ADD_TP_FIELD: ds_vid23, "isEmpty_vid200", isEmpty_vid200
-TP_ADD_TP_FIELD: ds_vid23, "List_vid493", List_vid493
-TP_ADD_TP_FIELD: ds_vid23, "dictValues_vid408", dictValues_vid408
-TP_ADD_TP_FIELD: ds_vid23, "forInRange_vid238", forInRange_vid238
-TP_ADD_TP_FIELD: ds_vid23, "repStr_vid214", repStr_vid214
-TP_ADD_TP_FIELD: ds_vid23, "repList_vid223", repList_vid223
-TP_ADD_TP_FIELD: ds_vid23, "repeat_vid234", repeat_vid234
-TP_ADD_TP_FIELD: ds_vid23, "top_vid205", top_vid205
-TP_ADD_TP_FIELD: ds_vid23, "join_vid335", join_vid335
+ALLOT: tv395_vid1072
+TP_SET: tp-list, tv395_vid1072
+ITER_APND: size_vid187, copy_vid190, unpack_vid193, isEmpty_vid198, top_vid203, repStr_vid212, repList_vid221, repeat_vid232, forInRange_vid236, join_vid333, joins_vid349, iter_vid274, listAppend_vid354, listRemove_vid358, dictRemove_vid362, iterRemove_vid366, dictKeys_vid403, sort_vid422, dictValues_vid406, iterContains_vid409, Iterable_vid467, List_vid491, tv395_vid1072
+ALLOT: tv396_vid1073
+TP_SET: tp-dict, tv396_vid1073
+TP_DEF: ds_vid21
+TP_ADD_TP_FIELD: ds_vid21, "Iterable_vid467", Iterable_vid467
+TP_ADD_TP_FIELD: ds_vid21, "dictKeys_vid403", dictKeys_vid403
+TP_ADD_TP_FIELD: ds_vid21, "iterRemove_vid366", iterRemove_vid366
+TP_ADD_TP_FIELD: ds_vid21, "dictRemove_vid362", dictRemove_vid362
+TP_ADD_TP_FIELD: ds_vid21, "listRemove_vid358", listRemove_vid358
+TP_ADD_TP_FIELD: ds_vid21, "listAppend_vid354", listAppend_vid354
+TP_ADD_TP_FIELD: ds_vid21, "iter_vid274", iter_vid274
+TP_ADD_TP_FIELD: ds_vid21, "joins_vid349", joins_vid349
+TP_ADD_TP_FIELD: ds_vid21, "iterContains_vid409", iterContains_vid409
+TP_ADD_TP_FIELD: ds_vid21, "sort_vid422", sort_vid422
+TP_ADD_TP_FIELD: ds_vid21, "size_vid187", size_vid187
+TP_ADD_TP_FIELD: ds_vid21, "unpack_vid193", unpack_vid193
+TP_ADD_TP_FIELD: ds_vid21, "copy_vid190", copy_vid190
+TP_ADD_TP_FIELD: ds_vid21, "isEmpty_vid198", isEmpty_vid198
+TP_ADD_TP_FIELD: ds_vid21, "List_vid491", List_vid491
+TP_ADD_TP_FIELD: ds_vid21, "dictValues_vid406", dictValues_vid406
+TP_ADD_TP_FIELD: ds_vid21, "forInRange_vid236", forInRange_vid236
+TP_ADD_TP_FIELD: ds_vid21, "repStr_vid212", repStr_vid212
+TP_ADD_TP_FIELD: ds_vid21, "repList_vid221", repList_vid221
+TP_ADD_TP_FIELD: ds_vid21, "repeat_vid232", repeat_vid232
+TP_ADD_TP_FIELD: ds_vid21, "top_vid203", top_vid203
+TP_ADD_TP_FIELD: ds_vid21, "join_vid333", join_vid333
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:17:1, line 17
-FUNC: sout_vid1077, args_vid1078, end_vid1079
+FUNC: sout_vid1075, args_vid1076, end_vid1077
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:29:5, line 29, column 5
 ; The implementation is encapsulated.
-END: sout_vid1077
+END: sout_vid1075
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:32:1, line 32
-FUNC: print_vid1081, args_vid1082, end_vid1083, sep_vid1084
+FUNC: print_vid1079, args_vid1080, end_vid1081, sep_vid1082
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:45:5, line 45, column 5
-ALLOT: tv398_vid1086
-TP_GET_FIELD: ds_vid23, "join_vid335", tv398_vid1086
-ALLOT: tv399_vid1087
-IVOK: join_vid335, args_vid1082, sep_vid1084, tv399_vid1087
-ALLOT: tv400_vid1088
-TP_SET: tp-list, tv400_vid1088
-ITER_APND: tv399_vid1087, tv400_vid1088
-SOUT: s-l, s-unpack, tv400_vid1088, end_vid1083
-END: print_vid1081
+ALLOT: tv397_vid1084
+TP_GET_FIELD: ds_vid21, "join_vid333", tv397_vid1084
+ALLOT: tv398_vid1085
+IVOK: join_vid333, args_vid1080, sep_vid1082, tv398_vid1085
+ALLOT: tv399_vid1086
+TP_SET: tp-list, tv399_vid1086
+ITER_APND: tv398_vid1085, tv399_vid1086
+SOUT: s-l, s-unpack, tv399_vid1086, end_vid1081
+END: print_vid1079
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:48:1, line 48
-FUNI: sin_vid1090, arg_vid1091
+FUNI: sin_vid1088, arg_vid1089
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:60:5, line 60, column 5
 ; The implementation is encapsulated.
-END: sin_vid1090
+END: sin_vid1088
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:63:1, line 63
-FUNI: input_vid1093, prompt_vid1094
+FUNI: input_vid1091, prompt_vid1092
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:64:5, line 64, column 5
-ALLOT: tv401_vid1095
-SOUT: s-l, prompt_vid1094
-SIN: s-m, tv401_vid1095
-RET: tv401_vid1095
-END: input_vid1093
+ALLOT: tv400_vid1093
+SOUT: s-l, prompt_vid1092
+SIN: s-m, tv400_vid1093
+RET: tv400_vid1093
+END: input_vid1091
 ; D:\ClionProjects\RCC\release\Lib\builtin\io.rio:67:1, line 67
-ALLOT: tv402_vid1096
-TP_SET: tp-list, tv402_vid1096
-ITER_APND: sout_vid1077, print_vid1081, sin_vid1090, input_vid1093, tv402_vid1096
-ALLOT: tv403_vid1097
-TP_SET: tp-dict, tv403_vid1097
-TP_DEF: io_vid15
-TP_ADD_TP_FIELD: io_vid15, "input_vid1093", input_vid1093
-TP_ADD_TP_FIELD: io_vid15, "sin_vid1090", sin_vid1090
-TP_ADD_TP_FIELD: io_vid15, "sout_vid1077", sout_vid1077
-TP_ADD_TP_FIELD: io_vid15, "print_vid1081", print_vid1081
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:13:1, line 13
-ALLOT: tv404_vid1105
-TP_SET: tp-list, tv404_vid1105
-ALLOT: tv405_vid1106
-PAIR_SET: "prog", "prog", tv405_vid1106
-ALLOT: tv406_vid1107
-PAIR_SET: "ds", "ds", tv406_vid1107
-ALLOT: tv407_vid1108
-PAIR_SET: "io", "io", tv407_vid1108
-ALLOT: tv408_vid1109
-TP_SET: tp-dict, tv408_vid1109
-ITER_APND: tv405_vid1106, tv406_vid1107, tv407_vid1108, tv408_vid1109
-ALLOT: io_vid1110
-PUT: io_vid15, io_vid1110
-ALLOT: ds_vid1111
-PUT: ds_vid23, ds_vid1111
-; D:\ClionProjects\RCC\release\Lib\builtin\prog.rio:15:1, line 15
-FUNC: entry_vid1117, arg_vid1118, args_vid1119, kwargs_vid1120
-; D:\ClionProjects\RCC\release\Lib\builtin\prog.rio:33:5, line 33, column 5
-; The implementation is encapsulated.
-END: entry_vid1117
-; D:\ClionProjects\RCC\release\Lib\builtin\prog.rio:36:1, line 36
-FUNC: breakpoint_vid1122
-; D:\ClionProjects\RCC\release\Lib\builtin\prog.rio:37:5, line 37, column 5
-; The implementation is encapsulated.
-END: breakpoint_vid1122
-; D:\ClionProjects\RCC\release\Lib\builtin\prog.rio:40:1, line 40
-ALLOT: tv409_vid1123
-TP_SET: tp-list, tv409_vid1123
-ITER_APND: entry_vid1117, breakpoint_vid1122, tv409_vid1123
-ALLOT: tv410_vid1124
-TP_SET: tp-dict, tv410_vid1124
-TP_DEF: prog_vid1112
-TP_ADD_TP_FIELD: prog_vid1112, "breakpoint_vid1122", breakpoint_vid1122
-TP_ADD_TP_FIELD: prog_vid1112, "entry_vid1117", entry_vid1117
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:15:1, line 15
-FUNI: id_vid1126, arg_vid1127
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:28:5, line 28, column 5
-; The implementation is encapsulated.
-END: id_vid1126
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:31:1, line 31
-FUNC: rasm_vid1129, racode_vid1130
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:49:5, line 49, column 5
-; The implementation is encapsulated.
-END: rasm_vid1129
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:52:1, line 52
-FUNI: ri_vid1132, i_vid1133, args_vid1134
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:53:5, line 53, column 5
-ALLOT: tv411_vid1136
-ADD: i_vid1133, ": ", tv411_vid1136
-ALLOT: riString_vid1135
-TP_SET: tp-str, riString_vid1135
-PUT: tv411_vid1136, riString_vid1135
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:54:7, line 54, column 7
-FUNI: anon_func_tv412_vid1140, arg_vid1137, index_vid1138, iterLength_vid1139, args_vid1134
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:55:18, line 55, column 18
-ADD: riString_vid1135, arg_vid1137, riString_vid1135
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:56:9, line 56, column 9
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:56:9, line 56, column 9
-ALLOT: tv413_vid1142
-OPP: 1, tv413_vid1142
-ADD: iterLength_vid1139, tv413_vid1142, tv413_vid1142
-ALLOT: tv414_vid1143
-CMP: index_vid1138, tv413_vid1142, tv414_vid1143
-CREL: tv414_vid1143, RL, tv414_vid1143
-JF: tv414_vid1143, sl106_sid1144
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:57:22, line 57, column 22
-ADD: riString_vid1135, ", ", riString_vid1135
-JMP: sl105_sid1141
-SET: sl106_sid1144
-SET: sl105_sid1141
-RET: null
-END: anon_func_tv412_vid1140
-ALLOT: tv415_vid1145
-PUT: anon_func_tv412_vid1140, tv415_vid1145
-ALLOT: tv416_vid1147
-TP_GET_FIELD: ds_vid1111, "iter_vid276", tv416_vid1147
-ALLOT: tv417_vid1148
-IVOK: iter_vid276, args_vid1134, tv415_vid1145, false, tv417_vid1148
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:60:14, line 60, column 14
-ADD: riString_vid1135, "\n", riString_vid1135
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:61:5, line 61, column 5
-RET: riString_vid1135
-END: ri_vid1132
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:64:1, line 64
-FUNI: bindDllExt_vid1150, dllPath_vid1151
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:65:5, line 65, column 5
-; The implementation is encapsulated.
-END: bindDllExt_vid1150
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:68:1, line 68
-FUNC: unbindDllExt_vid1153, ident_vid1154
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:69:5, line 69, column 5
-; The implementation is encapsulated.
-END: unbindDllExt_vid1153
-; D:\ClionProjects\RCC\release\Lib\builtin\lowlevel.rio:72:1, line 72
-ALLOT: tv418_vid1155
-TP_SET: tp-list, tv418_vid1155
-ITER_APND: id_vid1126, rasm_vid1129, ri_vid1132, bindDllExt_vid1150, unbindDllExt_vid1153, tv418_vid1155
-ALLOT: tv419_vid1156
-TP_SET: tp-dict, tv419_vid1156
-TP_DEF: ll_vid1098
-TP_ADD_TP_FIELD: ll_vid1098, "bindDllExt_vid1150", bindDllExt_vid1150
-TP_ADD_TP_FIELD: ll_vid1098, "ri_vid1132", ri_vid1132
-TP_ADD_TP_FIELD: ll_vid1098, "rasm_vid1129", rasm_vid1129
-TP_ADD_TP_FIELD: ll_vid1098, "id_vid1126", id_vid1126
-TP_ADD_TP_FIELD: ll_vid1098, "unbindDllExt_vid1153", unbindDllExt_vid1153
+ALLOT: tv401_vid1094
+TP_SET: tp-list, tv401_vid1094
+ITER_APND: sout_vid1075, print_vid1079, sin_vid1088, input_vid1091, tv401_vid1094
+ALLOT: tv402_vid1095
+TP_SET: tp-dict, tv402_vid1095
+TP_DEF: io_vid13
+TP_ADD_TP_FIELD: io_vid13, "input_vid1091", input_vid1091
+TP_ADD_TP_FIELD: io_vid13, "sin_vid1088", sin_vid1088
+TP_ADD_TP_FIELD: io_vid13, "sout_vid1075", sout_vid1075
+TP_ADD_TP_FIELD: io_vid13, "print_vid1079", print_vid1079
 ; D:\ClionProjects\RCC\test\test.rio:3:1, line 3
-TP_DEF: Error_vid1157
-; D:\ClionProjects\RCC\test\test.rio:5:5, line 5, column 5
-FUNI: toString_vid1160, this_vid1163
-; D:\ClionProjects\RCC\test\test.rio:6:9, line 6, column 9
-RET: "[Error]"
-END: toString_vid1160
-; D:\ClionProjects\RCC\test\test.rio:5:5, line 5, column 5
-TP_ADD_INST_FIELD: Error_vid1157, "toString_vid1160", toString_vid1160
-; D:\ClionProjects\RCC\test\test.rio:4:5, line 4, column 5
-FUNI: Error_empty_vid1158
-ALLOT: this_vid1164
-TP_NEW: Error_vid1157, this_vid1164
-RET: this_vid1164
-END: Error_empty_vid1158
-; D:\ClionProjects\RCC\test\test.rio:10:1, line 10
-TP_DEF: FileError_vid1165, Error_vid1157
-; D:\ClionProjects\RCC\test\test.rio:14:5, line 14, column 5
-FUNI: toString_vid1168, this_vid1171
-; D:\ClionProjects\RCC\test\test.rio:15:9, line 15, column 9
-RET: "[FileError]"
-END: toString_vid1168
-; D:\ClionProjects\RCC\test\test.rio:14:5, line 14, column 5
-TP_ADD_INST_FIELD: FileError_vid1165, "toString_vid1168", toString_vid1168
-; D:\ClionProjects\RCC\test\test.rio:11:5, line 11, column 5
-FUNI: FileError_empty_vid1166
-ALLOT: this_vid1172
-TP_NEW: FileError_vid1165, this_vid1172
-; D:\ClionProjects\RCC\test\test.rio:12:9, line 12, column 9
-ALLOT: tv420_vid1173
-TP_SET: tp-list, tv420_vid1173
-ALLOT: tv421_vid1174
-TP_SET: tp-dict, tv421_vid1174
-ALLOT: tv422_vid1175
-IVOK: Error_empty_vid1158, tv422_vid1175
-PUT: tv422_vid1175, this_vid1172
-TP_DERIVE: this_vid1172, FileError_vid1165
-RET: this_vid1172
-END: FileError_empty_vid1166
-; D:\ClionProjects\RCC\test\test.rio:19:1, line 19
-ATMP: ;
-; D:\ClionProjects\RCC\test\test.rio:20:5, line 20, column 5
-ALLOT: tv423_vid1177
-IVOK: Error_empty_vid1158, tv423_vid1177
-ALLOT: error_vid1176
-PUT: tv423_vid1177, error_vid1176
-; D:\ClionProjects\RCC\test\test.rio:21:7, line 21, column 7
-ALLOT: tv424_vid1179
-TP_GET_FIELD: error_vid1176, "toString_vid1160", tv424_vid1179
-ALLOT: tv425_vid1180
-IVOK: toString_vid1160, error_vid1176, tv425_vid1180
-ALLOT: tv426_vid1182
-TP_GET_FIELD: io_vid15, "sout_vid1077", tv426_vid1182
-ALLOT: tv427_vid1183
-TP_SET: tp-list, tv427_vid1183
-ITER_APND: "Running try block, expose an error: ", tv425_vid1180, tv427_vid1183
-SOUT: s-l, s-unpack, tv427_vid1183, "\n"
-; D:\ClionProjects\RCC\test\test.rio:22:5, line 22, column 5
-EXPOSE: error_vid1176
-DETECT: FileError_vid1165, error_vid1184
-; D:\ClionProjects\RCC\test\test.rio:24:7, line 24, column 7
-ALLOT: tv428_vid1186
-TP_GET_FIELD: error_vid1184, "toString_vid1168", tv428_vid1186
-ALLOT: tv429_vid1187
-IVOK: toString_vid1168, error_vid1184, tv429_vid1187
-ALLOT: tv430_vid1189
-TP_GET_FIELD: io_vid15, "sout_vid1077", tv430_vid1189
-ALLOT: tv431_vid1190
-TP_SET: tp-list, tv431_vid1190
-ITER_APND: "Running catch block, caught an error: ", tv429_vid1187, tv431_vid1190
-SOUT: s-l, s-unpack, tv431_vid1190, "\n"
-END: DETECT
-; D:\ClionProjects\RCC\test\test.rio:26:7, line 26, column 7
-ALLOT: tv432_vid1192
-TP_GET_FIELD: io_vid15, "sout_vid1077", tv432_vid1192
-ALLOT: tv433_vid1193
-TP_SET: tp-list, tv433_vid1193
-ITER_APND: "Running finally block", tv433_vid1193
-SOUT: s-l, s-unpack, tv433_vid1193, "\n"
-END: ATMP
+ALLOT: tv403_vid1097
+TP_GET_FIELD: io_vid13, "sout_vid1075", tv403_vid1097
+ALLOT: sout_vid1096
+; No need to set 'tp-func' type.
+PUT: tv403_vid1097, sout_vid1096
+; D:\ClionProjects\RCC\test\test.rio:5:1, line 5
+FUNC: anon_func_tv404_vid1100, fi_vid1098, a_vid1099
+; D:\ClionProjects\RCC\test\test.rio:8:40, line 8, column 40
+ALLOT: tv405_vid1102
+IVOK: fi_vid1098, a_vid1099, tv405_vid1102
+ALLOT: tv406_vid1103
+TP_SET: tp-list, tv406_vid1103
+ITER_APND: tv405_vid1102, tv406_vid1103
+SOUT: s-l, s-unpack, tv406_vid1103, "\n"
+END: anon_func_tv404_vid1100
+ALLOT: tv407_vid1104
+PUT: anon_func_tv404_vid1100, tv407_vid1104
+FUNI: anon_func_tv408_vid1106, b_vid1105
+ALLOT: tv409_vid1107
+ADD: "Res: ", b_vid1105, tv409_vid1107
+RET: tv409_vid1107
+END: anon_func_tv408_vid1106
+ALLOT: tv410_vid1108
+PUT: anon_func_tv408_vid1106, tv410_vid1108
+FUNI: anon_func_tv411_vid1110, a_vid1109
+ALLOT: tv412_vid1111
+MUL: a_vid1109, a_vid1109, tv412_vid1111
+RET: tv412_vid1111
+END: anon_func_tv411_vid1110
+ALLOT: tv413_vid1112
+PUT: anon_func_tv411_vid1110, tv413_vid1112
+FUNI: anon_func_tv414_vid1117, fc_vid1113, fi1_vid1114, fi2_vid1115, a_vid1116
+; D:\ClionProjects\RCC\test\test.rio:6:5, line 6, column 5
+ALLOT: tv415_vid1119
+IVOK: fi2_vid1115, a_vid1116, tv415_vid1119
+CALL: fc_vid1113, fi1_vid1114, tv415_vid1119
+RET: null
+END: anon_func_tv414_vid1117
+ALLOT: tv416_vid1122
+PUT: anon_func_tv414_vid1117, tv416_vid1122
+ALLOT: tv417_vid1123
+IVOK: anon_func_tv414_vid1117, tv407_vid1104, tv410_vid1108, tv413_vid1112, 10, tv417_vid1123

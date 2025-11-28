@@ -8,9 +8,6 @@
 
 #include "../../../include/rcc_base.h"
 #include "../../../include/components/symbol/rcc_symbol.h"
-
-#include <memory_resource>
-
 #include "../../../declarations/builtin/rcc_builtin_dec.h"
 #include "../../../include/visitors/rcc_compile_visitor.h"
 
@@ -852,12 +849,14 @@ namespace symbol {
         {
             if ((isNot("any") && otherTypeLabelSymbol->isNot("any") &&
                 getVal() != otherTypeLabelSymbol->getVal()) ||
-                getLabelDesS().size() != otherTypeLabelSymbol->getLabelDesS().size())
+                (getLabelDesS().size() > 0 && otherTypeLabelSymbol->getLabelDesS().size() > 0 &&
+                    getLabelDesS().size() != otherTypeLabelSymbol->getLabelDesS().size()))
             {
                 return false;
             }
             for (int i = 0; i < getLabelDesS().size(); i ++)
             {
+                if (i >= getLabelDesS().size() || i >= otherTypeLabelSymbol->getLabelDesS().size()) continue;
                 auto thisLabelDesS = getLabelDesS()[i];
                 auto otherLabelDesS = otherTypeLabelSymbol->getLabelDesS()[i];
                 if (thisLabelDesS.size() != otherLabelDesS.size()) return false;

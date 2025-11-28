@@ -244,13 +244,32 @@ namespace parser {
     ExpressionNodePtr Parser::buildLabelExpression() {
         if (currentTokenIs(TokenType::TOKEN_LABEL) || currentTokenIs(TokenType::TOKEN_IDENTIFIER))
         {
-            const auto &labelNode = std::make_shared<LabelNode>(currentToken());
-            while (nextTokenIs(TokenType::TOKEN_LBRACKET))
+            const auto &labelNode = std::make_shared<LabelNode>(std::vector{currentToken()});
+            while (true)
             {
-                next();
-                if (const auto &labelDesNode = buildListExpression())
+                if (nextTokenIs(TokenType::TOKEN_LBRACKET)) {
+                    next();
+                    if (const auto &labelDesNode = buildListExpression())
+                    {
+                        labelNode->appendLabelDesNode(std::static_pointer_cast<ListExpressionNode>(labelDesNode));
+                    }
+                } else if (nextTokenIs(TokenType::TOKEN_DOT))
                 {
-                    labelNode->appendLabelDesNode(std::static_pointer_cast<ListExpressionNode>(labelDesNode));
+                    next();
+                    if (nextTokenIs(TokenType::TOKEN_IDENTIFIER) || nextTokenIs(TokenType::TOKEN_LABEL))
+                    {
+                        labelNode->appendLabelPath(nextToken());
+                        next();
+                    } else
+                    {
+                        recordUnexpectedTokenTypeError(nextToken(), vectorJoin(
+                            {getTokenTypeName(TokenType::TOKEN_IDENTIFIER),
+                                getTokenTypeName(TokenType::TOKEN_LABEL)}));
+                        return nullptr;
+                    }
+                } else
+                {
+                    break;
                 }
             }
             return labelNode;
@@ -296,13 +315,26 @@ namespace parser {
                     const auto &colonToken = std::make_shared<Token>(currentToken());
                     while (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)) {
                         next();
-                        labels.push_back(std::make_shared<LabelNode>(currentToken()));
+                        labels.push_back(std::make_shared<LabelNode>(std::vector{currentToken()}));
                     }
                     if (nextTokenIs(TokenType::TOKEN_INDICATOR)) {
                         next();
                         const auto indicatorToken = currentToken();
                         next();
-                        auto bodyNode = buildBraceExpression();
+                        std::shared_ptr<ExpressionNode> bodyNode = nullptr;
+                        if (currentTokenIs(TokenType::TOKEN_LBRACE))
+                        {
+                            bodyNode = buildBraceExpression();
+                        } else if (currentTokenIs(TokenType::TOKEN_RETURN))
+                        {
+                            bodyNode = buildReturnExpression();
+                            skipNextNewLineToken();
+                        } else
+                        {
+                            const auto &expression = buildExpression(Precedence::LOWEST);
+                            bodyNode = std::make_shared<ReturnExpressionNode>(expression->getMainToken(), expression);
+                            skipNextNewLineToken();
+                        }
                         return std::make_shared<AnonFunctionDefinitionNode>(
                             indicatorToken, rangerNode,
                             colonToken, labels, indicatorToken, bodyNode);
@@ -416,7 +448,7 @@ namespace parser {
             colonToken = std::make_shared<Token>(currentToken());
             while (nextTokenIs(TokenType::TOKEN_LABEL)) {
                 next();
-                labelNodes.push_back(std::make_shared<LabelNode>(currentToken()));
+                labelNodes.push_back(std::make_shared<LabelNode>(std::vector{currentToken()}));
             }
         }
         if (!expectedNextTokenAndConsume(TokenType::TOKEN_LBRACE)) {
