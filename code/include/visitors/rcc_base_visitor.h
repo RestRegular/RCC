@@ -104,6 +104,8 @@ namespace ast {
         virtual void visitTryNode(TryNode& node) = 0;
 
         virtual void visitThrowNode(ThrowNode& node) = 0;
+
+        virtual void visitContinueNode(ContinueNode& node) = 0;
     };
 
 }

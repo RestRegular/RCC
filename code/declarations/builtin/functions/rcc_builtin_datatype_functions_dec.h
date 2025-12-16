@@ -14,7 +14,11 @@ namespace builtin
 
     BuiltinFuncRetType rcc_setType(ast::CompileVisitor &visitor, const CallInfos& callInfos);
 
+    BuiltinFuncRetType rcc_setLabel(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
     BuiltinFuncRetType rcc_check_type(ast::CompileVisitor &visitor, const CallInfos& callInfos);
+
+    BuiltinFuncRetType rcc_relate(ast::CompileVisitor &visitor, const CallInfos& callInfos);
 
 }
 

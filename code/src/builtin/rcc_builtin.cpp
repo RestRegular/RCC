@@ -136,7 +136,9 @@ namespace builtin
         // datatype.rio
         {"type", rcc_type},
         {"setType", rcc_setType},
+        {"setLabel", rcc_setLabel},
         {"checkType", rcc_check_type},
+        {"relate", rcc_relate},
 
         // prog.rio
         {"entry", rcc_entry},

@@ -69,7 +69,7 @@ namespace parser {
     }
 
     ExpressionNodePtr Parser::buildContinueExpression(){
-        return nullptr;
+        return std::make_shared<ContinueNode>(currentToken());
     }
 
     ExpressionNodePtr Parser::buildFloatExpression(){

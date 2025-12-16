@@ -1,5 +1,3 @@
-import(io="io", nr="newrcc")
+import(io="io")
 
-var a = 0
-
-io.sout(nr.ctext("Hello world", nr.TextColor.BLUE))
+io.print("Hello world!")

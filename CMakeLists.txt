@@ -12,8 +12,6 @@ set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -g -O0")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -g -O0")
 
-#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++")
-
 add_executable(RCC code/src/rcc_main.cpp
         code/src/analyzer/lexer/rcc_lexer.cpp
         code/include/analyzer/rcc_lexer.h
@@ -97,6 +95,8 @@ add_executable(RCC code/src/rcc_main.cpp
         code/include/interfaces/rcc_builtin_interface.h
 )
 
-if(UNIX AND NOT APPLE)  # Linux ϵͳ
+if(UNIX AND NOT APPLE)  # Linux
     target_link_libraries(RCC PRIVATE dl)
+else()
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++")
 endif()

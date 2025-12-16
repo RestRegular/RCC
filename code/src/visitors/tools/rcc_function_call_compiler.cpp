@@ -45,10 +45,77 @@ namespace ast
 
         // 处理被调用表达式（左侧）
         node.getLeftNode()->acceptVisitor(*this);
-        const auto& funcNameOpItem = rPopOpItem();
+        auto funcNameOpItem = rPopOpItem();
 
         // customTypeVid 初始值通常来自 funcNameOpItem 的 raVal
-        std::string customTypeVid = funcNameOpItem.getRaVal(symbolTable);
+        std::string customTypeVid = raVal(funcNameOpItem);
+        const auto& funcNameSymbol = getReferenceTargetSymbol(funcNameOpItem);
+        if (funcNameSymbol && funcNameSymbol->is(SymbolType::CLASS))
+        { // 尝试从 OpItem 引用的类符号中获取自定义类型信息
+            customTypeVid = funcNameSymbol->getRaVal();
+        } else if (const auto& funcNameType = getDefiniteTypeFromOpItem(funcNameOpItem);
+            funcNameType && funcNameType->is("clas"))
+        { // 现在只能从 label desc 中获取具体的自定义类型信息
+            if (funcNameType->getLabelDesS().size() == 0)
+            {
+                throw RCCCompilerError::semanticError(currentPos().toString(),
+                    getCodeLine(currentPos()),
+                    StringVector{
+                        "The function call is a constructor, but the custom type information cannot be obtained."
+                        "Error item: " + funcNameOpItem.toString()
+                    },
+                    {
+                        "Please complete the description of the type label.",
+                        "Ensure that the class constructor function information is clear."
+                    });
+            }
+            if (funcNameType->getLabelDesS().size() > 1 && funcNameType->getLabelDesS()[0].size() != 1)
+            {
+                throw RCCCompilerError::semanticError(currentPos().toString(),
+                    getCodeLine(currentPos()),
+                    StringVector{
+                        "The function call is a constructor, but the type of the constructor cannot be determined.",
+                        "Error item: " + funcNameOpItem.toString(),
+                        "Ambiguous types: " + funcNameType->getDescString()
+                    },
+                    {
+                        "Please specify the type of the constructor function.",
+                    }
+                );
+            }
+            const auto& customTypeDesS = funcNameType->getLabelDesS();
+            if (const auto& customType = customTypeDesS.front().front();
+                customType->getLabelType() != LabelType::TYPE_LABEL)
+            {
+                throw RCCCompilerError::typeMissmatchError(currentPos().toString(),
+                    getCodeLine(currentPos()),
+                    "The description of the 'clas' label can only be a type label.",
+                    labelTypeToString(LabelType::TYPE_LABEL),
+                    labelTypeToString(customType->getLabelType()),
+                    {
+                        "Please check the custom type information."
+                    }
+                );
+            } else if (const auto& customTypeSymbol = std::static_pointer_cast<TypeLabelSymbol>(customType);
+                !customTypeSymbol->isCustomType())
+            {
+                throw RCCCompilerError::typeMissmatchError(currentPos().toString(),
+                    getCodeLine(currentPos()),
+                    "The description of the 'clas' label can only be a custom type label.",
+                    "Custom class type label",
+                    customTypeSymbol->toString(),
+                    {
+                        "Please check the custom type information."
+                    }
+                );
+            } else
+            {
+                customTypeVid = customTypeSymbol->getRaVal();
+            }
+        } else if (funcNameType->isCustomType())
+        {
+            customTypeVid = funcNameType->getRaVal();
+        }
 
         // resolveFunctionSymbol 会尝试从各种来源解析出 funcSymbol（可能为构造函数、引用到的函数等）
         funcSymbol = resolveFunctionSymbol(funcNameOpItem, customTypeVid, fullProcessedArgs,
@@ -87,7 +154,7 @@ namespace ast
         };
 
         // 最终根据 funcSymbol 的类型选择生成 builtin 调用或普通调用
-        emitFinalCall(funcSymbol, callInfos);
+        emitFinalCall(funcSymbol, callInfos, funcNameOpItem, funcNameSymbol);
     }
 
     // ---------- helper: 将 orderedArgs 转为 originalArgs / halfProcessedArgs ----------
@@ -386,7 +453,7 @@ namespace ast
                                                     const std::shared_ptr<LabelSymbol>& typeLabel,
                                                     const LabelType expectedType)
     {
-        std::string labelStr = typeLabel ? typeLabel->toString() : "";
+        const std::string labelStr = typeLabel ? typeLabel->toString() : "";
         throw RCCCompilerError::typeMissmatchError(
             des->getPos().toString(), getCodeLine(des->getPos()),
             {
@@ -451,6 +518,7 @@ namespace ast
                                            std::vector<std::string>& fullProcessedArgs,
                                            const Pos& callPos)
     {
+        size_t argumentNum = posArgs.size() + namedArgs.size();
         for (const auto& parameters = funcSymbol->getParameters();
              const auto& param : parameters)
         {
@@ -460,12 +528,17 @@ namespace ast
                 if (const auto& it = namedArgs.find(param->getVal());
                     it != namedArgs.end())
                 {
+                    checkExists(it->second);
                     fullProcessedArgs.push_back(it->second.getRaVal(symbolTable));
                     namedArgs.erase(it);
                 }
                 else if (!posArgs.empty())
                 {
-                    if (!checkTypeMatch(param, posArgs.front()))
+                    checkExists(posArgs.front());
+                    if (!checkTypeMatch(
+                        getTypeLabelFromSymbol(param),
+                        getDefiniteTypeFromOpItem(posArgs.front()),
+                        false))
                     {
                         const auto& frontArgSymbol = getSymbolFromOpItem(posArgs.front());
                         throw RCCCompilerError::typeMissmatchError(
@@ -488,7 +561,7 @@ namespace ast
                                                                ? frontArgSymbol->toString()
                                                                : posArgs.front().toString())
                             }, param->getTypeLabel()->toString(),
-                            getDefiniteTypeLabelSymbolFromOpItem(posArgs.front())->toString(),
+                            getDefiniteTypeFromOpItem(posArgs.front())->toString(),
                             {
                                 "You can try using the `any` type to set the parameter types more loosely."
                             });
@@ -541,6 +614,7 @@ namespace ast
                 while (!posArgs.empty())
                 {
                     const auto& argItem = posArgs.front();
+                    checkExists(argItem);
                     // 先检查类型匹配
                     // if (!checkTypeMatch(param, argItem))
                     // {
@@ -628,6 +702,7 @@ namespace ast
                 std::vector<std::string> items{};
                 for (const auto& [name, opItem] : namedArgs)
                 {
+                    checkExists(opItem);
                     // if (!checkTypeMatch(param, opItem))
                     // {
                     //     const auto& [fst, snd] = getTypesFromOpItem(opItem);
@@ -653,6 +728,18 @@ namespace ast
                                         topOpRaVal());
                     items.push_back(rPopOpItemRaVal());
                 }
+                if (!posArgs.empty() && posArgs.size() == 1 && posArgs.front().getTypeLabel()->is("series"))
+                {
+                    // FixMe: 如果还剩一个 series 参数，将其赋值到此参数
+                    pushTemOpVarItemWithRecord(callPos, nullptr,
+                        nullptr, true);
+                    raCodeBuilder
+                        << ri::PAIR_SET(StringManager::toStringFormat("kwargs"), raVal(posArgs.front()),
+                                        topOpRaVal());
+                    items.push_back(rPopOpItemRaVal());
+                    posArgs.pop();
+                }
+                namedArgs.clear();
                 pushTemOpVarItemWithRecord(callPos, nullptr,
                     nullptr, true);
                 raCodeBuilder
@@ -666,12 +753,44 @@ namespace ast
                 fullProcessedArgs.push_back(rPopOpItemRaVal());
             }
         }
+        if (!posArgs.empty() || !namedArgs.empty())
+        {
+            throw RCCCompilerError::argumentError(
+                callPos.toString(), getCodeLine(callPos),
+                {
+                    "Function position: " + (
+                        builtin::isPureBuiltinFunction(
+                            funcSymbol->getVal())
+                            ? "'" + funcSymbol->getVal() +
+                            "' is a pure built-in function, and its position cannot be viewed."
+                            : funcSymbol->getPos().toString()),
+                    "                 | " + (
+                        builtin::isPureBuiltinFunction(
+                            funcSymbol->getVal())
+                            ? "The definition of pure built-in function cannot be viewed."
+                            : getCodeLine(funcSymbol->getPos())),
+                    "Error symbol: " + funcSymbol->toString(),
+                    "Too many arguments: " + std::to_string(argumentNum),
+                    "Expected argument num: " + std::to_string(
+                        funcSymbol->getParameters().size())
+                }, {
+                    "Please check the number of arguments passed to the function."
+                });
+        }
     }
 
     // ---------- helper: 根据 funcSymbol 类型生成最终调用指令（builtin / normal） ----------
     void CompileVisitor::emitFinalCall(const std::shared_ptr<FunctionSymbol>& funcSymbol,
-                                       const builtin::CallInfos& callInfos)
+                                       const builtin::CallInfos& callInfos,
+                                       const std::optional<OpItem>& funcOpItem,
+                                       const std::shared_ptr<Symbol>& funcOpItemReferencedTargetSymbol)
     {
+        if (const auto& topSymbol = topProcessingSymbol();
+            topSymbol && funcSymbol->getScopeLevel() < curScopeLevel()
+            && funcSymbol->getBuiltInType() != TypeOfBuiltin::PURE_BUILTIN)
+        {
+            topSymbol->insertDependence(funcSymbol);
+        }
         // 检查是否 builtin 函数（包含纯内建）
         if ((funcSymbol->is(TypeOfBuiltin::BUILTIN) ||
                 funcSymbol->is(TypeOfBuiltin::PURE_BUILTIN)) &&
@@ -688,12 +807,19 @@ namespace ast
             // 普通函数调用：根据是否有返回值生成 IVOK / CALL
             if (funcSymbol->hasReturnValue())
             {
-                pushTemOpVarItemWithRecord(callInfos.callPos, funcSymbol->getReturnType(), nullptr, true);
-                raCodeBuilder << ri::IVOK(funcSymbol->getRaVal(), callInfos.processedArgs, topOpRaVal());
+                std::shared_ptr<TypeLabelSymbol> returnType = funcSymbol->getReturnType();
+                if (funcSymbol->getFunctionType() == FunctionType::CONSTRUCTOR)
+                {
+                    returnType = funcSymbol->getClassSymbol()->getClassTypeLabelSymbol(callInfos.callPos);
+                }
+                pushTemOpVarItemWithRecord(callInfos.callPos, returnType, nullptr, true, returnType);
+                raCodeBuilder << ri::IVOK(funcOpItem.has_value() && funcOpItemReferencedTargetSymbol && funcOpItemReferencedTargetSymbol->equalWith(funcSymbol) ?
+                    raVal(funcOpItem.value()) : funcSymbol->getRaVal(), callInfos.processedArgs, topOpRaVal());
             }
             else
             {
-                raCodeBuilder << ri::CALL(funcSymbol->getRaVal(), callInfos.processedArgs);
+                raCodeBuilder << ri::CALL(funcOpItem.has_value() && funcOpItemReferencedTargetSymbol && funcOpItemReferencedTargetSymbol->equalWith(funcSymbol) ?
+                    raVal(funcOpItem.value()) : funcSymbol->getRaVal(), callInfos.processedArgs);
             }
         }
     }

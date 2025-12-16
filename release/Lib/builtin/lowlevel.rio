@@ -10,7 +10,7 @@
  * @version: 1.0.0
  * @extension: lowlevel
  */
-import(io="io", ds="ds", prog="prog")
+import(prog="prog")
 
 fun id(arg): str {
     /*
@@ -28,7 +28,7 @@ fun id(arg): str {
     encapsulated
 }
 
-fun rasm(racode: str): void {
+fun rasm(code: str): void {
     /*
      * Embeds inline assembly instructions from provided arguments into the
      * compiled code.
@@ -44,19 +44,25 @@ fun rasm(racode: str): void {
      * operand pairs, which are concatenated and inserted as-is after validation
      * /processing.
      *
-     * @param racode: inlined ra code
+     * @param code: inlined ra code
      */
     encapsulated
 }
 
+fun size(arg): int {
+    encapsulated
+}
+
 fun ri(i: str, *args): str {
-    var riString: str = i + ": "
-    ds.iter(args, (arg, index: int, iterLength: int, **args) -> {
+    var riString: str = i + ": ",
+        riSize: int = size(args)
+    for({var o = 0; o < riSize; o ++}) {
+        var arg = args[o]
         riString += arg
-        if index < iterLength - 1 {
+        if o < riSize - 1 {
             riString += ", "
         }
-    })
+    }
     riString += "\n"
     ret riString
 }

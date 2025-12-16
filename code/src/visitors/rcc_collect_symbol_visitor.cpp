@@ -166,6 +166,10 @@ namespace ast {
     void CollectSymbolVisitor::visitAssignmentNode(AssignmentNode &node) {
     }
 
+    void CollectSymbolVisitor::visitContinueNode(ContinueNode& node)
+    {
+    }
+
     void CollectSymbolVisitor::visitProgramNode(ProgramNode &node) {
         for (const auto &statements = node.getStatements();
             const auto &statement: statements) {

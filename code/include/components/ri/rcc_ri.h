@@ -20,6 +20,18 @@ namespace ri {
             return os;
         }
 
+        friend std::string& operator<<(std::string &os, const RI &ri)
+        {
+            os += ri.toRACode();
+            return os;
+        }
+
+        friend std::string& operator+=(std::string &os, const RI &ri)
+        {
+            os += ri.toRACode();
+            return os;
+        }
+
         virtual std::string getOpRI() const = 0;
     };
 
@@ -201,10 +213,12 @@ namespace ri {
         std::string getOpRI() const override;
     };
 
-    class DETECT : public BINARY
+    class DETECT final : public BINARY
     {
     public:
         explicit DETECT(const std::string &type, const std::string &ident);
+
+        std::string toRACode() const override;
     };
 
     class TP_NEW final : public BINARY {
@@ -385,6 +399,12 @@ namespace ri {
     {
     public:
         explicit TP_SET_FIELD(const std::string &tp, const std::string &field, const std::string &value);
+    };
+
+    class TP_CHECK_RELATE final : public TERNARY
+    {
+    public:
+        explicit TP_CHECK_RELATE(const std::string &inst, const std::string &type, const std::string &value);
     };
 
 }

@@ -155,7 +155,9 @@ namespace base
         static RCCCompilerError typeMissmatchError(const std::string& error_position, const std::string& error_line,
                                                    const StringVector& error_infos, const std::string& expected_type,
                                                    const std::string& actual_type,
-                                                   const std::vector<std::string>& repair_tips);
+                                                   const std::vector<std::string>& repair_tips,
+                                                   const std::string& exp_prefix = "Expected type: ",
+                                                   const std::string& act_prefix = "Actual type: ");
         static RCCCompilerError compilerError(const std::string& error_position, const std::string& error_line,
                                               const std::string& rcc_error_code, const std::string& error_info);
         static RCCCompilerError symbolNotFoundError(const std::string& error_position, const std::string& error_line,
@@ -166,7 +168,8 @@ namespace base
                                                      const StringVector& repair_tips);
         static RCCCompilerError symbolNotFoundError(const std::string& error_position, const std::string& error_line,
                                                     const std::string& symbol_name, const StringVector& error_infos,
-                                                    const StringVector& repair_tips);
+                                                    const StringVector& repair_tips,
+                                                    const std::string& error_symbol_prefix = "Non-existent symbol: ");
         static RCCCompilerError scopeError(const std::string& error_position, const std::string& error_line,
                                            const std::string& expected_scope_field,
                                            const std::string& actual_scope_field, const StringVector& error_infos,

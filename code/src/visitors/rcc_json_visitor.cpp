@@ -345,6 +345,11 @@ namespace ast {
         builder = builderRecord;
     }
 
+    void JsonVisitor::visitContinueNode(ContinueNode& node)
+    {
+
+    }
+
     void JsonVisitor::visitIndexExpressionNode(IndexExpressionNode &node) {
         auto builderRecord = builder;
         builderRecord.insertString("nodeType", getNodeTypeName(node.getType()))

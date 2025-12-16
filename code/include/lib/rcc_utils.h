@@ -496,6 +496,8 @@ namespace utils {
 
     // === System ===
     std::string getSystemUserName();
+
+    std::string getRCCVersionInfo();
 } // utils
 
 #endif //RCC_RA_UTILS_H

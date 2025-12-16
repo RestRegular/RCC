@@ -10,7 +10,8 @@
 namespace builtin
 {
     namespace rcc_import_utils {
-        std::string resolveImportedFilePath(const ast::CompileVisitor& visitor, const std::string& extName);
+        std::pair<std::string, std::optional<std::vector<std::string>>> resolveImportedFilePath(
+            const ast::CompileVisitor& visitor, const std::string& extName);
         std::string generateVariableIdentifier(ast::CompileVisitor& visitor, const std::string& ident,
                                                const std::string& importedFilePath, bool isAutomaticForm);
         std::string handleRegisteredExtension(ast::CompileVisitor& visitor,
@@ -19,10 +20,11 @@ namespace builtin
                                               bool isAutomaticForm);
         std::string compileAndProcessNewExtension(ast::CompileVisitor& visitor,
                                                   const std::string& importedFilePath,
-                                                  const ast::VarID& tempVarId);
+                                                  const ast::VarID& tempVarId, const utils::Pos& pos, const std::optional<std::vector<std::string>>& importingSymbols);
         std::string processImportedSymbols(const ast::CompileVisitor& visitor,
                                            ast::CompileVisitor& importVisitor,
-                                           const std::shared_ptr<symbol::ClassSymbol>& extensionSymbol);
+                                           const std::shared_ptr<symbol::ClassSymbol>& extensionSymbol, const std::optional<std::vector<std::string>>&
+                                           importingSymbols);
     }
 
     BuiltinFuncRetType rcc_import(ast::CompileVisitor &visitor, const CallInfos& callInfos);

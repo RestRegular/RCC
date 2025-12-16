@@ -12,7 +12,7 @@
  * @version: 1.0.0
  * @extension: ds
  */
-import(dt="datatype", ops="ops")
+import(dt="datatype", ops="ops", ll="lowlevel")
 
 fun size(arg): int {
     /*
@@ -272,6 +272,21 @@ fun listAppend(listData, item): void {
      * @throws: TypeError if listData is not a list
      */
     encapsulated
+}
+
+fun dictInsert(dictData: dict, key, value): void {
+    /*
+     * Inserts a key-value pair into a dictionary.
+     *
+     * Modifies the original dictionary by inserting a new key-value pair.
+     * If the key already exists, the value will be updated.
+     *
+     * @param dictData: The dictionary to modify
+     * @param key: The key to insert
+     * @param value: The value to associate with the key
+     * @throws: TypeError if dictData is not a dictionary
+     */
+    ll.rasm(ll.ri("DICT_SET", ll.id(dictData), ll.id(key), ll.id(value)))
 }
 
 fun listRemove(listData, index: int): void {
@@ -841,7 +856,7 @@ class List: Iterable {
          * @return: The first matching element, or null if no match is found
          */
         var result
-        iter(this.data, (item, index, _, kwargs) -> {
+        iter(this.data, (item, index, _, **kwargs) -> {
             var copiedItem = copy(item)
             if predicate(copiedItem, index, unpack(kwargs)) {
                 result = copiedItem
@@ -936,7 +951,7 @@ export(
     size, copy, unpack, isEmpty, top, repStr, repList,
     repeat, forInRange, join, joins, iter, listAppend,
     listRemove, dictRemove, iterRemove, dictKeys, sort,
-    dictValues, iterContains,
+    dictValues, iterContains, dictInsert,
 
     Iterable, List
 )

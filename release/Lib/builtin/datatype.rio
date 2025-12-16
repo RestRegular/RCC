@@ -13,7 +13,7 @@
  * @extension: datatype
  */
 
-fun type(arg): str {
+fun type(arg): any {
     /*
      * Returns the runtime type of the given argument as a string.
      * 
@@ -30,7 +30,7 @@ fun type(arg): str {
      encapsulated
 }
 
-fun setType(arg1, arg2): void {
+fun setType(arg1, arg2): any {
     /*
      * Dynamically sets the type of the given argument.
      * 
@@ -44,6 +44,10 @@ fun setType(arg1, arg2): void {
      * @throws: TypeError if the type conversion is invalid
      */
      encapsulated
+}
+
+fun setLabel(arg1, arg2): any {
+    encapsulated
 }
 
 class DT: public {
@@ -118,4 +122,21 @@ fun isIter(arg): bool {
     ret result
 }
 
-export(type, setType, checkType, isIter, DT)
+fun relate(inst, type): bool {
+    encapsulated
+}
+
+fun inspect(inst, tp, scb: funi[any][any], fcb: funi[any][any]): any {
+    if type(tp) == DT.TP_STR && type(inst) == tp {
+        ret scb(inst)
+    } elif relate(inst, tp) {
+        ret scb(inst)
+    }
+    ret fcb(inst)
+}
+
+// fun match(inst, *cbs: ..[funi[any][any]]): any {
+//     encapsulated
+// }
+
+export(type, setType, checkType, isIter, DT, relate, setLabel, inspect/*, match*/)

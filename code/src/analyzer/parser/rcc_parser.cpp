@@ -79,7 +79,9 @@ namespace parser {
         // try Óï¾ä
         {TokenType::TOKEN_TRY, &Parser::buildTryExpression},
         // throw Óï¾ä
-        {TokenType::TOKEN_THROW, &Parser::buildThrowExpression}
+        {TokenType::TOKEN_THROW, &Parser::buildThrowExpression},
+        // continue Óï¾ä
+        {TokenType::TOKEN_CONTINUE, &Parser::buildContinueExpression},
     };
 
     std::map<core::TokenType, InfixExpressionBuilder> Parser::infixExpressionBuilders {
@@ -138,6 +140,7 @@ namespace parser {
             {TokenType::TOKEN_NOT_EQUAL, Precedence::COMPARE},
             {TokenType::TOKEN_AND, Precedence::LOGIC},
             {TokenType::TOKEN_OR, Precedence::LOGIC},
+            {TokenType::TOKEN_NOT, Precedence::PREFIX},
             {TokenType::TOKEN_DOUBLE_PLUS, Precedence::POSTFIX},
             {TokenType::TOKEN_DOUBLE_MINUS, Precedence::POSTFIX},
             {TokenType::TOKEN_INDICATOR, Precedence::INDICATOR},

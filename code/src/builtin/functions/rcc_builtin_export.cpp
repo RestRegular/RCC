@@ -9,11 +9,13 @@ namespace builtin
 {
     BuiltinFuncRetType rcc_export(ast::CompileVisitor& visitor, const CallInfos& callInfos)
     {
+        std::vector<std::string> exportedSymbol{};
         for (const auto& arg : callInfos.originalArgs | std::views::values)
         {
             if (const auto &[level, argSymbol] = visitor.getSymbolTable().findByName(arg);
                 level >= 0 && argSymbol)
             {
+                exportedSymbol.push_back(argSymbol->getVal());
                 argSymbol->setScopeLevel(0);
                 if (visitor.__symbol_flag__ && visitor.__symbol_flag_export__ &&
                     visitor.isVisitingProgramEntry())
@@ -48,7 +50,8 @@ namespace builtin
                 throw std::runtime_error("Non-existent symbol: '" + arg + "'");
             }
         }
-        return "";
+        return ri::ANNOTATION((exportedSymbol.size() == 1 ? "export symbol: " : "export symbols: ")
+            + utils::vectorJoin(exportedSymbol, ", ")).toRACode();
     }
 
     const PureBuiltinFunction& getExportFunction()

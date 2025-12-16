@@ -46,13 +46,65 @@ namespace builtin
             return {false, ""};
         }
 
-        std::string resolveImportedFilePath(const ast::CompileVisitor& visitor, const std::string& extName)
+        std::pair<std::string, std::optional<std::vector<std::string>>>
+        resolveImportedFilePath(
+            const ast::CompileVisitor& visitor, const std::string& extName)
         {
-            if (const auto &[isBuiltin, builtinExtPath] = isSystemExtensionFile(extName);
+            // 1. 先检查是否是系统扩展文件（完整名称）
+            if (const auto& [isBuiltin, builtinExtPath] = isSystemExtensionFile(extName);
                 isBuiltin) {
-                return builtinExtPath;
+                return {builtinExtPath, std::nullopt};
+                }
+
+            // 2. 查找冒号
+            const auto firstColonPos = std::ranges::find(extName, ':');
+            if (firstColonPos == extName.end()) {
+                // 没有冒号，整个字符串都是路径
+                std::string importPath = getAbsolutePath(
+                    extName, getFileDirFromPath(visitor.getProgramTargetFilePath()));
+                return {std::move(importPath), std::nullopt};
             }
-            return getAbsolutePath(extName, getFileDirFromPath(visitor.getProgramTargetFilePath()));
+
+            // 3. 提取前缀（冒号前部分）
+            const std::string_view extPrefixName{extName.begin(), firstColonPos};
+            std::string importPath;
+
+            // 检查前缀是否是系统扩展文件
+            if (const auto& [isBuiltin, builtinExtPath] =
+                isSystemExtensionFile(std::string(extPrefixName));
+                isBuiltin) {
+                importPath = builtinExtPath;
+                } else {
+                    importPath = getAbsolutePath(
+                        std::string(extPrefixName),
+                        getFileDirFromPath(visitor.getProgramTargetFilePath()));
+                }
+
+            // 4. 安全地检查冒号后字符并提取后缀
+            std::optional<std::vector<std::string>> symbolParts;
+
+            if (const auto afterColonPos = std::next(firstColonPos);
+                afterColonPos != extName.end()) {
+                const std::string_view suffixView{afterColonPos, extName.end()};
+
+                // 处理双冒号情况
+                if (*afterColonPos == ':') {
+                    // 双冒号，跳过第二个冒号
+                    if (const auto afterSecondColon = std::next(afterColonPos);
+                        afterSecondColon != extName.end()) {
+                        const std::string_view specSymbolView{afterSecondColon, extName.end()};
+                        std::string trimmed = StringManager::trim(std::string(specSymbolView));
+                        symbolParts = std::vector{std::move(trimmed)};
+                    }
+                } else {
+                    // 单冒号，按空格分割
+                    const std::string trimmed = StringManager::trim(std::string(suffixView));
+                    symbolParts = StringManager::split(trimmed, ' ');
+                }
+            }
+            // 注意：如果冒号后没有字符，symbolParts 保持 std::nullopt
+
+            return {std::move(importPath), std::move(symbolParts)};
         }
 
         std::string generateVariableIdentifier(ast::CompileVisitor& visitor, const std::string& ident,
@@ -86,7 +138,9 @@ namespace builtin
 
         std::string compileAndProcessNewExtension(ast::CompileVisitor& visitor,
                                                   const std::string& importedFilePath,
-                                                  const ast::VarID& tempVarId)
+                                                  const ast::VarID& tempVarId,
+                                                  const Pos& pos,
+                                                  const std::optional<std::vector<std::string>>& importingSymbols)
         {
             std::string raCode;
             const auto &clasTypeSymbol = symbol::TypeLabelSymbol::clasTypeSymbol(getUnknownPos(), visitor.curScopeLevel());
@@ -125,8 +179,8 @@ namespace builtin
             catch (...)
             {
                 throw base::RCCCompilerError::extensionLoadinError(
-                    ast::CompileVisitor::currentPos().toString(),
-                    ast::CompileVisitor::getCodeLine(ast::CompileVisitor::currentPos()), {
+                    pos.toString(),
+                    ast::CompileVisitor::getCodeLine(pos), {
                         "Failed imported extension: " + tempVarId.getNameField(),
                         "Automatically detected path: " + importedFilePath
                     }, {
@@ -134,7 +188,7 @@ namespace builtin
                         "please use the real absolute path for importing."
                     });
             }
-            raCode += importVisitor.getCompileResult();
+            const auto& importTotalCode = importVisitor.getCompileResult();
             const auto extensionSymbol = std::make_shared<symbol::ClassSymbol>(
                 Pos{1, 1, 0, tempVarId.getFileField()},
                 tempVarId.getNameField(), tempVarId.getVid(),
@@ -143,7 +197,7 @@ namespace builtin
                 visitor.getSymbolTable());
             visitor.getSymbolTable().insert(extensionSymbol, false);
             raCode += ri::TP_DEF(extensionSymbol->getRaVal()).toRACode();
-            raCode += processImportedSymbols(visitor, importVisitor, extensionSymbol);
+            raCode += processImportedSymbols(visitor, importVisitor, extensionSymbol, importingSymbols);
             extensionSymbol->setCollectionFinished();
             extensionSymbol->setVisitPermission(symbol::PermissionLabel::PUBLIC);
             symbol::TypeLabelSymbol::createCustomType(extensionSymbol);
@@ -153,46 +207,128 @@ namespace builtin
         }
 
         std::string processImportedSymbols(const ast::CompileVisitor& visitor,
-                                         ast::CompileVisitor& importVisitor,
-                                         const std::shared_ptr<symbol::ClassSymbol>& extensionSymbol)
+                                   ast::CompileVisitor& importVisitor,
+                                   const std::shared_ptr<symbol::ClassSymbol>& extensionSymbol,
+                                   const std::optional<std::vector<std::string>>& importingSymbols)
         {
             std::string raCode;
+            std::string dependencyRaCode;
             importVisitor.getSymbolTable().enterGlobalScope();
+
             const auto &ordinaryLabel = std::make_shared<symbol::LabelSymbol>(
                 getUnknownPos(), "ordinary", "", visitor.curScopeLevel(), symbol::LabelType::LIFE_CYCLE_LABEL);
             const auto &publicLabel = std::make_shared<symbol::LabelSymbol>(
                 getUnknownPos(), "public", "", visitor.curScopeLevel(), symbol::LabelType::PERMISSION_LABEL);
-            for (const auto &member : importVisitor.getSymbolTable().currentNameMapScope()) {
+
+            // 辅助函数：处理单个符号的导入
+            auto processSymbol = [&](const std::shared_ptr<symbol::Symbol>& member) {
+                if (member->hasGenerated())
+                {
+                    return;
+                }
                 if (member->is(symbol::SymbolType::VARIABLE)) {
                     const auto &varSymbol = std::static_pointer_cast<symbol::VariableSymbol>(member);
                     varSymbol->getLabelMarkManager().resetPermissionLabelMarks();
                     varSymbol->getLabelMarkManager().markLabels({ordinaryLabel, publicLabel});
                     extensionSymbol->addMember(varSymbol, false);
                     raCode += ri::TP_ADD_TP_FIELD(extensionSymbol->getRaVal(),
-                                StringManager::toStringFormat(varSymbol->getRaVal()),
+                                StringManager::toStringFormat(varSymbol->getVal()),
                                 varSymbol->getRaVal()).toRACode();
                 } else if (member->is(symbol::SymbolType::FUNCTION)) {
-                    if (const auto &funcSymbol = std::static_pointer_cast<symbol::FunctionSymbol>(member); funcSymbol->getBuiltInType() != symbol::TypeOfBuiltin::PURE_BUILTIN) {
+                    if (const auto &funcSymbol = std::static_pointer_cast<symbol::FunctionSymbol>(member);
+                        funcSymbol->getBuiltInType() != symbol::TypeOfBuiltin::PURE_BUILTIN) {
                         funcSymbol->getLabelMarkManager().resetPermissionLabelMarks();
                         funcSymbol->getLabelMarkManager().markLabels({ordinaryLabel, publicLabel});
                         funcSymbol->setFunctionType(symbol::FunctionType::METHOD);
                         extensionSymbol->addMember(funcSymbol, false);
                         raCode += ri::TP_ADD_TP_FIELD(extensionSymbol->getRaVal(),
-                                    StringManager::toStringFormat(funcSymbol->getRaVal()),
+                                    StringManager::toStringFormat(funcSymbol->getVal()),
                                     funcSymbol->getRaVal()).toRACode();
-                    }
+                        }
                 } else if (member->is(symbol::SymbolType::CLASS)) {
                     const auto &classSymbol = std::static_pointer_cast<symbol::ClassSymbol>(member);
                     classSymbol->getLabelMarkManager().resetPermissionLabelMarks();
                     classSymbol->getLabelMarkManager().markLabels({ordinaryLabel, publicLabel});
                     extensionSymbol->addMember(classSymbol, false);
                     raCode += ri::TP_ADD_TP_FIELD(extensionSymbol->getRaVal(),
-                                StringManager::toStringFormat(classSymbol->getRaVal()),
+                                StringManager::toStringFormat(classSymbol->getVal()),
                                 classSymbol->getRaVal()).toRACode();
                 } else {
                     throw std::runtime_error("Cannot resolve symbol: '" + member->getVal() + "'");
                 }
+                member->setGenerated();
+            };
+
+            std::function<void(const std::shared_ptr<symbol::Symbol>&)> processSymbolDependency =
+                [&](const std::shared_ptr<symbol::Symbol>& member)
+            {
+                if (member->getDependencies().empty()
+                    || member->hasGenerated())
+                {
+                    return;
+                }
+                for (const auto& [raVal, dependency] : member->getDependencies())
+                {
+                    try
+                    {
+                        if (!dependency->hasGenerated()) {
+                            processSymbolDependency(dependency);
+                            processSymbol(dependency);
+                            dependencyRaCode += dependency->getDefinitionCode();
+                        }
+                    } catch (...)
+                    {
+                        throw std::runtime_error("Cannot find dependency symbol: '" + dependency->getVal() + "'");
+                    }
+                }
+            };
+
+            // 根据是否传入了指定的导入符号列表进行处理
+            if (importingSymbols.has_value() && !importingSymbols->empty()) {
+                // 仅导入指定的符号
+                for (const auto& symbolNames = importingSymbols.value();
+                    const auto& symbolName : symbolNames)
+                {
+                    interruptWhen(symbolName == "print", []
+                    {
+                        pass();
+                    });
+
+                    // 查找指定名称的符号
+                    if (const auto& [level, member] = importVisitor.getSymbolTable().findByName(symbolName);
+                        level >= 0 && member)
+                    {
+                        // TODO: 此处可以添加依赖分析预留位置
+                        // 在导入此符号前，可以检查其依赖的其他符号
+                        // 例如：对于函数，可能需要导入其参数类型相关的类
+                        // 对于类，可能需要导入其基类或成员类型
+
+                        processSymbolDependency(member);
+                        dependencyRaCode += member->getDefinitionCode();
+                        processSymbol(member);
+                        continue;
+                    }
+
+                    throw std::runtime_error("Cannot find imported symbol: '" + symbolName + "'");
+                }
+
+                // TODO: 依赖收集与处理预留位置
+                // 可以在这里对已导入的符号进行依赖分析，确保必要的依赖也被导入
+                // 例如：
+                // 1. 收集所有导入符号的直接依赖
+                // 2. 检查这些依赖是否已经在导入列表中
+                // 3. 如果不在，可以选择自动导入或报错
+                // 4. 递归处理依赖的依赖
+                raCode = dependencyRaCode + raCode;
+
+            } else {
+                // 全量导入：导入当前作用域中的所有符号
+                raCode += importVisitor.getCompileResult();
+                for (const auto &member : importVisitor.getSymbolTable().currentNameMapScope()) {
+                    processSymbol(member);
+                }
             }
+
             return raCode;
         }
     }
@@ -202,12 +338,24 @@ namespace builtin
         using namespace rcc_import_utils;
         bool isAutomaticForm = false;
         bool hasPositionalArgs = false;
-        for (const auto& ident : callInfos.originalArgs | std::views::keys) {
+        int index = 0;
+        for (const auto& [ident, value] : callInfos.originalArgs) {
             if (ident.empty()) {
                 hasPositionalArgs = true;
             } else {
                 isAutomaticForm = true;
             }
+            if (!isStringFormat(value))
+            {
+                throw base::RCCCompilerError::semanticError(
+                    callInfos.orderedArgOpItems[index].second.getPos().toString(),
+                    ast::CompileVisitor::getCodeLine(callInfos.callPos),
+                    "The argument of the `import` function must be a string literal.",
+                    {
+                        "Please ensure that the argument of the `import` function is a string literal."
+                    });
+            }
+            index ++;
         }
         if (hasPositionalArgs && isAutomaticForm) {
             throw base::RCCCompilerError::semanticError(
@@ -227,9 +375,10 @@ namespace builtin
                 });
         }
         std::string raCode;
+        index = 0;
         for (const auto &[ident, extName] : callInfos.originalArgs) {
             const auto &unescapedExtNameArg = StringManager::parseStringFormat(extName);
-            const auto &importedFilePath = resolveImportedFilePath(visitor, unescapedExtNameArg);
+            const auto &[importedFilePath, importSymbols] = resolveImportedFilePath(visitor, unescapedExtNameArg);
             const auto &varIDName = generateVariableIdentifier(visitor, ident, importedFilePath, isAutomaticForm);
             const auto &tempVarId = ast::VarID(
                 varIDName, visitor.getCurrentProcessingFilePath(),
@@ -238,9 +387,10 @@ namespace builtin
             if (const auto &registeredExtension = ast::CompileVisitor::getRegisteredExtension(importedFilePath)) {
                 raCode += handleRegisteredExtension(visitor, registeredExtension, tempVarId, isAutomaticForm);
             } else {
-                raCode += compileAndProcessNewExtension(visitor, importedFilePath, tempVarId);
+                raCode += compileAndProcessNewExtension(visitor, importedFilePath, tempVarId, callInfos.orderedArgOpItems[index].second.getPos(), importSymbols);
             }
             ast::CompileVisitor::popProcessingExtension();
+            index ++;
         }
         return raCode;
     }

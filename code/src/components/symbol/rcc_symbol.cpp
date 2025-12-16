@@ -250,7 +250,47 @@ namespace symbol {
 
     Symbol::~Symbol() {}
 
+    bool Symbol::hasGenerated() const
+    {
+        return isGenerated;
+    }
+
+    void Symbol::setGenerated()
+    {
+        isGenerated = true;
+    }
+
+    void Symbol::setDefinitionCode(const std::string& code)
+    {
+        definitionCode = code;
+    }
+
+    std::string Symbol::getDefinitionCode() const
+    {
+        return definitionCode;
+    }
+
+    void Symbol::setDependencies(const std::unordered_map<std::string, std::shared_ptr<Symbol>>& dependencies_)
+    {
+        dependencies = dependencies_;
+    }
+
     IRCCSymbolInterface::~IRCCSymbolInterface() {}
+
+    void Symbol::insertDependence(const std::shared_ptr<Symbol>& symbol)
+    {
+        dependencies.emplace(symbol->getRaVal(), symbol);
+    }
+
+    void Symbol::removeDependence(const std::shared_ptr<Symbol>& symbol)
+    {
+        dependencies.erase(symbol->getRaVal());
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<Symbol>> Symbol::getDependencies() const
+    {
+        return dependencies;
+    }
 
     bool Symbol::is(const SymbolType& symbolType) const
     {
@@ -416,6 +456,16 @@ namespace symbol {
         return copySelf().get();
     }
 
+    size_t Symbol::getTransformedFromId() const
+    {
+        return _transformedFromId;
+    }
+
+    void Symbol::setTransformedFromId(const size_t& id)
+    {
+        _transformedFromId = id;
+    }
+
     LabelSymbol::LabelSymbol(const utils::Pos &pos,
                              const std::string &name, const std::string &raValue,
                              const size_t &scopeLevel, const LabelType &labelType)
@@ -516,7 +566,11 @@ namespace symbol {
 
     std::string LabelSymbol::getLabelDescString() const
     {
-        std::string result = getVal();
+        return getVal() + (labelDesS.empty() ? "" : getDescString());
+    }
+
+    std::string LabelSymbol::getDescString() const
+    {
         if (!labelDesS.empty()) {
             std::string desStr;
             for (const auto& desS : labelDesS) {
@@ -531,13 +585,13 @@ namespace symbol {
                 }
                 desStr += "]";
             }
-            result += desStr;
+            return desStr;
         }
-        return result;
+        return "[]";
     }
 
     std::string LabelSymbol::toString() const {
-        const std::string result = "[<LABEL> " + getVal() + getLabelDescString() + ": " + labelTypeToString(labelType);
+        const std::string result = "[<LABEL> " + getLabelDescString() + ": " + labelTypeToString(labelType);
         return result + "]";
     }
 
@@ -556,6 +610,7 @@ namespace symbol {
             getPos(), getVal(), getRaVal(), getScopeLevel(), getLabelType());
         ls->labelDesS = getLabelDesS();
         ls->m_labelDesIS = m_labelDesIS;
+        ls->setDependencies(getDependencies());
         return ls;
     }
 
@@ -577,9 +632,11 @@ namespace symbol {
     std::shared_ptr<Symbol> LabelSymbol::transform(
         const std::string& value, const std::string& raValue, const size_t &scopeLevel) const
     {
-        return std::make_shared<LabelSymbol>(
+        const auto& ls = std::make_shared<LabelSymbol>(
             getPos(), value, raValue, scopeLevel < 0 ? getScopeLevel() : scopeLevel,
             getLabelType());
+        ls->setTransformedFromId(getId());
+        return ls;
     }
 
     void LabelSymbol::syncLabelDesIS() const
@@ -751,8 +808,8 @@ namespace symbol {
         throw base::RCCCompilerError::symbolNotFoundError(
             ast::CompileVisitor::currentPos().toString(),
             ast::CompileVisitor::getCodeLine(ast::CompileVisitor::currentPos()),
-            uid,
-            "Custom type not found",
+            uid == "tp-any" ? "any" : uid,
+            uid == "tp-any" ? "There missing custom type info details." : "Custom type not found.",
             {
                 "Check if the custom type name is correct.",
                 "Ensure the custom type has been properly defined.",
@@ -875,16 +932,27 @@ namespace symbol {
     bool TypeLabelSymbol::relatedTo(const std::shared_ptr<TypeLabelSymbol>& other) const
     {
         if (equalWith(other)) return true;
-        if (!isCustomType() && !other->isCustomType()) return false;
+        if (!isCustomType() || !other->isCustomType()) return false;
         const auto &selfClassSymbol = getCustomClassSymbol();
         const auto &otherClassSymbol = other->getCustomClassSymbol();
         return selfClassSymbol->relatedTo(otherClassSymbol);
     }
 
+    bool TypeLabelSymbol::isCompatibleWith(const std::shared_ptr<TypeLabelSymbol>& other) const
+    {
+        if (equalWith(other)) return true;
+        if (!isCustomType() || !other->isCustomType()) return false;
+        const auto &selfClassSymbol = getCustomClassSymbol();
+        const auto &otherClassSymbol = other->getCustomClassSymbol();
+        return selfClassSymbol->isDerivedTo(otherClassSymbol);
+    }
+
     std::shared_ptr<Symbol> TypeLabelSymbol::transform(const std::string& value, const std::string& raValue,
                                                        const size_t& scopeLevel) const
     {
-        return std::make_shared<TypeLabelSymbol>(getPos(), value, scopeLevel, raValue);
+        const auto &newSymbol = std::make_shared<TypeLabelSymbol>(getPos(), value, scopeLevel, raValue);
+        newSymbol->setTransformedFromId(getId());
+        return newSymbol;
     }
 
     const LabelSymbol* TypeLabelSymbol::TransformToLSI() const
@@ -1210,6 +1278,55 @@ namespace symbol {
         resultDisplay += "]";
     }
 
+    std::string LabelMarkManager::toString() const
+    {
+        std::string resultDisplay = "";
+        auto buildLabelSection = [this, &resultDisplay](auto labelCount, auto isMarkedFunc, auto toStringFunc) {
+            bool firstItem = true;
+
+            for (int i = 0; i < labelCount; ++i) {
+                if (isMarkedFunc(static_cast<decltype(i)>(i))) {
+                    if (!firstItem) {
+                        resultDisplay += " ";
+                    }
+                    resultDisplay += toStringFunc(static_cast<decltype(i)>(i));
+                    firstItem = false;
+                }
+            }
+        };
+
+        // Build each section
+        resultDisplay = permissionLabelToString(static_cast<PermissionLabel>(permissionLabelMark)) + " ";
+
+        buildLabelSection(
+            static_cast<int>(ObjectOrientedLabel::COUNT),
+            [this](auto label) { return isObjectOrientedLabelMarked(static_cast<ObjectOrientedLabel>(label)); },
+            [](auto label) { return objectOrientedLabelToString(static_cast<ObjectOrientedLabel>(label)); }
+        );
+
+        buildLabelSection(
+            static_cast<int>(LifeCycleLabel::COUNT),
+            [this](auto label) { return isLifeCycleLabelMarked(static_cast<LifeCycleLabel>(label)); },
+            [](auto label) { return lifeCycleLabelToString(static_cast<LifeCycleLabel>(label)); }
+        );
+
+        buildLabelSection(
+            static_cast<int>(RestrictionLabel::COUNT),
+            [this](auto label) { return isRestrictionLabelMarked(static_cast<RestrictionLabel>(label)); },
+            [](auto label) { return restrictionLabelToString(static_cast<RestrictionLabel>(label)); }
+        );
+
+        bool firstType = true;
+        for (const auto& typeLabel : typeLabelMarks) {
+            if (!firstType) {
+                resultDisplay += " ";
+            }
+            resultDisplay += typeLabel;
+            firstType = false;
+        }
+        return resultDisplay;
+    }
+
     std::optional<PermissionLabel> LabelMarkManager::getPermissionLabelMark() const
     {
         return permissionLabelMark == -1 ?
@@ -1394,9 +1511,11 @@ namespace symbol {
     std::shared_ptr<Symbol> ParameterSymbol::transform(const std::string& value, const std::string& raValue,
                                                        const size_t& scopeLevel) const
     {
-        return std::make_shared<ParameterSymbol>(
+        const auto &symbol = std::make_shared<ParameterSymbol>(
             getParamType(), getPos(), value, raValue, getLabels(),
             getDefaultValue(), scopeLevel, getType(), getValueType());
+        symbol->setTransformedFromId(getId());
+        return symbol;
     }
 
     std::string ParameterSymbol::toString() const
@@ -1439,9 +1558,11 @@ namespace symbol {
         {
             labels_.insert(std::static_pointer_cast<LabelSymbol>(l->copySelf()));
         }
-        return std::make_shared<ParameterSymbol>(
+        const auto &symbol = std::make_shared<ParameterSymbol>(
             paramType, getPos(), getVal(), getRaVal(), labels_, defaultValue, getScopeLevel(),
             getType(), std::static_pointer_cast<TypeLabelSymbol>(copySymbolPtr(getValueType())));
+        symbol->setDependencies(getDependencies());
+        return symbol;
     }
 
     IRCCTypeLabelSymbolInterface* ParameterSymbol::GetTypeLabelSymbolI() const
@@ -1606,9 +1727,11 @@ namespace symbol {
     std::shared_ptr<Symbol> VariableSymbol::transform(const std::string& value, const std::string& raValue,
                                                       const size_t& scopeLevel) const
     {
-        return std::make_shared<VariableSymbol>(
+        const auto &varSymbol = std::make_shared<VariableSymbol>(
             getPos(), value, raValue, getLabels(), scopeLevel, false,
             getValueType(), getClassSymbol());
+        varSymbol->setTransformedFromId(getId());
+        return varSymbol;
     }
 
     PermissionLabel VariableSymbol::getPermissionLabel() const
@@ -1671,12 +1794,14 @@ namespace symbol {
         {
             labels_.insert(std::static_pointer_cast<LabelSymbol>(copySymbolPtr(l)));
         }
-        return std::make_shared<VariableSymbol>(
+        const auto &varSymbol = std::make_shared<VariableSymbol>(
             getPos(), getVal(), getRaVal(), labels_, getScopeLevel(), false,
             std::static_pointer_cast<TypeLabelSymbol>(copySymbolPtr(getValueType())),
             std::static_pointer_cast<ClassSymbol>(copySymbolPtr(getClassSymbol())),
             std::static_pointer_cast<Symbol>(copySymbolPtr(getReferencedSymbol())),
             getDefaultValueNode());
+        varSymbol->setDependencies(getDependencies());
+        return varSymbol;
     }
 
     IRCCTypeLabelSymbolInterface* VariableSymbol::GetTypeLabelSymbolI() const
@@ -1771,7 +1896,7 @@ namespace symbol {
         const std::unordered_set<std::shared_ptr<LabelSymbol>> &labels,
         const std::vector<std::shared_ptr<ParameterSymbol>> &parameters,
         const std::shared_ptr<TypeLabelSymbol> &signature,
-        size_t scopeLevel, const TypeOfBuiltin &builtinType,
+        const size_t scopeLevel, const TypeOfBuiltin &builtinType,
         const FunctionType &functionType,
         const std::shared_ptr<ClassSymbol> &className)
         : Symbol(pos, SymbolType::FUNCTION, name, nameID, scopeLevel),
@@ -1887,8 +2012,7 @@ namespace symbol {
             i++;
         }
         paramSignature += ")";
-        return getVal() + paramSignature + ": " + (hasReturnValue() ?
-            getReturnType()->briefString() : "void");
+        return getVal() + paramSignature + ": " + labelMarkManager.toString();
     }
 
     std::string FunctionSymbol::toString() const
@@ -1963,9 +2087,11 @@ namespace symbol {
     std::shared_ptr<Symbol> FunctionSymbol::transform(const std::string& value, const std::string& raValue,
                                                       const size_t& scopeLevel) const
     {
-        return std::make_shared<FunctionSymbol>(
+        const auto& symbol = std::make_shared<FunctionSymbol>(
             getDefinitionNode(), getPos(), value, raValue, labels, parameters,
             signature, scopeLevel, builtinType, functionType, classSymbol);
+        symbol->setTransformedFromId(getId());
+        return symbol;
     }
 
     bool FunctionSymbol::is(const TypeOfBuiltin& type) const
@@ -1994,11 +2120,13 @@ namespace symbol {
         {
             params.push_back(std::static_pointer_cast<ParameterSymbol>(copySymbolPtr(p)));
         }
-        return std::make_shared<FunctionSymbol>(
+        const auto& symbol = std::make_shared<FunctionSymbol>(
             definitionNode, getPos(), getVal(), getRaVal(), labels_,
             params, std::static_pointer_cast<TypeLabelSymbol>(copySymbolPtr(signature)),
             getScopeLevel(), getBuiltInType(), getFunctionType(),
             std::static_pointer_cast<ClassSymbol>(copySymbolPtr(getClassSymbol())));
+        symbol->setDependencies(getDependencies());
+        return symbol;
     }
 
     bool FunctionSymbol::Is(const SymbolType& tp) const
@@ -2231,12 +2359,13 @@ namespace symbol {
         std::vector<std::shared_ptr<ClassSymbol>> baseClasses,
         const std::vector<std::shared_ptr<ClassSymbol>>& derivedClasses,
         const std::shared_ptr<SymbolTable> &constructors,
+        const std::shared_ptr<SymbolTable> &members,
         const std::shared_ptr<SymbolTable> &staticMembers,
         const bool &collectionFinished,
         const PermissionLabel &visitPermission)
         : Symbol(pos, SymbolType::CLASS, name, nameID, scopeLevel),
           baseClasses(std::move(baseClasses)), derivedClasses(derivedClasses),
-          staticMembers(staticMembers), constructors(constructors),
+          members(members), staticMembers(staticMembers), constructors(constructors),
           labelMarkManager(std::move(labelMarkManager)), collectionFinished(collectionFinished),
           visitPermission(visitPermission), scope_level_(scopeLevel) {}
 
@@ -2245,16 +2374,20 @@ namespace symbol {
     std::string ClassSymbol::getInheritanceChain() const
     {
         std::string chain;
-        for (const auto& bc: baseClasses)
+        for (const auto& bc: baseClasses | std::views::reverse)
         {
-            chain += bc->getVal() + ".";
+            if (!chain.empty())
+            {
+                chain += ": ";
+            }
+            chain += bc->getVal();
         }
         return chain;
     }
 
     std::string ClassSymbol::briefString() const
     {
-        return "[<Class> " + getInheritanceChain() + getVal() + "]";
+        return "[<Class> " + getVal() + ": " + getInheritanceChain() + "]";
     }
 
     IRCCVariableSymbolInterface::~IRCCVariableSymbolInterface() = default;
@@ -2537,15 +2670,17 @@ namespace symbol {
     std::shared_ptr<Symbol> ClassSymbol::transform(const std::string& value, const std::string& raValue,
                                                    const size_t& scopeLevel) const
     {
-        return std::make_shared<ClassSymbol>(
+        const auto& newClassSymbol = std::make_shared<ClassSymbol>(
             getPos(), value, raValue,
             labelMarkManager, scopeLevel, baseClasses, derivedClasses, constructors,
-            staticMembers, collectionFinished, visitPermission);
+            members, staticMembers, collectionFinished, visitPermission);
+        newClassSymbol->setTransformedFromId(getId());
+        return newClassSymbol;
     }
 
     std::string ClassSymbol::toString() const
     {
-        return "[<Class> " + getInheritanceChain() + getVal() + "]";
+        return "[<Class> " + getVal() + ": " + getInheritanceChain() + "]";
     }
 
     std::string ClassSymbol::toDetailString() const
@@ -2582,33 +2717,39 @@ namespace symbol {
 
     std::shared_ptr<utils::Object> ClassSymbol::copySelf() const
     {
-        return std::make_shared<ClassSymbol>(getPos(), getVal(), getRaVal(), labelMarkManager,
+        const auto& newClassSymbol = std::make_shared<ClassSymbol>(getPos(), getVal(), getRaVal(), labelMarkManager,
             getScopeLevel(), baseClasses, derivedClasses,
             constructors,
             staticMembers,
-            collectionFinished, visitPermission);
+            members,
+            collectionFinished,
+            visitPermission);
+        newClassSymbol->setDependencies(getDependencies());
+        return newClassSymbol;
     }
 
     bool ClassSymbol::relatedTo(const std::shared_ptr<ClassSymbol>& other) const
     {
-        bool result = false;
-        if (equalWith(other) ||
-            std::ranges::any_of(baseClasses.begin(), baseClasses.end(),
-                [other](const auto &bc)
-        {
-            return bc->equalWith(other);
-        })) {
-            result = true;
-        } else {
-            result = std::ranges::any_of(derivedClasses.begin(), derivedClasses.end(),
-                [other](const auto &dc)
+        return equalWith(other) || isInheritFrom(other) || isDerivedTo(other);
+    }
+
+    bool ClassSymbol::isInheritFrom(const std::shared_ptr<ClassSymbol>& other) const
+    {
+        return std::ranges::any_of(baseClasses.begin(), baseClasses.end(),
+            [other](const auto &bc)
+            {
+                return bc->equalWith(other);
+            });
+    }
+
+    bool ClassSymbol::isDerivedTo(const std::shared_ptr<ClassSymbol>& other) const
+    {
+        return std::ranges::any_of(derivedClasses.begin(), derivedClasses.end(),
+            [other](const auto &dc)
             {
                 return dc->equalWith(other);
             });
-        }
-        return result;
     }
-
 
     bool ClassSymbol::isSupperClassOf(const std::shared_ptr<ClassSymbol>& other, const bool &restrict) const
     {
@@ -3092,13 +3233,16 @@ namespace symbol {
         return curScopeLevel();
     }
 
-    std::pair<long long int, std::shared_ptr<VariableSymbol>>
-    SymbolTableManager::findVariableSymbolByName(const std::string &name) const {
+    std::pair<long long int, std::shared_ptr<ParameterSymbol>>
+    SymbolTableManager::findVariableSymbolByName(const std::string& name, const bool& restrict) const {
         for (int i = static_cast<int>(currentScopeLevel_); i >= 0; --i) {
             const auto &scope = scopes[i].first;
             if (const auto &it = scope->find(name)) {
                 if (it->getType() == SymbolType::VARIABLE) {
                     return {i, std::static_pointer_cast<VariableSymbol>(it)};
+                }
+                if (!restrict && it->getType() == SymbolType::PARAMETER) {
+                    return {i, std::static_pointer_cast<ParameterSymbol>(it)};
                 }
             }
         }

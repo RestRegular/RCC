@@ -233,6 +233,15 @@ namespace ri {
     DETECT::DETECT(const std::string& type, const std::string& ident)
         : BINARY("DETECT", type, ident) {}
 
+    std::string DETECT::toRACode() const
+    {
+        if (getRValue() == "tp-any")
+        {
+            return UNARY("DETECT", getLValue()).toRACode();
+        }
+        return BINARY::toRACode();
+    }
+
     TP_NEW::TP_NEW(const std::string& ident, const std::string& lvalue)
         : BINARY("TP_NEW", ident, lvalue) {}
 
@@ -352,4 +361,7 @@ namespace ri {
 
     TP_SET_FIELD::TP_SET_FIELD(const std::string& tp, const std::string& field, const std::string& value)
         : TERNARY("TP_SET_FIELD", tp, field, value) {}
+
+    TP_CHECK_RELATE::TP_CHECK_RELATE(const std::string& inst, const std::string& type, const std::string& value)
+        : TERNARY("TP_CHECK_RELATE", inst, type, value) {}
 }

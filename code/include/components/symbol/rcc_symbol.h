@@ -25,6 +25,13 @@ namespace symbol {
         std::string value;
         std::string raValue;
         size_t scopeLevel;
+        std::size_t _transformedFromId = 0;
+        // 符号依赖的符号 { uid: symbol }
+        std::unordered_map<std::string, std::shared_ptr<Symbol>> dependencies {};
+        // 符号定义的代码
+        std::string definitionCode {};
+        // 是否编译生成了指令
+        bool isGenerated = false;
     public:
         Symbol(utils::Pos pos,
             const SymbolType &symbolType,
@@ -32,6 +39,14 @@ namespace symbol {
             std::string symbolRaValue,
             const size_t &scopeLevel);
         ~Symbol() override;
+        [[nodiscard]] bool hasGenerated() const;
+        void setGenerated();
+        void setDefinitionCode(const std::string &code);
+        [[nodiscard]] std::string getDefinitionCode() const;
+        void setDependencies(const std::unordered_map<std::string, std::shared_ptr<Symbol>>& dependencies_);
+        void insertDependence(const std::shared_ptr<Symbol> &symbol);
+        void removeDependence(const std::shared_ptr<Symbol> &symbol);
+        [[nodiscard]] std::unordered_map<std::string, std::shared_ptr<Symbol>> getDependencies() const;
         [[nodiscard]] bool is(const SymbolType &symbolType) const;
         bool Is(const SymbolType& tp) const override;
         [[nodiscard]] bool isNot(const SymbolType &symbolType) const;
@@ -59,7 +74,7 @@ namespace symbol {
         static std::shared_ptr<Object> copySymbolPtr(const std::shared_ptr<Symbol> &symbolPtr);
 
         [[nodiscard]] virtual std::shared_ptr<Symbol> transform(
-            const std::string &value, const std::string &raValue, const size_t &scopeLevel)const = 0;
+            const std::string &value, const std::string &raValue, const size_t &scopeLevel) const = 0;
         const Symbol* TransformToSI() const override;
         const char* ToString() const override;
         const char* BriefString() const override;
@@ -67,6 +82,8 @@ namespace symbol {
         const char* FormatString(const size_t& indent, const size_t& level) const override;
         const char* ToJsonString() const override;
         const IRCCObjectInterface* CopySelf() override;
+        [[nodiscard]] size_t getTransformedFromId() const;
+        void setTransformedFromId(const size_t& id);
     };
 
     class LabelSymbol:
@@ -98,6 +115,7 @@ namespace symbol {
         std::string toDetailString() const override;
         [[nodiscard]] std::string toJsonString() const override;
         [[nodiscard]] std::string getLabelDescString() const;
+        [[nodiscard]] std::string getDescString() const;
         [[nodiscard]] std::string toString() const override;
         const LabelSymbol* TransformToLSI() const override;
         [[nodiscard]] std::string briefString() const override;
@@ -153,6 +171,7 @@ namespace symbol {
         [[nodiscard]] bool isIterable() const;
         [[nodiscard]] bool equalWith(const std::shared_ptr<Symbol>& other) const override;
         [[nodiscard]] bool relatedTo(const std::shared_ptr<TypeLabelSymbol> &other) const;
+        [[nodiscard]] bool isCompatibleWith(const std::shared_ptr<TypeLabelSymbol>& other) const;
         [[nodiscard]] std::shared_ptr<Symbol> transform(const std::string& value, const std::string& raValue,
                                           const size_t& scopeLevel) const override;
         const LabelSymbol* TransformToLSI() const override;
@@ -222,6 +241,7 @@ namespace symbol {
         void resetTypeLabelMarks();
 
         void displayResult();
+        std::string toString() const override;
         std::optional<PermissionLabel> getPermissionLabelMark() const;
         std::unordered_set<std::string> getTypeLabelMarks() const;
     private:
@@ -511,6 +531,7 @@ namespace symbol {
             std::vector<std::shared_ptr<ClassSymbol>> baseClasses = {},
             const std::vector<std::shared_ptr<ClassSymbol>>& derivedClasses = {},
             const std::shared_ptr<SymbolTable> &constructors = {},
+            const std::shared_ptr<SymbolTable> &members = {},
             const std::shared_ptr<SymbolTable> &staticMembers = {},
             const bool &collectionFinished = true,
             const PermissionLabel &visitPermission = {});
@@ -559,6 +580,8 @@ namespace symbol {
         [[nodiscard]] std::string toJsonString() const override;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;
         bool relatedTo(const std::shared_ptr<ClassSymbol> &other) const;
+        bool isInheritFrom(const std::shared_ptr<ClassSymbol> &other) const;
+        bool isDerivedTo(const std::shared_ptr<ClassSymbol> &other) const;
         bool isSupperClassOf(const std::shared_ptr<ClassSymbol> &other, const bool &restrict = true) const;
         void AddMember(const IRCCSymbolInterface* symbolI) const override;
         void SetDerivedClasses(const IRCCClassSymbolInterface* classSymbolI) override;
@@ -732,7 +755,8 @@ namespace symbol {
         bool ContainsName(const char* name) const override;
         bool CurrentScopeContains(const char* name) const override;
         size_t CurScopeLevel() const override;
-        [[nodiscard]] std::pair<long long int, std::shared_ptr<VariableSymbol>> findVariableSymbolByName(const std::string &name) const;
+        [[nodiscard]] std::pair<long long int, std::shared_ptr<ParameterSymbol>> findVariableSymbolByName(
+            const std::string& name, const bool& restrict) const;
         [[nodiscard]] std::pair<long long int, std::shared_ptr<VariableSymbol>> findVariableSymbolByRID(const std::string& rid) const;
 
         template <typename ST>

@@ -499,6 +499,14 @@ namespace ast {
         visitor.visitThrowNode(*this);
     }
 
+    ContinueNode::ContinueNode(const Token& mainToken)
+        : ExpressionNode(mainToken, NodeType::CONTINUE) {}
+
+    void ContinueNode::acceptVisitor(Visitor& visitor)
+    {
+        visitor.visitContinueNode(*this);
+    }
+
     StringLiteralNode::StringLiteralNode(const Token& token)
     : LiteralNode(token, NodeType::STRING),
     value(StringManager::unescape(token.getValue())) {}

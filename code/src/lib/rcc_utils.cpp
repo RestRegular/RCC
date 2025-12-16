@@ -19,6 +19,7 @@
 
 #ifdef _WIN32
 
+#include <tchar.h>
 #include <windows.h>
 #include <lmaccess.h>
 
@@ -27,6 +28,7 @@
 #include <pwd.h>
 #include <cstring>
 #include <unistd.h>
+#include <sys/utsname.h>
 
 #endif
 
@@ -2580,7 +2582,7 @@ namespace utils
 
         if (!idMap.contains(str))
         {
-            idMap[str] = "id" + std::to_string(counter++);
+            idMap[str] = std::to_string(counter++);
         }
 
         return idMap[str];
@@ -2728,6 +2730,87 @@ namespace utils
         }
         return "Unknown";
 #endif
+    }
+
+    std::string getRCCVersionInfo()
+    {
+        std::ostringstream oss;
+        std::string platform;
+        std::string arch;
+        std::string compiler;
+
+        // 1. 填充平台信息
+#ifdef _WIN32
+        platform = "Windows";
+        // 获取 Windows 系统版本（简化版，如需详细可扩展）
+        OSVERSIONINFOEX osvi = {0};
+        osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+        if (GetVersionEx((OSVERSIONINFO*)&osvi)) {
+            oss << platform << " [" << osvi.dwMajorVersion << "." << osvi.dwMinorVersion << "]";
+            if (osvi.wProductType == VER_NT_WORKSTATION) oss << " (Workstation)";
+            else if (osvi.wProductType == VER_NT_SERVER) oss << " (Server)";
+            platform = oss.str();
+            oss.str(""); // 清空流
+        }
+        // 获取架构（32/64位）
+#ifdef _WIN64
+        arch = "x86_64";
+#else
+        arch = "x86";
+#endif
+
+#elif __linux__
+        platform = "Linux";
+        struct utsname uts;
+        if (uname(&uts) == 0) {
+            // 系统名称 + 内核版本 + 主机名
+            oss << platform << " [" << uts.sysname << "] " << uts.release;
+            platform = oss.str();
+            oss.str("");
+        }
+        // 获取架构
+#ifdef __x86_64__
+        arch = "x86_64";
+#elif __i386__
+        arch = "x86";
+#elif __aarch64__
+        arch = "ARM64";
+#elif __arm__
+        arch = "ARMv" + std::to_string(__ARM_ARCH__);
+#else
+        arch = "Unknown";
+#endif
+
+#else
+        platform = "Unknown Platform";
+        arch = "Unknown Architecture";
+#endif
+
+        // 2. 填充编译器信息（增强可读性）
+#ifdef __GNUC__
+        compiler = "GCC " + std::to_string(__GNUC__) + "." + std::to_string(__GNUC_MINOR__) + "." + std::to_string(__GNUC_PATCHLEVEL__);
+#elif __clang__
+        compiler = "Clang " + std::to_string(__clang_major__) + "." + std::to_string(__clang_minor__) + "." + std::to_string(__clang_patchlevel__);
+#elif _MSC_VER
+        compiler = "MSVC " + std::to_string(_MSC_VER / 100) + "." + std::to_string((_MSC_VER % 100) / 10);
+#else
+        compiler = "Unknown Compiler";
+#endif
+
+        // 3. 构建完整版本信息字符串
+        oss << "======================================================\n";
+        oss << "RCC(Rio Compiler Collection) Version Info\n";
+        oss << "======================================================\n";
+        oss << "Version:        v" << VERSION_MAJOR << "." << VERSION_MINOR << "." << VERSION_PATCH;
+        oss << "\n";
+        oss << "Platform:       " << platform << "\n";
+        oss << "Architecture:   " << arch << "\n";
+        oss << "Compiler:       " << compiler << "\n";
+        oss << "Build Time:     " << __DATE__ << " " << __TIME__ << "\n";
+        oss << "Copyright (C):  2025 RestRegular. All rights reserved.\n";
+        oss << "======================================================\n";
+
+        return oss.str();
     }
 
     void interruptWhen(const bool& condition, void (*handler)())

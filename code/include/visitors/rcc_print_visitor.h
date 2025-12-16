@@ -106,6 +106,8 @@ namespace ast {
         void visitThrowNode(ThrowNode& node) override;
 
         void visitBracketExpressionNode(BracketExpressionNode &node) override;
+
+        void visitContinueNode(ContinueNode& node) override;
     };
 
 }

@@ -459,15 +459,16 @@ namespace base {
     }
 
     RCCCompilerError RCCCompilerError::typeMissmatchError(const std::string& error_position,
-        const std::string& error_line, const StringVector& error_infos, const std::string& expected_type,
-        const std::string& actual_type, const std::vector<std::string>& repair_tips)
+                                                          const std::string& error_line, const StringVector& error_infos, const std::string& expected_type,
+                                                          const std::string& actual_type, const std::vector<std::string>& repair_tips, const std::string& exp_prefix, const std::
+                                                          string& act_prefix)
     {
-        return RCCCompilerError(error_position, error_line, [error_infos, expected_type, actual_type]
+        return RCCCompilerError(error_position, error_line, [error_infos, expected_type, actual_type, exp_prefix, act_prefix]
         {
             StringVector result = {"This error is caused by a type missmatch."};
             result.insert(result.end(), error_infos.begin(), error_infos.end());
-            result.push_back("Expected type: " + expected_type);
-            result.push_back("Actual type: " + actual_type);
+            result.push_back(exp_prefix + expected_type);
+            result.push_back(act_prefix + actual_type);
             return result;
         }(), [repair_tips]
         {
@@ -529,13 +530,13 @@ namespace base {
 
     RCCCompilerError RCCCompilerError::symbolNotFoundError(const std::string& error_position,
                                                            const std::string& error_line, const std::string& symbol_name, const StringVector& error_infos,
-                                                           const StringVector& repair_tips)
+                                                           const StringVector& repair_tips, const std::string& error_symbol_prefix)
     {
-        return RCCCompilerError(error_position, error_line, [error_infos, symbol_name]
+        return RCCCompilerError(error_position, error_line, [error_infos, symbol_name, error_symbol_prefix]
         {
             StringVector result = {
                 "This error is caused by a symbol not found.",
-                "Non-existent symbol: " + symbol_name
+                error_symbol_prefix + symbol_name
             };
             if (!error_infos.empty())
                 result.insert(result.end(), error_infos.begin(), error_infos.end());

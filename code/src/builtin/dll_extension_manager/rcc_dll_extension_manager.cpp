@@ -32,7 +32,8 @@ namespace rccdll
         const auto& errorMsg = std::to_string(GetLastError());
 #elif __linux__
         dllExt = dlopen(dllFilepath.c_str(), RTLD_LAZY | RTLD_GLOBAL);
-        auto errorMsg = std::string(dlerror());
+        const char* error = dlerror();
+        auto errorMsg = error ? std::string(error) : std::string();
         errorMsg = errorMsg.empty() ? RCC_UNKNOWN_CONST : errorMsg;
 #endif
         if (!dllExt)

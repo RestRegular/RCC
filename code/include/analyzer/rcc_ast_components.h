@@ -619,7 +619,7 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
     };
 
-    class ClassDefinitionNode : public ExpressionNode {
+    class ClassDefinitionNode final : public ExpressionNode {
         std::shared_ptr<ExpressionNode> nameNode;
         std::shared_ptr<ExpressionNode> bodyNode;
     public:
@@ -677,6 +677,13 @@ namespace ast {
             const std::shared_ptr<ExpressionNode>& throwExpression);
 
         [[nodiscard]] std::shared_ptr<ExpressionNode> getThrowExpression() const;
+        void acceptVisitor(Visitor& visitor) override;
+    };
+
+    class ContinueNode final : public ExpressionNode
+    {
+    public:
+        explicit ContinueNode(const Token &mainToken);
         void acceptVisitor(Visitor& visitor) override;
     };
 }

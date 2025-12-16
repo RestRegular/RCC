@@ -187,6 +187,10 @@ namespace ast {
 
     }
 
+    void PrintVisitor::visitContinueNode(ContinueNode& node)
+    {
+    }
+
     void PrintVisitor::visitIndexExpressionNode(IndexExpressionNode &node) {
 
     }

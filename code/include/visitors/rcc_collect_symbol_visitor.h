@@ -103,6 +103,8 @@ namespace ast {
         void visitVariableDefinitionNode(VariableDefinitionNode &node) override;
 
         void visitAssignmentNode(AssignmentNode &node) override;
+
+        void visitContinueNode(ContinueNode& node) override;
     };
 
 }

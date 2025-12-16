@@ -21,7 +21,7 @@ namespace base
 #define RCC_NULL_CONST "RCC-NULL"
 #define RCC_TOKEN_STREAM_START "$RCC_TOKEN_STREAM_START$"
 #define RCC_TOKEN_STREAM_END "$RCC_TOKEN_STREAM_END$"
-#define ANONYMOUS_FUNCTION_PREFIX "anon_func_"
+#define ANONYMOUS_FUNCTION_PREFIX "anonymous_"
 
 #define RCC_TRUE        "true"
 #define RCC_FALSE       "false"

@@ -13,7 +13,7 @@ namespace ast
 
     // 类声明
     // --- 工具类 ---
-    class ContentBuilder;
+    class CodeBuilder;
     class VarID;
     class SetID;
     class OpItem;
@@ -75,6 +75,7 @@ namespace ast
     class ProgramNode;
     class ThrowNode;
     class TryNode;
+    class ContinueNode;
     // --- 语法树类 ---
     class Ast;
 

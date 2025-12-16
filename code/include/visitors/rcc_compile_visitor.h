@@ -19,25 +19,28 @@ namespace builtin
 
 namespace ast
 {
-    class ContentBuilder
+    class CodeBuilder
     {
-        std::stack<std::stringstream> raCodeStack{};
+        std::stack<std::shared_ptr<std::stringstream>> raCodeStack {};
         std::string raCode;
 
     public:
-        ContentBuilder();
-        ~ContentBuilder() = default;
+        CodeBuilder();
+        ~CodeBuilder() = default;
         std::string buildAll();
-        ContentBuilder& appendCode(const std::string& code);
-        ContentBuilder& operator<<(const std::string& code);
-        ContentBuilder& operator<<(const ri::RI& ri);
+        CodeBuilder& appendCode(const std::string& code);
+        CodeBuilder& operator<<(const std::string& code);
+        CodeBuilder& operator<<(const ri::RI& ri);
         void enterScope();
         void exitScope();
-        ContentBuilder& buildCurScope(std::string& target);
-        ContentBuilder& buildCurScope(ContentBuilder& builder);
-        ContentBuilder& operator>>(std::string& target);
-        ContentBuilder& operator>>(ContentBuilder& builder);
+        CodeBuilder& buildCurScope(std::string& target);
+        CodeBuilder& buildCurScope(CodeBuilder& builder);
+        [[nodiscard]] std::string buildCurScopeAndExit();
+        [[nodiscard]] std::string buildCurScope();
+        CodeBuilder& operator>>(std::string& target);
+        CodeBuilder& operator>>(CodeBuilder& builder);
         [[nodiscard]] std::string getCurScopeResult() const;
+        std::vector<std::string> viewAll() const;
     };
 
     // 变量ID封装类
@@ -66,7 +69,7 @@ namespace ast
         [[nodiscard]] std::string getScopeField() const;
         [[nodiscard]] std::string getFileField() const;
         [[nodiscard]] size_t getScopeLevel() const;
-        [[nodiscard]] size_t getId() const;
+        [[nodiscard]] size_t getId() const override;
         [[nodiscard]] std::string getVid() const;
 
         // 输出运算符重载
@@ -122,7 +125,7 @@ namespace ast
         std::shared_ptr<symbol::TypeLabelSymbol> typeLabel; // 类型标签
         std::shared_ptr<symbol::TypeLabelSymbol> valueType; // 值类型
         std::shared_ptr<symbol::Symbol> belonging; // 归属符号
-        std::string belongAttrRaValue; // 属性名称
+        std::string belongAttr; // 属性名称
         std::shared_ptr<symbol::Symbol> referencedSymbol; // 引用符号
         Pos pos;
 
@@ -151,14 +154,14 @@ namespace ast
         [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getTypeLabel() const;
         [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getValueType() const;
         [[nodiscard]] std::shared_ptr<symbol::Symbol> getBelonging() const;
-        [[nodiscard]] std::string getBelongAttrRaValue() const;
+        [[nodiscard]] std::string getBelongAttr() const;
         [[nodiscard]] std::shared_ptr<symbol::Symbol> getReferencedSymbol() const;
 
         // Setter方法
         void setTypeLabel(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol);
         void setValueType(const std::shared_ptr<symbol::TypeLabelSymbol>& valueTypeSymbol);
         void setBelonging(const std::shared_ptr<symbol::Symbol>& belongingSymbol,
-                          const std::string& belongAttrRaVal);
+                          const std::string& belongAttr_);
         void setReferencedSymbol(const std::shared_ptr<symbol::Symbol>& symbol);
 
         bool Is(const OpItemType& opItemType) override;
@@ -176,7 +179,7 @@ namespace ast
         void SetTypeLabel(const symbol::IRCCTypeLabelSymbolInterface* typeLabelSymbolI) override;
         void SetValueType(const symbol::IRCCTypeLabelSymbolInterface* valueTypeSymbolI) override;
         void SetBelonging(const symbol::IRCCSymbolInterface* belongingSymbolI,
-            const char* belongAttrRaVal) override;
+            const char* belongAttr_) override;
         void SetReferencedSymbol(const symbol::IRCCSymbolInterface* symbolI) override;
         const OpItem* TransformToOII() const override;
     };
@@ -209,8 +212,8 @@ namespace ast
         static std::stack<std::string> processingExtensionStack;
 
         // ========================== 成员属性 ==========================
-        ContentBuilder raCodeBuilder {}; // RA代码构建器
-        ContentBuilder analyzeBuilder {}; // 分析结果构建器
+        CodeBuilder raCodeBuilder {}; // RA代码构建器
+        CodeBuilder analyzeBuilder {}; // 分析结果构建器
         symbol::SymbolTableManager symbolTable{}; // 符号表管理器
 
         std::string programEntryFilePath; // 程序入口文件路径
@@ -224,7 +227,8 @@ namespace ast
         std::stack<std::shared_ptr<OpItem>> opItemStack{}; // 操作数栈
         std::stack<ScopeType> scopeTypeStack{}; // 作用域类型栈
         std::stack<ScopeType> loopScopeStack{}; // 循环作用域栈
-        std::unordered_map<std::string, std::shared_ptr<VarID>> varIdMap {};
+        std::unordered_map<std::string, std::shared_ptr<VarID>> varIdMap {};  // 变量ID映射
+        static std::stack<std::shared_ptr<OpItem>> temLoopSetOpItemStack;  // 临时标签栈
 
     public:
         // ======================= constructor ========================
@@ -236,8 +240,8 @@ namespace ast
 
         // ====================== getter & setter =====================
         [[nodiscard]] symbol::SymbolTableManager& getSymbolTable();
-        [[nodiscard]] ContentBuilder& getRaCodeBuilder();
-        [[nodiscard]] ContentBuilder& getAnalyzeBuilder();
+        [[nodiscard]] CodeBuilder& getRaCodeBuilder();
+        [[nodiscard]] CodeBuilder& getAnalyzeBuilder();
         [[nodiscard]] std::stack<std::shared_ptr<symbol::Symbol>>& getProcessingSymbolStack();
         [[nodiscard]] std::stack<std::shared_ptr<OpItem>>& getOpItemStack();
         [[nodiscard]] std::stack<ScopeType>& getScopeTypeStack();
@@ -347,7 +351,12 @@ namespace ast
             const bool& sysDefined = {},
             const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel = nullptr); // 生成并压入临时变量操作数
         OpItem pushTemOpSetItem(const Pos& pos); // 生成并压入临时集合操作数
-        [[nodiscard]] OpItem newTemOpSetItem(const Pos& pos) const; // 生成临时集合操作数（不压栈）
+        [[nodiscard]] OpItem newTemSetOpItem(const Pos& pos) const; // 生成临时标签操作数（不压栈）
+        OpItem newLoopTemSetOpItem(const Pos& pos) const;
+        [[nodiscard]] static OpItem topLoopSetOpItem();
+        [[nodiscard]] static std::shared_ptr<OpItem> topLoopSetOpItemPtr();
+        [[nodiscard]] static OpItem rPopTopLoopSetOpItem();
+        static void popTopLoopSetOpItem();
         [[nodiscard]] VarID getThisFieldVarID(const Pos& pos) const;
         [[nodiscard]] std::shared_ptr<symbol::VariableSymbol> getThisFieldSymbol(
             const std::shared_ptr<symbol::ClassSymbol>& classSymbol) const;
@@ -369,7 +378,7 @@ namespace ast
         [[nodiscard]] std::pair<std::shared_ptr<symbol::TypeLabelSymbol>, std::shared_ptr<symbol::TypeLabelSymbol>>
         getTypesFromOpItem(const OpItem& opItem) const;
         [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol>
-        getDefiniteTypeLabelSymbolFromOpItem(const OpItem& opItem) const;
+        getDefiniteTypeFromOpItem(const OpItem& opItem) const;
         static std::string formatAttrField(const std::string& field); // 格式化属性字段
         void annotatePos(const Pos& pos);
         static std::shared_ptr<symbol::Symbol> getReferenceTargetSymbol(const OpItem& opItem);
@@ -397,6 +406,8 @@ namespace ast
         static std::string getExtensionName(const std::string &extensionPath);
         static std::string topProcessingExtensionPath();
         void processSymbolFlagOperation();
+        [[nodiscard]] bool checkMutable(const OpItem &opItem) const;
+        [[nodiscard]] static bool checkMutable(const std::shared_ptr<symbol::ParameterSymbol> &paramSymbol);
 
         // 将原 visitFunctionCallNode 的逻辑迁移到这里（主调度器）
         void processFunctionCallNode(const FunctionCallNode& node);
@@ -456,7 +467,8 @@ namespace ast
 
         // 最终根据 funcSymbol 类型生成调用相关的 RA 指令（builtin 与普通函数分支）
         void emitFinalCall(const std::shared_ptr<symbol::FunctionSymbol>& funcSymbol,
-                           const builtin::CallInfos& callInfos);
+                           const builtin::CallInfos& callInfos, const std::optional<OpItem>& funcOpItem = std::nullopt,
+                           const std::shared_ptr<symbol::Symbol>& funcOpItemReferencedTargetSymbol = nullptr);
 
         static void processLabelDesNode(const std::shared_ptr<ExpressionNode>& labelNode, std::vector<std::shared_ptr<LabelNode>>& desLabelNodes);
 
@@ -479,6 +491,9 @@ namespace ast
                                    std::vector<std::shared_ptr<symbol::ParameterSymbol>>& paramSymbols,
                                    std::vector<std::string>& paramIdents,
                                    std::vector<std::shared_ptr<symbol::LabelSymbol>>& paramLabelDes);
+        bool processFunctionDeclaration(const std::shared_ptr<FunctionCallNode>& node, std::vector<std::string>& paramIdents,
+                                        std::shared_ptr<symbol::FunctionSymbol>& functionSymbol, const std::vector<std::shared_ptr<LabelNode>>& labelNodes, const
+                                        std::shared_ptr<FunctionDefinitionNode>& definitionNode);
 
         void visitBracketExpressionNode(BracketExpressionNode& node) override;
 
@@ -581,6 +596,8 @@ namespace ast
         void visitVariableDefinitionNode(VariableDefinitionNode& node) override;
 
         void visitAssignmentNode(AssignmentNode& node) override;
+
+        void visitContinueNode(ContinueNode& node) override;
 
         symbol::IRCCSymbolTableManagerInterface* GetSymbolTableManagerI() override;
         void WriteRaCode(const char* raCode) override;
