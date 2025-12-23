@@ -246,18 +246,56 @@ namespace symbol {
                    std::string symbolRaValue,
                    const size_t &scopeLevel)
         : pos(std::move(pos)), type(symbolType), value(std::move(symbolValue)), raValue(std::move(symbolRaValue)),
-          scopeLevel(scopeLevel){}
+          scopeLevel(scopeLevel) {}
 
     Symbol::~Symbol() {}
 
-    bool Symbol::hasGenerated() const
+    void Symbol::generate(ast::CodeBuilder& builder)
     {
-        return isGenerated;
+        if (hasGenerated())
+        {
+            return;
+        }
+        // 先生成依赖，再生成自身
+        for (const auto& dependency : dependencies | std::views::values)
+        {
+            if (!dependency->hasGenerated())
+            {
+                dependency->generate(builder);
+            }
+        }
+        builder << definitionCode << importCode;
+        setHasGenerated();
     }
 
-    void Symbol::setGenerated()
+    bool Symbol::hasGenerated() const
     {
-        isGenerated = true;
+        return hasGenerated_;
+    }
+
+    bool Symbol::hasMarked() const
+    {
+        return !hasGenerated_;
+    }
+
+    void Symbol::setHasGenerated()
+    {
+        hasGenerated_ = true;
+    }
+
+    void Symbol::setMarked()
+    {
+        hasGenerated_ = false;
+    }
+
+    void Symbol::appendImportCode(const std::string& code)
+    {
+        importCode += code;
+    }
+
+    std::string Symbol::getImportCode() const
+    {
+        return importCode;
     }
 
     void Symbol::setDefinitionCode(const std::string& code)
@@ -2904,7 +2942,7 @@ namespace symbol {
     std::shared_ptr<Symbol> SymbolTable::insertByName(const std::shared_ptr<Symbol> &symbol, const bool& sysDefined) {
         const std::string symbolName = symbol->getVal();
         if (symbolName != "_" && table.contains(symbolName)) {
-            throw std::runtime_error("Symbol " + symbolName + " already exists");
+            throw std::runtime_error("Symbol '" + symbolName + "' already exists");
         }
         table[symbolName] = {static_cast<int>(nameIndex.size()), symbol};
         nameIndex.push_back(symbolName);
@@ -3145,6 +3183,15 @@ namespace symbol {
             [name](const auto &it)
         {
             return it.first->contains(name);
+        });
+    }
+
+    bool SymbolTableManager::containsRID(const std::string& rid) const
+    {
+        return std::ranges::any_of(scopes.rbegin(), scopes.rend(),
+            [rid](const auto &it)
+        {
+            return it.second->contains(rid);
         });
     }
 

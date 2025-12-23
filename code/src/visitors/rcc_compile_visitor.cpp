@@ -969,7 +969,7 @@ namespace ast
 
     void CompileVisitor::annotatePos(const Pos& pos)
     {
-        raCodeBuilder << ri::ANNOTATION(pos.toString());
+        codeBodyBuilder << ri::ANNOTATION(pos.toString());
     }
 
     std::shared_ptr<Symbol> CompileVisitor::getReferenceTargetSymbol(const OpItem& opItem)
@@ -1225,7 +1225,7 @@ namespace ast
                                false,
                                valueType ? valueType : anyType,
                                nullptr, referencedSymbol), sysDefined);
-        raCodeBuilder << ri::ALLOT({tempVarId.getVid()});
+        codeBodyBuilder << ri::ALLOT({tempVarId.getVid()});
         return topOpItem();
     }
 
@@ -1486,9 +1486,24 @@ namespace ast
         return symbolTable;
     }
 
-    CodeBuilder& CompileVisitor::getRaCodeBuilder()
+    CodeBuilder& CompileVisitor::getBodyCodeBuilder()
     {
-        return raCodeBuilder;
+        return codeBodyBuilder;
+    }
+
+    CodeBuilder& CompileVisitor::getHeaderCodeBuilder()
+    {
+        return headerCodeBuilder;
+    }
+
+    CodeBuilder& CompileVisitor::getExtensionGenerateCodeBuilder()
+    {
+        return extensionGenerateCodeBuilder;
+    }
+
+    CodeBuilder& CompileVisitor::getExtensionHeaderCodeBuilder()
+    {
+        return extensionHeaderCodeBuilder;
     }
 
     CodeBuilder& CompileVisitor::getAnalyzeBuilder()
@@ -1876,7 +1891,7 @@ namespace ast
         }
         if (needSaveOutputToFile)
         {
-            raCodeBuilder
+            headerCodeBuilder
                 << ri::ANNOTATION(std::vector<std::string>{
                     RIO_PROGRAM_SIGN " " RCC_VERSION,
                     "Source file: " + getAbsolutePath(processRCCPath(programTagetFilePath), getDefaultDir()) +
@@ -1891,7 +1906,10 @@ namespace ast
         try
         {
             programNode->acceptVisitor(*this);
-            const std::string raCode = raCodeBuilder.buildAll();
+            const auto& raCode = headerCodeBuilder.buildAll()
+            + extensionHeaderCodeBuilder.buildAll()
+            + extensionGenerateCodeBuilder.buildAll()
+            + codeBodyBuilder.buildAll();
             if (needSaveOutputToFile)
             {
                 if (!writeFile(compileOutputFilePath, raCode))
@@ -1912,7 +1930,7 @@ namespace ast
 
     std::string CompileVisitor::getCompileResult()
     {
-        return raCodeBuilder.buildAll();
+        return codeBodyBuilder.buildAll();
     }
 
     void CompileVisitor::visitLiteralNode(LiteralNode& node)
@@ -2035,7 +2053,7 @@ namespace ast
             funcSymbol,
             node.getLabelNodes(),
             nullptr);
-        raCodeBuilder << ri::ANNOTATION("Declared a function: " + funcSymbol->getVal());
+        codeBodyBuilder << ri::ANNOTATION("Declared a function: " + funcSymbol->getVal());
     }
 
     void CompileVisitor::visitConstructorDefinitionNode(ConstructorDefinitionNode& node)
@@ -2143,10 +2161,10 @@ namespace ast
             << ri::ALLOT({thisFieldSymbol->getRaVal()}).toRACode()
             << ri::TP_NEW(classSymbol->getRaVal(), thisFieldSymbol->getRaVal()).toRACode();
         // 执行构造函数体
-        raCodeBuilder.enterScope();
+        codeBodyBuilder.enterScope();
         node->getBodyNode()->acceptVisitor(*this);
         std::string ctorBody{};
-        raCodeBuilder.buildCurScope(ctorBody).exitScope();
+        codeBodyBuilder.buildCurScope(ctorBody).exitScope();
         // 构造函数返回 this
         code
             << ctorBody
@@ -2197,13 +2215,13 @@ namespace ast
                 }
                 functionSymbol->setScopeLevel(curScopeLevel());
                 // symbolTable.insert(functionSymbol, false);
-                raCodeBuilder.enterScope();
+                codeBodyBuilder.enterScope();
                 functionSymbol->getDefinitionNode()->acceptVisitor(*this);
                 std::string methodCode{};
-                raCodeBuilder
+                codeBodyBuilder
                     .buildCurScope(methodCode)
                     .exitScope();
-                raCodeBuilder
+                codeBodyBuilder
                     << ri::ANNOTATION(member->getPos().toString()).toRACode()
                     << methodCode;
                 defaultValue = member->getRaVal();
@@ -2211,13 +2229,13 @@ namespace ast
             annotatePos(member->getPos());
             if (memberType == LifeCycleLabel::INSTANCE)
             {
-                raCodeBuilder
+                codeBodyBuilder
                     << ri::TP_ADD_INST_FIELD(classIdent, formatAttrField(member->getVal()),
                                              defaultValue.has_value() ? defaultValue.value() : "null");
             }
             else
             {
-                raCodeBuilder
+                codeBodyBuilder
                     << ri::TP_ADD_TP_FIELD(classIdent, formatAttrField(member->getVal()),
                                            defaultValue.has_value() ? defaultValue.value() : "null");
             }
@@ -2227,9 +2245,9 @@ namespace ast
     void CompileVisitor::visitClassDefinitionNode(ClassDefinitionNode& node)
     {
         const auto& classNameNode = std::static_pointer_cast<IdentifierNode>(node.getNameNode());
-        raCodeBuilder.enterScope();
+        codeBodyBuilder.enterScope();
         classNameNode->acceptVisitor(*this);
-        raCodeBuilder.exitScope();
+        codeBodyBuilder.exitScope();
         const auto& classLabels = processLabelNodes(classNameNode->getLabels());
         const auto& classNameItem = rPopOpItem();
         const auto& classSymbol = std::make_shared<ClassSymbol>(
@@ -2266,10 +2284,10 @@ namespace ast
             case NodeType::PREFIX:
                 {
                     enterScope(ScopeType::TEMPORARY);
-                    raCodeBuilder.enterScope();
+                    codeBodyBuilder.enterScope();
                     member->acceptVisitor(*this);
                     exitScope(ScopeType::TEMPORARY);
-                    raCodeBuilder.exitScope();
+                    codeBodyBuilder.exitScope();
                 }
                 break;
             default: pass(
@@ -2279,14 +2297,14 @@ namespace ast
         classSymbol->setCollectionFinished();
         // 编译类和类的成员
         const auto& classIdent = classSymbol->getRaVal();
-        raCodeBuilder.enterScope();
+        codeBodyBuilder.enterScope();
         if (const auto& parentClassSymbol = classSymbol->getDirectlyInheritedClassSymbol())
         {
-            raCodeBuilder << ri::TP_DEF(classIdent, parentClassSymbol->getRaVal());
+            codeBodyBuilder << ri::TP_DEF(classIdent, parentClassSymbol->getRaVal());
         }
         else
         {
-            raCodeBuilder << ri::TP_DEF(classIdent);
+            codeBodyBuilder << ri::TP_DEF(classIdent);
         }
         enterScope(ScopeType::CLASS);
         compileClassMembers(classIdent, classSymbol->getStaticMembers(), LifeCycleLabel::STATIC);
@@ -2296,11 +2314,11 @@ namespace ast
             const auto& ctorCode = compileConstructorNode(
                 std::static_pointer_cast<FunctionSymbol>(ctor));
             annotatePos(ctor->getPos());
-            raCodeBuilder << ctorCode;
+            codeBodyBuilder << ctorCode;
         }
         exitScope(ScopeType::CLASS);
-        const auto& classDefCode = raCodeBuilder.buildCurScopeAndExit();
-        raCodeBuilder << classDefCode;
+        const auto& classDefCode = codeBodyBuilder.buildCurScopeAndExit();
+        codeBodyBuilder << classDefCode;
         popProcessingSymbol();
         classSymbol->setDefaultVisitPermission();
         classSymbol->setDefinitionCode(classDefCode);
@@ -2578,38 +2596,38 @@ namespace ast
                                                                {});
                 }
                 pushTemOpVarItemWithRecord(node.getPos(), resultValueType);
-                raCodeBuilder << ri::ADD(raVal(left, true), raVal(right, true), topOpRaVal());
+                codeBodyBuilder << ri::ADD(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::DIVIDE:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::DIV(raVal(left, true), raVal(right, true), topOpRaVal());
+                codeBodyBuilder << ri::DIV(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::MINUS:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::OPP(raVal(right, true), topOpRaVal())
+                codeBodyBuilder << ri::OPP(raVal(right, true), topOpRaVal())
                     << ri::ADD(raVal(left, true), topOpRaVal(), topOpRaVal());
             }
             break;
         case NodeType::MULTIPLY:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::MUL(raVal(left, true), raVal(right, true), topOpRaVal());
+                codeBodyBuilder << ri::MUL(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::MODULO:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::MOD(raVal(left, true), raVal(right, true), topOpRaVal());
+                codeBodyBuilder << ri::MOD(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::PAIR:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder << ri::PAIR_SET(raVal(left, true), raVal(right, true), topOpRaVal());
+                codeBodyBuilder << ri::PAIR_SET(raVal(left, true), raVal(right, true), topOpRaVal());
             }
             break;
         case NodeType::COMPARE:
@@ -2619,7 +2637,7 @@ namespace ast
                 if (const auto& it = RELATION_MAP.find(node.getOpToken().getValue());
                     it != RELATION_MAP.end())
                 {
-                    raCodeBuilder << ri::CMP(raVal(left, true), raVal(right, true), topOpRaVal())
+                    codeBodyBuilder << ri::CMP(raVal(left, true), raVal(right, true), topOpRaVal())
                         << ri::CREL(topOpRaVal(), it->second, topOpRaVal());
                 }
                 else
@@ -2637,29 +2655,29 @@ namespace ast
             {
                 if (node.getOpToken().getValue() == "+=")
                 {
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::ADD(raVal(left, true), raVal(right, true), raVal(left, true));
                 }
                 else if (node.getOpToken().getValue() == "-=")
                 {
                     pushTemOpVarItemWithRecord(node.getPos(), rightValueType, right.getReferencedSymbol());
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::OPP(raVal(right, true), topOpRaVal())
                         << ri::ADD(raVal(left, true), rPopOpItemRaVal(), raVal(left, true));
                 }
                 else if (node.getOpToken().getValue() == "*=")
                 {
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::MUL(raVal(left, true), raVal(right, true), raVal(left, true));
                 }
                 else if (node.getOpToken().getValue() == "/=")
                 {
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::DIV(raVal(left, true), raVal(right, true), raVal(left, true));
                 }
                 else if (node.getOpToken().getValue() == "%=")
                 {
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::MOD(raVal(left, true), raVal(right, true), raVal(left, true));
                 }
             }
@@ -2677,7 +2695,7 @@ namespace ast
         case NodeType::ATTRIBUTE_EXPRESSION:
             {
                 if (left.getType() == OpItemType::LITERAL_VALUE &&
-    right.getType() == OpItemType::LITERAL_VALUE)
+                    right.getType() == OpItemType::LITERAL_VALUE)
                 {
                     const auto& floatLiteral = left.getVal() + "." + right.getVal();
                     pushOpItem(
@@ -2740,6 +2758,11 @@ namespace ast
                 std::shared_ptr<Symbol> attrSymbol;
                 const SymbolType memberType = memberSymbol->getType();
 
+                if (memberSymbol->hasMarked())
+                {
+                    memberSymbol->generate(extensionGenerateCodeBuilder);
+                }
+
                 switch (memberType)
                 {
                 case SymbolType::VARIABLE:
@@ -2758,7 +2781,7 @@ namespace ast
                             TypeLabelSymbol::clasTypeSymbol(getUnknownPos(), curScopeLevel()),
                             memberSymbol,
                             true);
-                        raCodeBuilder
+                        codeBodyBuilder
                         << ri::PUT(memberSymbol->getRaVal(), topOpRaVal());
                         break;
                     }
@@ -2809,7 +2832,7 @@ namespace ast
 
                     // 生成字段访问的RA代码
                     const std::string escapedMemberName = "\"" + StringManager::escape(memberSymbol->getVal()) + "\"";
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::ALLOT({attrSymbol->getRaVal()})
                         << ri::TP_GET_FIELD(raVal(left, true), escapedMemberName, topOpRaVal());
                 }
@@ -2834,7 +2857,7 @@ namespace ast
             resultOpItem.setPos(node.getRightNode()->getPos());
             pushTemOpVarItemWithRecord(node.getPos(), TypeLabelSymbol::boolTypeSymbol(node.getPos(), curScopeLevel()),
                 nullptr, true, nullptr);
-            raCodeBuilder
+            codeBodyBuilder
             << ri::OPP(raVal(resultOpItem, true), topOpRaVal());
             return;
         }
@@ -2863,12 +2886,12 @@ namespace ast
         {
         case NodeType::INCREMENT:
             {
-                raCodeBuilder << ri::ADD(leftVal, "1", leftVal);
+                codeBodyBuilder << ri::ADD(leftVal, "1", leftVal);
             }
             break;
         case NodeType::DECREMENT:
             {
-                raCodeBuilder << ri::ADD(leftVal, "-1", leftVal);
+                codeBodyBuilder << ri::ADD(leftVal, "-1", leftVal);
             }
             break;
         default:
@@ -2901,7 +2924,7 @@ namespace ast
             pushTemOpVarItemWithRecord(pos, seriesTypeLabel,
                 nullptr, true);
             const auto& tempOpItemRaVal = topOpRaVal();
-            raCodeBuilder
+            codeBodyBuilder
             << ri::TP_SET(builtinTypeToString(BuiltinType::B_SERIES), tempOpItemRaVal)
             << (itemIds.empty()
             ? ri::ANNOTATION("Empty series is no need to used `ITER_APND` RI to set value.").toRACode()
@@ -3221,7 +3244,7 @@ namespace ast
     void CompileVisitor::visitFunctionDefinitionNode(FunctionDefinitionNode& node)
     {
         enterScope(ScopeType::FUNCTION);
-        raCodeBuilder.enterScope();
+        codeBodyBuilder.enterScope();
         std::vector<std::string> paramIdents;
         std::shared_ptr<FunctionSymbol> functionSymbol;
         if (processFunctionDeclaration(
@@ -3229,11 +3252,11 @@ namespace ast
             paramIdents, functionSymbol, node.getLabelNodes(),
             std::make_shared<FunctionDefinitionNode>(node)))
         {
-            raCodeBuilder << raCodeBuilder.buildCurScopeAndExit();
+            codeBodyBuilder << codeBodyBuilder.buildCurScopeAndExit();
             return;
         }
         pushNewProcessingSymbol(functionSymbol);
-        raCodeBuilder << (functionSymbol->hasReturnValue()
+        codeBodyBuilder << (functionSymbol->hasReturnValue()
                               ? ri::FUNI(functionSymbol->getRaVal(), paramIdents).toRACode()
                               : ri::FUNC(functionSymbol->getRaVal(), paramIdents).toRACode());
         node.getBodyNode()->acceptVisitor(*this);
@@ -3253,12 +3276,12 @@ namespace ast
                                                           " the `ret` keyword must be used to return a value that matches the return type."
                                                       });
             }
-            raCodeBuilder << ri::RET("null");
+            codeBodyBuilder << ri::RET("null");
         }
-        raCodeBuilder << ri::END(functionSymbol->getRaVal());
+        codeBodyBuilder << ri::END(functionSymbol->getRaVal());
         exitScope(ScopeType::FUNCTION);
-        const auto& funcDefinition = raCodeBuilder.buildCurScopeAndExit();
-        raCodeBuilder << funcDefinition;
+        const auto& funcDefinition = codeBodyBuilder.buildCurScopeAndExit();
+        codeBodyBuilder << funcDefinition;
         functionSymbol->setDefinitionCode(funcDefinition);
         popProcessingSymbol();
     }
@@ -3434,16 +3457,16 @@ namespace ast
 
     void CompileVisitor::visitBranchNode(BranchNode& node)
     {
-        raCodeBuilder
+        codeBodyBuilder
             << ri::ANNOTATION(node.getPos().toString());
         const auto& endSetLabel = rPopOpItemRaVal();
         node.getConditionNode()->acceptVisitor(*this);
         const auto& conditionVal = rPopOpItemRaVal();
         const auto& skipSetLabel = raVal(newTemSetOpItem(node.getPos()));
-        raCodeBuilder
+        codeBodyBuilder
             << ri::JF(conditionVal, skipSetLabel);
         node.getBodyNode()->acceptVisitor(*this);
-        raCodeBuilder
+        codeBodyBuilder
             << ri::JMP(endSetLabel)
             << ri::SET(skipSetLabel);
     }
@@ -3468,7 +3491,7 @@ namespace ast
             symbolTable.currentNameMapScope() = *std::static_pointer_cast<SymbolTable>(nameMapScopeRecord->copySelf());
             symbolTable.currentRIDMapScope() = *std::static_pointer_cast<SymbolTable>(ridMapScopeRecord->copySelf());
         }
-        raCodeBuilder << ri::SET(endSetLabel->getRaVal(symbolTable));
+        codeBodyBuilder << ri::SET(endSetLabel->getRaVal(symbolTable));
     }
 
     void CompileVisitor::visitLoopNode(LoopNode& node)
@@ -3480,12 +3503,12 @@ namespace ast
         case LoopType::WHILE:
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder
+                codeBodyBuilder
                 << ri::CMP(RCC_TRUE, RCC_FALSE, topOpRaVal())
                 << ri::UNTIL(rPopOpItemRaVal(), RCC_REL_RE);
                 node.getConditionNode()->acceptVisitor(*this);
                 const auto& executeLoopLabel = newTemSetOpItem(node.getPos());
-                raCodeBuilder
+                codeBodyBuilder
                 << ri::JT(rPopOpItemRaVal(), raVal(executeLoopLabel))
                 << ri::EXIT("UNTIL")
                 << ri::SET(raVal(executeLoopLabel));
@@ -3493,7 +3516,7 @@ namespace ast
                 const auto& continueLabel = newLoopTemSetOpItem(node.getPos());
                 node.getBodyNode()->acceptVisitor(*this);
                 exitScope(ScopeType::LOOP);
-                raCodeBuilder
+                codeBodyBuilder
                 << ri::SET(raVal(continueLabel))
                 << ri::END("UNTIL");
                 popTopLoopSetOpItem();
@@ -3511,23 +3534,23 @@ namespace ast
         enterLoopScope();
         node.getInitNode()->acceptVisitor(*this);
         pushTemOpVarItemWithRecord(node.getPos());
-        raCodeBuilder
+        codeBodyBuilder
             << ri::CMP(RCC_TRUE, RCC_FALSE, topOpRaVal())
             << ri::UNTIL(rPopOpItemRaVal(), RCC_REL_RE);
         node.getConditionNode()->acceptVisitor(*this);
         const auto& executeLoopLabel = newTemSetOpItem(node.getPos());
-        raCodeBuilder
+        codeBodyBuilder
             << ri::JT(rPopOpItemRaVal(), raVal(executeLoopLabel))
             << ri::EXIT("UNTIL")
             << ri::SET(raVal(executeLoopLabel));
         enterScope(ScopeType::LOOP);
         const auto& continueLabel = newLoopTemSetOpItem(node.getPos());
         node.getBodyNode()->acceptVisitor(*this);
-        raCodeBuilder
+        codeBodyBuilder
         << ri::SET(raVal(continueLabel));
         exitScope(ScopeType::LOOP);
         node.getUpdateNode()->acceptVisitor(*this);
-        raCodeBuilder
+        codeBodyBuilder
         << ri::END("UNTIL");
         exitLoopScope();
         popTopLoopSetOpItem();
@@ -3557,7 +3580,7 @@ namespace ast
             }
             funcSymbol->setBuiltInType(TypeOfBuiltin::BUILTIN);
         }
-        raCodeBuilder
+        codeBodyBuilder
             << ri::ANNOTATION("The implementation is encapsulated.");
     }
 
@@ -3597,7 +3620,7 @@ namespace ast
                     }
                 );
             }
-            raCodeBuilder << ri::RET("null");
+            codeBodyBuilder << ri::RET("null");
             return;
         }
         if (!funcSymbol->hasReturnValue() && node.getReturnNode())
@@ -3643,12 +3666,12 @@ namespace ast
                 );
             }
             processTypeAutoChange(funcSymbol, returnVal);
-            raCodeBuilder
+            codeBodyBuilder
                 << ri::RET(returnVal.getRaVal(symbolTable));
         }
         else
         {
-            raCodeBuilder << ri::RET();
+            codeBodyBuilder << ri::RET();
         }
     }
 
@@ -3670,13 +3693,13 @@ namespace ast
                 }
             );
         }
-        raCodeBuilder << ri::EXIT("LOOP");
+        codeBodyBuilder << ri::EXIT("LOOP");
     }
 
     void CompileVisitor::visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode& node)
     {
         enterScope(ScopeType::ANONYMOUS);
-        raCodeBuilder.enterScope();
+        codeBodyBuilder.enterScope();
         std::vector<std::shared_ptr<ParameterSymbol>> paramSymbols{};
         std::vector<std::string> paramIdents{};
         std::vector<std::shared_ptr<LabelSymbol>> paramLabelDes{};
@@ -3715,7 +3738,7 @@ namespace ast
             functionSymbol->setReturnType(getBuiltinTypeSymbol(functionSymbol->getPos(), BuiltinType::B_ANY));
         }
         pushNewProcessingSymbol(functionSymbol);
-        raCodeBuilder << (functionSymbol->hasReturnValue()
+        codeBodyBuilder << (functionSymbol->hasReturnValue()
                               ? ri::FUNI(functionSymbol->getRaVal(), paramIdents).toRACode()
                               : ri::FUNC(functionSymbol->getRaVal(), paramIdents).toRACode());
         node.getBodyNode()->acceptVisitor(*this);
@@ -3737,12 +3760,12 @@ namespace ast
                     }
                 );
             }
-            raCodeBuilder << ri::RET("null");
+            codeBodyBuilder << ri::RET("null");
         }
-        raCodeBuilder << ri::END(functionSymbol->getRaVal());
+        codeBodyBuilder << ri::END(functionSymbol->getRaVal());
         exitScope(ScopeType::ANONYMOUS);
-        const auto& annoFuncDefinition = raCodeBuilder.buildCurScopeAndExit();
-        raCodeBuilder << annoFuncDefinition;
+        const auto& annoFuncDefinition = codeBodyBuilder.buildCurScopeAndExit();
+        codeBodyBuilder << annoFuncDefinition;
         functionSymbol->setDefinitionCode(annoFuncDefinition);
         popProcessingSymbol();
         pushIdentItem(funcVarId, functionSymbol->getSignature(),
@@ -3778,7 +3801,7 @@ namespace ast
             dictItems.push_back(rPopOpItemRaVal());
         }
         pushTemOpVarItemWithRecord(node.getPos());
-        raCodeBuilder << ri::TP_SET(TypeLabelSymbol::dictTypeSymbol(
+        codeBodyBuilder << ri::TP_SET(TypeLabelSymbol::dictTypeSymbol(
                                         node.getPos(), symbolTable.curScopeLevel())->getRaVal(), topOpRaVal())
             << ri::ITER_APND(dictItems, topOpRaVal());
         // FixMe: to collect symbol dependencies and definition code
@@ -3796,7 +3819,7 @@ namespace ast
         const auto& listType = TypeLabelSymbol::listTypeSymbol(
             node.getPos(), symbolTable.curScopeLevel());
         pushTemOpVarItemWithRecord(node.getPos(), listType);
-        raCodeBuilder << ri::TP_SET(listType->getRaVal(),
+        codeBodyBuilder << ri::TP_SET(listType->getRaVal(),
                                     topOpRaVal())
             << ri::ITER_APND(listItems, topOpRaVal());
         // FixMe: to collect symbol dependencies and definition code
@@ -3851,14 +3874,14 @@ namespace ast
             if (targetValueType->is("any") || targetValueType->is("nul"))
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder
+                codeBodyBuilder
                     << ri::ITER_GET(targetItem.getRaVal(symbolTable),
                                     indexItem.getRaVal(symbolTable), topOpRaVal());
             }
             else if (targetValueType->isIterable())
             {
                 pushTemOpVarItemWithRecord(node.getPos());
-                raCodeBuilder
+                codeBodyBuilder
                     << ri::ITER_GET(targetItem.getRaVal(symbolTable),
                                     indexItem.getRaVal(symbolTable), topOpRaVal());
             }
@@ -3880,7 +3903,7 @@ namespace ast
         else if (targetTypeLabel->isIterable())
         {
             pushTemOpVarItemWithRecord(node.getPos());
-            raCodeBuilder
+            codeBodyBuilder
                 << ri::ITER_GET(targetItem.getRaVal(symbolTable),
                                 indexItem.getRaVal(symbolTable), topOpRaVal());
         }
@@ -3903,7 +3926,7 @@ namespace ast
     void CompileVisitor::visitTryNode(TryNode& node)
     {
         enterScope(ScopeType::TRY);
-        raCodeBuilder
+        codeBodyBuilder
         << ri::ATMP();
         node.getTryBody()->acceptVisitor(*this);
         for (const auto& [catchParam,
@@ -3919,10 +3942,10 @@ namespace ast
                 ParamType::PARAM_POSITIONAL, catchParam->getPos(), catchParamVarID.getNameField(),
                 catchParamVarID.getVid(), labels, std::nullopt, curScopeLevel());
             symbolTable.insert(catchParamSymbol, false);
-            raCodeBuilder
+            codeBodyBuilder
             << ri::DETECT(catchParamSymbol->getTypeLabel()->getRaVal(), catchParamSymbol->getRaVal());
             catchBody->acceptVisitor(*this);
-            raCodeBuilder
+            codeBodyBuilder
             << ri::END("DETECT");
             exitScope(ScopeType::CATCH);
         }
@@ -3932,7 +3955,7 @@ namespace ast
             finallyBody->acceptVisitor(*this);
             exitScope(ScopeType::FINALLY);
         }
-        raCodeBuilder
+        codeBodyBuilder
         << ri::END("ATMP");
         exitScope(ScopeType::TRY);
     }
@@ -3942,7 +3965,7 @@ namespace ast
         node.getThrowExpression()->acceptVisitor(*this);
         const auto& throwExpression = rPopOpItem();
         checkExists(throwExpression);
-        raCodeBuilder
+        codeBodyBuilder
         << ri::EXPOSE(raVal(throwExpression));
     }
 
@@ -3987,13 +4010,13 @@ namespace ast
         }
 
         // 先为所有变量分配内存
-        raCodeBuilder << ri::ALLOT(vids);
+        codeBodyBuilder << ri::ALLOT(vids);
 
         // 第二遍：处理初始化值（此时所有变量都已定义，可以相互引用）
         const auto& varDefs = node.getVarDefs();
         for (size_t i = 0; i < varDefs.size(); i++)
         {
-            raCodeBuilder.enterScope(); // 收集每个变量定义的代码
+            codeBodyBuilder.enterScope(); // 收集每个变量定义的代码
             const auto& varDef = varDefs[i];
             const auto& vid = vids[i];
             const auto& [_, symbol] = symbolTable.findVariableSymbolByName(varIDs[i].getVal(), true);
@@ -4011,7 +4034,7 @@ namespace ast
             // 设置类型信息（仅非自定义类型）
             if (!varSymbol->getTypeLabel()->isCustomType())
             {
-                raCodeBuilder << ri::TP_SET(varSymbol->getTypeLabel()->getRaVal(), vid);
+                codeBodyBuilder << ri::TP_SET(varSymbol->getTypeLabel()->getRaVal(), vid);
             }
 
             // 处理初始化值
@@ -4053,13 +4076,13 @@ namespace ast
                 varSymbol->setReferencedSymbol(getReferenceTargetSymbol(valueOpItem));
 
                 // 生成赋值代码
-                raCodeBuilder << (isValueMutable
+                codeBodyBuilder << (isValueMutable
                                       ? ri::PUT(raValue, vid).toRACode()
                                       : ri::COPY(raValue, vid).toRACode());
             }
 
-            const auto& definitionCode = raCodeBuilder.buildCurScopeAndExit();
-            raCodeBuilder << definitionCode;
+            const auto& definitionCode = codeBodyBuilder.buildCurScopeAndExit();
+            codeBodyBuilder << definitionCode;
             varSymbol->setDefinitionCode(
                 ri::ALLOT({vid}).toRACode() + definitionCode);
         }
@@ -4080,7 +4103,7 @@ namespace ast
                 identSymbol->reSetLabels(labels);
                 if (!typeLabelRecord->equalWith(identSymbol->getTypeLabel()))
                 {
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::TP_SET(identSymbol->getTypeLabel()->getRaVal(), identSymbol->getRaVal());
                 }
             }
@@ -4138,13 +4161,13 @@ namespace ast
             }
             if (identItem.getBelonging())
             {
-                raCodeBuilder
+                codeBodyBuilder
                     << ri::TP_SET_FIELD(identItem.getBelonging()->getRaVal(),
                                         formatAttrField(identItem.getBelongAttr()), value);
             }
             else
             {
-                raCodeBuilder << (isValueMultable ?
+                codeBodyBuilder << (isValueMultable ?
                     ri::PUT(value, varSymbol->getRaVal()).toRACode() :
                     ri::COPY(value, varSymbol->getRaVal()).toRACode());
             }
@@ -4168,7 +4191,7 @@ namespace ast
     void CompileVisitor::visitContinueNode(ContinueNode& node)
     {
         const auto& setLabel = this->topLoopSetOpItem();
-        raCodeBuilder
+        codeBodyBuilder
         << ri::JMP(raVal(setLabel));
     }
 
@@ -4179,7 +4202,7 @@ namespace ast
 
     void CompileVisitor::WriteRaCode(const char* raCode)
     {
-        raCodeBuilder << raCode;
+        codeBodyBuilder << raCode;
     }
 
     const char* CompileVisitor::GetProgramEntryFilePath() const

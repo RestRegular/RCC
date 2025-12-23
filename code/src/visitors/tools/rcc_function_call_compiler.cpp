@@ -481,13 +481,13 @@ namespace ast
             funcType->is("func"))
         {
             // 当被调用对象本身是 func 类型（类型标签函数），直接 CALL
-            raCodeBuilder << ri::CALL(funcNameSymbol->getRaVal(), halfProcessedArgs);
+            codeBodyBuilder << ri::CALL(funcNameSymbol->getRaVal(), halfProcessedArgs);
         }
         else if (funcType->is("funi"))
         {
             // funi 类型，调用并推入临时以获得返回值
             pushTemOpVarItemWithRecord(node.getPos(), getBuiltinTypeSymbol(getUnknownPos(), BuiltinType::B_ANY));
-            raCodeBuilder << ri::IVOK(funcNameSymbol->getRaVal(), halfProcessedArgs, topOpRaVal());
+            codeBodyBuilder << ri::IVOK(funcNameSymbol->getRaVal(), halfProcessedArgs, topOpRaVal());
         }
         else if (funcType->is("any"))
         {
@@ -656,7 +656,7 @@ namespace ast
                                     pushTemOpVarItemWithRecord(getUnknownPos(),
                                                                TypeLabelSymbol::listTypeSymbol(
                                                                    getUnknownPos(), curScopeLevel()));
-                                    raCodeBuilder
+                                    codeBodyBuilder
                                         << ri::COPY(raVal(posArgs.front(), true), topOpRaVal())
                                         << ri::TP_SET(topOpItem().getValueType()->getRaVal(), topOpRaVal());
                                 }
@@ -686,13 +686,13 @@ namespace ast
                 {
                     pushTemOpVarItemWithRecord(callPos, nullptr,
                         nullptr, true);
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::TP_SET(
                             TypeLabelSymbol::listTypeSymbol(callPos, symbolTable.curScopeLevel())->getRaVal(),
                             topOpRaVal());
                     if (!items.empty())
                     {
-                        raCodeBuilder << ri::ITER_APND(items, topOpRaVal());
+                        codeBodyBuilder << ri::ITER_APND(items, topOpRaVal());
                     }
                 }
                 fullProcessedArgs.push_back(rPopOpItemRaVal());
@@ -723,7 +723,7 @@ namespace ast
                     // }
                     pushTemOpVarItemWithRecord(callPos, nullptr,
                         nullptr, true);
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::PAIR_SET(StringManager::toStringFormat(name), opItem.getRaVal(symbolTable),
                                         topOpRaVal());
                     items.push_back(rPopOpItemRaVal());
@@ -733,7 +733,7 @@ namespace ast
                     // FixMe: 如果还剩一个 series 参数，将其赋值到此参数
                     pushTemOpVarItemWithRecord(callPos, nullptr,
                         nullptr, true);
-                    raCodeBuilder
+                    codeBodyBuilder
                         << ri::PAIR_SET(StringManager::toStringFormat("kwargs"), raVal(posArgs.front()),
                                         topOpRaVal());
                     items.push_back(rPopOpItemRaVal());
@@ -742,13 +742,13 @@ namespace ast
                 namedArgs.clear();
                 pushTemOpVarItemWithRecord(callPos, nullptr,
                     nullptr, true);
-                raCodeBuilder
+                codeBodyBuilder
                     << ri::TP_SET(
                         TypeLabelSymbol::dictTypeSymbol(callPos, symbolTable.curScopeLevel())->getRaVal(),
                         topOpRaVal());
                 if (!items.empty())
                 {
-                    raCodeBuilder << ri::ITER_APND(items, topOpRaVal());
+                    codeBodyBuilder << ri::ITER_APND(items, topOpRaVal());
                 }
                 fullProcessedArgs.push_back(rPopOpItemRaVal());
             }
@@ -800,7 +800,7 @@ namespace ast
             auto callInfosCopy = callInfos;
             callInfosCopy.processedArgs = callInfos.processedArgs;
             const auto& raCode = callBuiltinFunction(*this, funcSymbol->getVal(), callInfosCopy);
-            raCodeBuilder << raCode;
+            codeBodyBuilder << raCode;
         }
         else
         {
@@ -813,12 +813,12 @@ namespace ast
                     returnType = funcSymbol->getClassSymbol()->getClassTypeLabelSymbol(callInfos.callPos);
                 }
                 pushTemOpVarItemWithRecord(callInfos.callPos, returnType, nullptr, true, returnType);
-                raCodeBuilder << ri::IVOK(funcOpItem.has_value() && funcOpItemReferencedTargetSymbol && funcOpItemReferencedTargetSymbol->equalWith(funcSymbol) ?
+                codeBodyBuilder << ri::IVOK(funcOpItem.has_value() && funcOpItemReferencedTargetSymbol && funcOpItemReferencedTargetSymbol->equalWith(funcSymbol) ?
                     raVal(funcOpItem.value()) : funcSymbol->getRaVal(), callInfos.processedArgs, topOpRaVal());
             }
             else
             {
-                raCodeBuilder << ri::CALL(funcOpItem.has_value() && funcOpItemReferencedTargetSymbol && funcOpItemReferencedTargetSymbol->equalWith(funcSymbol) ?
+                codeBodyBuilder << ri::CALL(funcOpItem.has_value() && funcOpItemReferencedTargetSymbol && funcOpItemReferencedTargetSymbol->equalWith(funcSymbol) ?
                     raVal(funcOpItem.value()) : funcSymbol->getRaVal(), callInfos.processedArgs);
             }
         }

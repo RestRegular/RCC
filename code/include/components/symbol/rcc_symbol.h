@@ -10,8 +10,8 @@
 #include <ranges>
 #include <optional>
 
-#include "../../analyzer/rcc_ast_components.h"
 #include "../../lib/rcc_utils.h"
+#include "../../analyzer/rcc_ast_components.h"
 #include "../../../declarations/components/symbol/rcc_symbol_dec.h"
 #include "../../interfaces/rcc_symbol_interface.h"
 
@@ -30,8 +30,12 @@ namespace symbol {
         std::unordered_map<std::string, std::shared_ptr<Symbol>> dependencies {};
         // 符号定义的代码
         std::string definitionCode {};
+        // 导入的代码
+        std::string importCode {};
         // 是否编译生成了指令
-        bool isGenerated = false;
+        // 一般情况下，只要生成了符号，则认为已经编译生成指令
+        // 在导入扩展的时候会将符号标记为为生成，在符号真正调用时再生成指令
+        bool hasGenerated_ = true;
     public:
         Symbol(utils::Pos pos,
             const SymbolType &symbolType,
@@ -39,8 +43,13 @@ namespace symbol {
             std::string symbolRaValue,
             const size_t &scopeLevel);
         ~Symbol() override;
+        void generate(ast::CodeBuilder &builder);
         [[nodiscard]] bool hasGenerated() const;
-        void setGenerated();
+        [[nodiscard]] bool hasMarked() const;
+        void setHasGenerated();
+        void setMarked();
+        void appendImportCode(const std::string &code);
+        [[nodiscard]] std::string getImportCode() const;
         void setDefinitionCode(const std::string &code);
         [[nodiscard]] std::string getDefinitionCode() const;
         void setDependencies(const std::unordered_map<std::string, std::shared_ptr<Symbol>>& dependencies_);
@@ -739,6 +748,7 @@ namespace symbol {
         [[nodiscard]] std::pair<long long int, std::shared_ptr<Symbol>> findByRID(const std::string& rid) const;
         [[nodiscard]] std::shared_ptr<Symbol> findInCurrentScope(const std::string &name) const;
         [[nodiscard]] bool containsName(const std::string &name) const;
+        [[nodiscard]] bool containsRID(const std::string &rid) const;
         [[nodiscard]] bool currentScopeContains(const std::string &name) const;
         [[nodiscard]] size_t curScopeLevel() const;
         [[nodiscard]] std::shared_ptr<Object> copySelf() const override;

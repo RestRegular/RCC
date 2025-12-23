@@ -33,7 +33,7 @@ namespace builtin
             if (const auto &[level, symbol] = visitor.getSymbolTable().findByName("this");
                 level >= 0 && symbol && symbol->is(symbol::SymbolType::VARIABLE))
             {
-                visitor.getRaCodeBuilder().enterScope();
+                visitor.getBodyCodeBuilder().enterScope();
                 const auto &thisFieldSymbol = std::static_pointer_cast<symbol::VariableSymbol>(symbol);
                 CallInfos ctorCallInfos {};
                 visitor.classifyFuncArgs(*callInfos.callNode, ctorCallInfos.posArgOpItems, ctorCallInfos.namedArgOpItems,
@@ -42,7 +42,7 @@ namespace builtin
                                           ctorCallInfos.namedArgOpItems, ctorCallInfos.orderedArgOpItems,
                                           ctorCallInfos.processedArgs, callInfos.callPos);
                 visitor.emitFinalCall(ctorSymbol, ctorCallInfos);
-                visitor.getRaCodeBuilder().buildCurScope(raCode).exitScope();
+                visitor.getBodyCodeBuilder().buildCurScope(raCode).exitScope();
                 raCode += ri::PUT(visitor.rPopOpItemRaVal(), thisFieldSymbol->getRaVal()).toRACode()
                 + ri::TP_DERIVE(thisFieldSymbol->getRaVal(), processingSymbol->getRaVal()).toRACode();
             }

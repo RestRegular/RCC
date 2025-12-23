@@ -212,8 +212,13 @@ namespace ast
         static std::stack<std::string> processingExtensionStack;
 
         // ========================== 成员属性 ==========================
-        CodeBuilder raCodeBuilder {}; // RA代码构建器
+        CodeBuilder headerCodeBuilder {}; // 头部信息构建器
+        CodeBuilder extensionGenerateCodeBuilder {}; // 扩展生成代码构建器
+        CodeBuilder extensionHeaderCodeBuilder {}; // 扩展头代码构建器
+        CodeBuilder codeBodyBuilder {}; // RA代码构建器：主代码构建器
+
         CodeBuilder analyzeBuilder {}; // 分析结果构建器
+
         symbol::SymbolTableManager symbolTable{}; // 符号表管理器
 
         std::string programEntryFilePath; // 程序入口文件路径
@@ -240,7 +245,10 @@ namespace ast
 
         // ====================== getter & setter =====================
         [[nodiscard]] symbol::SymbolTableManager& getSymbolTable();
-        [[nodiscard]] CodeBuilder& getRaCodeBuilder();
+        [[nodiscard]] CodeBuilder& getBodyCodeBuilder();
+        [[nodiscard]] CodeBuilder& getHeaderCodeBuilder();
+        [[nodiscard]] CodeBuilder& getExtensionGenerateCodeBuilder();
+        [[nodiscard]] CodeBuilder& getExtensionHeaderCodeBuilder();
         [[nodiscard]] CodeBuilder& getAnalyzeBuilder();
         [[nodiscard]] std::stack<std::shared_ptr<symbol::Symbol>>& getProcessingSymbolStack();
         [[nodiscard]] std::stack<std::shared_ptr<OpItem>>& getOpItemStack();

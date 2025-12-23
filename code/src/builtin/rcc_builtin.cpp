@@ -33,7 +33,7 @@ namespace builtin
                             symbol::FunctionType::FUNCTION, nullptr);
             visitor.getSymbolTable().insert(funcSymbol, true);
             if (isProgramEntry) {
-                visitor.getRaCodeBuilder()
+                visitor.getHeaderCodeBuilder()
                << (pureBuiltinFunc.hasReturnValue() ?
                ri::FUNI(funcId.getVid(), {}).toRACode() :
                ri::FUNC(funcId.getVid(), {}).toRACode())

@@ -18,13 +18,15 @@ namespace builtin
                                               const std::shared_ptr<symbol::ClassSymbol>& registeredExtension,
                                               const ast::VarID& tempVarId,
                                               bool isAutomaticForm);
-        std::string compileAndProcessNewExtension(ast::CompileVisitor& visitor,
-                                                  const std::string& importedFilePath,
-                                                  const ast::VarID& tempVarId, const utils::Pos& pos, const std::optional<std::vector<std::string>>& importingSymbols);
-        std::string processImportedSymbols(const ast::CompileVisitor& visitor,
-                                           ast::CompileVisitor& importVisitor,
-                                           const std::shared_ptr<symbol::ClassSymbol>& extensionSymbol, const std::optional<std::vector<std::string>>&
-                                           importingSymbols);
+        void compileAndProcessNewExtension(ast::CompileVisitor& visitor,
+                                           const std::string& importedFilePath,
+                                           const ast::VarID& tempVarId, const utils::Pos& pos,
+                                           const std::optional<std::vector<std::string>>& importingSymbols);
+        void processImportedSymbols(const ast::CompileVisitor& visitor,
+                                    ast::CompileVisitor& importVisitor,
+                                    const std::shared_ptr<symbol::ClassSymbol>& extensionSymbol,
+                                    const std::optional<std::vector<std::string>>&
+                                    importingSymbols);
     }
 
     BuiltinFuncRetType rcc_import(ast::CompileVisitor &visitor, const CallInfos& callInfos);
