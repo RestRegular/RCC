@@ -12,11 +12,12 @@
 #include "../include/visitors/rcc_visitors.h"
 #include "../include/lib/RJson/RJson_error.h"
 #include "../include/lib/rcc_utils.h"
+#include "../include/backend/rcc_llvm_backend.h"
 
 using namespace base;
 using namespace utils;
 
-// È«¾Ö²ÎÊı±äÁ¿
+// å…¨å±€å‚æ•°å˜é‡
 std::string __help_option_name__;
 std::string __general_option_path__;
 std::string __symbol_option_extension__;
@@ -27,8 +28,11 @@ bool __help_option__ = false;
 bool __version_option__ = false;
 bool __time_info__ = false;
 bool __symbol_flag_builtin__ = false;
+bool __llvm_flag__ = false;
+bool __llvm_run_flag__ = false;
+bool __emit_ir_flag__ = false;
 
-// ²ÎÊı½âÎöÆ÷ÊµÀı
+// å‚æ•°è§£æå™¨å®ä¾‹
 ProgArgParser argParser{};
 
 void initializeArgumentParser() {
@@ -82,7 +86,7 @@ void initializeArgumentParser() {
     .addDependent("builtin", "extension", ProgArgParser::CheckDir::UniDir)
     .addDependent("export", "symbol", ProgArgParser::CheckDir::UniDir);
 
-    // µ¥¶ÀÌí¼Ó compile flag ¼°Ïà¹ØÅäÖÃ
+    // å•ç‹¬æ·»åŠ  compile flag åŠç›¸å…³é…ç½®
     argParser.addFlag("compile", &ast::CompileVisitor::__compile_flag__, false, true,
                       "Compile the target file or directory specified by path",
                       {"c"})
@@ -103,6 +107,20 @@ void initializeArgumentParser() {
                       {"ti"})
     .addOption<std::string>("working-dir", &__working_directory__,
                                      getDefaultDir(), "Specify working directory", {"wd"});
+
+    // LLVM backend flags
+    argParser.addFlag("llvm", &__llvm_flag__, false, true,
+                      "Compile the target Rio file to a native executable using LLVM backend",
+                      {"l"})
+    .addFlag("run", &__llvm_run_flag__, false, true,
+              "Compile and immediately run the target Rio file using LLVM backend",
+              {"r"})
+    .addFlag("emit-ir", &__emit_ir_flag__, false, true,
+              "Emit LLVM IR (.ll file) instead of an executable",
+              {"ll"})
+    .addDependent("emit-ir", "llvm", ProgArgParser::CheckDir::UniDir)
+    .addMutuallyExclusive(std::vector<std::string>{"llvm", "run"},
+        std::vector<std::string>{"symbol", "compile"});
 
     // Core flag option exclusives
     argParser.addMutuallyExclusive(std::vector<std::string>{"help", "version"},
@@ -193,15 +211,87 @@ void handleCompileFlag()
     }
 }
 
+void handleLLVMFlag()
+{
+    const auto& targetPath = getAbsolutePath(__general_option_path__, __working_directory__);
+    std::string outputPath = __general_option_output__.empty()
+        ? targetPath.substr(0, targetPath.find_last_of('.')) : getAbsolutePath(__general_option_output__, __working_directory__);
+
+    // 1. è¯æ³•åˆ†æ
+    auto lexer = std::make_shared<lexer::Lexer>(targetPath);
+    auto tokens = lexer->tokenize();
+
+    // 2. è¯­æ³•åˆ†æ
+    parser::Parser p(tokens);
+    auto [hasError, programNode] = p.parse();
+    if (hasError) {
+        std::cerr << "Parse error" << std::endl;
+        return;
+    }
+
+    // 3. LLVM ç¼–è¯‘
+    backend::LLVMBackend llvmBackend;
+    if (!llvmBackend.compile(programNode)) {
+        std::cerr << "LLVM compilation failed" << std::endl;
+        return;
+    }
+
+    if (__emit_ir_flag__) {
+        std::string irPath = outputPath + ".ll";
+        if (llvmBackend.emitIR(irPath)) {
+            std::cout << "LLVM IR emitted to: " << irPath << std::endl;
+        }
+    } else {
+        if (llvmBackend.emitExecutable(outputPath)) {
+            std::cout << "Compilation succeeded!\nExecutable: " << outputPath << std::endl;
+        }
+    }
+}
+
+void handleRunFlag()
+{
+    const auto& targetPath = getAbsolutePath(__general_option_path__, __working_directory__);
+    std::string outputPath = "/tmp/rio_executable";
+
+    // 1. è¯æ³•åˆ†æ
+    auto lexer = std::make_shared<lexer::Lexer>(targetPath);
+    auto tokens = lexer->tokenize();
+
+    // 2. è¯­æ³•åˆ†æ
+    parser::Parser p(tokens);
+    auto [hasError, programNode] = p.parse();
+    if (hasError) {
+        std::cerr << "Parse error" << std::endl;
+        return;
+    }
+
+    // 3. LLVM ç¼–è¯‘
+    backend::LLVMBackend llvmBackend;
+    if (!llvmBackend.compile(programNode)) {
+        std::cerr << "LLVM compilation failed" << std::endl;
+        return;
+    }
+
+    if (!llvmBackend.emitExecutable(outputPath)) {
+        std::cerr << "Failed to generate executable" << std::endl;
+        return;
+    }
+
+    // 4. è¿è¡Œ
+    std::string cmd = outputPath;
+    int ret = std::system(cmd.c_str());
+    std::cout << "\n[Process exited with code " << (ret / 256) << "]" << std::endl;
+}
+
 int main(const int argc, char *argv[]) {
     try {
         setDeveloperModel(true);
 
-        // ½âÎöÃüÁîĞĞ²ÎÊı
+        // è§£æå‘½ä»¤è¡Œå‚æ•°
         initializeArgumentParser();
         argParser.parse(argc, argv);
 
-        // ´¦Àí°ïÖúÑ¡Ïî
+        // å¤„ç†å¸®åŠ©é€‰é¡¹
         if (__help_option__) {
             if (__help_option_name__.empty()) {
                 std::cout << argParser.getHelpString() << std::endl;
@@ -210,7 +300,7 @@ int main(const int argc, char *argv[]) {
             }
         }
 
-        // ¼ì²éµ¼³ö·ûºÅĞÅÏ¢
+        // æ£€æŸ¥å¯¼å‡ºç¬¦å·ä¿¡æ¯
         if (ast::CompileVisitor::__symbol_flag__)
         {
             handleSymbolFlag();
@@ -221,12 +311,24 @@ int main(const int argc, char *argv[]) {
             handleCompileFlag();
         }
 
-        // Êä³ö³ÌĞòÔËĞĞÊ±¼äĞÅÏ¢
+        // LLVM backend compilation
+        if (__llvm_flag__)
+        {
+            handleLLVMFlag();
+        }
+
+        // Compile and run
+        if (__llvm_run_flag__)
+        {
+            handleRunFlag();
+        }
+
+        // è¾“å‡ºç¨‹åºè¿è¡Œæ—¶é—´ä¿¡æ¯
         if (__time_info__) {
             std::cout << printProgramSpentTimeInfo();
         }
 
-        // ´¦Àí°æ±¾Ñ¡Ïî
+        // å¤„ç†ç‰ˆæœ¬é€‰é¡¹
         if (__version_option__) {
             std::cout << "RCC(Rio Compiler Collection) " RCC_VERSION << std::endl;
             std::cout << "Published on " << std::string(__DATE__) << " at " << std::string(__TIME__) << std::endl;

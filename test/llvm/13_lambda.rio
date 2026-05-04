@@ -1,0 +1,31 @@
+// ============================================================================
+// 测试13: 匿名函数 (Lambda)
+// 验证: lambda 定义、变量存储、调用、高阶函数
+// 期望输出:
+//   7
+//   10
+//   49
+//   100
+// ============================================================================
+// 基础 lambda
+var add = (x, y) -> { ret x + y }
+sout(add(3, 4))
+
+// 高阶函数
+fun apply(f, x) {
+    ret f(x)
+}
+var double = (n) -> { ret n * 2 }
+sout(apply(double, 5))
+
+// lambda 存储在变量中
+var square = (x) -> { ret x * x }
+sout(square(7))
+
+// 组合 lambda
+fun compose(f, g, x) {
+    ret f(g(x))
+}
+var inc = (n) -> { ret n + 1 }
+var quad = (n) -> { ret n * n }
+sout(compose(inc, quad, 9))

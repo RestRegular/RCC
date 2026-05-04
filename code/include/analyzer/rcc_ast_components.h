@@ -16,7 +16,7 @@ namespace ast {
     using namespace base;
     using namespace core;
 
-    // Àà¶¨Òå
+    // ç±»å®šä¹‰
     class Node : public Object {
         Token mainToken;
         NodeType type;
@@ -513,6 +513,12 @@ namespace ast {
     class BreakExpressionNode : public ExpressionNode {
     public:
         explicit BreakExpressionNode(const Token &mainToken_);
+        void acceptVisitor(Visitor &visitor) override;
+    };
+
+    class ContinueExpressionNode : public ExpressionNode {
+    public:
+        explicit ContinueExpressionNode(const Token &mainToken_);
         void acceptVisitor(Visitor &visitor) override;
     };
 

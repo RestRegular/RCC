@@ -265,6 +265,11 @@ namespace ast {
         .insertObject("mainToken", node.getMainToken().toRJValue().getObjectValue());
     }
 
+    void JsonVisitor::visitContinueExpressionNode(ContinueExpressionNode &node) {
+        builder.insertString("nodeType", getNodeTypeName(NodeType::CONTINUE))
+        .insertObject("mainToken", node.getMainToken().toRJValue().getObjectValue());
+    }
+
     void JsonVisitor::visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode &node) {
         auto builderRecord = builder;
         builderRecord.insertString("nodeType", getNodeTypeName(NodeType::ANON_FUNCTION_DEFINITION))

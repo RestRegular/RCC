@@ -95,8 +95,27 @@ add_executable(RCC code/src/rcc_main.cpp
         code/declarations/builtin/dll_extension_manager/rcc_dll_extension_manager_dec.h
         code/src/builtin/dll_extension_manager/rcc_dll_extension_manager.cpp
         code/include/interfaces/rcc_builtin_interface.h
+        # LLVM Backend
+        code/include/backend/rcc_llvm_types.h
+        code/src/backend/rcc_llvm_types.cpp
+        code/include/backend/rcc_llvm_backend.h
+        code/src/backend/rcc_llvm_backend.cpp
 )
 
 if(UNIX AND NOT APPLE)  # Linux ϵͳ
     target_link_libraries(RCC PRIVATE dl)
 endif()
+
+# LLVM Backend support
+find_package(LLVM 15 REQUIRED CONFIG)
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+include_directories(BEFORE ${CMAKE_SOURCE_DIR}/code/include)
+include_directories(${LLVM_INCLUDE_DIRS})
+target_compile_definitions(RCC PRIVATE ${LLVM_DEFINITIONS})
+# Remove -fno-rtti added by LLVM if present, as RCC uses RTTI
+string(REPLACE "-fno-rtti" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+# Use llvm-config to get all required libraries
+execute_process(COMMAND llvm-config-15 --libs core native codegen irreader orcjit linker
+    OUTPUT_VARIABLE LLVM_LIBS OUTPUT_STRIP_TRAILING_WHITESPACE)
+string(REPLACE "\n" " " LLVM_LIBS "${LLVM_LIBS}")
+target_link_libraries(RCC PRIVATE ${LLVM_LIBS} dl)
