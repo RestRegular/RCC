@@ -9,6 +9,7 @@
 #include <map>
 #include <stack>
 #include <string>
+#include <vector>
 
 // LLVM 头文件
 #include <llvm/IR/LLVMContext.h>
@@ -18,6 +19,9 @@
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/Support/raw_ostream.h>
 
 // 你的项目头文件
@@ -30,6 +34,13 @@ namespace ast {
      * LLVM IR 代码生成访问者
      *
      * 将 AST 转换为 LLVM IR
+     *
+     * 设计策略：
+     * - 动态类型语言统一使用 opaque pointer (ptr) 作为值类型
+     * - 所有值通过 ValueStack 在 visit 方法之间传递
+     * - 变量通过 NamedValues 符号表管理（变量名 -> alloca）
+     * - 函数通过 Functions 映射管理（函数名 -> llvm::Function）
+     * - 控制流通过 BasicBlock 和 phi 节点实现
      */
     class LLVMCodeGenVisitor : public Visitor {
     // ==================== LLVM 核心组件 ====================
@@ -57,6 +68,63 @@ namespace ast {
 
         // 是否启用调试输出
         bool DebugMode = false;
+
+        // ==================== 控制流支持 ====================
+        // break 目标 BasicBlock 栈
+        std::stack<llvm::BasicBlock*> BreakTargetStack;
+
+        // continue 目标 BasicBlock 栈
+        std::stack<llvm::BasicBlock*> ContinueTargetStack;
+
+        // 循环条件 BB 栈（用于 continue 跳回条件判断）
+        std::stack<llvm::BasicBlock*> LoopCondBBStack;
+
+        // 当前是否在循环中
+        bool InLoop = false;
+
+        // ==================== 辅助方法 ====================
+
+        /**
+         * 获取 void 类型
+         */
+        llvm::Type* getVoidType() const;
+
+        /**
+         * 获取统一值类型 (opaque pointer)
+         */
+        llvm::Type* getValueType() const;
+
+        /**
+         * 创建全局字符串常量
+         */
+        llvm::Value* createGlobalStringPtr(const std::string& str);
+
+        /**
+         * 获取当前插入点的 BasicBlock
+         */
+        llvm::BasicBlock* getCurrentBlock() const;
+
+        /**
+         * 将值转换为 i1 (布尔条件)
+         */
+        llvm::Value* coerceToBool(llvm::Value* value);
+
+        /**
+         * 获取或创建外部声明函数
+         */
+        llvm::Function* getOrCreateExternalFunc(
+            const std::string& name,
+            llvm::FunctionType* funcType);
+
+        /**
+         * 创建 printf 调用（用于调试输出）
+         */
+        llvm::Value* createDebugPrint(const std::string& message);
+
+        /**
+         * 生成未实现节点的警告日志
+         */
+        void logUnimplemented(const std::string& nodeName);
 
     public:
         // ==================== 构造函数 ====================
