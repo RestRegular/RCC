@@ -2,60 +2,44 @@
 REM ============================================================================
 REM RCC Runtime Library - Build Script (Windows)
 REM ============================================================================
-REM Usage: build_runtime.bat
+REM Usage:
+REM   build_runtime.bat              - 编译运行时库
+REM   build_runtime.bat run test.ll  - 编译并运行 IR 文件
 REM
 REM Prerequisites:
-REM   - clang, g++, or MSVC cl.exe in PATH
+REM   - LLVM clang in PATH (推荐)
+REM   - 或 g++/gcc in PATH
 REM ============================================================================
+
+set "ACTION=%~1"
+set "IR_FILE=%~2"
 
 echo [RCC] Building runtime library...
 
 set "CC="
-set "AR="
+set "LLVM_CLANG="
 
+REM 优先使用 LLVM 自带的 clang（与 lli 兼容）
 where clang >nul 2>&1
 if %errorlevel% equ 0 (
     set "CC=clang"
-    set "AR=llvm-ar"
+    set "LLVM_CLANG=clang"
     goto :compile
 )
 
 where g++ >nul 2>&1
 if %errorlevel% equ 0 (
     set "CC=g++"
-    set "AR=gcc-ar"
     goto :compile
 )
 
 where gcc >nul 2>&1
 if %errorlevel% equ 0 (
     set "CC=gcc"
-    set "AR=gcc-ar"
     goto :compile
 )
 
-where cl >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [RCC] Using MSVC cl...
-    cl /c /O2 runtime\rcc_runtime.c /Fo:runtime\rcc_runtime.obj
-    if %errorlevel% neq 0 (
-        echo [RCC] ERROR: cl compilation failed
-        exit /b 1
-    )
-    REM MSVC: use lib.exe to create .lib archive
-    where lib >nul 2>&1
-    if %errorlevel% equ 0 (
-        lib /OUT:runtime\rcc_runtime.lib runtime\rcc_runtime.obj
-        echo [RCC] Runtime library built: runtime\rcc_runtime.lib
-        echo [RCC] Usage: lli -extra-archive=runtime\rcc_runtime.lib tests\irs\test.ll
-    ) else (
-        echo [RCC] Runtime library built: runtime\rcc_runtime.obj
-        echo [RCC] WARNING: lib.exe not found, cannot create archive for lli
-    )
-    goto :done
-)
-
-echo [RCC] ERROR: No C/C++ compiler found. Install clang, g++, or MSVC.
+echo [RCC] ERROR: No C compiler found. Install clang or g++.
 exit /b 1
 
 :compile
@@ -65,28 +49,50 @@ if %errorlevel% neq 0 (
     echo [RCC] ERROR: compilation failed
     exit /b 1
 )
+echo [RCC] Runtime object built: runtime\rcc_runtime.o
 
-REM Create static archive (.a) for lli -extra-archive
-where %AR% >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [RCC] Creating archive with %AR%...
-    %AR% rcs runtime\rcc_runtime.a runtime\rcc_runtime.o
-    if %errorlevel% neq 0 (
-        echo [RCC] WARNING: archive creation failed, using .o directly
-    ) else (
-        echo [RCC] Runtime library built: runtime\rcc_runtime.a
-    )
-) else (
-    where ar >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [RCC] Creating archive with ar...
-        ar rcs runtime\rcc_runtime.a runtime\rcc_runtime.o
-        echo [RCC] Runtime library built: runtime\rcc_runtime.a
-    ) else (
-        echo [RCC] Runtime library built: runtime\rcc_runtime.o
-        echo [RCC] WARNING: ar not found, .o may not work with lli -extra-archive
-    )
+if "%ACTION%"=="run" goto :run
+goto :done
+
+:run
+if "%IR_FILE%"=="" (
+    echo [RCC] Usage: build_runtime.bat run ^<ir_file^>
+    exit /b 1
 )
 
+if not exist "%IR_FILE%" (
+    echo [RCC] ERROR: file not found: %IR_FILE%
+    exit /b 1
+)
+
+echo [RCC] Running %IR_FILE%...
+
+REM 方式 1: 使用 clang 直接编译 IR + 运行时为可执行文件（推荐）
+if not "%LLVM_CLANG%"=="" (
+    echo [RCC] Compiling with clang...
+    %LLVM_CLANG% -O2 "%IR_FILE%" runtime\rcc_runtime.o -o runtime\rcc_output.exe
+    if %errorlevel% equ 0 (
+        echo [RCC] Running...
+        runtime\rcc_output.exe
+        del runtime\rcc_output.exe
+        goto :done
+    )
+    echo [RCC] clang compilation failed, trying lli...
+)
+
+REM 方式 2: 使用 lli 加载 .o（部分版本支持）
+where lli >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [RCC] Trying lli with -load...
+    lli -load=runtime\rcc_runtime.o "%IR_FILE%"
+    if %errorlevel% equ 0 goto :done
+)
+
+echo [RCC] ERROR: Failed to run. Make sure LLVM clang is in PATH.
+exit /b 1
+
 :done
-echo [RCC] Usage: lli -extra-archive=runtime\rcc_runtime.a tests\irs\test.ll
+echo.
+echo [RCC] Done.
+echo [RCC] Manual usage:
+echo [RCC]   clang -O2 test.ll runtime\rcc_runtime.o -o test.exe ^&^& test.exe
