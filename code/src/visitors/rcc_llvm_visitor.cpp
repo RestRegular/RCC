@@ -23,6 +23,9 @@
 
 namespace ast
 {
+    // 匿名函数计数器，用于生成唯一函数名
+    static size_t __anonFuncCounter = 0;
+
     // ============================================================================
     // 构造函数与初始化
     // ============================================================================
@@ -1608,8 +1611,100 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode& node)
     {
-        logUnimplemented("AnonFunctionDefinitionNode");
-        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        // 生成唯一函数名
+        std::string funcName = "__anon_func_" + std::to_string(__anonFuncCounter++);
+
+        LLVM_DEBUG("AnonFunctionDefinitionNode: " << funcName);
+
+        // 从 getParamNode() 收集参数名（递归遍历 PARALLEL 节点）
+        std::vector<std::string> paramNames;
+        const auto& paramNode = node.getParamNode();
+
+        if (paramNode)
+        {
+            // 递归收集 PARALLEL 节点中的标识符
+            std::function<void(const std::shared_ptr<ExpressionNode>&)> collectParams;
+            collectParams = [&](const std::shared_ptr<ExpressionNode>& expr)
+            {
+                if (expr->getRealType() == NodeType::PARALLEL)
+                {
+                    auto* p = static_cast<InfixExpressionNode*>(expr.get());
+                    collectParams(p->getLeftNode());
+                    collectParams(p->getRightNode());
+                }
+                else if (expr->getRealType() == NodeType::IDENTIFIER)
+                {
+                    auto* id = static_cast<IdentifierNode*>(expr.get());
+                    paramNames.push_back(id->getName());
+                }
+            };
+            collectParams(paramNode);
+        }
+
+        // 创建函数类型: ptr (ptr, ptr, ...) -> ptr
+        std::vector<llvm::Type*> paramTypes(paramNames.size(), getValueType());
+        auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
+
+        // 创建函数
+        auto* func = llvm::Function::Create(funcType, llvm::Function::PrivateLinkage, funcName, TheModule.get());
+
+        // 设置参数名
+        unsigned idx = 0;
+        for (auto& arg : func->args())
+        {
+            if (idx < paramNames.size())
+            {
+                arg.setName(paramNames[idx]);
+            }
+            idx++;
+        }
+
+        Functions[funcName] = func;
+
+        // 保存当前上下文
+        auto* prevFunction = CurrentFunction;
+        auto prevNamedValues = NamedValues;
+
+        CurrentFunction = func;
+        NamedValues.clear();
+
+        // 创建入口基本块
+        auto* entryBB = llvm::BasicBlock::Create(*TheContext, "entry", func);
+        Builder->SetInsertPoint(entryBB);
+
+        // 为参数创建 alloca 并存储
+        idx = 0;
+        for (auto& arg : func->args())
+        {
+            if (idx < paramNames.size())
+            {
+                auto* alloca = createEntryBlockAlloca(func, paramNames[idx], getValueType());
+                Builder->CreateStore(&arg, alloca);
+                NamedValues[paramNames[idx]] = alloca;
+            }
+            idx++;
+        }
+
+        // 生成函数体
+        if (node.getBodyNode())
+        {
+            node.getBodyNode()->acceptVisitor(*this);
+        }
+
+        // 如果当前基本块没有终止指令，添加 return null
+        if (getCurrentBlock() && !getCurrentBlock()->getTerminator())
+        {
+            Builder->CreateRet(llvm::ConstantPointerNull::get(getValueType()));
+        }
+
+        // 恢复上下文
+        CurrentFunction = prevFunction;
+        NamedValues = prevNamedValues;
+
+        // 将函数指针作为值 push 到栈上
+        pushValue(func);
+
+        LLVM_DEBUG("AnonFunctionDefinitionNode: " << funcName << " (" << paramNames.size() << " params) defined");
     }
 
     // ============================================================================
@@ -1618,8 +1713,24 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitPairExpressionNode(PairExpressionNode& node)
     {
-        logUnimplemented("PairExpressionNode");
-        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        LLVM_DEBUG("PairExpressionNode");
+
+        // 分别访问 left (key) 和 right (value)
+        node.getLeftNode()->acceptVisitor(*this);
+        auto* keyVal = popValue();
+
+        node.getRightNode()->acceptVisitor(*this);
+        auto* valueVal = popValue();
+
+        if (!keyVal) keyVal = llvm::ConstantPointerNull::get(getValueType());
+        if (!valueVal) valueVal = llvm::ConstantPointerNull::get(getValueType());
+
+        // 调用外部运行时函数 __rcc_pair_create(ptr key, ptr value) -> ptr
+        auto* pairFuncType = llvm::FunctionType::get(getValueType(), {getValueType(), getValueType()}, false);
+        auto* pairFunc = getOrCreateExternalFunc("__rcc_pair_create", pairFuncType);
+
+        auto* result = Builder->CreateCall(pairFunc, {keyVal, valueVal}, "pair");
+        pushValue(result);
     }
 
     // ============================================================================
@@ -1628,8 +1739,70 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitDictionaryExpressionNode(DictionaryExpressionNode& node)
     {
-        logUnimplemented("DictionaryExpressionNode");
-        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        LLVM_DEBUG("DictionaryExpressionNode");
+
+        // 收集所有 key-value 对
+        std::vector<llvm::Value*> dictArgs;
+
+        const auto& bodyNode = node.getBodyNode();
+
+        if (bodyNode)
+        {
+            // body 可能是 PARALLEL 节点包含多个 PairExpressionNode
+            // 递归遍历 PARALLEL 节点收集所有 PairExpressionNode
+            std::vector<std::shared_ptr<ExpressionNode>> pairs;
+
+            std::function<void(const std::shared_ptr<ExpressionNode>&)> collectPairs;
+            collectPairs = [&](const std::shared_ptr<ExpressionNode>& expr)
+            {
+                if (expr->getRealType() == NodeType::PARALLEL)
+                {
+                    auto* p = static_cast<InfixExpressionNode*>(expr.get());
+                    collectPairs(p->getLeftNode());
+                    collectPairs(p->getRightNode());
+                }
+                else
+                {
+                    pairs.push_back(expr);
+                }
+            };
+            collectPairs(bodyNode);
+
+            // 对每个 PairExpressionNode，分别访问 left (key) 和 right (value)
+            for (const auto& pairExpr : pairs)
+            {
+                if (pairExpr->getRealType() == NodeType::PAIR)
+                {
+                    auto* pair = static_cast<PairExpressionNode*>(pairExpr.get());
+                    pair->getLeftNode()->acceptVisitor(*this);
+                    auto* keyVal = popValue();
+                    pair->getRightNode()->acceptVisitor(*this);
+                    auto* valueVal = popValue();
+
+                    dictArgs.push_back(keyVal ? keyVal : llvm::ConstantPointerNull::get(getValueType()));
+                    dictArgs.push_back(valueVal ? valueVal : llvm::ConstantPointerNull::get(getValueType()));
+                }
+            }
+        }
+
+        // 构建参数列表: [count, key0, val0, key1, val1, ...]
+        auto* countVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext),
+                                                 static_cast<int64_t>(dictArgs.size() / 2));
+        std::vector<llvm::Value*> callArgs;
+        callArgs.push_back(countVal);
+        callArgs.insert(callArgs.end(), dictArgs.begin(), dictArgs.end());
+
+        // 调用外部运行时函数 __rcc_dict_create(i64 count, ptr key0, ptr val0, ...) -> ptr
+        // 使用 isVarArg=true 的函数类型
+        auto* dictFuncType = llvm::FunctionType::get(getValueType(),
+                                                       {llvm::Type::getInt64Ty(*TheContext)},
+                                                       /*isVarArg=*/true);
+        auto* dictFunc = getOrCreateExternalFunc("__rcc_dict_create", dictFuncType);
+
+        auto* result = Builder->CreateCall(dictFunc, callArgs, "dict");
+        pushValue(result);
+
+        LLVM_DEBUG("DictionaryExpressionNode: " << (dictArgs.size() / 2) << " entries");
     }
 
     // ============================================================================
@@ -1638,8 +1811,61 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitListExpressionNode(ListExpressionNode& node)
     {
-        logUnimplemented("ListExpressionNode");
-        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        LLVM_DEBUG("ListExpressionNode");
+
+        // 收集所有元素值
+        std::vector<llvm::Value*> elemValues;
+
+        const auto& bodyNode = node.getBodyNode();
+
+        if (bodyNode)
+        {
+            // body 可能是 PARALLEL 节点（逗号分隔的列表）或单个表达式
+            std::vector<std::shared_ptr<ExpressionNode>> elements;
+
+            std::function<void(const std::shared_ptr<ExpressionNode>&)> collectElements;
+            collectElements = [&](const std::shared_ptr<ExpressionNode>& expr)
+            {
+                if (expr->getRealType() == NodeType::PARALLEL)
+                {
+                    auto* p = static_cast<InfixExpressionNode*>(expr.get());
+                    collectElements(p->getLeftNode());
+                    collectElements(p->getRightNode());
+                }
+                else
+                {
+                    elements.push_back(expr);
+                }
+            };
+            collectElements(bodyNode);
+
+            // 遍历所有元素，生成值
+            for (const auto& elem : elements)
+            {
+                elem->acceptVisitor(*this);
+                auto* val = popValue();
+                elemValues.push_back(val ? val : llvm::ConstantPointerNull::get(getValueType()));
+            }
+        }
+
+        // 构建参数列表: [count, elem0, elem1, ...]
+        auto* countVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext),
+                                                 static_cast<int64_t>(elemValues.size()));
+        std::vector<llvm::Value*> callArgs;
+        callArgs.push_back(countVal);
+        callArgs.insert(callArgs.end(), elemValues.begin(), elemValues.end());
+
+        // 调用外部运行时函数 __rcc_list_create(i64 count, ptr elem0, ptr elem1, ...) -> ptr
+        // 使用 isVarArg=true 的函数类型
+        auto* listFuncType = llvm::FunctionType::get(getValueType(),
+                                                       {llvm::Type::getInt64Ty(*TheContext)},
+                                                       /*isVarArg=*/true);
+        auto* listFunc = getOrCreateExternalFunc("__rcc_list_create", listFuncType);
+
+        auto* result = Builder->CreateCall(listFunc, callArgs, "list");
+        pushValue(result);
+
+        LLVM_DEBUG("ListExpressionNode: " << elemValues.size() << " elements");
     }
 
     // ============================================================================
@@ -1664,8 +1890,24 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitIndexExpressionNode(IndexExpressionNode& node)
     {
-        logUnimplemented("IndexExpressionNode");
-        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        LLVM_DEBUG("IndexExpressionNode");
+
+        // 分别访问 getLeftNode() (target) 和 getIndexNode() (index)
+        node.getLeftNode()->acceptVisitor(*this);
+        auto* targetVal = popValue();
+
+        node.getIndexNode()->acceptVisitor(*this);
+        auto* indexVal = popValue();
+
+        if (!targetVal) targetVal = llvm::ConstantPointerNull::get(getValueType());
+        if (!indexVal) indexVal = llvm::ConstantPointerNull::get(getValueType());
+
+        // 调用外部运行时函数 __rcc_index_get(ptr target, ptr index) -> ptr
+        auto* indexFuncType = llvm::FunctionType::get(getValueType(), {getValueType(), getValueType()}, false);
+        auto* indexFunc = getOrCreateExternalFunc("__rcc_index_get", indexFuncType);
+
+        auto* result = Builder->CreateCall(indexFunc, {targetVal, indexVal}, "index.get");
+        pushValue(result);
     }
 
     // ============================================================================
@@ -1674,8 +1916,110 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitTryNode(TryNode& node)
     {
-        logUnimplemented("TryNode");
+        LLVM_DEBUG("TryNode");
+
+        // 声明运行时函数
+        auto* tryBeginType = llvm::FunctionType::get(getValueType(), false);
+        auto* tryBeginFunc = getOrCreateExternalFunc("__rcc_try_begin", tryBeginType);
+
+        auto* tryEndType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, false);
+        auto* tryEndFunc = getOrCreateExternalFunc("__rcc_try_end", tryEndType);
+
+        auto* tryCatchType = llvm::FunctionType::get(getVoidType(), {getValueType(), getValueType()}, false);
+        auto* tryCatchFunc = getOrCreateExternalFunc("__rcc_try_catch", tryCatchType);
+
+        auto* tryFinallyType = llvm::FunctionType::get(getVoidType(), {getValueType()}, false);
+        auto* tryFinallyFunc = getOrCreateExternalFunc("__rcc_try_finally", tryFinallyType);
+
+        llvm::Function* func = Builder->GetInsertBlock()->getParent();
+
+        // 调用 __rcc_try_begin 获取 context
+        auto* context = Builder->CreateCall(tryBeginFunc, {}, "try.context");
+
+        // 创建基本块
+        auto* tryBB = llvm::BasicBlock::Create(*TheContext, "try.body", func);
+        auto* catchBB = llvm::BasicBlock::Create(*TheContext, "try.catch", func);
+        auto* finallyBB = llvm::BasicBlock::Create(*TheContext, "try.finally", func);
+        auto* endBB = llvm::BasicBlock::Create(*TheContext, "try.end", func);
+
+        // 保存 try 块的值栈状态
+        auto savedStackSize = ValueStack.size();
+
+        // 执行 try 块
+        Builder->CreateBr(tryBB);
+        Builder->SetInsertPoint(tryBB);
+
+        if (node.getTryBody())
+        {
+            node.getTryBody()->acceptVisitor(*this);
+        }
+
+        // 检查 try 块是否有终止指令（如 return/break）
+        if (!getCurrentBlock()->getTerminator())
+        {
+            // 调用 __rcc_try_end 检查是否有异常
+            Builder->CreateCall(tryEndFunc, {context}, "try.end.check");
+            Builder->CreateBr(finallyBB);
+        }
+
+        // catch 块
+        Builder->SetInsertPoint(catchBB);
+
+        const auto& catchBodies = node.getCatchBodies();
+        if (!catchBodies.empty())
+        {
+            for (const auto& [catchParam, catchBody] : catchBodies)
+            {
+                // 创建异常变量 alloca
+                if (CurrentFunction)
+                {
+                    auto* excAlloca = createEntryBlockAlloca(CurrentFunction,
+                        catchParam ? catchParam->getName() : "__exception", getValueType());
+                    Builder->CreateStore(llvm::ConstantPointerNull::get(getValueType()), excAlloca);
+                    NamedValues[catchParam ? catchParam->getName() : "__exception"] = excAlloca;
+                }
+
+                // 注册 catch handler
+                Builder->CreateCall(tryCatchFunc, {context, llvm::ConstantPointerNull::get(getValueType())});
+
+                // 执行 catch 体
+                if (catchBody)
+                {
+                    catchBody->acceptVisitor(*this);
+                }
+            }
+        }
+
+        if (!getCurrentBlock()->getTerminator())
+        {
+            Builder->CreateBr(finallyBB);
+        }
+
+        // finally 块
+        Builder->SetInsertPoint(finallyBB);
+        Builder->CreateCall(tryFinallyFunc, {context});
+
+        if (node.getFinallyBody())
+        {
+            node.getFinallyBody()->acceptVisitor(*this);
+        }
+
+        if (!getCurrentBlock()->getTerminator())
+        {
+            Builder->CreateBr(endBB);
+        }
+
+        // end 块
+        Builder->SetInsertPoint(endBB);
+
+        // 恢复值栈
+        while (ValueStack.size() > savedStackSize)
+        {
+            ValueStack.pop();
+        }
         pushValue(llvm::ConstantPointerNull::get(getValueType()));
+
+        LLVM_DEBUG("TryNode: try-catch-finally generated");
     }
 
     // ============================================================================
@@ -1684,8 +2028,36 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitThrowNode(ThrowNode& node)
     {
-        logUnimplemented("ThrowNode");
-        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        LLVM_DEBUG("ThrowNode");
+
+        // 声明运行时函数
+        auto* throwType = llvm::FunctionType::get(getVoidType(), {getValueType()}, false);
+        auto* throwFunc = getOrCreateExternalFunc("__rcc_throw", throwType);
+
+        // 获取异常表达式值
+        llvm::Value* excValue = llvm::ConstantPointerNull::get(getValueType());
+        if (node.getThrowExpression())
+        {
+            node.getThrowExpression()->acceptVisitor(*this);
+            auto* val = popValue();
+            if (val)
+            {
+                excValue = val;
+            }
+        }
+
+        // 调用 __rcc_throw
+        Builder->CreateCall(throwFunc, {excValue});
+
+        // throw 后不可达
+        Builder->CreateUnreachable();
+
+        // 创建新的基本块供后续代码使用（如果有的话）
+        llvm::Function* func = Builder->GetInsertBlock()->getParent();
+        auto* unreachableBB = llvm::BasicBlock::Create(*TheContext, "throw.unreachable", func);
+        Builder->SetInsertPoint(unreachableBB);
+
+        LLVM_DEBUG("ThrowNode: throw generated");
     }
 
     // ============================================================================
