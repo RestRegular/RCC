@@ -94,7 +94,7 @@ llvm::Type *LLVMCodeGenVisitor::getVoidType() const {
     return llvm::Type::getVoidTy(*TheContext);
 }
 
-llvm::Type *LLVMCodeGenVisitor::getValueType() const {
+llvm::PointerType *LLVMCodeGenVisitor::getValueType() const {
     // 使用 opaque pointer 作为统一值类型
     return llvm::PointerType::get(*TheContext, 0);
 }
@@ -779,9 +779,8 @@ void LLVMCodeGenVisitor::handleLogicalShortCircuit(InfixExpressionNode &node) {
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(
         *TheContext, "merge", func);
 
-    // 分配结果变量
-    auto *resultAlloca = createEntryBlockAlloca(
-        func, "logical.result", getValueType());
+    // 记录条件分支前的 BasicBlock（用于 phi 节点）
+    llvm::BasicBlock *condBB = getCurrentBlock();
 
     // 访问左操作数
     node.getLeftNode()->acceptVisitor(*this);
@@ -791,10 +790,6 @@ void LLVMCodeGenVisitor::handleLogicalShortCircuit(InfixExpressionNode &node) {
     if (op == "&&") {
         // 对于 &&，如果左边为 false，跳过右边
         Builder->CreateCondBr(leftBool, evalRightBB, mergeBB);
-
-        // 左边为 false 时的结果
-        Builder->SetInsertPoint(mergeBB);
-        // phi 节点会在后面处理
     } else {
         // 对于 ||，如果左边为 true，跳过右边
         Builder->CreateCondBr(leftBool, mergeBB, evalRightBB);
@@ -804,7 +799,6 @@ void LLVMCodeGenVisitor::handleLogicalShortCircuit(InfixExpressionNode &node) {
     Builder->SetInsertPoint(evalRightBB);
     node.getRightNode()->acceptVisitor(*this);
     llvm::Value *rightVal = popValue();
-    Builder->CreateStore(rightVal, resultAlloca);
     Builder->CreateBr(mergeBB);
 
     // 合并块
@@ -812,22 +806,21 @@ void LLVMCodeGenVisitor::handleLogicalShortCircuit(InfixExpressionNode &node) {
 
     // 使用 phi 节点合并结果
     auto *phi = Builder->CreatePHI(getValueType(), 2, "logical.phi");
-    // 根据操作符类型设置 phi 的 incoming values
     if (op == "&&") {
-        // &&: 左 false -> false, 右 -> rightVal
+        // &&: 左 false -> inttoptr(0), 右 -> rightVal
         phi->addIncoming(
             llvm::ConstantExpr::getIntToPtr(
                 llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0),
                 getValueType()),
-            leftBool->getParent() ? leftBool->getParent() : evalRightBB);
+            condBB);
         phi->addIncoming(rightVal, evalRightBB);
     } else {
-        // ||: 左 true -> true, 右 -> rightVal
+        // ||: 左 true -> inttoptr(1), 右 -> rightVal
         phi->addIncoming(
             llvm::ConstantExpr::getIntToPtr(
                 llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1),
                 getValueType()),
-            leftBool->getParent() ? leftBool->getParent() : evalRightBB);
+            condBB);
         phi->addIncoming(rightVal, evalRightBB);
     }
 
@@ -1036,8 +1029,7 @@ void LLVMCodeGenVisitor::visitFunctionDefinitionNode(FunctionDefinitionNode &nod
             if (parenRanger->getRangerNode()) {
                 // 参数可能是 PARALLEL (逗号分隔的标识符列表)
                 if (parenRanger->getRangerNode()->getRealType() == NodeType::PARALLEL) {
-                    auto *parallel = static_cast<InfixExpressionNode*>(
-                        parenRanger->getRangerNode().get());
+                    auto parallel = parenRanger->getRangerNode();
                     // 递归收集 PARALLEL 节点中的标识符
                     std::function<void(const std::shared_ptr<ExpressionNode>&)> collectParams;
                     collectParams = [&](const std::shared_ptr<ExpressionNode> &expr) {
@@ -1195,7 +1187,7 @@ void LLVMCodeGenVisitor::visitConditionNode(ConditionNode &node) {
 
         // 获取条件节点
         // 第一个分支是 if，后续是 elif（条件非空）或 else（条件为空）
-        auto *condExpr = branchNode->getConditionNode();
+        auto condExpr = branchNode->getConditionNode();
 
         if (condExpr) {
             // 有条件：生成条件判断

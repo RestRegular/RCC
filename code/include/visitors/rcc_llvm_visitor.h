@@ -92,7 +92,7 @@ namespace ast {
         /**
          * 获取统一值类型 (opaque pointer)
          */
-        llvm::Type* getValueType() const;
+        llvm::PointerType* getValueType() const;
 
         /**
          * 创建全局字符串常量
