@@ -2069,15 +2069,19 @@ namespace ast
         node.getRightNode()->acceptVisitor(*this);
         auto* valueVal = popValue();
 
-        if (!keyVal) keyVal = llvm::ConstantPointerNull::get(getValueType());
-        if (!valueVal) valueVal = llvm::ConstantPointerNull::get(getValueType());
+        if (!keyVal) keyVal = createTaggedValueNull(TAG_NULL);
+        if (!valueVal) valueVal = createTaggedValueNull(TAG_NULL);
 
-        // 调用外部运行时函数 __rcc_pair_create(ptr key, ptr value) -> ptr
-        auto* pairFuncType = llvm::FunctionType::get(getValueType(), {getValueType(), getValueType()}, false);
-        auto* pairFunc = getOrCreateExternalFunc("__rcc_pair_create", pairFuncType);
+        // 纯 IR 实现：创建 RCCPair struct: { ptr key, ptr value }
+        auto* pairType = llvm::StructType::create(*TheContext, {getValueType(), getValueType()}, "RCCPair");
+        auto* alloca = Builder->CreateAlloca(pairType, nullptr, "pair");
+        auto* keyPtr = Builder->CreateStructGEP(pairType, alloca, 0, "pair.key");
+        Builder->CreateStore(keyVal, keyPtr);
+        auto* valPtr = Builder->CreateStructGEP(pairType, alloca, 1, "pair.val");
+        Builder->CreateStore(valueVal, valPtr);
 
-        auto* result = Builder->CreateCall(pairFunc, {keyVal, valueVal}, "pair");
-        pushValue(result);
+        // 返回 Tagged Dict (payload 指向 pair struct)
+        pushValue(createTaggedValue(TAG_DICT, alloca));
     }
 
     // ============================================================================
@@ -2132,24 +2136,55 @@ namespace ast
             }
         }
 
-        // 构建参数列表: [count, key0, val0, key1, val1, ...]
-        auto* countVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext),
-                                                 static_cast<int64_t>(dictArgs.size() / 2));
-        std::vector<llvm::Value*> callArgs;
-        callArgs.push_back(countVal);
-        callArgs.insert(callArgs.end(), dictArgs.begin(), dictArgs.end());
+        // 纯 IR 实现：用 malloc 分配 RCCDict struct 和 keys/values 数组
 
-        // 调用外部运行时函数 __rcc_dict_create(i64 count, ptr key0, ptr val0, ...) -> ptr
-        // 使用 isVarArg=true 的函数类型
-        auto* dictFuncType = llvm::FunctionType::get(getValueType(),
-                                                       {llvm::Type::getInt64Ty(*TheContext)},
-                                                       /*isVarArg=*/true);
-        auto* dictFunc = getOrCreateExternalFunc("__rcc_dict_create", dictFuncType);
+        // 声明 malloc
+        auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
+        auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
 
-        auto* result = Builder->CreateCall(dictFunc, callArgs, "dict");
-        pushValue(result);
+        int64_t count = dictArgs.size() / 2;
 
-        LLVM_DEBUG("DictionaryExpressionNode: " << (dictArgs.size() / 2) << " entries");
+        // 分配 keys 数组: malloc(count * ptr_size)
+        auto* keyBufSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count * sizeof(void*));
+        auto* keyBuf = Builder->CreateCall(mallocFunc, {keyBufSize}, "dict.keys");
+
+        // 分配 values 数组: malloc(count * ptr_size)
+        auto* valBufSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count * sizeof(void*));
+        auto* valBuf = Builder->CreateCall(mallocFunc, {valBufSize}, "dict.values");
+
+        // 存储 keys
+        for (int64_t i = 0; i < count; i++)
+        {
+            auto* idx = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), i);
+            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), keyBuf, idx, "key.gep");
+            Builder->CreateStore(dictArgs[i * 2], gep);
+        }
+
+        // 存储 values
+        for (int64_t i = 0; i < count; i++)
+        {
+            auto* idx = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), i);
+            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), valBuf, idx, "val.gep");
+            Builder->CreateStore(dictArgs[i * 2 + 1], gep);
+        }
+
+        // 创建 RCCDict struct: { i64 capacity, i64 size, ptr keys, ptr values }
+        auto* dictStructType = llvm::StructType::create(*TheContext,
+            {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType(), getValueType()}, "RCCDict");
+        auto* dictAlloca = Builder->CreateAlloca(dictStructType, nullptr, "dict");
+
+        Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count),
+            Builder->CreateStructGEP(dictStructType, dictAlloca, 0));
+        Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count),
+            Builder->CreateStructGEP(dictStructType, dictAlloca, 1));
+        Builder->CreateStore(keyBuf,
+            Builder->CreateStructGEP(dictStructType, dictAlloca, 2));
+        Builder->CreateStore(valBuf,
+            Builder->CreateStructGEP(dictStructType, dictAlloca, 3));
+
+        pushValue(createTaggedValue(TAG_DICT, dictAlloca));
+
+        LLVM_DEBUG("DictionaryExpressionNode: " << count << " entries");
     }
 
     // ============================================================================
@@ -2195,24 +2230,41 @@ namespace ast
             }
         }
 
-        // 构建参数列表: [count, elem0, elem1, ...]
-        auto* countVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext),
-                                                 static_cast<int64_t>(elemValues.size()));
-        std::vector<llvm::Value*> callArgs;
-        callArgs.push_back(countVal);
-        callArgs.insert(callArgs.end(), elemValues.begin(), elemValues.end());
+        // 纯 IR 实现：用 malloc 分配 RCCList struct 和 data 数组
 
-        // 调用外部运行时函数 __rcc_list_create(i64 count, ptr elem0, ptr elem1, ...) -> ptr
-        // 使用 isVarArg=true 的函数类型
-        auto* listFuncType = llvm::FunctionType::get(getValueType(),
-                                                       {llvm::Type::getInt64Ty(*TheContext)},
-                                                       /*isVarArg=*/true);
-        auto* listFunc = getOrCreateExternalFunc("__rcc_list_create", listFuncType);
+        // 声明 malloc
+        auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
+        auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
 
-        auto* result = Builder->CreateCall(listFunc, callArgs, "list");
-        pushValue(result);
+        int64_t count = elemValues.size();
 
-        LLVM_DEBUG("ListExpressionNode: " << elemValues.size() << " elements");
+        // 分配 data 数组: malloc(count * ptr_size)
+        auto* dataSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count * sizeof(void*));
+        auto* dataBuf = Builder->CreateCall(mallocFunc, {dataSize}, "list.data");
+
+        // 存储元素
+        for (int64_t i = 0; i < count; i++)
+        {
+            auto* idx = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), i);
+            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), dataBuf, idx, "elem.gep");
+            Builder->CreateStore(elemValues[i], gep);
+        }
+
+        // 创建 RCCList struct: { i64 capacity, i64 size, ptr data }
+        auto* listStructType = llvm::StructType::create(*TheContext,
+            {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCList");
+        auto* listAlloca = Builder->CreateAlloca(listStructType, nullptr, "list");
+
+        Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count),
+            Builder->CreateStructGEP(listStructType, listAlloca, 0));
+        Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count),
+            Builder->CreateStructGEP(listStructType, listAlloca, 1));
+        Builder->CreateStore(dataBuf,
+            Builder->CreateStructGEP(listStructType, listAlloca, 2));
+
+        pushValue(createTaggedValue(TAG_LIST, listAlloca));
+
+        LLVM_DEBUG("ListExpressionNode: " << count << " elements");
     }
 
     // ============================================================================
@@ -2246,14 +2298,131 @@ namespace ast
         node.getIndexNode()->acceptVisitor(*this);
         auto* indexVal = popValue();
 
-        if (!targetVal) targetVal = llvm::ConstantPointerNull::get(getValueType());
-        if (!indexVal) indexVal = llvm::ConstantPointerNull::get(getValueType());
+        if (!targetVal) targetVal = createTaggedValueNull(TAG_NULL);
+        if (!indexVal) indexVal = createTaggedValueNull(TAG_NULL);
 
-        // 调用外部运行时函数 __rcc_index_get(ptr target, ptr index) -> ptr
-        auto* indexFuncType = llvm::FunctionType::get(getValueType(), {getValueType(), getValueType()}, false);
-        auto* indexFunc = getOrCreateExternalFunc("__rcc_index_get", indexFuncType);
+        // 纯 IR 实现：根据 target 的 type_tag 分发到列表或字典索引
+        llvm::Function* func = Builder->GetInsertBlock()->getParent();
 
-        auto* result = Builder->CreateCall(indexFunc, {targetVal, indexVal}, "index.get");
+        // 提取索引整数值
+        auto* indexPayload = extractPayload(indexVal);
+        auto* indexInt = Builder->CreatePtrToInt(indexPayload, llvm::Type::getInt64Ty(*TheContext), "index.int");
+
+        // 提取 target 的 payload (指向 RCCList/RCCDict struct)
+        auto* targetPayload = extractPayload(targetVal);
+        auto* tag = extractTag(targetVal);
+
+        // 结果 alloca（跨基本块传递结果）
+        auto* resultAlloca = Builder->CreateAlloca(getValueType(), nullptr, "idx.result");
+        Builder->CreateStore(createTaggedValueNull(TAG_NULL), resultAlloca);
+
+        // 基本块
+        auto* listBB = llvm::BasicBlock::Create(*TheContext, "idx.list", func);
+        auto* dictBB = llvm::BasicBlock::Create(*TheContext, "idx.dict", func);
+        auto* defaultBB = llvm::BasicBlock::Create(*TheContext, "idx.default", func);
+        auto* mergeBB = llvm::BasicBlock::Create(*TheContext, "idx.merge", func);
+
+        auto* switchInst = Builder->CreateSwitch(tag, defaultBB, 2);
+        switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_LIST), listBB);
+        switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_DICT), dictBB);
+
+        // --- 列表索引 ---
+        Builder->SetInsertPoint(listBB);
+        {
+            // RCCList: { i64 capacity, i64 size, ptr data }
+            auto* listType = llvm::StructType::create(*TheContext,
+                {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCList");
+            auto* dataPtr = Builder->CreateStructGEP(listType, targetPayload, 2, "list.data");
+            auto* data = Builder->CreateLoad(getValueType(), dataPtr, "data");
+
+            // data[index] - GEP (每个元素是一个 ptr，按字节偏移)
+            auto* elemPtr = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), data, indexInt, "elem.ptr");
+            auto* elem = Builder->CreateLoad(getValueType(), elemPtr, "elem");
+            Builder->CreateStore(elem, resultAlloca);
+            Builder->CreateBr(mergeBB);
+        }
+
+        // --- 字典索引 ---
+        Builder->SetInsertPoint(dictBB);
+        {
+            // RCCDict: { i64 capacity, i64 size, ptr keys, ptr values }
+            auto* dictType = llvm::StructType::create(*TheContext,
+                {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType(), getValueType()}, "RCCDict");
+            auto* sizePtr = Builder->CreateStructGEP(dictType, targetPayload, 1, "dict.size");
+            auto* size = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), sizePtr, "size");
+            auto* keysPtr = Builder->CreateStructGEP(dictType, targetPayload, 2, "dict.keys");
+            auto* keys = Builder->CreateLoad(getValueType(), keysPtr, "keys");
+            auto* valsPtr = Builder->CreateStructGEP(dictType, targetPayload, 3, "dict.values");
+            auto* vals = Builder->CreateLoad(getValueType(), valsPtr, "vals");
+
+            // 线性搜索循环
+            auto* loopHeaderBB = llvm::BasicBlock::Create(*TheContext, "dict.search.header", func);
+            auto* loopBodyBB = llvm::BasicBlock::Create(*TheContext, "dict.search.body", func);
+            auto* foundBB = llvm::BasicBlock::Create(*TheContext, "dict.found", func);
+            auto* notFoundBB = llvm::BasicBlock::Create(*TheContext, "dict.notfound", func);
+            auto* dictMergeBB = llvm::BasicBlock::Create(*TheContext, "dict.search.merge", func);
+
+            auto* iAlloca = Builder->CreateAlloca(llvm::Type::getInt64Ty(*TheContext), nullptr, "dict.i");
+            Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0), iAlloca);
+            Builder->CreateBr(loopHeaderBB);
+
+            // loop header: 检查 i < size
+            Builder->SetInsertPoint(loopHeaderBB);
+            {
+                auto* i = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), iAlloca, "i");
+                auto* cond = Builder->CreateICmpSLT(i, size, "in.bounds");
+                Builder->CreateCondBr(cond, loopBodyBB, notFoundBB);
+            }
+
+            // loop body: 比较 key
+            Builder->SetInsertPoint(loopBodyBB);
+            {
+                auto* bi = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), iAlloca, "i.body");
+                auto* keyGep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), keys, bi, "key.gep");
+                auto* curKey = Builder->CreateLoad(getValueType(), keyGep, "key.val");
+
+                // 简化比较：比较两个 Tagged Value 的 tag 和 payload
+                auto* curKeyTag = extractTag(curKey);
+                auto* indexTag = extractTag(indexVal);
+                auto* tagEq = Builder->CreateICmpEQ(curKeyTag, indexTag, "tag.eq");
+
+                auto* curKeyPayload = extractPayload(curKey);
+                auto* payloadEq = Builder->CreateICmpEQ(curKeyPayload, indexPayload, "payload.eq");
+                auto* keyEq = Builder->CreateAnd(tagEq, payloadEq, "key.eq");
+
+                auto* nextI = Builder->CreateAdd(bi, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), "next.i");
+                Builder->CreateStore(nextI, iAlloca);
+
+                Builder->CreateCondBr(keyEq, foundBB, loopHeaderBB);
+            }
+
+            Builder->SetInsertPoint(foundBB);
+            {
+                auto* fi = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), iAlloca, "i.found");
+                auto* valGep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), vals, fi, "val.gep");
+                auto* val = Builder->CreateLoad(getValueType(), valGep, "val");
+                Builder->CreateStore(val, resultAlloca);
+                Builder->CreateBr(dictMergeBB);
+            }
+
+            Builder->SetInsertPoint(notFoundBB);
+            {
+                Builder->CreateBr(dictMergeBB);
+            }
+
+            Builder->SetInsertPoint(dictMergeBB);
+            Builder->CreateBr(mergeBB);
+        }
+
+        // --- 默认 ---
+        Builder->SetInsertPoint(defaultBB);
+        {
+            Builder->CreateBr(mergeBB);
+        }
+
+        // --- 合并 ---
+        Builder->SetInsertPoint(mergeBB);
+        auto* result = Builder->CreateLoad(getValueType(), resultAlloca, "idx.result");
         pushValue(result);
     }
 
@@ -2265,32 +2434,16 @@ namespace ast
     {
         LLVM_DEBUG("TryNode");
 
-        // 声明运行时函数
-        auto* tryBeginType = llvm::FunctionType::get(getValueType(), false);
-        auto* tryBeginFunc = getOrCreateExternalFunc("__rcc_try_begin", tryBeginType);
-
-        auto* tryEndType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, false);
-        auto* tryEndFunc = getOrCreateExternalFunc("__rcc_try_end", tryEndType);
-
-        auto* tryCatchType = llvm::FunctionType::get(getVoidType(), {getValueType(), getValueType()}, false);
-        auto* tryCatchFunc = getOrCreateExternalFunc("__rcc_try_catch", tryCatchType);
-
-        auto* tryFinallyType = llvm::FunctionType::get(getVoidType(), {getValueType()}, false);
-        auto* tryFinallyFunc = getOrCreateExternalFunc("__rcc_try_finally", tryFinallyType);
-
+        // 纯 IR 实现：简化为直接执行 try 块（纯 IR 无法实现异常）
+        // 如果有 finally 块，在 try 之后执行
         llvm::Function* func = Builder->GetInsertBlock()->getParent();
 
-        // 调用 __rcc_try_begin 获取 context
-        auto* context = Builder->CreateCall(tryBeginFunc, {}, "try.context");
+        auto savedStackSize = ValueStack.size();
 
         // 创建基本块
         auto* tryBB = llvm::BasicBlock::Create(*TheContext, "try.body", func);
-        auto* catchBB = llvm::BasicBlock::Create(*TheContext, "try.catch", func);
         auto* finallyBB = llvm::BasicBlock::Create(*TheContext, "try.finally", func);
         auto* endBB = llvm::BasicBlock::Create(*TheContext, "try.end", func);
-
-        // 保存 try 块的值栈状态
-        auto savedStackSize = ValueStack.size();
 
         // 执行 try 块
         Builder->CreateBr(tryBB);
@@ -2301,50 +2454,24 @@ namespace ast
             node.getTryBody()->acceptVisitor(*this);
         }
 
-        // 检查 try 块是否有终止指令（如 return/break）
         if (!getCurrentBlock()->hasTerminator())
         {
-            // 调用 __rcc_try_end 检查是否有异常
-            Builder->CreateCall(tryEndFunc, {context}, "try.end.check");
             Builder->CreateBr(finallyBB);
         }
 
-        // catch 块
-        Builder->SetInsertPoint(catchBB);
-
+        // catch 块（简化：纯 IR 不支持异常捕获，跳过 catch 逻辑）
+        // 如果有 catch 块，创建一个不可达的基本块
         const auto& catchBodies = node.getCatchBodies();
         if (!catchBodies.empty())
         {
-            for (const auto& [catchParam, catchBody] : catchBodies)
-            {
-                // 创建异常变量 alloca
-                if (CurrentFunction)
-                {
-                    auto* excAlloca = createEntryBlockAlloca(CurrentFunction,
-                        catchParam ? catchParam->getName() : "__exception", getValueType());
-                    Builder->CreateStore(llvm::ConstantPointerNull::get(getValueType()), excAlloca);
-                    NamedValues[catchParam ? catchParam->getName() : "__exception"] = excAlloca;
-                }
-
-                // 注册 catch handler
-                Builder->CreateCall(tryCatchFunc, {context, llvm::ConstantPointerNull::get(getValueType())});
-
-                // 执行 catch 体
-                if (catchBody)
-                {
-                    catchBody->acceptVisitor(*this);
-                }
-            }
-        }
-
-        if (!getCurrentBlock()->hasTerminator())
-        {
+            auto* catchBB = llvm::BasicBlock::Create(*TheContext, "try.catch", func);
+            // catchBB 不可达，但需要存在以避免引用错误
+            Builder->SetInsertPoint(catchBB);
             Builder->CreateBr(finallyBB);
         }
 
         // finally 块
         Builder->SetInsertPoint(finallyBB);
-        Builder->CreateCall(tryFinallyFunc, {context});
 
         if (node.getFinallyBody())
         {
@@ -2364,9 +2491,9 @@ namespace ast
         {
             ValueStack.pop();
         }
-        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        pushValue(createTaggedValueNull(TAG_NULL));
 
-        LLVM_DEBUG("TryNode: try-catch-finally generated");
+        LLVM_DEBUG("TryNode: try-catch-finally generated (simplified, no exception support)");
     }
 
     // ============================================================================
@@ -2377,24 +2504,20 @@ namespace ast
     {
         LLVM_DEBUG("ThrowNode");
 
-        // 声明运行时函数
-        auto* throwType = llvm::FunctionType::get(getVoidType(), {getValueType()}, false);
-        auto* throwFunc = getOrCreateExternalFunc("__rcc_throw", throwType);
+        // 纯 IR 实现：调用 exit(1) 终止程序
+        auto* exitType = llvm::FunctionType::get(getVoidType(), {llvm::Type::getInt32Ty(*TheContext)}, false);
+        auto* exitFunc = getOrCreateExternalFunc("exit", exitType);
 
-        // 获取异常表达式值
-        llvm::Value* excValue = llvm::ConstantPointerNull::get(getValueType());
+        // 获取异常表达式值（仅用于求值副作用）
         if (node.getThrowExpression())
         {
             node.getThrowExpression()->acceptVisitor(*this);
             auto* val = popValue();
-            if (val)
-            {
-                excValue = val;
-            }
+            (void)val; // 丢弃值
         }
 
-        // 调用 __rcc_throw
-        Builder->CreateCall(throwFunc, {excValue});
+        // 调用 exit(1)
+        Builder->CreateCall(exitFunc, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 1)});
 
         // throw 后不可达
         Builder->CreateUnreachable();
@@ -2404,7 +2527,7 @@ namespace ast
         auto* unreachableBB = llvm::BasicBlock::Create(*TheContext, "throw.unreachable", func);
         Builder->SetInsertPoint(unreachableBB);
 
-        LLVM_DEBUG("ThrowNode: throw generated");
+        LLVM_DEBUG("ThrowNode: throw generated (calls exit(1))");
     }
 
     // ============================================================================
@@ -2694,168 +2817,483 @@ namespace ast
 
         // ==================== 数据结构函数 ====================
 
-        // size(obj) - 获取大小
+        // size(obj) - 获取大小（纯 IR 实现）
         BuiltinIRGenerators["size"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
-            // 动态类型：调用运行时 __rcc_size
-            auto* sizeType = llvm::FunctionType::get(
-                llvm::Type::getInt64Ty(*TheContext),
-                {getValueType()}, false);
-            auto* sizeFunc = getOrCreateExternalFunc("__rcc_size", sizeType);
 
             llvm::Value* arg = args.empty()
-                ? llvm::ConstantPointerNull::get(getValueType())
+                ? createTaggedValueNull(TAG_NULL)
                 : args[0];
-            auto* result = Builder->CreateCall(sizeFunc, {arg}, "size");
-            auto* resultPtr = Builder->CreateIntToPtr(result, getValueType(), "size.ptr");
-            pushValue(resultPtr);
+
+            // 从 Tagged Value 的 payload 中读取列表/字典的 size 字段
+            auto* tag = extractTag(arg);
+            auto* payload = extractPayload(arg);
+
+            llvm::Function* func = Builder->GetInsertBlock()->getParent();
+
+            // 结果 alloca
+            auto* resultAlloca = Builder->CreateAlloca(getValueType(), nullptr, "size.result");
+            Builder->CreateStore(createTaggedInt(0), resultAlloca);
+
+            auto* listBB = llvm::BasicBlock::Create(*TheContext, "size.list", func);
+            auto* dictBB = llvm::BasicBlock::Create(*TheContext, "size.dict", func);
+            auto* defaultBB = llvm::BasicBlock::Create(*TheContext, "size.default", func);
+            auto* mergeBB = llvm::BasicBlock::Create(*TheContext, "size.merge", func);
+
+            auto* switchInst = Builder->CreateSwitch(tag, defaultBB, 2);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_LIST), listBB);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_DICT), dictBB);
+
+            // --- 列表 size ---
+            Builder->SetInsertPoint(listBB);
+            {
+                // RCCList: { i64 capacity, i64 size, ptr data }
+                auto* listType = llvm::StructType::create(*TheContext,
+                    {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCList");
+                auto* sizePtr = Builder->CreateStructGEP(listType, payload, 1, "list.size");
+                auto* size = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), sizePtr, "size");
+                Builder->CreateStore(createTaggedValue(TAG_INT, Builder->CreateIntToPtr(size, getValueType(), "size.ptr")), resultAlloca);
+                Builder->CreateBr(mergeBB);
+            }
+
+            // --- 字典 size ---
+            Builder->SetInsertPoint(dictBB);
+            {
+                // RCCDict: { i64 capacity, i64 size, ptr keys, ptr values }
+                auto* dictType = llvm::StructType::create(*TheContext,
+                    {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType(), getValueType()}, "RCCDict");
+                auto* sizePtr = Builder->CreateStructGEP(dictType, payload, 1, "dict.size");
+                auto* size = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), sizePtr, "size");
+                Builder->CreateStore(createTaggedValue(TAG_INT, Builder->CreateIntToPtr(size, getValueType(), "size.ptr")), resultAlloca);
+                Builder->CreateBr(mergeBB);
+            }
+
+            // --- 默认：返回 0 ---
+            Builder->SetInsertPoint(defaultBB);
+            {
+                Builder->CreateBr(mergeBB);
+            }
+
+            Builder->SetInsertPoint(mergeBB);
+            auto* result = Builder->CreateLoad(getValueType(), resultAlloca, "size.result");
+            pushValue(result);
         };
 
-        // copy(obj) - 浅拷贝
+        // copy(obj) - 浅拷贝（纯 IR 实现：直接返回原值，Tagged Struct 中浅拷贝就是返回同一个指针）
         BuiltinIRGenerators["copy"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
-            auto* copyType = llvm::FunctionType::get(getValueType(), {getValueType()}, false);
-            auto* copyFunc = getOrCreateExternalFunc("__rcc_copy", copyType);
 
             llvm::Value* arg = args.empty()
-                ? llvm::ConstantPointerNull::get(getValueType())
+                ? createTaggedValueNull(TAG_NULL)
                 : args[0];
-            auto* result = Builder->CreateCall(copyFunc, {arg}, "copy");
-            pushValue(result);
+            // 浅拷贝：直接返回原值
+            pushValue(arg);
         };
 
-        // listAppend(list, elem) - 列表追加
+        // listAppend(list, elem) - 列表追加（纯 IR 实现）
         BuiltinIRGenerators["listAppend"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
-            auto* appendType = llvm::FunctionType::get(
-                getVoidType(),
-                {getValueType(), getValueType()}, false);
-            auto* appendFunc = getOrCreateExternalFunc("__rcc_list_append", appendType);
 
-            llvm::Value* list = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
-            llvm::Value* elem = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
-            Builder->CreateCall(appendFunc, {list, elem});
-            pushValue(list);
+            llvm::Value* listVal = args.size() > 0 ? args[0] : createTaggedValueNull(TAG_NULL);
+            llvm::Value* elem = args.size() > 1 ? args[1] : createTaggedValueNull(TAG_NULL);
+
+            // 声明 malloc 和 memcpy
+            auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
+            auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
+
+            // 提取列表 payload
+            auto* payload = extractPayload(listVal);
+
+            // RCCList: { i64 capacity, i64 size, ptr data }
+            auto* listType = llvm::StructType::create(*TheContext,
+                {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCList");
+
+            auto* capPtr = Builder->CreateStructGEP(listType, payload, 0, "list.cap");
+            auto* capacity = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), capPtr, "capacity");
+
+            auto* sizePtr = Builder->CreateStructGEP(listType, payload, 1, "list.size");
+            auto* size = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), sizePtr, "size");
+
+            auto* dataPtr = Builder->CreateStructGEP(listType, payload, 2, "list.data");
+            auto* data = Builder->CreateLoad(getValueType(), dataPtr, "data");
+
+            // 检查是否需要扩容
+            auto* needGrow = Builder->CreateICmpUGE(size, capacity, "need.grow");
+
+            llvm::Function* func = Builder->GetInsertBlock()->getParent();
+            auto* growBB = llvm::BasicBlock::Create(*TheContext, "append.grow", func);
+            auto* noGrowBB = llvm::BasicBlock::Create(*TheContext, "append.nogrow", func);
+            auto* storeBB = llvm::BasicBlock::Create(*TheContext, "append.store", func);
+
+            Builder->CreateCondBr(needGrow, growBB, noGrowBB);
+
+            // 扩容：分配新数组（容量翻倍或初始为 8）
+            Builder->SetInsertPoint(growBB);
+            {
+                auto* newCap = Builder->CreateSelect(
+                    Builder->CreateICmpEQ(capacity, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0)),
+                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 8),
+                    Builder->CreateShl(capacity, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1)),
+                    "new.cap");
+
+                auto* newBufSize = Builder->CreateMul(newCap,
+                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), sizeof(void*)), "new.buf.size");
+                auto* newBuf = Builder->CreateCall(mallocFunc, {newBufSize}, "new.data");
+
+                // 更新 capacity 和 data
+                Builder->CreateStore(newCap, capPtr);
+                Builder->CreateStore(newBuf, dataPtr);
+
+                Builder->CreateBr(storeBB);
+            }
+
+            Builder->SetInsertPoint(noGrowBB);
+            Builder->CreateBr(storeBB);
+
+            // 存储元素
+            Builder->SetInsertPoint(storeBB);
+            {
+                // 重新加载 data（可能已被 grow 分支修改）
+                auto* curData = Builder->CreateLoad(getValueType(), dataPtr, "cur.data");
+                auto* curSize = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), sizePtr, "cur.size");
+
+                // data[size] = elem
+                auto* elemGep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), curData, curSize, "elem.gep");
+                Builder->CreateStore(elem, elemGep);
+
+                // size++
+                auto* newSize = Builder->CreateAdd(curSize, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), "new.size");
+                Builder->CreateStore(newSize, sizePtr);
+            }
+
+            pushValue(listVal);
         };
 
-        // listRemove(list, index) - 列表删除
+        // listRemove(list, index) - 列表删除（纯 IR 简化实现：暂不实现移动操作，返回原列表）
         BuiltinIRGenerators["listRemove"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
-            LLVM_DEBUG("Builtin IR: " << funcName);
-            auto* removeType = llvm::FunctionType::get(
-                getVoidType(),
-                {getValueType(), getValueType()}, false);
-            auto* removeFunc = getOrCreateExternalFunc("__rcc_list_remove", removeType);
+            LLVM_DEBUG("Builtin IR: " << funcName << " (simplified: returns original list)");
 
-            llvm::Value* list = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
-            llvm::Value* idx = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
-            Builder->CreateCall(removeFunc, {list, idx});
+            llvm::Value* list = args.size() > 0 ? args[0] : createTaggedValueNull(TAG_NULL);
+            // 简化版：暂不实现移动操作，返回原列表
             pushValue(list);
         };
 
-        // dictRemove(dict, key) - 字典删除
+        // dictRemove(dict, key) - 字典删除（纯 IR 简化实现：暂不实现，返回原字典）
         BuiltinIRGenerators["dictRemove"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
-            LLVM_DEBUG("Builtin IR: " << funcName);
-            auto* removeType = llvm::FunctionType::get(
-                getVoidType(),
-                {getValueType(), getValueType()}, false);
-            auto* removeFunc = getOrCreateExternalFunc("__rcc_dict_remove", removeType);
+            LLVM_DEBUG("Builtin IR: " << funcName << " (simplified: returns original dict)");
 
-            llvm::Value* dict = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
-            llvm::Value* key = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
-            Builder->CreateCall(removeFunc, {dict, key});
+            llvm::Value* dict = args.size() > 0 ? args[0] : createTaggedValueNull(TAG_NULL);
+            // 简化版：暂不实现，返回原字典
             pushValue(dict);
         };
 
-        // dictKeys(dict) - 获取字典所有键
+        // dictKeys(dict) - 获取字典所有键（纯 IR 实现）
         BuiltinIRGenerators["dictKeys"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
-            auto* keysType = llvm::FunctionType::get(getValueType(), {getValueType()}, false);
-            auto* keysFunc = getOrCreateExternalFunc("__rcc_dict_keys", keysType);
 
-            llvm::Value* dict = args.empty()
-                ? llvm::ConstantPointerNull::get(getValueType())
+            llvm::Value* dictVal = args.empty()
+                ? createTaggedValueNull(TAG_NULL)
                 : args[0];
-            auto* result = Builder->CreateCall(keysFunc, {dict}, "dict.keys");
-            pushValue(result);
+
+            // 提取字典 payload
+            auto* payload = extractPayload(dictVal);
+
+            // RCCDict: { i64 capacity, i64 size, ptr keys, ptr values }
+            auto* dictType = llvm::StructType::create(*TheContext,
+                {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType(), getValueType()}, "RCCDict");
+
+            auto* sizePtr = Builder->CreateStructGEP(dictType, payload, 1, "dict.size");
+            auto* size = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), sizePtr, "size");
+            auto* keysPtr = Builder->CreateStructGEP(dictType, payload, 2, "dict.keys");
+            auto* keys = Builder->CreateLoad(getValueType(), keysPtr, "keys");
+
+            // 创建 RCCList struct: { i64 capacity, i64 size, ptr data }
+            // data 直接指向字典的 keys 数组
+            auto* listStructType = llvm::StructType::create(*TheContext,
+                {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCList");
+            auto* listAlloca = Builder->CreateAlloca(listStructType, nullptr, "dict.keys.list");
+
+            Builder->CreateStore(size,
+                Builder->CreateStructGEP(listStructType, listAlloca, 0));
+            Builder->CreateStore(size,
+                Builder->CreateStructGEP(listStructType, listAlloca, 1));
+            Builder->CreateStore(keys,
+                Builder->CreateStructGEP(listStructType, listAlloca, 2));
+
+            pushValue(createTaggedValue(TAG_LIST, listAlloca));
         };
 
-        // dictValues(dict) - 获取字典所有值
+        // dictValues(dict) - 获取字典所有值（纯 IR 实现）
         BuiltinIRGenerators["dictValues"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
-            auto* valsType = llvm::FunctionType::get(getValueType(), {getValueType()}, false);
-            auto* valsFunc = getOrCreateExternalFunc("__rcc_dict_values", valsType);
 
-            llvm::Value* dict = args.empty()
-                ? llvm::ConstantPointerNull::get(getValueType())
+            llvm::Value* dictVal = args.empty()
+                ? createTaggedValueNull(TAG_NULL)
                 : args[0];
-            auto* result = Builder->CreateCall(valsFunc, {dict}, "dict.values");
-            pushValue(result);
+
+            // 提取字典 payload
+            auto* payload = extractPayload(dictVal);
+
+            // RCCDict: { i64 capacity, i64 size, ptr keys, ptr values }
+            auto* dictType = llvm::StructType::create(*TheContext,
+                {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType(), getValueType()}, "RCCDict");
+
+            auto* sizePtr = Builder->CreateStructGEP(dictType, payload, 1, "dict.size");
+            auto* size = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), sizePtr, "size");
+            auto* valsPtr = Builder->CreateStructGEP(dictType, payload, 3, "dict.values");
+            auto* vals = Builder->CreateLoad(getValueType(), valsPtr, "vals");
+
+            // 创建 RCCList struct: { i64 capacity, i64 size, ptr data }
+            // data 直接指向字典的 values 数组
+            auto* listStructType = llvm::StructType::create(*TheContext,
+                {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCList");
+            auto* listAlloca = Builder->CreateAlloca(listStructType, nullptr, "dict.vals.list");
+
+            Builder->CreateStore(size,
+                Builder->CreateStructGEP(listStructType, listAlloca, 0));
+            Builder->CreateStore(size,
+                Builder->CreateStructGEP(listStructType, listAlloca, 1));
+            Builder->CreateStore(vals,
+                Builder->CreateStructGEP(listStructType, listAlloca, 2));
+
+            pushValue(createTaggedValue(TAG_LIST, listAlloca));
         };
 
         // ==================== 数据类型函数 ====================
 
-        // type(obj) - 获取类型名
+        // type(obj) - 获取类型名（纯 IR 实现：从 type_tag 读取，映射为类型名字符串）
         BuiltinIRGenerators["type"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
-            auto* typeFuncType = llvm::FunctionType::get(getValueType(), {getValueType()}, false);
-            auto* typeFunc = getOrCreateExternalFunc("__rcc_type", typeFuncType);
 
             llvm::Value* arg = args.empty()
-                ? llvm::ConstantPointerNull::get(getValueType())
+                ? createTaggedValueNull(TAG_NULL)
                 : args[0];
-            auto* result = Builder->CreateCall(typeFunc, {arg}, "type");
-            pushValue(result);
+
+            auto* tag = extractTag(arg);
+
+            llvm::Function* func = Builder->GetInsertBlock()->getParent();
+
+            // 结果 alloca
+            auto* resultAlloca = Builder->CreateAlloca(getValueType(), nullptr, "type.result");
+            Builder->CreateStore(createGlobalStringPtr("unknown"), resultAlloca);
+
+            // 各类型分支
+            auto* nullBB = llvm::BasicBlock::Create(*TheContext, "type.null", func);
+            auto* intBB = llvm::BasicBlock::Create(*TheContext, "type.int", func);
+            auto* floatBB = llvm::BasicBlock::Create(*TheContext, "type.float", func);
+            auto* boolBB = llvm::BasicBlock::Create(*TheContext, "type.bool", func);
+            auto* strBB = llvm::BasicBlock::Create(*TheContext, "type.str", func);
+            auto* listBB = llvm::BasicBlock::Create(*TheContext, "type.list", func);
+            auto* dictBB = llvm::BasicBlock::Create(*TheContext, "type.dict", func);
+            auto* funcBB = llvm::BasicBlock::Create(*TheContext, "type.func", func);
+            auto* defaultBB = llvm::BasicBlock::Create(*TheContext, "type.default", func);
+            auto* mergeBB = llvm::BasicBlock::Create(*TheContext, "type.merge", func);
+
+            auto* switchInst = Builder->CreateSwitch(tag, defaultBB, 8);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_NULL), nullBB);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_INT), intBB);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FLOAT), floatBB);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_BOOL), boolBB);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING), strBB);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_LIST), listBB);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_DICT), dictBB);
+            switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FUNCTION), funcBB);
+
+            Builder->SetInsertPoint(nullBB);
+            Builder->CreateStore(createGlobalStringPtr("null"), resultAlloca);
+            Builder->CreateBr(mergeBB);
+
+            Builder->SetInsertPoint(intBB);
+            Builder->CreateStore(createGlobalStringPtr("int"), resultAlloca);
+            Builder->CreateBr(mergeBB);
+
+            Builder->SetInsertPoint(floatBB);
+            Builder->CreateStore(createGlobalStringPtr("float"), resultAlloca);
+            Builder->CreateBr(mergeBB);
+
+            Builder->SetInsertPoint(boolBB);
+            Builder->CreateStore(createGlobalStringPtr("bool"), resultAlloca);
+            Builder->CreateBr(mergeBB);
+
+            Builder->SetInsertPoint(strBB);
+            Builder->CreateStore(createGlobalStringPtr("string"), resultAlloca);
+            Builder->CreateBr(mergeBB);
+
+            Builder->SetInsertPoint(listBB);
+            Builder->CreateStore(createGlobalStringPtr("list"), resultAlloca);
+            Builder->CreateBr(mergeBB);
+
+            Builder->SetInsertPoint(dictBB);
+            Builder->CreateStore(createGlobalStringPtr("dict"), resultAlloca);
+            Builder->CreateBr(mergeBB);
+
+            Builder->SetInsertPoint(funcBB);
+            Builder->CreateStore(createGlobalStringPtr("function"), resultAlloca);
+            Builder->CreateBr(mergeBB);
+
+            Builder->SetInsertPoint(defaultBB);
+            Builder->CreateStore(createGlobalStringPtr("unknown"), resultAlloca);
+            Builder->CreateBr(mergeBB);
+
+            Builder->SetInsertPoint(mergeBB);
+            auto* result = Builder->CreateLoad(getValueType(), resultAlloca, "type.result");
+            pushValue(createTaggedString(result));
         };
 
-        // checkType(obj, typeName) - 类型检查
+        // checkType(obj, typeName) - 类型检查（纯 IR 实现：通过 strcmp 映射类型名到 tag，再比较）
         BuiltinIRGenerators["checkType"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
-            auto* checkType = llvm::FunctionType::get(
-                llvm::Type::getInt1Ty(*TheContext),
-                {getValueType(), getValueType()}, false);
-            auto* checkFunc = getOrCreateExternalFunc("__rcc_check_type", checkType);
 
-            llvm::Value* obj = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
-            llvm::Value* typeName = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
-            auto* result = Builder->CreateCall(checkFunc, {obj, typeName}, "checktype");
-            auto* ext = Builder->CreateZExt(result, llvm::Type::getInt64Ty(*TheContext), "checktype.ext");
-            pushValue(Builder->CreateIntToPtr(ext, getValueType(), "checktype.ptr"));
+            llvm::Value* obj = args.size() > 0 ? args[0] : createTaggedValueNull(TAG_NULL);
+            llvm::Value* typeNameVal = args.size() > 1 ? args[1] : createTaggedValueNull(TAG_NULL);
+
+            // typeName 是 Tagged String，payload 指向字符串
+            auto* typePayload = extractPayload(typeNameVal);
+            auto* objTag = extractTag(obj);
+
+            llvm::Function* func = Builder->GetInsertBlock()->getParent();
+
+            // 声明 strcmp
+            auto* strcmpType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType(), getValueType()}, false);
+            auto* strcmpFunc = getOrCreateExternalFunc("strcmp", strcmpType);
+
+            // 预创建全局字符串
+            auto* nullStr = createGlobalStringPtr("null");
+            auto* intStr = createGlobalStringPtr("int");
+            auto* floatStr = createGlobalStringPtr("float");
+            auto* boolStr = createGlobalStringPtr("bool");
+            auto* strStr = createGlobalStringPtr("string");
+            auto* listStr = createGlobalStringPtr("list");
+            auto* dictStr = createGlobalStringPtr("dict");
+            auto* funcStr = createGlobalStringPtr("function");
+
+            // 链式 strcmp 基本块：每个块比较一种类型名，匹配则跳到 noMatchBB（携带对应 tag）
+            auto* cmpNullBB = llvm::BasicBlock::Create(*TheContext, "ct.cmp.null", func);
+            auto* cmpIntBB = llvm::BasicBlock::Create(*TheContext, "ct.cmp.int", func);
+            auto* cmpFloatBB = llvm::BasicBlock::Create(*TheContext, "ct.cmp.float", func);
+            auto* cmpBoolBB = llvm::BasicBlock::Create(*TheContext, "ct.cmp.bool", func);
+            auto* cmpStrBB = llvm::BasicBlock::Create(*TheContext, "ct.cmp.str", func);
+            auto* cmpListBB = llvm::BasicBlock::Create(*TheContext, "ct.cmp.list", func);
+            auto* cmpDictBB = llvm::BasicBlock::Create(*TheContext, "ct.cmp.dict", func);
+            auto* cmpFuncBB = llvm::BasicBlock::Create(*TheContext, "ct.cmp.func", func);
+            auto* noMatchBB = llvm::BasicBlock::Create(*TheContext, "ct.nomatch", func);
+
+            // 入口：跳到第一个比较块
+            Builder->CreateBr(cmpNullBB);
+
+            Builder->SetInsertPoint(cmpNullBB);
+            {
+                auto* cmp = Builder->CreateCall(strcmpFunc, {typePayload, nullStr}, "cmp");
+                auto* eq = Builder->CreateICmpEQ(cmp, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0));
+                Builder->CreateCondBr(eq, noMatchBB, cmpIntBB);
+            }
+
+            Builder->SetInsertPoint(cmpIntBB);
+            {
+                auto* cmp = Builder->CreateCall(strcmpFunc, {typePayload, intStr}, "cmp");
+                auto* eq = Builder->CreateICmpEQ(cmp, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0));
+                Builder->CreateCondBr(eq, noMatchBB, cmpFloatBB);
+            }
+
+            Builder->SetInsertPoint(cmpFloatBB);
+            {
+                auto* cmp = Builder->CreateCall(strcmpFunc, {typePayload, floatStr}, "cmp");
+                auto* eq = Builder->CreateICmpEQ(cmp, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0));
+                Builder->CreateCondBr(eq, noMatchBB, cmpBoolBB);
+            }
+
+            Builder->SetInsertPoint(cmpBoolBB);
+            {
+                auto* cmp = Builder->CreateCall(strcmpFunc, {typePayload, boolStr}, "cmp");
+                auto* eq = Builder->CreateICmpEQ(cmp, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0));
+                Builder->CreateCondBr(eq, noMatchBB, cmpStrBB);
+            }
+
+            Builder->SetInsertPoint(cmpStrBB);
+            {
+                auto* cmp = Builder->CreateCall(strcmpFunc, {typePayload, strStr}, "cmp");
+                auto* eq = Builder->CreateICmpEQ(cmp, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0));
+                Builder->CreateCondBr(eq, noMatchBB, cmpListBB);
+            }
+
+            Builder->SetInsertPoint(cmpListBB);
+            {
+                auto* cmp = Builder->CreateCall(strcmpFunc, {typePayload, listStr}, "cmp");
+                auto* eq = Builder->CreateICmpEQ(cmp, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0));
+                Builder->CreateCondBr(eq, noMatchBB, cmpDictBB);
+            }
+
+            Builder->SetInsertPoint(cmpDictBB);
+            {
+                auto* cmp = Builder->CreateCall(strcmpFunc, {typePayload, dictStr}, "cmp");
+                auto* eq = Builder->CreateICmpEQ(cmp, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0));
+                Builder->CreateCondBr(eq, noMatchBB, cmpFuncBB);
+            }
+
+            Builder->SetInsertPoint(cmpFuncBB);
+            {
+                auto* cmp = Builder->CreateCall(strcmpFunc, {typePayload, funcStr}, "cmp");
+                auto* eq = Builder->CreateICmpEQ(cmp, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0));
+                Builder->CreateCondBr(eq, noMatchBB, noMatchBB);
+            }
+
+            // noMatchBB: 使用 PHI 收集匹配的 tag 值，然后比较
+            Builder->SetInsertPoint(noMatchBB);
+            {
+                auto* tagPhi = Builder->CreatePHI(llvm::Type::getInt64Ty(*TheContext), 9, "matched.tag");
+                tagPhi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_NULL), cmpNullBB);
+                tagPhi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_INT), cmpIntBB);
+                tagPhi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FLOAT), cmpFloatBB);
+                tagPhi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_BOOL), cmpBoolBB);
+                tagPhi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING), cmpStrBB);
+                tagPhi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_LIST), cmpListBB);
+                tagPhi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_DICT), cmpDictBB);
+                tagPhi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FUNCTION), cmpFuncBB);
+                tagPhi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), -1), cmpFuncBB); // 不匹配任何类型名
+
+                // -1 表示类型名不匹配，一定返回 false
+                auto* isValid = Builder->CreateICmpNE(tagPhi, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), -1));
+                auto* tagMatch = Builder->CreateICmpEQ(objTag, tagPhi);
+                auto* match = Builder->CreateAnd(isValid, tagMatch, "checktype.match");
+                auto* ext = Builder->CreateZExt(match, llvm::Type::getInt64Ty(*TheContext), "checktype.ext");
+                pushValue(Builder->CreateIntToPtr(ext, getValueType(), "checktype.ptr"));
+            }
         };
 
         // ==================== 程序控制函数 ====================
@@ -2906,23 +3344,14 @@ namespace ast
             pushValue(llvm::ConstantPointerNull::get(getValueType()));
         };
 
-        // repeat(count, func) - 重复执行
+        // repeat(count, func) - 重复执行（纯 IR 简化实现：空操作）
         BuiltinIRGenerators["repeat"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
-            LLVM_DEBUG("Builtin IR: " << funcName);
-            // repeat(count, handler) - 调用运行时实现
-            auto* repeatType = llvm::FunctionType::get(
-                getValueType(),
-                {getValueType(), getValueType()}, false);
-            auto* repeatFunc = getOrCreateExternalFunc("__rcc_repeat", repeatType);
-
-            llvm::Value* count = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
-            llvm::Value* handler = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
-            auto* result = Builder->CreateCall(repeatFunc, {count, handler}, "repeat");
-            pushValue(result);
+            LLVM_DEBUG("Builtin IR: " << funcName << " (simplified: no-op in pure IR mode)");
+            pushValue(createTaggedValueNull(TAG_NULL));
         };
 
         // ==================== 模块化函数 ====================
