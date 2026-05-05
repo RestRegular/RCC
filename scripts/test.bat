@@ -1,6 +1,9 @@
 @echo off
 cls
-echo ^>^> test.bat %*
+echo ========================================
+echo RCC Test Runner
+echo ========================================
+
 setlocal enabledelayedexpansion
 
 REM 获取脚本所在目录
@@ -8,21 +11,18 @@ set "script_dir=%~dp0"
 set "runner=%script_dir%run.bat"
 
 if not exist "%runner%" (
-    echo 错误: 未找到 "%runner%"
+    echo ERROR: runner not found: %runner%
     exit /b 1
 )
 
 REM 设置测试根目录
-set "tests_root=%~dp0..\tests"
+set "tests_root=%script_dir%..\tests"
 
 REM 初始化计数器
 set PASS_COUNT=0
 set FAIL_COUNT=0
 set TOTAL_COUNT=0
 
-echo ========================================
-echo RCC Test Runner
-echo ========================================
 echo Tests root: %tests_root%
 echo Runner:     %runner%
 echo ========================================
@@ -39,50 +39,42 @@ for /D %%D in ("%tests_root%\test_*") do (
     if not exist "!expected!" (
         echo [SKIP] !test_name! - expected.txt not found
         echo.
-        goto :next_test
-    )
-
-    set /a TOTAL_COUNT+=1
-
-    echo [RUN]  !test_name!...
-    echo.
-
-    REM 运行 run.bat --skip-cmake，将输出重定向到临时日志
-    call "%runner%" -i "!test_dir!" --skip-cmake > "!test_dir!\build.log" 2>&1
-
-    if errorlevel 1 (
-        echo [FAIL] !test_name! - build/run error
-        type "!test_dir!\build.log"
-        set /a FAIL_COUNT+=1
-        echo.
-        goto :next_test
-    )
-
-    REM 检查 actual.txt 是否生成
-    if not exist "!actual!" (
-        echo [FAIL] !test_name! - actual.txt not generated
-        set /a FAIL_COUNT+=1
-        echo.
-        goto :next_test
-    )
-
-    REM 比较 actual.txt 和 expected.txt
-    fc /W "!expected!" "!actual!" > nul 2>&1
-    if errorlevel 1 (
-        echo [FAIL] !test_name! - output mismatch
-        echo --- Expected ---
-        type "!expected!"
-        echo --- Actual ---
-        type "!actual!"
-        echo ----------------
-        set /a FAIL_COUNT+=1
     ) else (
-        echo [PASS] !test_name!
-        set /a PASS_COUNT+=1
-    )
-    echo.
+        set /a TOTAL_COUNT+=1
 
-    :next_test
+        echo [RUN]  !test_name!...
+
+        REM 运行 run.bat --skip-cmake
+        call "%runner%" -i "!test_dir!" --skip-cmake > "!test_dir!\build.log" 2>&1
+
+        if errorlevel 1 (
+            echo [FAIL] !test_name! - build/run error
+            type "!test_dir!\build.log"
+            set /a FAIL_COUNT+=1
+        ) else (
+            REM 检查 actual.txt 是否生成
+            if not exist "!actual!" (
+                echo [FAIL] !test_name! - actual.txt not generated
+                set /a FAIL_COUNT+=1
+            ) else (
+                REM 比较 actual.txt 和 expected.txt
+                fc /W "!expected!" "!actual!" > nul 2>&1
+                if errorlevel 1 (
+                    echo [FAIL] !test_name! - output mismatch
+                    echo --- Expected ---
+                    type "!expected!"
+                    echo --- Actual ---
+                    type "!actual!"
+                    echo ----------------
+                    set /a FAIL_COUNT+=1
+                ) else (
+                    echo [PASS] !test_name!
+                    set /a PASS_COUNT+=1
+                )
+            )
+        )
+        echo.
+    )
 )
 
 REM 输出汇总
