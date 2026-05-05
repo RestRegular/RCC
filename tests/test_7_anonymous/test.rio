@@ -1,0 +1,14 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+var add = (a, b) -> { ret a + b }
+sout(add(3, 5))
+
+var double = (x) -> { ret x * 2 }
+sout(double(10))
+
+fun apply(f, x) {
+    ret f(x)
+}
+sout(apply((n) -> { ret n * n }, 5))

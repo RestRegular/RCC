@@ -1,0 +1,17 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+try {
+    sout("try: pass")
+} finally {
+    sout("finally: pass")
+}
+
+try {
+    sout("try2: pass")
+} catch(e) {
+    sout("catch: FAIL")
+} finally {
+    sout("finally2: pass")
+}

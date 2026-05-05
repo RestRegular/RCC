@@ -1,0 +1,13 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+fun safeDivide(a, b) {
+    if b == 0 {
+        throw "division by zero"
+    }
+    ret a / b
+}
+
+sout(safeDivide(10, 3))
+sout("after throw test")

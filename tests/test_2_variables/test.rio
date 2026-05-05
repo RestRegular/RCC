@@ -1,0 +1,12 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+var x = 100
+var y = 20
+var z = x + y
+sout(z)
+var name = "RCC"
+sout(name)
+var flag = true
+sout(flag)

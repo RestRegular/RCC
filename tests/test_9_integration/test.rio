@@ -1,0 +1,22 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+fun fib(n) {
+    if n <= 1 {
+        ret n
+    }
+    ret fib(n - 1) + fib(n - 2)
+}
+
+sout(fib(0))
+sout(fib(1))
+sout(fib(2))
+sout(fib(3))
+sout(fib(4))
+sout(fib(5))
+sout(fib(6))
+sout(fib(7))
+sout(fib(8))
+sout(fib(9))
+sout(fib(10))

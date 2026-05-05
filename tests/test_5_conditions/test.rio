@@ -1,0 +1,22 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+if true {
+    sout("if-true: pass")
+}
+
+if false {
+    sout("if-false: FAIL")
+} else {
+    sout("if-else: pass")
+}
+
+var x = 15
+if x > 20 {
+    sout("elif: FAIL-A")
+} elif x > 10 {
+    sout("elif: pass-B")
+} else {
+    sout("elif: FAIL-C")
+}

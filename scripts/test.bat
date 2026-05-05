@@ -3,30 +3,6 @@ cls
 echo ^>^> test.bat %*
 setlocal enabledelayedexpansion
 
-REM 检查参数数量
-if "%~2"=="" (
-    echo 用法: %~nx0 ^<要扫描的目录^> ^<输出日志目录^>
-    echo 示例: %~nx0 C:\input D:\output
-    exit /b 1
-)
-
-REM 获取要扫描的绝对路径
-set "scan_dir=%~f1"
-if not exist "%scan_dir%" (
-    echo 错误: 目录 "%scan_dir%" 不存在
-    exit /b 1
-)
-
-REM 获取输出目录的绝对路径
-set "out_dir=%~f2"
-if not exist "%out_dir%" (
-    mkdir "%out_dir%" 2>nul
-    if errorlevel 1 (
-        echo 错误: 无法创建输出目录 "%out_dir%"
-        exit /b 1
-    )
-)
-
 REM 获取脚本所在目录
 set "script_dir=%~dp0"
 set "runner=%script_dir%run.bat"
@@ -36,30 +12,92 @@ if not exist "%runner%" (
     exit /b 1
 )
 
-echo 扫描目录: %scan_dir%
-echo 输出目录: %out_dir%
-echo 使用执行器: %runner%
+REM 设置测试根目录
+set "tests_root=%~dp0..\tests"
+
+REM 初始化计数器
+set PASS_COUNT=0
+set FAIL_COUNT=0
+set TOTAL_COUNT=0
+
+echo ========================================
+echo RCC Test Runner
+echo ========================================
+echo Tests root: %tests_root%
+echo Runner:     %runner%
+echo ========================================
 echo.
 
-REM 递归查找所有 .rio 文件
-for /R "%scan_dir%" %%F in (*.rio) do (
-    set "fullpath=%%F"
-    set "filename=%%~nF"
-    set "logfile=%out_dir%!filename!.output"
+REM 遍历所有 test_* 目录
+for /D %%D in ("%tests_root%\test_*") do (
+    set "test_dir=%%D"
+    set "test_name=%%~nxD"
+    set "expected=%%D\expected.txt"
+    set "actual=%%D\actual.txt"
 
-    echo 处理: !fullpath!
-    echo 输出: !logfile!
+    REM 检查 expected.txt 是否存在
+    if not exist "!expected!" (
+        echo [SKIP] !test_name! - expected.txt not found
+        echo.
+        goto :next_test
+    )
 
-    REM 执行 run.bat -i <rio文件>，并将输出重定向到日志文件
-    call "%runner%" -i "!fullpath!" > "!logfile!" 2>&1
+    set /a TOTAL_COUNT+=1
+
+    echo [RUN]  !test_name!...
+    echo.
+
+    REM 运行 run.bat --skip-cmake，将输出重定向到临时日志
+    call "%runner%" -i "!test_dir!" --skip-cmake > "!test_dir!\build.log" 2>&1
 
     if errorlevel 1 (
-        echo 警告: 处理 !fullpath! 时出错
+        echo [FAIL] !test_name! - build/run error
+        type "!test_dir!\build.log"
+        set /a FAIL_COUNT+=1
+        echo.
+        goto :next_test
+    )
+
+    REM 检查 actual.txt 是否生成
+    if not exist "!actual!" (
+        echo [FAIL] !test_name! - actual.txt not generated
+        set /a FAIL_COUNT+=1
+        echo.
+        goto :next_test
+    )
+
+    REM 比较 actual.txt 和 expected.txt
+    fc /W "!expected!" "!actual!" > nul 2>&1
+    if errorlevel 1 (
+        echo [FAIL] !test_name! - output mismatch
+        echo --- Expected ---
+        type "!expected!"
+        echo --- Actual ---
+        type "!actual!"
+        echo ----------------
+        set /a FAIL_COUNT+=1
     ) else (
-        echo 完成: !fullpath!
+        echo [PASS] !test_name!
+        set /a PASS_COUNT+=1
     )
     echo.
+
+    :next_test
 )
 
-echo 所有处理完成。
-exit /b 0
+REM 输出汇总
+echo ========================================
+echo Test Summary
+echo ========================================
+echo Total: %TOTAL_COUNT%
+echo Pass:  %PASS_COUNT%
+echo Fail:  %FAIL_COUNT%
+echo ========================================
+
+if %FAIL_COUNT% gtr 0 (
+    echo RESULT: FAILED
+    exit /b 1
+) else (
+    echo RESULT: ALL PASSED
+    exit /b 0
+)

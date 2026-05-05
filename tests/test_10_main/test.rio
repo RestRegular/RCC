@@ -1,0 +1,7 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+fun main() {
+    sout("main entry: pass")
+}

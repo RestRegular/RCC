@@ -1,0 +1,17 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+fun add(a, b) {
+    ret a + b
+}
+
+fun factorial(n) {
+    if n <= 1 {
+        ret 1
+    }
+    ret n * factorial(n - 1)
+}
+
+sout(add(3, 5))
+sout(factorial(5))

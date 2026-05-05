@@ -1,0 +1,10 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+sout(10)
+sout(3.14)
+sout(true)
+sout(false)
+sout("hello")
+sout(null)

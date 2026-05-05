@@ -11,11 +11,8 @@ set CMAKE_EXE=D:\soft\Clion\CLion-2024.2.3\bin\cmake\win\x64\bin\cmake.exe
 set CMAKE_BUILD_DIR=D:\ClionProjects\RCC\cmake-build-debug
 set CMAKE_TARGET=RCC
 
-REM 默认输入输出文件
-set INPUT_RIO=.\tests\test_builtins.rio
-set INPUT_LL=.\tests\lls\test.ll
-set INPUT_OBJ=.\tests\objs\test.obj
-set OUTPUT_EXE=.\tests\exes\test.exe
+REM 默认测试目录
+set TEST_DIR=.\tests\test_1_builtins
 set RUN_EXE=true
 set SKIP_CMAKE=false
 
@@ -28,25 +25,13 @@ REM 解析命令行参数
 :parse_args
 if "%1"=="" goto :after_parse
 if "%1"=="-i" (
-    set INPUT_RIO=%2
-    shift
-    shift
-    goto :parse_args
-)
-if "%1"=="-o" (
-    set OUTPUT_EXE=%2
+    set TEST_DIR=%2
     shift
     shift
     goto :parse_args
 )
 if "%1"=="--no-run" (
     set RUN_EXE=false
-    shift
-    goto :parse_args
-)
-if "%1"=="-ir-o" (
-    set INPUT_LL=%2
-    shift
     shift
     goto :parse_args
 )
@@ -60,24 +45,22 @@ goto :help
 
 :after_parse
 
-REM 从输入文件名自动生成输出文件名（如果未通过 -o 指定）
-if "%OUTPUT_EXE%"==".\tests\exes\test.exe" (
-    if not "%INPUT_RIO%"==".\tests\test_builtins.rio" (
-        REM 提取文件名（不含扩展名）
-        for %%f in ("%INPUT_RIO%") do set BASENAME=%%~nf
-        set OUTPUT_EXE=.\tests\exes\!BASENAME!.exe
-        set INPUT_LL=.\tests\lls\!BASENAME!.ll
-        set INPUT_OBJ=.\tests\objs\!BASENAME!.obj
-    )
-)
+REM 从测试目录派生输入输出路径
+set INPUT_RIO=%TEST_DIR%\test.rio
+set INPUT_LL=%TEST_DIR%\test.ll
+set INPUT_OBJ=%TEST_DIR%\test.obj
+set OUTPUT_EXE=%TEST_DIR%\test.exe
+set ACTUAL_TXT=%TEST_DIR%\actual.txt
 
 echo ========================================
 echo RCC Build Script
 echo ========================================
-echo Input file:   %INPUT_RIO%
-echo Output exe:   %OUTPUT_EXE%
-echo LLVM IR file: %INPUT_LL%
-echo Object file:  %INPUT_OBJ%
+echo Test directory: %TEST_DIR%
+echo Input file:     %INPUT_RIO%
+echo LLVM IR file:   %INPUT_LL%
+echo Object file:    %INPUT_OBJ%
+echo Output exe:     %OUTPUT_EXE%
+echo Actual output:  %ACTUAL_TXT%
 echo Run after build: %RUN_EXE%
 echo Skip CMake build: %SKIP_CMAKE%
 echo ========================================
@@ -88,7 +71,7 @@ if "%SKIP_CMAKE%"=="false" (
     echo [0/5] Building RCC compiler with CMake...
     echo Build directory: %CMAKE_BUILD_DIR%
     echo Target: %CMAKE_TARGET%
-    echo Using %CMAKE_NUM_JOBS% parallel jobs
+    echo Using 10 parallel jobs
 
     if not exist "%CMAKE_BUILD_DIR%" (
         echo WARNING: Build directory not found: %CMAKE_BUILD_DIR%
@@ -124,11 +107,6 @@ if not exist "%INPUT_RIO%" (
     exit /b 1
 )
 
-REM 创建输出目录（如果不存在）
-for %%i in ("%INPUT_LL%") do if not exist "%%~dpi" mkdir "%%~dpi"
-for %%i in ("%INPUT_OBJ%") do if not exist "%%~dpi" mkdir "%%~dpi"
-for %%i in ("%OUTPUT_EXE%") do if not exist "%%~dpi" mkdir "%%~dpi"
-
 REM 步骤1: 生成LLVM IR
 echo [1/5] Generating LLVM IR from %INPUT_RIO%...
 %RCC_EXE% -ir --p "%INPUT_RIO%" --ir-o "%INPUT_LL%"
@@ -159,13 +137,14 @@ if %errorlevel% neq 0 (
 echo SUCCESS: Executable generated to %OUTPUT_EXE%
 echo.
 
-REM 步骤4: 运行可执行文件
+REM 步骤4: 运行可执行文件并将输出保存到 actual.txt
 if "%RUN_EXE%"=="true" (
     echo [4/5] Running executable...
     echo ========================================
-    "%OUTPUT_EXE%"
+    "%OUTPUT_EXE%" > "%ACTUAL_TXT%" 2>&1
     echo ========================================
     echo.
+    echo Output saved to %ACTUAL_TXT%
     echo Execution completed!
 ) else (
     echo [4/5] Skipping execution (--no-run specified)
@@ -181,18 +160,15 @@ goto :eof
 echo Usage: %~nx0 [options]
 echo.
 echo Options:
-echo   -i ^<file^>        Input .rio file (default: .\tests\test_builtins.rio)
-echo   -o ^<file^>        Output executable file (default: auto-generated from input name)
-echo   -ir-o ^<file^>     Output LLVM IR file (default: auto-generated from input name)
+echo   -i ^<test_dir^>    Test directory containing test.rio (default: .\tests\test_1_builtins)
 echo   --no-run           Skip running the executable after building
 echo   --skip-cmake       Skip CMake build step (use existing RCC.exe)
 echo   -h, --help, /?     Show this help message
 echo.
 echo Examples:
-echo   %~nx0                                      Build with default settings
-echo   %~nx0 -i myfile.rio                        Build myfile.rio
-echo   %~nx0 -i myfile.rio -o myprogram.exe       Build with custom output name
-echo   %~nx0 -i myfile.rio --no-run               Build only, don't run
-echo   %~nx0 -i myfile.rio --skip-cmake           Skip rebuilding RCC compiler
+echo   %~nx0                                      Build test_1_builtins with default settings
+echo   %~nx0 -i .\tests\test_6_functions          Build and run test_6_functions
+echo   %~nx0 -i .\tests\test_9_integration --no-run   Build only, don't run
+echo   %~nx0 -i .\tests\test_1_builtins --skip-cmake   Skip rebuilding RCC compiler
 echo.
 goto :eof

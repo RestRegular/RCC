@@ -1,0 +1,18 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+var a = 10
+var b = 20
+sout(a == b)
+sout(a != b)
+sout(a < b)
+sout(a > b)
+sout(a <= 10)
+sout(a >= 20)
+sout(true && true)
+sout(true && false)
+sout(false || true)
+sout(false || false)
+sout(!true)
+sout(!false)
