@@ -1057,12 +1057,14 @@ namespace ast
         auto* isFloatRight = Builder->CreateICmpEQ(rightTag, floatTagConst, "is_float.right");
         auto* isFloat = Builder->CreateOr(isFloatLeft, isFloatRight, "is_float");
 
+        auto* currentFunc = Builder->GetInsertBlock()->getParent();
+
         // 浮点数分支
-        auto* floatBB = llvm::BasicBlock::Create(*TheContext, "arith.float", func);
+        auto* floatBB = llvm::BasicBlock::Create(*TheContext, "arith.float", currentFunc);
         // 整数分支
-        auto* intBB = llvm::BasicBlock::Create(*TheContext, "arith.int", func);
+        auto* intBB = llvm::BasicBlock::Create(*TheContext, "arith.int", currentFunc);
         // 合并分支
-        auto* arithMergeBB = llvm::BasicBlock::Create(*TheContext, "arith.merge", func);
+        auto* arithMergeBB = llvm::BasicBlock::Create(*TheContext, "arith.merge", currentFunc);
 
         // 在分支前创建结果 alloca（满足 dominance）
         auto* resultAlloca = createEntryBlockAlloca(func, "arith.result", getValueType());
@@ -1308,6 +1310,7 @@ namespace ast
         // --- 合并浮点和整数结果 ---
         Builder->SetInsertPoint(arithMergeBB);
         pushValue(Builder->CreateLoad(getValueType(), resultAlloca, "arith.result.load"));
+        }
     }
 
     // ============================================================================
