@@ -555,7 +555,7 @@ namespace ast
         std::vector<std::string> paramNames;
         if (node.getParamNode())
         {
-            if (auto* parenRanger = dynamic_cast<ParenRangerNode*>(node.getParamNode().get()))
+            if (auto* parenRanger = static_cast<ParenRangerNode*>(node.getParamNode().get()))
             {
                 if (parenRanger->getRangerNode())
                 {
@@ -711,7 +711,7 @@ namespace ast
         std::vector<std::string> memberNames;
         std::vector<std::shared_ptr<ExpressionNode>> methodNodes;
 
-        if (auto* body = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get()))
+        if (auto* body = static_cast<BlockRangerNode*>(node.getBodyNode().get()))
         {
             for (const auto& expr : body->getBodyExpressions())
             {
@@ -821,7 +821,7 @@ namespace ast
         if (argsNode)
         {
             // 参数可能是 BlockRangerNode 或 ParenRangerNode
-            if (const auto* blockRanger = dynamic_cast<BlockRangerNode*>(argsNode.get()))
+            if (const auto* blockRanger = static_cast<BlockRangerNode*>(argsNode.get()))
             {
                 for (const auto& expr : blockRanger->getBodyExpressions())
                 {
@@ -845,7 +845,7 @@ namespace ast
                     }
                 }
             }
-            else if (const auto* parenRanger = dynamic_cast<ParenRangerNode*>(argsNode.get()))
+            else if (const auto* parenRanger = static_cast<ParenRangerNode*>(argsNode.get()))
             {
                 if (parenRanger->getRangerNode())
                 {
@@ -1635,7 +1635,7 @@ namespace ast
 
         if (argsNode)
         {
-            if (auto* parenRanger = dynamic_cast<ParenRangerNode*>(argsNode.get()))
+            if (auto* parenRanger = static_cast<ParenRangerNode*>(argsNode.get()))
             {
                 if (parenRanger->getRangerNode())
                 {
@@ -1675,7 +1675,7 @@ namespace ast
         bool isEncapsulated = false;
         if (node.getBodyNode())
         {
-            if (const auto* bodyBlock = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get());
+            if (const auto* bodyBlock = static_cast<BlockRangerNode*>(node.getBodyNode().get());
                 bodyBlock && !bodyBlock->getBodyExpressions().empty())
             {
                 if (const auto lastExpr = bodyBlock->getBodyExpressions().back();
@@ -2142,7 +2142,7 @@ namespace ast
                 auto nodeType = expr->getRealType();
 
                 // 处理 BlockRangerNode / ParenRangerNode 包装
-                if (auto* blockRanger = dynamic_cast<BlockRangerNode*>(expr.get()))
+                if (auto* blockRanger = static_cast<BlockRangerNode*>(expr.get()))
                 {
                     for (const auto& bodyExpr : blockRanger->getBodyExpressions())
                     {
@@ -2150,7 +2150,7 @@ namespace ast
                     }
                     return;
                 }
-                if (auto* parenRanger = dynamic_cast<ParenRangerNode*>(expr.get()))
+                if (auto* parenRanger = static_cast<ParenRangerNode*>(expr.get()))
                 {
                     if (parenRanger->getRangerNode())
                     {
@@ -2296,13 +2296,13 @@ namespace ast
                 auto nodeType = expr->getRealType();
 
                 // 处理 BlockRangerNode / ParenRangerNode 包装
-                if (auto* blockRanger = dynamic_cast<BlockRangerNode*>(expr.get()))
+                if (auto* blockRanger = static_cast<BlockRangerNode*>(expr.get()))
                 {
                     for (const auto& bodyExpr : blockRanger->getBodyExpressions())
                         collectPairs(bodyExpr);
                     return;
                 }
-                if (auto* parenRanger = dynamic_cast<ParenRangerNode*>(expr.get()))
+                if (auto* parenRanger = static_cast<ParenRangerNode*>(expr.get()))
                 {
                     if (parenRanger->getRangerNode())
                         collectPairs(parenRanger->getRangerNode());
@@ -2416,13 +2416,13 @@ namespace ast
                 auto nodeType = expr->getRealType();
 
                 // 处理 BlockRangerNode / ParenRangerNode 包装
-                if (auto* blockRanger = dynamic_cast<BlockRangerNode*>(expr.get()))
+                if (auto* blockRanger = static_cast<BlockRangerNode*>(expr.get()))
                 {
                     for (const auto& bodyExpr : blockRanger->getBodyExpressions())
                         collectElements(bodyExpr);
                     return;
                 }
-                if (auto* parenRanger = dynamic_cast<ParenRangerNode*>(expr.get()))
+                if (auto* parenRanger = static_cast<ParenRangerNode*>(expr.get()))
                 {
                     if (parenRanger->getRangerNode())
                         collectElements(parenRanger->getRangerNode());
