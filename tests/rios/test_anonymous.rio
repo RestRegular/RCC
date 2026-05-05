@@ -3,13 +3,19 @@
 // 验证: 匿名函数定义和调用
 // ============================================================================
 
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
 // 匿名函数赋值给变量
 var add = (a, b) -> { ret a + b }
 var result = add(3, 5)
+sout(result)
 
 // 直接调用匿名函数
 var double = (x) -> { ret x * 2 }
 var doubled = double(10)
+sout(doubled)
 
 // 匿名函数作为参数
 fun apply(f, x) {
@@ -17,3 +23,4 @@ fun apply(f, x) {
 }
 
 var applied = apply((n) -> { ret n * n }, 5)
+sout(applied)

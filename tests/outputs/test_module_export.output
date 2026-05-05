@@ -1,0 +1,33 @@
+>> run.bat -i "D:\ClionProjects\RCC\tests\rios\test_module_export.rio"
+========================================
+RCC Build Script
+========================================
+Input file:   "D:\ClionProjects\RCC\tests\rios\test_module_export.rio"
+Output exe:   .\tests\exes\test_module_export.exe
+LLVM IR file: .\tests\lls\test_module_export.ll
+Object file:  .\tests\objs\test_module_export.obj
+Run after build: true
+Skip CMake build: false
+========================================
+
+[0/5] Building RCC compiler with CMake...
+Build directory: D:\ClionProjects\RCC\cmake-build-debug
+Target: RCC
+Using  parallel jobs
+ninja: no work to do.
+SUCCESS: RCC compiler built successfully
+
+
+[1/5] Generating LLVM IR from "D:\ClionProjects\RCC\tests\rios\test_module_export.rio"...
+LLVM IR generation succeeded!
+Output is saved to: D:\ClionProjects\RCC\tests\lls\test_module_export.ll
+SUCCESS: LLVM IR generated to .\tests\lls\test_module_export.ll
+
+[2/5] Generating object file from .\tests\lls\test_module_export.ll...
+SUCCESS: Object file generated to .\tests\objs\test_module_export.obj
+
+[3/5] Linking to generate executable...
+D:\soft\Clion\CLion-2024.2.3\bin\mingw\bin/ld.exe: .\tests\objs\test_module_export.obj:rcc_module:(.text+0x17): undefined reference to `export'
+D:\soft\Clion\CLion-2024.2.3\bin\mingw\bin/ld.exe: .\tests\objs\test_module_export.obj:rcc_module:(.text+0x37): undefined reference to `export'
+collect2.exe: error: ld returned 1 exit status
+ERROR: Linking failed

@@ -2,7 +2,7 @@ fun sout(*args, end="\n"): void {
     encapsulated
 }
 
-if true {
+if false {
     sout("Hello world! true")
 } else {
     sout("Hello world! false")

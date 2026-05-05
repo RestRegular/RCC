@@ -1,0 +1,22 @@
+>> run.bat -i "D:\ClionProjects\RCC\tests\rios\test_collections.rio"
+========================================
+RCC Build Script
+========================================
+Input file:   "D:\ClionProjects\RCC\tests\rios\test_collections.rio"
+Output exe:   .\tests\exes\test_collections.exe
+LLVM IR file: .\tests\lls\test_collections.ll
+Object file:  .\tests\objs\test_collections.obj
+Run after build: true
+Skip CMake build: false
+========================================
+
+[0/5] Building RCC compiler with CMake...
+Build directory: D:\ClionProjects\RCC\cmake-build-debug
+Target: RCC
+Using  parallel jobs
+ninja: no work to do.
+SUCCESS: RCC compiler built successfully
+
+
+[1/5] Generating LLVM IR from "D:\ClionProjects\RCC\tests\rios\test_collections.rio"...
+ERROR: LLVM IR generation failed

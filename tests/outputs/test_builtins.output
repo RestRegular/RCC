@@ -1,0 +1,43 @@
+>> run.bat -i "D:\ClionProjects\RCC\tests\rios\test_builtins.rio"
+========================================
+RCC Build Script
+========================================
+Input file:   "D:\ClionProjects\RCC\tests\rios\test_builtins.rio"
+Output exe:   .\tests\exes\test_builtins.exe
+LLVM IR file: .\tests\lls\test_builtins.ll
+Object file:  .\tests\objs\test_builtins.obj
+Run after build: true
+Skip CMake build: false
+========================================
+
+[0/5] Building RCC compiler with CMake...
+Build directory: D:\ClionProjects\RCC\cmake-build-debug
+Target: RCC
+Using  parallel jobs
+ninja: no work to do.
+SUCCESS: RCC compiler built successfully
+
+
+[1/5] Generating LLVM IR from "D:\ClionProjects\RCC\tests\rios\test_builtins.rio"...
+LLVM IR generation succeeded!
+Output is saved to: D:\ClionProjects\RCC\tests\lls\test_builtins.ll
+SUCCESS: LLVM IR generated to .\tests\lls\test_builtins.ll
+
+[2/5] Generating object file from .\tests\lls\test_builtins.ll...
+SUCCESS: Object file generated to .\tests\objs\test_builtins.obj
+
+[3/5] Linking to generate executable...
+SUCCESS: Executable generated to .\tests\exes\test_builtins.exe
+
+[4/5] Running executable...
+========================================
+hello world
+123
+<ptr: 000000D7BAFFFCF0>5
+========================================
+
+Execution completed
+
+========================================
+Build completed successfully
+========================================

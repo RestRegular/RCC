@@ -1,4 +1,6 @@
 @echo off
+cls
+echo ^>^> run.bat %*
 setlocal enabledelayedexpansion
 
 REM 设置默认路径变量
@@ -11,8 +13,8 @@ set CMAKE_TARGET=RCC
 
 REM 默认输入输出文件
 set INPUT_RIO=.\tests\test_builtins.rio
-set INPUT_LL=.\tests\irs\test.ll
-set INPUT_OBJ=.\tests\irs\test.obj
+set INPUT_LL=.\tests\lls\test.ll
+set INPUT_OBJ=.\tests\objs\test.obj
 set OUTPUT_EXE=.\tests\exes\test.exe
 set RUN_EXE=true
 set SKIP_CMAKE=false
@@ -64,8 +66,8 @@ if "%OUTPUT_EXE%"==".\tests\exes\test.exe" (
         REM 提取文件名（不含扩展名）
         for %%f in ("%INPUT_RIO%") do set BASENAME=%%~nf
         set OUTPUT_EXE=.\tests\exes\!BASENAME!.exe
-        set INPUT_LL=.\tests\irs\!BASENAME!.ll
-        set INPUT_OBJ=.\tests\irs\!BASENAME!.obj
+        set INPUT_LL=.\tests\lls\!BASENAME!.ll
+        set INPUT_OBJ=.\tests\objs\!BASENAME!.obj
     )
 )
 
@@ -124,6 +126,7 @@ if not exist "%INPUT_RIO%" (
 
 REM 创建输出目录（如果不存在）
 for %%i in ("%INPUT_LL%") do if not exist "%%~dpi" mkdir "%%~dpi"
+for %%i in ("%INPUT_OBJ%") do if not exist "%%~dpi" mkdir "%%~dpi"
 for %%i in ("%OUTPUT_EXE%") do if not exist "%%~dpi" mkdir "%%~dpi"
 
 REM 步骤1: 生成LLVM IR

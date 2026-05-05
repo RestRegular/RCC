@@ -2,6 +2,10 @@
 // 测试 2: 变量定义和赋值
 // 验证: var 定义、初始值、重新赋值
 // ============================================================================
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
 var x = 10
 var y = 20
 var z = x + y
@@ -11,3 +15,5 @@ y = x + y
 
 var name = "world"
 name = "RCC"
+
+sout(x, " ", y, " ", z, " ", name)
