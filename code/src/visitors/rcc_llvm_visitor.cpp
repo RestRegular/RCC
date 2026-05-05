@@ -579,7 +579,7 @@ namespace ast
 
         // this 参数 alloca
         ThisAlloca = createEntryBlockAlloca(func, "this", getValueType());
-        Builder->CreateStore(&func->getArg(0), ThisAlloca);
+        Builder->CreateStore(func->getArg(0), ThisAlloca);
         NamedValues["this"] = ThisAlloca;
 
         // 其他参数 alloca
@@ -589,7 +589,7 @@ namespace ast
             if (idx < func->arg_size())
             {
                 auto* alloca = createEntryBlockAlloca(func, pname, getValueType());
-                Builder->CreateStore(&func->getArg(idx), alloca);
+                Builder->CreateStore(func->getArg(idx), alloca);
                 NamedValues[pname] = alloca;
             }
             idx++;
@@ -676,8 +676,8 @@ namespace ast
                         }
                     }
                 }
-                else if (expr->getRealType() == NodeType::FUNCTION_DEF ||
-                         expr->getRealType() == NodeType::ANNO_FUNC_DEF)
+                else if (expr->getRealType() == NodeType::FUNCTION_DEFINITION ||
+                         expr->getRealType() == NodeType::ANON_FUNCTION_DEFINITION)
                 {
                     // 方法
                     methodNodes.push_back(expr);
@@ -733,7 +733,7 @@ namespace ast
             auto* ident = static_cast<IdentifierNode*>(callTarget.get());
             funcName = ident->getName();
         }
-        else if (callTarget->getRealType() == NodeType::FUNC_CALL)
+        else if (callTarget->getRealType() == NodeType::CALL)
         {
             // 方法调用: obj.method(args)
             // callTarget 是一个 FunctionCallNode: leftNode=obj, rightNode=method名
