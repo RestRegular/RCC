@@ -23,10 +23,13 @@ std::string __symbol_option_extension__;
 std::string __general_option_output__;
 std::string __working_directory__;
 std::string __symbol_option_spec_symbol__;
+std::string __llvm_output__;
 bool __help_option__ = false;
 bool __version_option__ = false;
 bool __time_info__ = false;
 bool __symbol_flag_builtin__ = false;
+bool __llvm_flag__ = false;
+bool __llvm_verify__ = false;
 
 // 参数解析器实例
 ProgArgParser argParser{};
@@ -95,6 +98,23 @@ void initializeArgumentParser() {
         std::vector<std::string>{"extension", "export", "format", "builtin", "spec-symbol", "symbol"},
         ProgArgParser::CheckDir::BiDir)
     .addDependent("compile-level", "compile", ProgArgParser::CheckDir::UniDir);
+
+    // LLVM IR 生成 flag 及相关配置
+    argParser.addFlag("llvm", &__llvm_flag__, false, true,
+                      "Compile the target file to LLVM IR and output to console or file",
+                      {"ir"})
+    .addOption<std::string>("llvm-output", &__llvm_output__, "",
+        "Output LLVM IR to a specified file (print to the console by default)",
+        {"ir-o"})
+    .addFlag("llvm-verify", &__llvm_verify__, false, false,
+             "Verify the generated LLVM IR after compilation",
+             {"ir-v"})
+    .addDependent("llvm", "path", ProgArgParser::CheckDir::UniDir)
+    .addDependent("llvm-output", "llvm", ProgArgParser::CheckDir::UniDir)
+    .addDependent("llvm-verify", "llvm", ProgArgParser::CheckDir::UniDir)
+    .addMutuallyExclusive("llvm",
+        std::vector<std::string>{"compile", "symbol"},
+        ProgArgParser::CheckDir::BiDir);
 
     argParser.addFlag("time-info", &__time_info__, false, true,
                       "Enables timing information during execution. "
@@ -193,6 +213,39 @@ void handleCompileFlag()
     }
 }
 
+void handleLlvmFlag()
+{
+    const auto& targetPath = getAbsolutePath(__general_option_path__, __working_directory__);
+
+    ast::LLVMCodeGenVisitor visitor("rcc_module");
+    visitor.enableDebug(__time_info__);
+
+    if (visitor.compile(targetPath))
+    {
+        // 可选：验证 IR
+        if (__llvm_verify__)
+        {
+            if (!visitor.verifyModule())
+            {
+                std::cerr << "Warning: LLVM IR verification failed!" << std::endl;
+            }
+        }
+
+        // 输出 IR
+        if (__llvm_output__.empty())
+        {
+            // 输出到控制台
+            visitor.printIR();
+        } else
+        {
+            // 输出到文件
+            const auto& outputPath = getAbsolutePath(__llvm_output__, __working_directory__);
+            visitor.writeToFile(outputPath);
+            std::cout << "LLVM IR generation succeeded!\nOutput is saved to: " << outputPath << std::endl;
+        }
+    }
+}
+
 int main(const int argc, char *argv[]) {
     try {
         setDeveloperModel(true);
@@ -219,6 +272,11 @@ int main(const int argc, char *argv[]) {
         if (ast::CompileVisitor::__compile_flag__)
         {
             handleCompileFlag();
+        }
+
+        if (__llvm_flag__)
+        {
+            handleLlvmFlag();
         }
 
         // 输出程序运行时间信息

@@ -27,6 +27,8 @@
 // 你的项目头文件
 #include "../interfaces/rcc_compile_interface.h"
 #include "../components/symbol/rcc_symbol.h"
+#include "../analyzer/rcc_parser.h"
+#include "../analyzer/rcc_lexer.h"
 
 namespace ast {
 
@@ -159,6 +161,13 @@ namespace ast {
          * 将 IR 输出到文件
          */
         void writeToFile(const std::string& filename) const;
+
+        /**
+         * 编译源文件并生成 LLVM IR
+         * @param filePath 源文件路径
+         * @return 是否成功
+         */
+        bool compile(const std::string& filePath);
 
         // ==================== 类型转换 ====================
 

@@ -10,5 +10,6 @@
 #include "rcc_json_visitor.h"
 #include "rcc_collect_symbol_visitor.h"
 #include "rcc_compile_visitor.h"
+#include "rcc_llvm_visitor.h"
 
 #endif //RCC_VISITORS_H

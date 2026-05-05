@@ -1688,4 +1688,40 @@ namespace ast
         pushValue(llvm::ConstantPointerNull::get(getValueType()));
     }
 
+    // ============================================================================
+    // 编译入口
+    // ============================================================================
+
+    bool LLVMCodeGenVisitor::compile(const std::string& filePath)
+    {
+        LLVM_DEBUG("=== Compiling: " << filePath << " ===");
+
+        // 词法分析
+        const auto& lexer = std::make_shared<lexer::Lexer>(filePath);
+        auto tokens = lexer->tokenize();
+
+        // 语法分析
+        parser::Parser parser(tokens);
+        const auto& [hasError, programNode] = parser.parse();
+        if (hasError)
+        {
+            parser.printParserErrors();
+            return false;
+        }
+
+        // LLVM IR 生成
+        try
+        {
+            programNode->acceptVisitor(*this);
+        }
+        catch (const std::exception& e)
+        {
+            llvm::errs() << "LLVM IR generation error: " << e.what() << "\n";
+            return false;
+        }
+
+        LLVM_DEBUG("=== Compilation succeeded ===");
+        return true;
+    }
+
 } // namespace ast
