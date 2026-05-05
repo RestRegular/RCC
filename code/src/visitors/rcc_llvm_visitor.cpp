@@ -2536,14 +2536,12 @@ namespace ast
                 auto* mergeBB = llvm::BasicBlock::Create(*TheContext, "sout.merge", func);
 
                 // switch on tag
-                Builder->CreateSwitch(tag, defaultBB,
-                    {
-                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_INT), intBB},
-                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FLOAT), floatBB},
-                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_BOOL), boolBB},
-                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING), strBB},
-                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_NULL), nullBB},
-                    });
+                auto* switchInst = Builder->CreateSwitch(tag, defaultBB, 5);
+                switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_INT), intBB);
+                switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FLOAT), floatBB);
+                switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_BOOL), boolBB);
+                switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING), strBB);
+                switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_NULL), nullBB);
 
                 // --- TAG_INT: 输出整数 ---
                 Builder->SetInsertPoint(intBB);
