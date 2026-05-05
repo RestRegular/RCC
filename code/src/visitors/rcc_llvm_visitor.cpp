@@ -1223,7 +1223,7 @@ namespace ast
         if (result)
         {
             // 比较运算返回 Tagged Bool，其他运算返回 Tagged Int
-            i64 resultTag = TAG_INT;
+            int64_t resultTag = TAG_INT;
             if (infixType == NodeType::EQUALITY || infixType == NodeType::NOT_EQUAL ||
                 infixType == NodeType::LESS || infixType == NodeType::LESS_EQUAL ||
                 infixType == NodeType::GREATER || infixType == NodeType::GREATER_EQUAL ||
