@@ -518,12 +518,27 @@ void __rcc_print_value(void* value)
         return;
     }
 
-    // 1. 检查是否为 RCCValue 对象（运行时创建的列表/字典等）
-    //    简单启发式：检查指针是否对齐且指向的内存看起来像 RCCValue
+    // 1. 首先检查是否为编码的整数（inttoptr 编码）
+    //    必须在 RCCValue 检查之前，因为小整数地址不可读
+    int64_t intVal;
+    if (is_encoded_int(value, &intVal))
+    {
+        printf("%lld", (long long)intVal);
+        return;
+    }
+
+    // 2. 检查是否为有效的 C 字符串（全局字符串字面量）
+    //    必须在 RCCValue 检查之前，因为字符串内容可能被误判为 type 字段
+    if (is_valid_cstring(value))
+    {
+        printf("%s", (const char*)value);
+        return;
+    }
+
+    // 3. 检查是否为 RCCValue 对象（运行时创建的列表/字典等）
     RCCValue* rval = (RCCValue*)value;
     if (rval->type >= RCC_TYPE_NULL && rval->type < RCC_TYPE_UNKNOWN)
     {
-        // 额外验证：检查 type 字段是否合理
         if ((int)rval->type >= 0 && (int)rval->type <= 9)
         {
             switch (rval->type)
@@ -576,21 +591,6 @@ void __rcc_print_value(void* value)
                 break;
             }
         }
-    }
-
-    // 2. 检查是否为编码的整数
-    int64_t intVal;
-    if (is_encoded_int(value, &intVal))
-    {
-        printf("%lld", (long long)intVal);
-        return;
-    }
-
-    // 3. 检查是否为有效的 C 字符串
-    if (is_valid_cstring(value))
-    {
-        printf("%s", (const char*)value);
-        return;
     }
 
     // 4. 无法识别，输出指针
