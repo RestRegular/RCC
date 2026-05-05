@@ -41,7 +41,8 @@ entry:
   ]
 
 sout.int:                                         ; preds = %entry
-  %0 = call i32 (ptr, ...) @printf(ptr @.str.2, ptr %payload)
+  %int.val = ptrtoint ptr %payload to i64
+  %0 = call i32 (ptr, ...) @printf(ptr @.str.2, i64 %int.val)
   br label %sout.merge
 
 sout.float:                                       ; preds = %entry

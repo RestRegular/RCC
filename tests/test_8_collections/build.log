@@ -15,12 +15,23 @@ Skip CMake build: true
 [0/5] Skipping CMake build (--skip-cmake specified
 
 [1/5] Generating LLVM IR from "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.rio...
+LLVM IR generation succeeded!
+Output is saved to: D:\ClionProjects\RCC\scripts\..\tests\test_8_collections\test.ll
+SUCCESS: LLVM IR generated to "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.ll
 
-====================[ ParserError ]============================================================
-    [ Pos  ] : D:\ClionProjects\RCC\scripts\..\tests\test_8_collections\test.rio:5:5, line 5, column 5
+[2/5] Generating object file from "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.ll...
+SUCCESS: Object file generated to "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.obj
 
-    [ Info ] : This error occurred because an unexpected token appeared, causing the analyzer to fail to recognize it correctly.
-             - Unexpected token: [<TOKEN_LABEL> "list" (test.rio:5:5)]
-             - Expected token type: TOKEN_IDENTIFIER
+[3/5] Linking to generate executable...
+SUCCESS: Executable generated to "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.exe
 
-ERROR: LLVM IR generation failed
+[4/5] Running executable...
+========================================
+========================================
+
+Output saved to "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\actual.txt
+Execution completed
+
+========================================
+Build completed successfully
+========================================

@@ -52,7 +52,8 @@ entry:
   ]
 
 sout.int:                                         ; preds = %entry
-  %2 = call i32 (ptr, ...) @printf(ptr @.str.1, ptr %payload)
+  %int.val = ptrtoint ptr %payload to i64
+  %2 = call i32 (ptr, ...) @printf(ptr @.str.1, i64 %int.val)
   br label %sout.merge
 
 sout.float:                                       ; preds = %entry
@@ -114,19 +115,20 @@ sout.bool.merge:                                  ; preds = %sout.false, %sout.t
   br label %sout.merge
 
 sout.int16:                                       ; preds = %sout.merge
-  %10 = call i32 (ptr, ...) @printf(ptr @.str.12, ptr %payload15)
+  %int.val23 = ptrtoint ptr %payload15 to i64
+  %10 = call i32 (ptr, ...) @printf(ptr @.str.12, i64 %int.val23)
   br label %sout.merge22
 
 sout.float17:                                     ; preds = %sout.merge
-  %float.bits23 = ptrtoint ptr %payload15 to i64
-  %float.val24 = bitcast i64 %float.bits23 to double
-  %11 = call i32 (ptr, ...) @printf(ptr @.str.13, double %float.val24)
+  %float.bits24 = ptrtoint ptr %payload15 to i64
+  %float.val25 = bitcast i64 %float.bits24 to double
+  %11 = call i32 (ptr, ...) @printf(ptr @.str.13, double %float.val25)
   br label %sout.merge22
 
 sout.bool18:                                      ; preds = %sout.merge
-  %bool.val25 = ptrtoint ptr %payload15 to i64
-  %is.true26 = icmp ne i64 %bool.val25, 0
-  br i1 %is.true26, label %sout.true27, label %sout.false28
+  %bool.val26 = ptrtoint ptr %payload15 to i64
+  %is.true27 = icmp ne i64 %bool.val26, 0
+  br i1 %is.true27, label %sout.true28, label %sout.false29
 
 sout.str19:                                       ; preds = %sout.merge
   %12 = call i32 (ptr, ...) @printf(ptr @.str.18, ptr %payload15)
@@ -140,24 +142,24 @@ sout.default21:                                   ; preds = %sout.merge
   %14 = call i32 (ptr, ...) @printf(ptr @.str.21, ptr %payload15)
   br label %sout.merge22
 
-sout.merge22:                                     ; preds = %sout.default21, %sout.null20, %sout.str19, %sout.bool.merge29, %sout.float17, %sout.int16
+sout.merge22:                                     ; preds = %sout.default21, %sout.null20, %sout.str19, %sout.bool.merge30, %sout.float17, %sout.int16
   %15 = call i32 @putchar(i32 10)
-  %rcc.val30 = alloca %RCCValue, align 8
-  %tag.ptr31 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val30, i32 0, i32 0
-  store i64 0, ptr %tag.ptr31, align 4
-  %payload.ptr32 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val30, i32 0, i32 1
-  store ptr null, ptr %payload.ptr32, align 8
+  %rcc.val31 = alloca %RCCValue, align 8
+  %tag.ptr32 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val31, i32 0, i32 0
+  store i64 0, ptr %tag.ptr32, align 4
+  %payload.ptr33 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val31, i32 0, i32 1
+  store ptr null, ptr %payload.ptr33, align 8
   ret i32 0
 
-sout.true27:                                      ; preds = %sout.bool18
+sout.true28:                                      ; preds = %sout.bool18
   %16 = call i32 (ptr, ...) @printf(ptr @.str.14, ptr @.str.15)
-  br label %sout.bool.merge29
+  br label %sout.bool.merge30
 
-sout.false28:                                     ; preds = %sout.bool18
+sout.false29:                                     ; preds = %sout.bool18
   %17 = call i32 (ptr, ...) @printf(ptr @.str.16, ptr @.str.17)
-  br label %sout.bool.merge29
+  br label %sout.bool.merge30
 
-sout.bool.merge29:                                ; preds = %sout.false28, %sout.true27
+sout.bool.merge30:                                ; preds = %sout.false29, %sout.true28
   br label %sout.merge22
 }
 
@@ -184,7 +186,7 @@ entry:
   %int.ptr = inttoptr i64 %cmp.ext to ptr
   %rcc.val6 = alloca %RCCValue, align 8
   %tag.ptr7 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val6, i32 0, i32 0
-  store i64 1, ptr %tag.ptr7, align 4
+  store i64 3, ptr %tag.ptr7, align 4
   %payload.ptr8 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val6, i32 0, i32 1
   store ptr %int.ptr, ptr %payload.ptr8, align 8
   %tag.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val6, i32 0, i32 0

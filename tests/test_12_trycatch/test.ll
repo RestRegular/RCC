@@ -89,15 +89,16 @@ try.finally:                                      ; preds = %sout.merge
   ]
 
 try.end:                                          ; preds = %sout.merge19
-  %rcc.val30 = alloca %RCCValue, align 8
-  %tag.ptr31 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val30, i32 0, i32 0
-  store i64 0, ptr %tag.ptr31, align 4
-  %payload.ptr32 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val30, i32 0, i32 1
-  store ptr null, ptr %payload.ptr32, align 8
-  br label %try.body33
+  %rcc.val31 = alloca %RCCValue, align 8
+  %tag.ptr32 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val31, i32 0, i32 0
+  store i64 0, ptr %tag.ptr32, align 4
+  %payload.ptr33 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val31, i32 0, i32 1
+  store ptr null, ptr %payload.ptr33, align 8
+  br label %try.body34
 
 sout.int:                                         ; preds = %try.body
-  %2 = call i32 (ptr, ...) @printf(ptr @.str.1, ptr %payload)
+  %int.val = ptrtoint ptr %payload to i64
+  %2 = call i32 (ptr, ...) @printf(ptr @.str.1, i64 %int.val)
   br label %sout.merge
 
 sout.float:                                       ; preds = %try.body
@@ -144,19 +145,20 @@ sout.bool.merge:                                  ; preds = %sout.false, %sout.t
   br label %sout.merge
 
 sout.int13:                                       ; preds = %try.finally
-  %10 = call i32 (ptr, ...) @printf(ptr @.str.12, ptr %payload12)
+  %int.val20 = ptrtoint ptr %payload12 to i64
+  %10 = call i32 (ptr, ...) @printf(ptr @.str.12, i64 %int.val20)
   br label %sout.merge19
 
 sout.float14:                                     ; preds = %try.finally
-  %float.bits20 = ptrtoint ptr %payload12 to i64
-  %float.val21 = bitcast i64 %float.bits20 to double
-  %11 = call i32 (ptr, ...) @printf(ptr @.str.13, double %float.val21)
+  %float.bits21 = ptrtoint ptr %payload12 to i64
+  %float.val22 = bitcast i64 %float.bits21 to double
+  %11 = call i32 (ptr, ...) @printf(ptr @.str.13, double %float.val22)
   br label %sout.merge19
 
 sout.bool15:                                      ; preds = %try.finally
-  %bool.val22 = ptrtoint ptr %payload12 to i64
-  %is.true23 = icmp ne i64 %bool.val22, 0
-  br i1 %is.true23, label %sout.true24, label %sout.false25
+  %bool.val23 = ptrtoint ptr %payload12 to i64
+  %is.true24 = icmp ne i64 %bool.val23, 0
+  br i1 %is.true24, label %sout.true25, label %sout.false26
 
 sout.str16:                                       ; preds = %try.finally
   %12 = call i32 (ptr, ...) @printf(ptr @.str.18, ptr %payload12)
@@ -170,166 +172,168 @@ sout.default18:                                   ; preds = %try.finally
   %14 = call i32 (ptr, ...) @printf(ptr @.str.21, ptr %payload12)
   br label %sout.merge19
 
-sout.merge19:                                     ; preds = %sout.default18, %sout.null17, %sout.str16, %sout.bool.merge26, %sout.float14, %sout.int13
+sout.merge19:                                     ; preds = %sout.default18, %sout.null17, %sout.str16, %sout.bool.merge27, %sout.float14, %sout.int13
   %15 = call i32 @putchar(i32 10)
-  %rcc.val27 = alloca %RCCValue, align 8
-  %tag.ptr28 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val27, i32 0, i32 0
-  store i64 0, ptr %tag.ptr28, align 4
-  %payload.ptr29 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val27, i32 0, i32 1
-  store ptr null, ptr %payload.ptr29, align 8
+  %rcc.val28 = alloca %RCCValue, align 8
+  %tag.ptr29 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val28, i32 0, i32 0
+  store i64 0, ptr %tag.ptr29, align 4
+  %payload.ptr30 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val28, i32 0, i32 1
+  store ptr null, ptr %payload.ptr30, align 8
   br label %try.end
 
-sout.true24:                                      ; preds = %sout.bool15
+sout.true25:                                      ; preds = %sout.bool15
   %16 = call i32 (ptr, ...) @printf(ptr @.str.14, ptr @.str.15)
-  br label %sout.bool.merge26
+  br label %sout.bool.merge27
 
-sout.false25:                                     ; preds = %sout.bool15
+sout.false26:                                     ; preds = %sout.bool15
   %17 = call i32 (ptr, ...) @printf(ptr @.str.16, ptr @.str.17)
-  br label %sout.bool.merge26
+  br label %sout.bool.merge27
 
-sout.bool.merge26:                                ; preds = %sout.false25, %sout.true24
+sout.bool.merge27:                                ; preds = %sout.false26, %sout.true25
   br label %sout.merge19
 
-try.body33:                                       ; preds = %try.end
-  %rcc.val36 = alloca %RCCValue, align 8
-  %tag.ptr37 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val36, i32 0, i32 0
-  store i64 4, ptr %tag.ptr37, align 4
-  %payload.ptr38 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val36, i32 0, i32 1
-  store ptr @.str.22, ptr %payload.ptr38, align 8
-  %tag.ptr39 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val36, i32 0, i32 0
-  %tag40 = load i64, ptr %tag.ptr39, align 4
-  %payload.ptr41 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val36, i32 0, i32 1
-  %payload42 = load ptr, ptr %payload.ptr41, align 8
-  switch i64 %tag40, label %sout.default48 [
-    i64 1, label %sout.int43
-    i64 2, label %sout.float44
-    i64 3, label %sout.bool45
-    i64 4, label %sout.str46
-    i64 0, label %sout.null47
+try.body34:                                       ; preds = %try.end
+  %rcc.val37 = alloca %RCCValue, align 8
+  %tag.ptr38 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val37, i32 0, i32 0
+  store i64 4, ptr %tag.ptr38, align 4
+  %payload.ptr39 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val37, i32 0, i32 1
+  store ptr @.str.22, ptr %payload.ptr39, align 8
+  %tag.ptr40 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val37, i32 0, i32 0
+  %tag41 = load i64, ptr %tag.ptr40, align 4
+  %payload.ptr42 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val37, i32 0, i32 1
+  %payload43 = load ptr, ptr %payload.ptr42, align 8
+  switch i64 %tag41, label %sout.default49 [
+    i64 1, label %sout.int44
+    i64 2, label %sout.float45
+    i64 3, label %sout.bool46
+    i64 4, label %sout.str47
+    i64 0, label %sout.null48
   ]
 
-try.finally34:                                    ; preds = %try.catch, %sout.merge49
-  %rcc.val60 = alloca %RCCValue, align 8
-  %tag.ptr61 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val60, i32 0, i32 0
-  store i64 4, ptr %tag.ptr61, align 4
-  %payload.ptr62 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val60, i32 0, i32 1
-  store ptr @.str.33, ptr %payload.ptr62, align 8
-  %tag.ptr63 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val60, i32 0, i32 0
-  %tag64 = load i64, ptr %tag.ptr63, align 4
-  %payload.ptr65 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val60, i32 0, i32 1
-  %payload66 = load ptr, ptr %payload.ptr65, align 8
-  switch i64 %tag64, label %sout.default72 [
-    i64 1, label %sout.int67
-    i64 2, label %sout.float68
-    i64 3, label %sout.bool69
-    i64 4, label %sout.str70
-    i64 0, label %sout.null71
+try.finally35:                                    ; preds = %try.catch, %sout.merge50
+  %rcc.val62 = alloca %RCCValue, align 8
+  %tag.ptr63 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val62, i32 0, i32 0
+  store i64 4, ptr %tag.ptr63, align 4
+  %payload.ptr64 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val62, i32 0, i32 1
+  store ptr @.str.33, ptr %payload.ptr64, align 8
+  %tag.ptr65 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val62, i32 0, i32 0
+  %tag66 = load i64, ptr %tag.ptr65, align 4
+  %payload.ptr67 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val62, i32 0, i32 1
+  %payload68 = load ptr, ptr %payload.ptr67, align 8
+  switch i64 %tag66, label %sout.default74 [
+    i64 1, label %sout.int69
+    i64 2, label %sout.float70
+    i64 3, label %sout.bool71
+    i64 4, label %sout.str72
+    i64 0, label %sout.null73
   ]
 
-try.end35:                                        ; preds = %sout.merge73
+try.end36:                                        ; preds = %sout.merge75
+  %rcc.val87 = alloca %RCCValue, align 8
+  %tag.ptr88 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val87, i32 0, i32 0
+  store i64 0, ptr %tag.ptr88, align 4
+  %payload.ptr89 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val87, i32 0, i32 1
+  store ptr null, ptr %payload.ptr89, align 8
+  ret i32 0
+
+sout.int44:                                       ; preds = %try.body34
+  %int.val51 = ptrtoint ptr %payload43 to i64
+  %18 = call i32 (ptr, ...) @printf(ptr @.str.23, i64 %int.val51)
+  br label %sout.merge50
+
+sout.float45:                                     ; preds = %try.body34
+  %float.bits52 = ptrtoint ptr %payload43 to i64
+  %float.val53 = bitcast i64 %float.bits52 to double
+  %19 = call i32 (ptr, ...) @printf(ptr @.str.24, double %float.val53)
+  br label %sout.merge50
+
+sout.bool46:                                      ; preds = %try.body34
+  %bool.val54 = ptrtoint ptr %payload43 to i64
+  %is.true55 = icmp ne i64 %bool.val54, 0
+  br i1 %is.true55, label %sout.true56, label %sout.false57
+
+sout.str47:                                       ; preds = %try.body34
+  %20 = call i32 (ptr, ...) @printf(ptr @.str.29, ptr %payload43)
+  br label %sout.merge50
+
+sout.null48:                                      ; preds = %try.body34
+  %21 = call i32 (ptr, ...) @printf(ptr @.str.30, ptr @.str.31)
+  br label %sout.merge50
+
+sout.default49:                                   ; preds = %try.body34
+  %22 = call i32 (ptr, ...) @printf(ptr @.str.32, ptr %payload43)
+  br label %sout.merge50
+
+sout.merge50:                                     ; preds = %sout.default49, %sout.null48, %sout.str47, %sout.bool.merge58, %sout.float45, %sout.int44
+  %23 = call i32 @putchar(i32 10)
+  %rcc.val59 = alloca %RCCValue, align 8
+  %tag.ptr60 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val59, i32 0, i32 0
+  store i64 0, ptr %tag.ptr60, align 4
+  %payload.ptr61 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val59, i32 0, i32 1
+  store ptr null, ptr %payload.ptr61, align 8
+  br label %try.finally35
+
+sout.true56:                                      ; preds = %sout.bool46
+  %24 = call i32 (ptr, ...) @printf(ptr @.str.25, ptr @.str.26)
+  br label %sout.bool.merge58
+
+sout.false57:                                     ; preds = %sout.bool46
+  %25 = call i32 (ptr, ...) @printf(ptr @.str.27, ptr @.str.28)
+  br label %sout.bool.merge58
+
+sout.bool.merge58:                                ; preds = %sout.false57, %sout.true56
+  br label %sout.merge50
+
+try.catch:                                        ; No predecessors!
+  br label %try.finally35
+
+sout.int69:                                       ; preds = %try.finally35
+  %int.val76 = ptrtoint ptr %payload68 to i64
+  %26 = call i32 (ptr, ...) @printf(ptr @.str.34, i64 %int.val76)
+  br label %sout.merge75
+
+sout.float70:                                     ; preds = %try.finally35
+  %float.bits77 = ptrtoint ptr %payload68 to i64
+  %float.val78 = bitcast i64 %float.bits77 to double
+  %27 = call i32 (ptr, ...) @printf(ptr @.str.35, double %float.val78)
+  br label %sout.merge75
+
+sout.bool71:                                      ; preds = %try.finally35
+  %bool.val79 = ptrtoint ptr %payload68 to i64
+  %is.true80 = icmp ne i64 %bool.val79, 0
+  br i1 %is.true80, label %sout.true81, label %sout.false82
+
+sout.str72:                                       ; preds = %try.finally35
+  %28 = call i32 (ptr, ...) @printf(ptr @.str.40, ptr %payload68)
+  br label %sout.merge75
+
+sout.null73:                                      ; preds = %try.finally35
+  %29 = call i32 (ptr, ...) @printf(ptr @.str.41, ptr @.str.42)
+  br label %sout.merge75
+
+sout.default74:                                   ; preds = %try.finally35
+  %30 = call i32 (ptr, ...) @printf(ptr @.str.43, ptr %payload68)
+  br label %sout.merge75
+
+sout.merge75:                                     ; preds = %sout.default74, %sout.null73, %sout.str72, %sout.bool.merge83, %sout.float70, %sout.int69
+  %31 = call i32 @putchar(i32 10)
   %rcc.val84 = alloca %RCCValue, align 8
   %tag.ptr85 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val84, i32 0, i32 0
   store i64 0, ptr %tag.ptr85, align 4
   %payload.ptr86 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val84, i32 0, i32 1
   store ptr null, ptr %payload.ptr86, align 8
-  ret i32 0
+  br label %try.end36
 
-sout.int43:                                       ; preds = %try.body33
-  %18 = call i32 (ptr, ...) @printf(ptr @.str.23, ptr %payload42)
-  br label %sout.merge49
-
-sout.float44:                                     ; preds = %try.body33
-  %float.bits50 = ptrtoint ptr %payload42 to i64
-  %float.val51 = bitcast i64 %float.bits50 to double
-  %19 = call i32 (ptr, ...) @printf(ptr @.str.24, double %float.val51)
-  br label %sout.merge49
-
-sout.bool45:                                      ; preds = %try.body33
-  %bool.val52 = ptrtoint ptr %payload42 to i64
-  %is.true53 = icmp ne i64 %bool.val52, 0
-  br i1 %is.true53, label %sout.true54, label %sout.false55
-
-sout.str46:                                       ; preds = %try.body33
-  %20 = call i32 (ptr, ...) @printf(ptr @.str.29, ptr %payload42)
-  br label %sout.merge49
-
-sout.null47:                                      ; preds = %try.body33
-  %21 = call i32 (ptr, ...) @printf(ptr @.str.30, ptr @.str.31)
-  br label %sout.merge49
-
-sout.default48:                                   ; preds = %try.body33
-  %22 = call i32 (ptr, ...) @printf(ptr @.str.32, ptr %payload42)
-  br label %sout.merge49
-
-sout.merge49:                                     ; preds = %sout.default48, %sout.null47, %sout.str46, %sout.bool.merge56, %sout.float44, %sout.int43
-  %23 = call i32 @putchar(i32 10)
-  %rcc.val57 = alloca %RCCValue, align 8
-  %tag.ptr58 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val57, i32 0, i32 0
-  store i64 0, ptr %tag.ptr58, align 4
-  %payload.ptr59 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val57, i32 0, i32 1
-  store ptr null, ptr %payload.ptr59, align 8
-  br label %try.finally34
-
-sout.true54:                                      ; preds = %sout.bool45
-  %24 = call i32 (ptr, ...) @printf(ptr @.str.25, ptr @.str.26)
-  br label %sout.bool.merge56
-
-sout.false55:                                     ; preds = %sout.bool45
-  %25 = call i32 (ptr, ...) @printf(ptr @.str.27, ptr @.str.28)
-  br label %sout.bool.merge56
-
-sout.bool.merge56:                                ; preds = %sout.false55, %sout.true54
-  br label %sout.merge49
-
-try.catch:                                        ; No predecessors!
-  br label %try.finally34
-
-sout.int67:                                       ; preds = %try.finally34
-  %26 = call i32 (ptr, ...) @printf(ptr @.str.34, ptr %payload66)
-  br label %sout.merge73
-
-sout.float68:                                     ; preds = %try.finally34
-  %float.bits74 = ptrtoint ptr %payload66 to i64
-  %float.val75 = bitcast i64 %float.bits74 to double
-  %27 = call i32 (ptr, ...) @printf(ptr @.str.35, double %float.val75)
-  br label %sout.merge73
-
-sout.bool69:                                      ; preds = %try.finally34
-  %bool.val76 = ptrtoint ptr %payload66 to i64
-  %is.true77 = icmp ne i64 %bool.val76, 0
-  br i1 %is.true77, label %sout.true78, label %sout.false79
-
-sout.str70:                                       ; preds = %try.finally34
-  %28 = call i32 (ptr, ...) @printf(ptr @.str.40, ptr %payload66)
-  br label %sout.merge73
-
-sout.null71:                                      ; preds = %try.finally34
-  %29 = call i32 (ptr, ...) @printf(ptr @.str.41, ptr @.str.42)
-  br label %sout.merge73
-
-sout.default72:                                   ; preds = %try.finally34
-  %30 = call i32 (ptr, ...) @printf(ptr @.str.43, ptr %payload66)
-  br label %sout.merge73
-
-sout.merge73:                                     ; preds = %sout.default72, %sout.null71, %sout.str70, %sout.bool.merge80, %sout.float68, %sout.int67
-  %31 = call i32 @putchar(i32 10)
-  %rcc.val81 = alloca %RCCValue, align 8
-  %tag.ptr82 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val81, i32 0, i32 0
-  store i64 0, ptr %tag.ptr82, align 4
-  %payload.ptr83 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val81, i32 0, i32 1
-  store ptr null, ptr %payload.ptr83, align 8
-  br label %try.end35
-
-sout.true78:                                      ; preds = %sout.bool69
+sout.true81:                                      ; preds = %sout.bool71
   %32 = call i32 (ptr, ...) @printf(ptr @.str.36, ptr @.str.37)
-  br label %sout.bool.merge80
+  br label %sout.bool.merge83
 
-sout.false79:                                     ; preds = %sout.bool69
+sout.false82:                                     ; preds = %sout.bool71
   %33 = call i32 (ptr, ...) @printf(ptr @.str.38, ptr @.str.39)
-  br label %sout.bool.merge80
+  br label %sout.bool.merge83
 
-sout.bool.merge80:                                ; preds = %sout.false79, %sout.true78
-  br label %sout.merge73
+sout.bool.merge83:                                ; preds = %sout.false82, %sout.true81
+  br label %sout.merge75
 }
 
 declare i32 @putchar(i32)
