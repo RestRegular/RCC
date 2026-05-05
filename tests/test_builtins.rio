@@ -18,8 +18,8 @@ fun sin(): str {
 
 // 调用内置函数
 sout("hello world")
-sout(1)
-sout()
+sout(1, 2, 3)
 
 var arr = [1, 2, 3, 4, 5]
 var len = size(arr)
+sout(arr, len)
