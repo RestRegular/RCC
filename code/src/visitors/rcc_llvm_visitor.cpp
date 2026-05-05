@@ -1067,7 +1067,7 @@ namespace ast
         auto* arithMergeBB = llvm::BasicBlock::Create(*TheContext, "arith.merge", currentFunc);
 
         // 在分支前创建结果 alloca（满足 dominance）
-        auto* resultAlloca = createEntryBlockAlloca(func, "arith.result", getValueType());
+        auto* resultAlloca = createEntryBlockAlloca(currentFunc, "arith.result", getValueType());
         Builder->CreateStore(llvm::ConstantPointerNull::get(getValueType()), resultAlloca);
 
         Builder->CreateCondBr(isFloat, floatBB, intBB);
