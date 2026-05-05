@@ -1526,6 +1526,33 @@ namespace ast
             }
         }
 
+        // 检查函数体是否为 encapsulated（在创建函数定义之前）
+        CurrentFunctionIsEncapsulated = false;
+        bool isEncapsulated = false;
+        if (node.getBodyNode())
+        {
+            if (const auto* bodyBlock = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get());
+                bodyBlock && !bodyBlock->getBodyExpressions().empty())
+            {
+                if (const auto lastExpr = bodyBlock->getBodyExpressions().back();
+                    lastExpr && lastExpr->getRealType() == NodeType::ENCAPSULATED)
+                {
+                    isEncapsulated = true;
+                    CurrentFunctionIsEncapsulated = true;
+                    EncapsulatedFunctions.insert(funcName);
+                    LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
+                }
+            }
+        }
+
+        // encapsulated 函数不生成函数定义，只注册名称
+        // 实际的 IR 由调用处的内置 IR 生成器内联展开
+        if (isEncapsulated)
+        {
+            Functions[funcName] = nullptr;
+            return;
+        }
+
         // 创建函数类型: ptr @funcName(ptr, ptr, ...) -> ptr
         std::vector<llvm::Type*> paramTypes(paramNames.size(), getValueType());
         auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
@@ -1574,35 +1601,10 @@ namespace ast
             idx++;
         }
 
-        // 检查函数体是否为 encapsulated
-        CurrentFunctionIsEncapsulated = false;
+        // 生成函数体
         if (node.getBodyNode())
         {
-            if (const auto* bodyBlock = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get());
-                bodyBlock && !bodyBlock->getBodyExpressions().empty())
-            {
-                // 检查最后一个表达式是否是 EncapsulatedExpressionNode
-                if (const auto lastExpr = bodyBlock->getBodyExpressions().back();
-                    lastExpr && lastExpr->getRealType() == NodeType::ENCAPSULATED)
-                {
-                    CurrentFunctionIsEncapsulated = true;
-                    EncapsulatedFunctions.insert(funcName);
-                    LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
-
-                    // 注册为内置函数（如果函数体中有 encapsulated 关键字）
-                    // 不生成函数体，函数实现由内置 IR 生成器提供
-                    // 但仍然创建函数定义（空函数体）
-                }
-                else
-                {
-                    // 正常生成函数体
-                    node.getBodyNode()->acceptVisitor(*this);
-                }
-            }
-            else
-            {
-                node.getBodyNode()->acceptVisitor(*this);
-            }
+            node.getBodyNode()->acceptVisitor(*this);
         }
 
         // 如果当前基本块没有终止指令，添加 return null
