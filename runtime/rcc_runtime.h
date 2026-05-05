@@ -169,6 +169,24 @@ void __rcc_throw(void* exception);
  */
 void* __rcc_repeat(void* count, void* handler);
 
+// ==================== 输出运行时 ====================
+
+/**
+ * 智能输出值（根据类型自动格式化）
+ * @param value 值指针
+ */
+void __rcc_print_value(void* value);
+
+/**
+ * 输出换行
+ */
+void __rcc_print_newline(void);
+
+/**
+ * 输出空格
+ */
+void __rcc_print_space(void);
+
 #ifdef __cplusplus
 }
 #endif

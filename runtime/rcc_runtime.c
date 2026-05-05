@@ -464,3 +464,145 @@ void* __rcc_repeat(void* count, void* handler)
     (void)handler;
     return NULL;
 }
+
+// ============================================================================
+// 输出运行时
+// ============================================================================
+
+// 判断 ptr 值是否为小整数（编码为 inttoptr 的整数值）
+// 小整数范围: -100000 ~ 100000（地址空间的低值不太可能是有效指针）
+static int is_encoded_int(void* ptr, int64_t* outInt)
+{
+    int64_t val = (int64_t)(intptr_t)ptr;
+    // 检查是否在合理的小整数范围内
+    if (val > -100000 && val < 100000)
+    {
+        *outInt = val;
+        return 1;
+    }
+    return 0;
+}
+
+// 尝试将 ptr 作为 C 字符串读取，检查是否为有效字符串
+static int is_valid_cstring(void* ptr)
+{
+    if (!ptr) return 0;
+
+    // 检查是否指向可读内存（简单检查：尝试读取前几个字节）
+    const char* str = (const char*)ptr;
+    // 空指针检查
+    if (str[0] == '\0') return 1;  // 空字符串是有效的
+
+    // 检查是否为可打印 ASCII 字符串
+    int len = 0;
+    while (len < 4096)
+    {
+        unsigned char ch = (unsigned char)str[len];
+        if (ch == '\0') return 1;  // 正常终止
+        if (ch < 0x20 || ch > 0x7E)
+        {
+            // 允许常见的控制字符：\n, \t, \r
+            if (ch != '\n' && ch != '\t' && ch != '\r')
+                return 0;  // 包含不可打印字符，不是普通字符串
+        }
+        len++;
+    }
+    return 0;  // 超长无终止符
+}
+
+void __rcc_print_value(void* value)
+{
+    if (!value)
+    {
+        printf("null");
+        return;
+    }
+
+    // 1. 检查是否为 RCCValue 对象（运行时创建的列表/字典等）
+    //    简单启发式：检查指针是否对齐且指向的内存看起来像 RCCValue
+    RCCValue* rval = (RCCValue*)value;
+    if (rval->type >= RCC_TYPE_NULL && rval->type < RCC_TYPE_UNKNOWN)
+    {
+        // 额外验证：检查 type 字段是否合理
+        if ((int)rval->type >= 0 && (int)rval->type <= 9)
+        {
+            switch (rval->type)
+            {
+            case RCC_TYPE_INT:
+                printf("%lld", (long long)rval->intVal);
+                return;
+            case RCC_TYPE_FLOAT:
+                printf("%g", rval->floatVal);
+                return;
+            case RCC_TYPE_BOOL:
+                printf("%s", rval->boolVal ? "true" : "false");
+                return;
+            case RCC_TYPE_STRING:
+                if (rval->strVal)
+                    printf("%s", rval->strVal);
+                else
+                    printf("null");
+                return;
+            case RCC_TYPE_LIST:
+            {
+                printf("[");
+                for (int64_t i = 0; i < rval->list.size; i++)
+                {
+                    if (i > 0) printf(", ");
+                    __rcc_print_value(rval->list.data[i]);
+                }
+                printf("]");
+                return;
+            }
+            case RCC_TYPE_DICT:
+            {
+                printf("{");
+                for (int64_t i = 0; i < rval->dict.size; i++)
+                {
+                    if (i > 0) printf(", ");
+                    __rcc_print_value(rval->dict.keys[i]);
+                    printf(": ");
+                    __rcc_print_value(rval->dict.values[i]);
+                }
+                printf("}");
+                return;
+            }
+            case RCC_TYPE_PAIR:
+                __rcc_print_value(rval->pair.key);
+                printf(": ");
+                __rcc_print_value(rval->pair.value);
+                return;
+            default:
+                break;
+            }
+        }
+    }
+
+    // 2. 检查是否为编码的整数
+    int64_t intVal;
+    if (is_encoded_int(value, &intVal))
+    {
+        printf("%lld", (long long)intVal);
+        return;
+    }
+
+    // 3. 检查是否为有效的 C 字符串
+    if (is_valid_cstring(value))
+    {
+        printf("%s", (const char*)value);
+        return;
+    }
+
+    // 4. 无法识别，输出指针
+    printf("<ptr: %p>", value);
+}
+
+void __rcc_print_newline(void)
+{
+    printf("\n");
+}
+
+void __rcc_print_space(void)
+{
+    printf(" ");
+}

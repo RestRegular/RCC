@@ -783,9 +783,35 @@ namespace ast
             {
                 if (parenRanger->getRangerNode())
                 {
-                    parenRanger->getRangerNode()->acceptVisitor(*this);
-                    auto* argVal = popValue();
-                    argValues.push_back(argVal ? argVal : llvm::ConstantPointerNull::get(getValueType()));
+                    auto* ranger = parenRanger->getRangerNode();
+                    if (ranger->getRealType() == NodeType::PARALLEL)
+                    {
+                        // 逗号分隔的多参数：递归遍历 PARALLEL 节点
+                        std::function<void(const std::shared_ptr<ExpressionNode>&)> collectArgs;
+                        collectArgs = [&](const std::shared_ptr<ExpressionNode>& expr)
+                        {
+                            if (expr->getRealType() == NodeType::PARALLEL)
+                            {
+                                auto* p = static_cast<InfixExpressionNode*>(expr.get());
+                                collectArgs(p->getLeftNode());
+                                collectArgs(p->getRightNode());
+                            }
+                            else
+                            {
+                                expr->acceptVisitor(*this);
+                                auto* argVal = popValue();
+                                argValues.push_back(argVal ? argVal : llvm::ConstantPointerNull::get(getValueType()));
+                            }
+                        };
+                        collectArgs(ranger);
+                    }
+                    else
+                    {
+                        // 单个参数
+                        ranger->acceptVisitor(*this);
+                        auto* argVal = popValue();
+                        argValues.push_back(argVal ? argVal : llvm::ConstantPointerNull::get(getValueType()));
+                    }
                 }
             }
             else
@@ -2426,31 +2452,35 @@ namespace ast
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
 
+            // 声明运行时智能输出函数: void __rcc_print_value(ptr value)
+            auto* printType = llvm::FunctionType::get(getVoidType(), {getValueType()}, false);
+            auto* printFunc = getOrCreateExternalFunc("__rcc_print_value", printType);
+
+            // 声明运行时换行函数: void __rcc_print_newline()
+            auto* newlineType = llvm::FunctionType::get(getVoidType(), false);
+            auto* newlineFunc = getOrCreateExternalFunc("__rcc_print_newline", newlineType);
+
+            // 声明运行时空格函数: void __rcc_print_space()
+            auto* spaceType = llvm::FunctionType::get(getVoidType(), false);
+            auto* spaceFunc = getOrCreateExternalFunc("__rcc_print_space", spaceType);
+
             if (args.empty())
             {
                 // sout() 无参数，仅输出换行
-                auto* putsFunc = getPutsFunction();
-                auto* newline = createGlobalStringPtr("\n");
-                Builder->CreateCall(putsFunc, {newline});
+                Builder->CreateCall(newlineFunc, {});
             }
             else
             {
-                // sout(a, b, c) -> printf("%s %s %s\n", a, b, c)
-                std::string fmt;
+                // sout(a, b, c) -> 对每个参数调用 __rcc_print_value，参数间空格，末尾换行
                 for (size_t i = 0; i < args.size(); i++)
                 {
-                    if (i > 0) fmt += " ";
-                    fmt += "%s";  // 动态类型，统一用 %s 占位
+                    if (i > 0)
+                    {
+                        Builder->CreateCall(spaceFunc, {});
+                    }
+                    Builder->CreateCall(printFunc, {args[i]});
                 }
-                fmt += "\n";
-
-                // 将 ptr 参数直接传递（运行时 %s 会将指针作为字符串处理）
-                std::vector<llvm::Value*> printfArgs;
-                for (auto* arg : args)
-                {
-                    printfArgs.push_back(arg);
-                }
-                createPrintfCall(fmt, printfArgs);
+                Builder->CreateCall(newlineFunc, {});
             }
 
             pushValue(llvm::ConstantPointerNull::get(getValueType()));
