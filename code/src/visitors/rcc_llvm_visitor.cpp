@@ -1214,6 +1214,7 @@ namespace ast
         // 保存当前上下文
         auto* prevFunction = CurrentFunction;
         auto prevNamedValues = NamedValues;
+        auto prevInsertPoint = Builder->saveIP();
 
         CurrentFunction = func;
         NamedValues.clear();
@@ -1223,7 +1224,7 @@ namespace ast
         Builder->SetInsertPoint(entryBB);
 
         // 为参数创建 alloca 并存储
-        idx = 0;
+        unsigned idx = 0;
         for (auto& arg : func->args())
         {
             if (idx < paramNames.size())
@@ -1250,6 +1251,7 @@ namespace ast
         // 恢复上下文
         CurrentFunction = prevFunction;
         NamedValues = prevNamedValues;
+        Builder->restoreIP(prevInsertPoint);
 
         LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " (" << paramNames.size() << " params) defined");
     }
@@ -1664,6 +1666,7 @@ namespace ast
         // 保存当前上下文
         auto* prevFunction = CurrentFunction;
         auto prevNamedValues = NamedValues;
+        auto prevInsertPoint = Builder->saveIP();
 
         CurrentFunction = func;
         NamedValues.clear();
@@ -1700,6 +1703,7 @@ namespace ast
         // 恢复上下文
         CurrentFunction = prevFunction;
         NamedValues = prevNamedValues;
+        Builder->restoreIP(prevInsertPoint);
 
         // 将函数指针作为值 push 到栈上
         pushValue(func);
