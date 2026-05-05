@@ -770,7 +770,7 @@ namespace ast
         if (argsNode)
         {
             // 参数可能是 BlockRangerNode 或 ParenRangerNode
-            if (auto* blockRanger = dynamic_cast<BlockRangerNode*>(argsNode.get()))
+            if (const auto* blockRanger = dynamic_cast<BlockRangerNode*>(argsNode.get()))
             {
                 for (const auto& expr : blockRanger->getBodyExpressions())
                 {
@@ -779,12 +779,12 @@ namespace ast
                     argValues.push_back(argVal ? argVal : llvm::ConstantPointerNull::get(getValueType()));
                 }
             }
-            else if (auto* parenRanger = dynamic_cast<ParenRangerNode*>(argsNode.get()))
+            else if (const auto* parenRanger = dynamic_cast<ParenRangerNode*>(argsNode.get()))
             {
                 if (parenRanger->getRangerNode())
                 {
-                    auto& ranger = parenRanger->getRangerNode();
-                    if (ranger->getRealType() == NodeType::PARALLEL)
+                    if (const auto& ranger = parenRanger->getRangerNode();
+                        ranger->getRealType() == NodeType::PARALLEL)
                     {
                         // 逗号分隔的多参数：递归遍历 PARALLEL 节点
                         std::function<void(const std::shared_ptr<ExpressionNode>&)> collectArgs;

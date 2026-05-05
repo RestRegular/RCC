@@ -18,7 +18,7 @@ fun sin(): str {
 
 // 调用内置函数
 sout("hello world")
-sout(1, 2, 3)
+sout(1)
 sout()
 
 var arr = [1, 2, 3, 4, 5]
