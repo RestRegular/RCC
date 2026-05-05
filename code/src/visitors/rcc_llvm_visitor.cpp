@@ -269,10 +269,28 @@ namespace ast
     {
         if (!value) return llvm::ConstantInt::getFalse(*TheContext);
 
-        // Tagged Value: 非 null 即为 true
         auto* tag = extractTag(value);
-        auto* nullTag = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_NULL);
-        return Builder->CreateICmpNE(tag, nullTag, "is_not_null");
+        auto* payload = extractPayload(value);
+        auto* int64Ty = llvm::Type::getInt64Ty(*TheContext);
+
+        // TAG_NULL → false
+        auto* isNull = Builder->CreateICmpEQ(tag, llvm::ConstantInt::get(int64Ty, TAG_NULL), "is_null");
+
+        // TAG_BOOL / TAG_INT → 检查 payload 是否为 0
+        auto* isBoolOrInt = Builder->CreateOr(
+            Builder->CreateICmpEQ(tag, llvm::ConstantInt::get(int64Ty, TAG_BOOL), "is_bool"),
+            Builder->CreateICmpEQ(tag, llvm::ConstantInt::get(int64Ty, TAG_INT), "is_int"),
+            "is_bool_or_int");
+        auto* payloadInt = Builder->CreatePtrToInt(payload, int64Ty, "payload.int");
+        auto* payloadNonZero = Builder->CreateICmpNE(payloadInt, llvm::ConstantInt::get(int64Ty, 0), "payload_nz");
+
+        // 结果: isNull ? false : (isBoolOrInt ? payloadNonZero : true)
+        auto* falseVal = llvm::ConstantInt::getFalse(*TheContext);
+        auto* trueVal = llvm::ConstantInt::getTrue(*TheContext);
+
+        auto* notNull = Builder->CreateNot(isNull, "not_null");
+        auto* boolOrIntResult = Builder->CreateSelect(isBoolOrInt, payloadNonZero, trueVal, "bool_int_result");
+        return Builder->CreateSelect(isNull, falseVal, boolOrIntResult, "coerced_bool");
     }
 
     llvm::Function* LLVMCodeGenVisitor::getOrCreateExternalFunc(const std::string& name, llvm::FunctionType* funcType) const
