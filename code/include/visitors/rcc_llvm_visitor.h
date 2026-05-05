@@ -99,6 +99,9 @@ namespace ast {
         // 当前正在定义的函数是否为 encapsulated
         bool CurrentFunctionIsEncapsulated = false;
 
+        // 被标记为 encapsulated 的函数名集合
+        std::unordered_set<std::string> EncapsulatedFunctions;
+
         // 导出的符号名集合
         std::unordered_set<std::string> ExportedSymbols;
 

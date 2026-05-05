@@ -1558,6 +1558,7 @@ namespace ast
                     lastExpr && lastExpr->getRealType() == NodeType::ENCAPSULATED)
                 {
                     CurrentFunctionIsEncapsulated = true;
+                    EncapsulatedFunctions.insert(funcName);
                     LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
 
                     // 注册为内置函数（如果函数体中有 encapsulated 关键字）
@@ -2601,41 +2602,31 @@ namespace ast
             LLVM_DEBUG("Builtin IR: " << funcName);
 
             // 声明 libc 函数
-            // int putchar(int c)
             auto* putcharType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {llvm::Type::getInt32Ty(*TheContext)}, false);
             auto* putcharFunc = getOrCreateExternalFunc("putchar", putcharType);
 
-            // int printf(const char *format, ...)
             auto* printfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, /*isVarArg=*/true);
             auto* printfFunc = getOrCreateExternalFunc("printf", printfType);
 
-            // void* malloc(size_t size)
-            // auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
-            // auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
-
-            // int printf(const char *format, ...)
-            auto* printfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, /*isVarArg=*/true);
-            auto* printfFunc = getOrCreateExternalFunc("printf", printfType);
+            // int strcmp(const char*, const char*)
+            auto* strcmpType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType(), getValueType()}, false);
+            auto* strcmpFunc = getOrCreateExternalFunc("strcmp", strcmpType);
 
             llvm::Function* func = Builder->GetInsertBlock()->getParent();
 
+            // 解析参数：最后一个命名参数 end 作为结尾符，其余为输出参数
+            // sout(a, b, end="\n") -> 输出 a, b, 然后输出 \n
+            // 简化实现：所有参数都输出，最后一个参数如果是字符串 "\n" 则作为 end
+            // 这里我们直接输出所有参数，然后输出 \n
+
+            // 输出每个参数（参数间不加空格）
             for (size_t i = 0; i < args.size(); i++)
             {
-                if (i > 0)
-                {
-                    // 输出空格
-                    Builder->CreateCall(putcharFunc, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), ' ')});
-                }
-
                 llvm::Value* arg = args[i];
-
-                // === 按 type_tag 分发 ===
-                // 创建分支: TAG_INT, TAG_FLOAT, TAG_BOOL, TAG_STRING, TAG_NULL, default
 
                 auto* tag = extractTag(arg);
                 auto* payload = extractPayload(arg);
 
-                // 基本块
                 auto* intBB = llvm::BasicBlock::Create(*TheContext, "sout.int", func);
                 auto* floatBB = llvm::BasicBlock::Create(*TheContext, "sout.float", func);
                 auto* boolBB = llvm::BasicBlock::Create(*TheContext, "sout.bool", func);
@@ -2644,7 +2635,6 @@ namespace ast
                 auto* defaultBB = llvm::BasicBlock::Create(*TheContext, "sout.default", func);
                 auto* mergeBB = llvm::BasicBlock::Create(*TheContext, "sout.merge", func);
 
-                // switch on tag
                 auto* switchInst = Builder->CreateSwitch(tag, defaultBB, 5);
                 switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_INT), intBB);
                 switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FLOAT), floatBB);
@@ -2652,38 +2642,27 @@ namespace ast
                 switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING), strBB);
                 switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_NULL), nullBB);
 
-                // --- TAG_INT: 输出整数 ---
+                // --- TAG_INT ---
                 Builder->SetInsertPoint(intBB);
                 {
-                    // payload 是 inttoptr 编码的整数，需要 ptrtoint 回来
-                    // auto* intVal = Builder->CreatePtrToInt(payload, llvm::Type::getInt64Ty(*TheContext), "int.val");
-
-                    // 用 printf("%lld", intVal) 输出
                     auto* fmtStr = createGlobalStringPtr("%lld");
-                    auto* fmtPtr = Builder->CreateBitCast(fmtStr, getValueType());
-                    Builder->CreateCall(printfFunc, {fmtPtr, payload});
+                    Builder->CreateCall(printfFunc, {fmtStr, payload});
                 }
                 Builder->CreateBr(mergeBB);
 
-                // --- TAG_FLOAT: 输出浮点 ---
+                // --- TAG_FLOAT ---
                 Builder->SetInsertPoint(floatBB);
                 {
-                    // payload 是 double 的位模式 (inttoptr)，需要还原
                     auto* bits = Builder->CreatePtrToInt(payload, llvm::Type::getInt64Ty(*TheContext), "float.bits");
                     auto* floatVal = Builder->CreateBitCast(bits, llvm::Type::getDoubleTy(*TheContext), "float.val");
-
-                    // 用 printf("%g", floatVal) 输出
-                    // printf 是 vararg，double 参数直接传（x86-64 ABI）
                     auto* fmtStr = createGlobalStringPtr("%g");
-                    auto* fmtPtr = Builder->CreateBitCast(fmtStr, getValueType());
-                    Builder->CreateCall(printfFunc, {fmtPtr, floatVal});
+                    Builder->CreateCall(printfFunc, {fmtStr, floatVal});
                 }
                 Builder->CreateBr(mergeBB);
 
-                // --- TAG_BOOL: 输出 true/false ---
+                // --- TAG_BOOL ---
                 Builder->SetInsertPoint(boolBB);
                 {
-                    // payload 是 inttoptr(0) 或 inttoptr(1)
                     auto* intVal = Builder->CreatePtrToInt(payload, llvm::Type::getInt64Ty(*TheContext), "bool.val");
                     auto* isTrue = Builder->CreateICmpNE(intVal, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0), "is.true");
 
@@ -2705,35 +2684,32 @@ namespace ast
                 }
                 Builder->CreateBr(mergeBB);
 
-                // --- TAG_STRING: 输出字符串 ---
+                // --- TAG_STRING ---
                 Builder->SetInsertPoint(strBB);
                 {
-                    // payload 是指向全局字符串的 ptr，用 printf("%s") 输出（不带换行）
                     Builder->CreateCall(printfFunc, {createGlobalStringPtr("%s"), payload});
                 }
                 Builder->CreateBr(mergeBB);
 
-                // --- TAG_NULL: 输出 "null" ---
+                // --- TAG_NULL ---
                 Builder->SetInsertPoint(nullBB);
                 {
                     Builder->CreateCall(printfFunc, {createGlobalStringPtr("%s"), createGlobalStringPtr("null")});
                 }
                 Builder->CreateBr(mergeBB);
 
-                // --- default: 输出指针 ---
+                // --- default ---
                 Builder->SetInsertPoint(defaultBB);
                 {
                     auto* fmtStr = createGlobalStringPtr("<ptr: %p>");
-                    auto* fmtPtr = Builder->CreateBitCast(fmtStr, getValueType());
-                    Builder->CreateCall(printfFunc, {fmtPtr, payload});
+                    Builder->CreateCall(printfFunc, {fmtStr, payload});
                 }
                 Builder->CreateBr(mergeBB);
 
-                // merge
                 Builder->SetInsertPoint(mergeBB);
             }
 
-            // 末尾换行
+            // 末尾输出 end（默认 "\n"）
             Builder->CreateCall(putcharFunc, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), '\n')});
 
             pushValue(createTaggedValueNull(TAG_NULL));
@@ -3373,6 +3349,10 @@ namespace ast
         const std::string& funcName,
         const std::vector<llvm::Value*>& args)
     {
+        // 只有被标记为 encapsulated 的函数才使用内置 IR 生成器
+        if (!EncapsulatedFunctions.count(funcName))
+            return false;
+
         auto it = BuiltinIRGenerators.find(funcName);
         if (it != BuiltinIRGenerators.end())
         {
