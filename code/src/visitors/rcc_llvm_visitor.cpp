@@ -1340,9 +1340,14 @@ namespace ast
             if (op == "!")
             {
                 // 逻辑非返回 Tagged Bool
-                auto* boolVal = Builder->CreateTrunc(result, llvm::Type::getInt1Ty(*TheContext), "not.trunc");
-                auto* boolInt = Builder->CreateZExt(boolVal, llvm::Type::getInt64Ty(*TheContext), "not.zext");
-                pushValue(createTaggedBool(boolInt->getSExtValue() != 0));
+                // result 是 i64 (0 或 1)，用 select 选择 payload
+                auto* zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0);
+                auto* isTrue = Builder->CreateICmpNE(result, zero, "not.is_true");
+                auto* truePayload = Builder->CreateIntToPtr(
+                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), getValueType());
+                auto* falsePayload = llvm::ConstantPointerNull::get(getValueType());
+                auto* payload = Builder->CreateSelect(isTrue, truePayload, falsePayload, "not.payload");
+                pushValue(createTaggedValue(TAG_BOOL, payload));
             }
             else
             {
