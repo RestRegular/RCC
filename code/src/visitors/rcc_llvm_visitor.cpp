@@ -1535,7 +1535,8 @@ namespace ast
                 bodyBlock && !bodyBlock->getBodyExpressions().empty())
             {
                 if (const auto lastExpr = bodyBlock->getBodyExpressions().back();
-                    lastExpr && lastExpr->getRealType() == NodeType::ENCAPSULATED)
+                    lastExpr && (lastExpr->getRealType() == NodeType::ENCAPSULATED
+                                 || dynamic_cast<EncapsulatedExpressionNode*>(lastExpr.get())))
                 {
                     isEncapsulated = true;
                     CurrentFunctionIsEncapsulated = true;
