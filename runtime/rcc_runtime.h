@@ -4,8 +4,15 @@
  * 提供 LLVM IR 生成器所需的运行时函数实现。
  * 所有值使用 void* (ptr) 作为统一类型。
  *
- * 编译: clang -c rcc_runtime.c -o rcc_runtime.o
- * 使用: lli -extra-archive=rcc_runtime.o test.ll
+ * 编译 (C):
+ *   gcc -c rcc_runtime.c -o rcc_runtime.o
+ *   clang -c rcc_runtime.c -o rcc_runtime.o
+ *
+ * 编译 (C++):
+ *   g++ -c rcc_runtime.c -o rcc_runtime.o
+ *
+ * 使用:
+ *   lli -extra-archive=rcc_runtime.o test.ll
  */
 
 #ifndef RCC_RUNTIME_H
@@ -13,6 +20,10 @@
 
 #include <stdint.h>
 #include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // ==================== 数据结构运行时 ====================
 
@@ -157,5 +168,9 @@ void __rcc_throw(void* exception);
  * @return 结果
  */
 void* __rcc_repeat(void* count, void* handler);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // RCC_RUNTIME_H
