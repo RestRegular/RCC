@@ -1045,34 +1045,95 @@ namespace ast
 
         // 由于我们使用 Tagged Struct 存储值，
         // 算术运算需要先提取 payload，运算后再包装为 Tagged Int
+        // 浮点数需要使用浮点运算
         auto* int64Ty = llvm::Type::getInt64Ty(*TheContext);
+        auto* doubleTy = llvm::Type::getDoubleTy(*TheContext);
 
-        // 从 Tagged Value 中提取 payload 作为运算操作数
-        left = extractPayload(left);
-        right = extractPayload(right);
+        // 检查操作数是否为浮点数
+        auto* leftTag = extractTag(left);
+        auto* rightTag = extractTag(right);
+        auto* floatTagConst = llvm::ConstantInt::get(int64Ty, TAG_FLOAT);
+        auto* isFloatLeft = Builder->CreateICmpEQ(leftTag, floatTagConst, "is_float.left");
+        auto* isFloatRight = Builder->CreateICmpEQ(rightTag, floatTagConst, "is_float.right");
+        auto* isFloat = Builder->CreateOr(isFloatLeft, isFloatRight, "is_float");
 
-        // ptrtoint: 将 ptr 转为 i64 以进行运算
-        auto* leftInt = Builder->CreatePtrToInt(left, int64Ty, "left.int");
-        auto* rightInt = Builder->CreatePtrToInt(right, int64Ty, "right.int");
+        // 浮点数分支
+        auto* floatBB = llvm::BasicBlock::Create(*TheContext, "arith.float", func);
+        // 整数分支
+        auto* intBB = llvm::BasicBlock::Create(*TheContext, "arith.int", func);
+        // 合并分支
+        auto* arithMergeBB = llvm::BasicBlock::Create(*TheContext, "arith.merge", func);
 
-        llvm::Value* result = nullptr;
+        // 在分支前创建结果 alloca（满足 dominance）
+        auto* resultAlloca = createEntryBlockAlloca(func, "arith.result", getValueType());
+        Builder->CreateStore(llvm::ConstantPointerNull::get(getValueType()), resultAlloca);
 
-        switch (infixType)
+        Builder->CreateCondBr(isFloat, floatBB, intBB);
+
+        // --- 浮点数运算 ---
+        Builder->SetInsertPoint(floatBB);
         {
+            auto* leftPayload = extractPayload(left);
+            auto* rightPayload = extractPayload(right);
+            auto* leftBits = Builder->CreatePtrToInt(leftPayload, int64Ty, "left.bits");
+            auto* rightBits = Builder->CreatePtrToInt(rightPayload, int64Ty, "right.bits");
+            auto* leftDouble = Builder->CreateBitCast(leftBits, doubleTy, "left.double");
+            auto* rightDouble = Builder->CreateBitCast(rightBits, doubleTy, "right.double");
+
+            llvm::Value* floatResult = nullptr;
+            if (infixType == NodeType::PLUS)
+                floatResult = Builder->CreateFAdd(leftDouble, rightDouble, "fadd");
+            else if (infixType == NodeType::MINUS)
+                floatResult = Builder->CreateFSub(leftDouble, rightDouble, "fsub");
+            else if (infixType == NodeType::MULTIPLY)
+                floatResult = Builder->CreateFMul(leftDouble, rightDouble, "fmul");
+            else if (infixType == NodeType::DIVIDE)
+                floatResult = Builder->CreateFDiv(leftDouble, rightDouble, "fdiv");
+            else if (infixType == NodeType::MODULO)
+                floatResult = Builder->CreateFRem(leftDouble, rightDouble, "frem");
+            else
+                floatResult = leftDouble; // fallback
+
+            // 将 double 结果转回 payload
+            auto* resultBits = Builder->CreateBitCast(floatResult, int64Ty, "result.bits");
+            auto* resultPayload = Builder->CreateIntToPtr(resultBits, getValueType(), "result.float.ptr");
+            auto* resultVal = createTaggedValue(TAG_FLOAT, resultPayload);
+            Builder->CreateStore(resultVal, resultAlloca);
+            Builder->CreateBr(arithMergeBB);
+
+            // 记录浮点结果用于 phi
+            floatBB = Builder->GetInsertBlock(); // 更新 floatBB（可能有额外指令）
+        }
+
+        // --- 整数运算 ---
+        Builder->SetInsertPoint(intBB);
+        {
+            // 从 Tagged Value 中提取 payload 作为运算操作数
+            auto* leftPayload = extractPayload(left);
+            auto* rightPayload = extractPayload(right);
+
+            // ptrtoint: 将 ptr 转为 i64 以进行运算
+            auto* leftInt = Builder->CreatePtrToInt(leftPayload, int64Ty, "left.int");
+            auto* rightInt = Builder->CreatePtrToInt(rightPayload, int64Ty, "right.int");
+
+            llvm::Value* result = nullptr;
+
+            switch (infixType)
+            {
             // ==================== 算术运算 ====================
-        case NodeType::PLUS:
-            result = Builder->CreateAdd(leftInt, rightInt, "add");
-            break;
-        case NodeType::MINUS:
-            result = Builder->CreateSub(leftInt, rightInt, "sub");
-            break;
-        case NodeType::MULTIPLY:
-            result = Builder->CreateMul(leftInt, rightInt, "mul");
-            break;
-        case NodeType::DIVIDE:
-            result = Builder->CreateSDiv(leftInt, rightInt, "div");
-            break;
-        case NodeType::MODULO:
+            case NodeType::PLUS:
+                result = Builder->CreateAdd(leftInt, rightInt, "add");
+                break;
+            case NodeType::MINUS:
+                result = Builder->CreateSub(leftInt, rightInt, "sub");
+                break;
+            case NodeType::MULTIPLY:
+                result = Builder->CreateMul(leftInt, rightInt, "mul");
+                break;
+            case NodeType::DIVIDE:
+                result = Builder->CreateSDiv(leftInt, rightInt, "div");
+                break;
+            case NodeType::MODULO:
             result = Builder->CreateSRem(leftInt, rightInt, "mod");
             break;
         case NodeType::FLOOR_DIVIDE:
@@ -1233,12 +1294,20 @@ namespace ast
                 resultTag = TAG_BOOL;
             }
             auto* resultPtr = createTaggedValue(resultTag, Builder->CreateIntToPtr(result, getValueType(), "int.ptr"));
-            pushValue(resultPtr);
+            Builder->CreateStore(resultPtr, resultAlloca);
+            Builder->CreateBr(arithMergeBB);
+            intBB = Builder->GetInsertBlock(); // 更新 intBB
         }
         else
         {
-            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+            Builder->CreateStore(llvm::ConstantPointerNull::get(getValueType()), resultAlloca);
+            Builder->CreateBr(arithMergeBB);
+            intBB = Builder->GetInsertBlock();
         }
+
+        // --- 合并浮点和整数结果 ---
+        Builder->SetInsertPoint(arithMergeBB);
+        pushValue(Builder->CreateLoad(getValueType(), resultAlloca, "arith.result.load"));
     }
 
     // ============================================================================
