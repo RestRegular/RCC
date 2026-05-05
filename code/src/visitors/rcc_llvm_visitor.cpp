@@ -2055,13 +2055,35 @@ namespace ast
             std::function<void(const std::shared_ptr<ExpressionNode>&)> collectParams;
             collectParams = [&](const std::shared_ptr<ExpressionNode>& expr)
             {
-                if (expr->getRealType() == NodeType::PARALLEL)
+                if (!expr) return;
+
+                auto nodeType = expr->getRealType();
+
+                // 处理 BlockRangerNode / ParenRangerNode 包装
+                if (auto* blockRanger = dynamic_cast<BlockRangerNode*>(expr.get()))
+                {
+                    for (const auto& bodyExpr : blockRanger->getBodyExpressions())
+                    {
+                        collectParams(bodyExpr);
+                    }
+                    return;
+                }
+                if (auto* parenRanger = dynamic_cast<ParenRangerNode*>(expr.get()))
+                {
+                    if (parenRanger->getRangerNode())
+                    {
+                        collectParams(parenRanger->getRangerNode());
+                    }
+                    return;
+                }
+
+                if (nodeType == NodeType::PARALLEL)
                 {
                     auto* p = static_cast<InfixExpressionNode*>(expr.get());
                     collectParams(p->getLeftNode());
                     collectParams(p->getRightNode());
                 }
-                else if (expr->getRealType() == NodeType::IDENTIFIER)
+                else if (nodeType == NodeType::IDENTIFIER)
                 {
                     auto* id = static_cast<IdentifierNode*>(expr.get());
                     paramNames.push_back(id->getName());
