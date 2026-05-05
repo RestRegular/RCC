@@ -1079,8 +1079,18 @@ namespace ast
             auto* rightPayload = extractPayload(right);
             auto* leftBits = Builder->CreatePtrToInt(leftPayload, int64Ty, "left.bits");
             auto* rightBits = Builder->CreatePtrToInt(rightPayload, int64Ty, "right.bits");
-            auto* leftDouble = Builder->CreateBitCast(leftBits, doubleTy, "left.double");
-            auto* rightDouble = Builder->CreateBitCast(rightBits, doubleTy, "right.double");
+
+            // 根据各自的 tag 选择 bitcast（FLOAT）或 sitofp（INT）
+            auto* leftDouble = Builder->CreateSelect(
+                isFloatLeft,
+                Builder->CreateBitCast(leftBits, doubleTy, "left.bitcast"),
+                Builder->CreateSIToFP(leftBits, doubleTy, "left.sitofp"),
+                "left.double");
+            auto* rightDouble = Builder->CreateSelect(
+                isFloatRight,
+                Builder->CreateBitCast(rightBits, doubleTy, "right.bitcast"),
+                Builder->CreateSIToFP(rightBits, doubleTy, "right.sitofp"),
+                "right.double");
 
             llvm::Value* floatResult = nullptr;
             if (infixType == NodeType::PLUS)
