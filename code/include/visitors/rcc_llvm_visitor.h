@@ -222,7 +222,8 @@ namespace ast {
          * @return 是否成功调用
          */
         bool tryEmitBuiltinIR(const std::string& funcName,
-                               const std::vector<llvm::Value*>& args);
+                               const std::vector<llvm::Value*>& args,
+                               const std::map<std::string, llvm::Value*>& namedArgs);
 
         /**
          * 获取或创建 LLVM printf 函数

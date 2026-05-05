@@ -807,8 +807,8 @@ namespace ast
             {
                 for (const auto& expr : blockRanger->getBodyExpressions())
                 {
-                    // 命名参数: end="\n" -> ARGUMENT_ASSIGNMENT
-                    if (expr->getRealType() == NodeType::ARGUMENT_ASSIGNMENT)
+                    // 命名参数: end="\n" -> ASSIGNMENT
+                    if (expr->getRealType() == NodeType::ASSIGNMENT)
                     {
                         auto* assign = static_cast<InfixExpressionNode*>(expr.get());
                         if (assign->getLeftNode()->getRealType() == NodeType::IDENTIFIER)
@@ -844,7 +844,7 @@ namespace ast
                                 collectArgs(p->getLeftNode());
                                 collectArgs(p->getRightNode());
                             }
-                            else if (expr->getRealType() == NodeType::ARGUMENT_ASSIGNMENT)
+                            else if (expr->getRealType() == NodeType::ASSIGNMENT)
                             {
                                 // 命名参数
                                 auto* assign = static_cast<InfixExpressionNode*>(expr.get());
