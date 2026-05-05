@@ -97,7 +97,7 @@ namespace ast {
         /**
          * 创建全局字符串常量
          */
-        llvm::Value* createGlobalStringPtr(const std::string& str);
+        llvm::Value* createGlobalStringPtr(const std::string& str) const;
 
         /**
          * 获取当前插入点的 BasicBlock
