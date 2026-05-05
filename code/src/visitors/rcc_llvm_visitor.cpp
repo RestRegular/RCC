@@ -2605,9 +2605,9 @@ namespace ast
             auto* putcharType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {llvm::Type::getInt32Ty(*TheContext)}, false);
             auto* putcharFunc = getOrCreateExternalFunc("putchar", putcharType);
 
-            // int puts(const char *s)
-            auto* putsType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, false);
-            auto* putsFunc = getOrCreateExternalFunc("puts", putsType);
+            // int printf(const char *format, ...)
+            auto* printfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, /*isVarArg=*/true);
+            auto* printfFunc = getOrCreateExternalFunc("printf", printfType);
 
             // void* malloc(size_t size)
             // auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
@@ -2694,11 +2694,11 @@ namespace ast
                     Builder->CreateCondBr(isTrue, trueBB, falseBB);
 
                     Builder->SetInsertPoint(trueBB);
-                    Builder->CreateCall(putsFunc, {createGlobalStringPtr("true")});
+                    Builder->CreateCall(printfFunc, {createGlobalStringPtr("%s"), createGlobalStringPtr("true")});
                     Builder->CreateBr(boolMergeBB);
 
                     Builder->SetInsertPoint(falseBB);
-                    Builder->CreateCall(putsFunc, {createGlobalStringPtr("false")});
+                    Builder->CreateCall(printfFunc, {createGlobalStringPtr("%s"), createGlobalStringPtr("false")});
                     Builder->CreateBr(boolMergeBB);
 
                     Builder->SetInsertPoint(boolMergeBB);
@@ -2708,15 +2708,15 @@ namespace ast
                 // --- TAG_STRING: 输出字符串 ---
                 Builder->SetInsertPoint(strBB);
                 {
-                    // payload 是指向全局字符串的 ptr，直接 puts
-                    Builder->CreateCall(putsFunc, {payload});
+                    // payload 是指向全局字符串的 ptr，用 printf("%s") 输出（不带换行）
+                    Builder->CreateCall(printfFunc, {createGlobalStringPtr("%s"), payload});
                 }
                 Builder->CreateBr(mergeBB);
 
                 // --- TAG_NULL: 输出 "null" ---
                 Builder->SetInsertPoint(nullBB);
                 {
-                    Builder->CreateCall(putsFunc, {createGlobalStringPtr("null")});
+                    Builder->CreateCall(printfFunc, {createGlobalStringPtr("%s"), createGlobalStringPtr("null")});
                 }
                 Builder->CreateBr(mergeBB);
 
