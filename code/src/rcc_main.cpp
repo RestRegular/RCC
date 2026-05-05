@@ -12,7 +12,6 @@
 #include "../include/visitors/rcc_visitors.h"
 #include "../include/lib/RJson/RJson_error.h"
 #include "../include/lib/rcc_utils.h"
-#include "../include/backend/rcc_llvm_backend.h"
 
 using namespace base;
 using namespace utils;
@@ -28,9 +27,6 @@ bool __help_option__ = false;
 bool __version_option__ = false;
 bool __time_info__ = false;
 bool __symbol_flag_builtin__ = false;
-bool __llvm_flag__ = false;
-bool __llvm_run_flag__ = false;
-bool __emit_ir_flag__ = false;
 
 // 参数解析器实例
 ProgArgParser argParser{};
@@ -107,20 +103,6 @@ void initializeArgumentParser() {
                       {"ti"})
     .addOption<std::string>("working-dir", &__working_directory__,
                                      getDefaultDir(), "Specify working directory", {"wd"});
-
-    // LLVM backend flags
-    argParser.addFlag("llvm", &__llvm_flag__, false, true,
-                      "Compile the target Rio file to a native executable using LLVM backend",
-                      {"l"})
-    .addFlag("run", &__llvm_run_flag__, false, true,
-              "Compile and immediately run the target Rio file using LLVM backend",
-              {"r"})
-    .addFlag("emit-ir", &__emit_ir_flag__, false, true,
-              "Emit LLVM IR (.ll file) instead of an executable",
-              {"ll"})
-    .addDependent("emit-ir", "llvm", ProgArgParser::CheckDir::UniDir)
-    .addMutuallyExclusive(std::vector<std::string>{"llvm", "run"},
-        std::vector<std::string>{"symbol", "compile"});
 
     // Core flag option exclusives
     argParser.addMutuallyExclusive(std::vector<std::string>{"help", "version"},
@@ -211,78 +193,6 @@ void handleCompileFlag()
     }
 }
 
-void handleLLVMFlag()
-{
-    const auto& targetPath = getAbsolutePath(__general_option_path__, __working_directory__);
-    std::string outputPath = __general_option_output__.empty()
-        ? targetPath.substr(0, targetPath.find_last_of('.')) : getAbsolutePath(__general_option_output__, __working_directory__);
-
-    // 1. 词法分析
-    auto lexer = std::make_shared<lexer::Lexer>(targetPath);
-    auto tokens = lexer->tokenize();
-
-    // 2. 语法分析
-    parser::Parser p(tokens);
-    auto [hasError, programNode] = p.parse();
-    if (hasError) {
-        std::cerr << "Parse error" << std::endl;
-        return;
-    }
-
-    // 3. LLVM 编译
-    backend::LLVMBackend llvmBackend;
-    if (!llvmBackend.compile(programNode)) {
-        std::cerr << "LLVM compilation failed" << std::endl;
-        return;
-    }
-
-    if (__emit_ir_flag__) {
-        std::string irPath = outputPath + ".ll";
-        if (llvmBackend.emitIR(irPath)) {
-            std::cout << "LLVM IR emitted to: " << irPath << std::endl;
-        }
-    } else {
-        if (llvmBackend.emitExecutable(outputPath)) {
-            std::cout << "Compilation succeeded!\nExecutable: " << outputPath << std::endl;
-        }
-    }
-}
-
-void handleRunFlag()
-{
-    const auto& targetPath = getAbsolutePath(__general_option_path__, __working_directory__);
-    std::string outputPath = "/tmp/rio_executable";
-
-    // 1. 词法分析
-    auto lexer = std::make_shared<lexer::Lexer>(targetPath);
-    auto tokens = lexer->tokenize();
-
-    // 2. 语法分析
-    parser::Parser p(tokens);
-    auto [hasError, programNode] = p.parse();
-    if (hasError) {
-        std::cerr << "Parse error" << std::endl;
-        return;
-    }
-
-    // 3. LLVM 编译
-    backend::LLVMBackend llvmBackend;
-    if (!llvmBackend.compile(programNode)) {
-        std::cerr << "LLVM compilation failed" << std::endl;
-        return;
-    }
-
-    if (!llvmBackend.emitExecutable(outputPath)) {
-        std::cerr << "Failed to generate executable" << std::endl;
-        return;
-    }
-
-    // 4. 运行
-    std::string cmd = outputPath;
-    int ret = std::system(cmd.c_str());
-    std::cout << "\n[Process exited with code " << (ret / 256) << "]" << std::endl;
-}
-
 int main(const int argc, char *argv[]) {
     try {
         setDeveloperModel(true);
@@ -309,18 +219,6 @@ int main(const int argc, char *argv[]) {
         if (ast::CompileVisitor::__compile_flag__)
         {
             handleCompileFlag();
-        }
-
-        // LLVM backend compilation
-        if (__llvm_flag__)
-        {
-            handleLLVMFlag();
-        }
-
-        // Compile and run
-        if (__llvm_run_flag__)
-        {
-            handleRunFlag();
         }
 
         // 输出程序运行时间信息

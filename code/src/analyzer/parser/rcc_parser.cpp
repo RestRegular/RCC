@@ -74,7 +74,6 @@ namespace parser {
         {TokenType::TOKEN_RETURN, &Parser::buildReturnExpression},
         // 退出循环语句
         {TokenType::TOKEN_BREAK, &Parser::buildBreakExpression},
-        {TokenType::TOKEN_CONTINUE, &Parser::buildContinueExpression},
         // 跳过新行
         {TokenType::TOKEN_SKIP_NEWLINE, &Parser::skipNewLineExpression},
         // try 语句

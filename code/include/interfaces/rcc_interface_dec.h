@@ -101,7 +101,7 @@ namespace rinterface
             ExtFunc* extFuncs;
         };
 
-        // 系统调用，DLL实现
+        // 绯荤粺璋冪敤锛孌LL瀹炵幇
         DLL_EXPORT bool SYS_INTERFACE_CALL DllLoadin();
         DLL_EXPORT void SYS_INTERFACE_CALL DllUnload();
         DLL_EXPORT ExtFuncs SYS_INTERFACE_CALL DllObtainExtFuncs();

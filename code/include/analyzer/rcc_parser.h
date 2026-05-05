@@ -31,28 +31,28 @@ namespace parser {
         static Token STREAM_START_TOKEN;
         static Token STREAM_END_TOKEN;
 
-        // ½âÎö×´Ì¬
+        // è§£æçŠ¶æ€
         bool isInDictRanger = false;
 
-        // ´Ê·¨·ÖÎö½á¹û
+        // è¯æ³•åˆ†æç»“æœ
         std::queue<std::shared_ptr<Token>> _tokens;
-        // ÏÈÇ°µÄ Token
+        // å…ˆå‰çš„ Token
         std::stack<std::shared_ptr<Token>> _previous_tokens;
-        // µ±Ç°µÄ Token
+        // å½“å‰çš„ Token
         std::shared_ptr<Token> _current_token;
-        // ÁÙÊ± Token
+        // ä¸´æ—¶ Token
         std::shared_ptr<Token> _next_token;
-        // Ìí¼ÓµÄÁÙÊ± Token£¬ÏÈÌí¼ÓÏÈÊ¹ÓÃ
+        // æ·»åŠ çš„ä¸´æ—¶ Tokenï¼Œå…ˆæ·»åŠ å…ˆä½¿ç”¨
         std::list<std::shared_ptr<Token>> _tempTokens;
-        // Óï·¨·ÖÎö´íÎóÁĞ±í
+        // è¯­æ³•åˆ†æé”™è¯¯åˆ—è¡¨
         std::vector<std::string> errorMsgs;
-        // Ç°×º±í´ïÊ½¹¹½¨º¯ÊıÓ³Éä±í
+        // å‰ç¼€è¡¨è¾¾å¼æ„å»ºå‡½æ•°æ˜ å°„è¡¨
         static std::map<core::TokenType, PrefixExpressionBuilder> prefixExpressionBuilders;
-        // ÖĞ×º±í´ïÊ½¹¹½¨º¯ÊıÓ³Éä±í
+        // ä¸­ç¼€è¡¨è¾¾å¼æ„å»ºå‡½æ•°æ˜ å°„è¡¨
         static std::map<core::TokenType, InfixExpressionBuilder> infixExpressionBuilders;
-        // ºó×º±í´ïÊ½¹¹½¨º¯ÊıÓ³Éä±í
+        // åç¼€è¡¨è¾¾å¼æ„å»ºå‡½æ•°æ˜ å°„è¡¨
         static std::map<core::TokenType, PostfixExpressionBuilder> postfixExpressionBuilders;
-        // ÔËËã·ûÓÅÏÈ¼¶Ó³Éä±í
+        // è¿ç®—ç¬¦ä¼˜å…ˆçº§æ˜ å°„è¡¨
         static std::map<core::TokenType, Precedence> precedenceMap;
 
         bool isAtEnd();
@@ -76,11 +76,11 @@ namespace parser {
         [[nodiscard]] Precedence currentTokenPrecedence();
         [[nodiscard]] Precedence nextTokenPrecedence() const;
 
-        // ÁÙÊ± Token Ïà¹Øº¯Êı
+        // ä¸´æ—¶ Token ç›¸å…³å‡½æ•°
         void appendTemToken(const Token &token);
         void clearTemTokens();
 
-        // ´íÎó´¦Àí
+        // é”™è¯¯å¤„ç†
         void recordUnexpectedTokenTypeError(const Token& token, core::TokenType expectedType);
         void recordUnexpectedTokenTypeError(const Token& token, const std::string &expectedType);
         void recordUnclosedExpressionError(const Token& beginToken, const Token &endToken, core::TokenType expectedType);
@@ -88,15 +88,15 @@ namespace parser {
         void recordInfixBuilderNotFoundError(const Token &token, core::TokenType errorType);
         void recordSyntaxError(const Token &token, const Token &errorToken, const std::string &errorMsg);
 
-        // ¸ù½Úµã¹¹½¨º¯Êı
+        // æ ¹èŠ‚ç‚¹æ„å»ºå‡½æ•°
         std::shared_ptr<ProgramNode> buildProgram();
         std::shared_ptr<StatementNode> buildStatement();
         std::shared_ptr<ExpressionStatementNode> buildExpressionStatement();
 
-        // ±í´ïÊ½¹¹½¨º¯Êı
+        // è¡¨è¾¾å¼æ„å»ºå‡½æ•°
         ExpressionNodePtr buildExpression(Precedence precedence);
 
-        // Ç°×º±í´ïÊ½¹¹½¨º¯Êı
+        // å‰ç¼€è¡¨è¾¾å¼æ„å»ºå‡½æ•°
         ExpressionNodePtr buildUnaryExpression();
         ExpressionNodePtr buildBoolExpression();
         ExpressionNodePtr buildBreakExpression();
@@ -132,19 +132,19 @@ namespace parser {
         ExpressionNodePtr buildTryExpression();
         ExpressionNodePtr buildThrowExpression();
 
-        // ÖĞ×º±í´ïÊ½¹¹½¨º¯Êı
+        // ä¸­ç¼€è¡¨è¾¾å¼æ„å»ºå‡½æ•°
         ExpressionNodePtr buildInfixExpression(const ExpressionNodePtr &left);
         ExpressionNodePtr buildAssignExpression(const ExpressionNodePtr &left);
         ExpressionNodePtr buildCompoundExpression(const ExpressionNodePtr &left);
         ExpressionNodePtr buildTernaryExpression(const ExpressionNodePtr &left);
         ExpressionNodePtr buildAttributeExpression(const ExpressionNodePtr &left);
 
-        // ºó×º±í´ïÊ½¹¹½¨º¯Êı
+        // åç¼€è¡¨è¾¾å¼æ„å»ºå‡½æ•°
         ExpressionNodePtr buildPostfixExpression(const ExpressionNodePtr &left);
         ExpressionNodePtr buildCallExpression(const ExpressionNodePtr &left);
         ExpressionNodePtr buildIndexExpression(const ExpressionNodePtr &left);
 
-        // Óï¾ä¹¹½¨¸¨Öúº¯Êı
+        // è¯­å¥æ„å»ºè¾…åŠ©å‡½æ•°
         bool validateForRangeExpression(const ExpressionNodePtr& expr, const Token& forToken);
         ExpressionNodePtr buildBracketExpression();
 

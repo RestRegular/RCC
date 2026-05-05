@@ -8,7 +8,7 @@
 
 namespace core
 {
-    // Ã¶¾ÙÀàÉùÃ÷
+    // æšä¸¾ç±»å£°æ˜
     enum class Precedence;
     enum class CommentType;
     enum class TokenType;
@@ -21,11 +21,11 @@ namespace core
     enum class CondBranchType;
     enum class LoopType;
 
-    // ÀàÉùÃ÷
+    // ç±»å£°æ˜
     class Token;
     class Statement;
 
-    // º¯ÊıÉùÃ÷
+    // å‡½æ•°å£°æ˜
     std::string getTokenTypeName(const TokenType& type);
 }
 

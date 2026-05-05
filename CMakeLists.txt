@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../release")
 
+# ==================== 编译选项 ====================
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 
@@ -12,9 +13,35 @@ set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -g -O0")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -g -O0")
 
-#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++")
+# ==================== LLVM 配置 ====================
+# 设置 LLVM 安装路径（根据你的实际路径修改）
+set(LLVM_DIR "D:/repositories/llvm-project/build/lib/cmake/llvm")
 
-add_executable(RCC code/src/rcc_main.cpp
+# 查找 LLVM
+find_package(LLVM REQUIRED CONFIG)
+
+message(STATUS "================================================")
+message(STATUS "LLVM Configuration:")
+message(STATUS "  LLVM Version: ${LLVM_PACKAGE_VERSION}")
+message(STATUS "  LLVM Include Dirs: ${LLVM_INCLUDE_DIRS}")
+message(STATUS "  LLVM Library Dirs: ${LLVM_LIBRARY_DIRS}")
+message(STATUS "  LLVM CMake Dir: ${LLVM_DIR}")
+message(STATUS "================================================")
+
+# 包含 LLVM 头文件目录
+include_directories(${LLVM_INCLUDE_DIRS})
+
+# 添加 LLVM 的编译定义（但过滤掉 MinGW 下有问题的宏）
+# 手动添加必要的宏定义
+add_compile_definitions(
+        __STDC_CONSTANT_MACROS
+        __STDC_FORMAT_MACROS
+        __STDC_LIMIT_MACROS
+)
+
+# ==================== 源文件 ====================
+add_executable(RCC
+        code/src/rcc_main.cpp
         code/src/analyzer/lexer/rcc_lexer.cpp
         code/include/analyzer/rcc_lexer.h
         code/src/rcc_core.cpp
@@ -85,7 +112,6 @@ add_executable(RCC code/src/rcc_main.cpp
         code/declarations/analyzer/rcc_parser_dec.h
         code/declarations/builtin/rcc_builtin_dec.h
         code/declarations/components/symbol/rcc_symbol_dec.h
-        code/declarations/components/symbol/rcc_symbol_dec.h
         code/declarations/components/ri/rcc_ri_dec.h
         code/include/internal/rcc_compile_implementation.h
         code/include/interfaces/rcc_interface_dec.h
@@ -95,27 +121,39 @@ add_executable(RCC code/src/rcc_main.cpp
         code/declarations/builtin/dll_extension_manager/rcc_dll_extension_manager_dec.h
         code/src/builtin/dll_extension_manager/rcc_dll_extension_manager.cpp
         code/include/interfaces/rcc_builtin_interface.h
-        # LLVM Backend
-        code/include/backend/rcc_llvm_types.h
-        code/src/backend/rcc_llvm_types.cpp
-        code/include/backend/rcc_llvm_backend.h
-        code/src/backend/rcc_llvm_backend.cpp
+        code/include/visitors/rcc_llvm_visitor.h
+        code/src/visitors/rcc_llvm_visitor.cpp
 )
 
-if(UNIX AND NOT APPLE)  # Linux ϵͳ
+# ==================== 链接 LLVM 库 ====================
+# 获取 LLVM 库列表
+llvm_map_components_to_libnames(llvm_libs
+        core
+        support
+)
+
+# 链接 LLVM 库到 RCC
+target_link_libraries(RCC PRIVATE ${llvm_libs})
+
+# ==================== 平台特定库 ====================
+if(UNIX AND NOT APPLE)
     target_link_libraries(RCC PRIVATE dl)
 endif()
 
-# LLVM Backend support
-find_package(LLVM 15 REQUIRED CONFIG)
-message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-include_directories(BEFORE ${CMAKE_SOURCE_DIR}/code/include)
-include_directories(${LLVM_INCLUDE_DIRS})
-target_compile_definitions(RCC PRIVATE ${LLVM_DEFINITIONS})
-# Remove -fno-rtti added by LLVM if present, as RCC uses RTTI
-string(REPLACE "-fno-rtti" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-# Use llvm-config to get all required libraries
-execute_process(COMMAND llvm-config-15 --libs core native codegen irreader orcjit linker
-    OUTPUT_VARIABLE LLVM_LIBS OUTPUT_STRIP_TRAILING_WHITESPACE)
-string(REPLACE "\n" " " LLVM_LIBS "${LLVM_LIBS}")
-target_link_libraries(RCC PRIVATE ${LLVM_LIBS} dl)
+# ==================== LLVM 特定的编译设置 ====================
+# 不启用 RTTI（LLVM 默认禁用 RTTI，但如果你的项目需要可以开启）
+# 你的项目使用 RTTI（因为有 dynamic_cast），所以保持默认
+
+# 设置 LLVM 的编译定义
+#target_compile_definitions(RCC PRIVATE
+#        ${LLVM_DEFINITIONS}
+#)
+
+# ==================== 打印配置摘要 ====================
+message(STATUS "================================================")
+message(STATUS "RCC Compiler Configuration Summary:")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "  LLVM Libraries: ${llvm_libs}")
+message(STATUS "  Output Dir: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message(STATUS "================================================")

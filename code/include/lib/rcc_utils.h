@@ -18,7 +18,7 @@
 
 namespace utils {
 
-    // === »ù´¡ÀàĞÍ¶¨Òå ===
+    // === åŸºç¡€ç±»å‹å®šä¹‰ ===
     class Object:
     virtual public IRCCObjectInterface
     {
@@ -70,10 +70,10 @@ namespace utils {
     };
 
     enum class SerializationProfile {
-        Debug,         // ÍêÕûĞÅÏ¢£ºÔ´Âë¡¢·ûºÅ±í¡¢ĞĞºÅ¡¢°æ±¾£¨¿ª·¢/µ÷ÊÔ£©
-        Testing,       // ÒÆ³ıÔ´Âëµ«±£Áô·ûºÅ±í & ĞĞºÅ£¨CI/CD×Ô¶¯»¯²âÊÔ£©
-        Release,       // ½öÖ¸ÁîÁ÷ + ±ØÒªÔªÊı¾İ + °æ±¾£¨Éú²ú»·¾³£©
-        Minified       // ¼«ÖÂ¾«¼ò£¨ÎŞ°æ±¾/ÔªÊı¾İ£¬½öÓÃÓÚ·â±ÕÉ³ºĞ£©
+        Debug,         // å®Œæ•´ä¿¡æ¯ï¼šæºç ã€ç¬¦å·è¡¨ã€è¡Œå·ã€ç‰ˆæœ¬ï¼ˆå¼€å‘/è°ƒè¯•ï¼‰
+        Testing,       // ç§»é™¤æºç ä½†ä¿ç•™ç¬¦å·è¡¨ & è¡Œå·ï¼ˆCI/CDè‡ªåŠ¨åŒ–æµ‹è¯•ï¼‰
+        Release,       // ä»…æŒ‡ä»¤æµ + å¿…è¦å…ƒæ•°æ® + ç‰ˆæœ¬ï¼ˆç”Ÿäº§ç¯å¢ƒï¼‰
+        Minified       // æè‡´ç²¾ç®€ï¼ˆæ— ç‰ˆæœ¬/å…ƒæ•°æ®ï¼Œä»…ç”¨äºå°é—­æ²™ç›’ï¼‰
     };
 
     enum class OutputFormat
@@ -93,7 +93,7 @@ namespace utils {
         TimestampMS      // Unix timestamp with milliseconds
     };
 
-    // === ×Ö·û´®´¦Àí ===
+    // === å­—ç¬¦ä¸²å¤„ç† ===
     struct StringManager final : Object {
         static StringManager &getInstance();
         static std::vector<std::string> split(const std::string &content, char delimiter = ',');
@@ -148,7 +148,7 @@ namespace utils {
     std::string vectorJoin(const std::vector<std::string>& strVector, const std::string& delimiter="");
 
 
-    // === Â·¾¶´¦Àí ===
+    // === è·¯å¾„å¤„ç† ===
     std::string getFileNameFromPath(const std::string &path);
     std::string getFileExtFromPath(const std::string &path);
     std::pair<std::string, std::string> getFileInfoFromPath(const std::string &path);
@@ -165,7 +165,7 @@ namespace utils {
     bool checkPathEqual(const std::string &path1, const std::string &path2, const bool &recursion = true);
     std::string processRCCPath(const std::string &path);
 
-    // === Êı¾İÀàĞÍ×ª»» ===
+    // === æ•°æ®ç±»å‹è½¬æ¢ ===
     int stringToInt(const std::string& str);
     double stringToDouble(const std::string& str);
     char stringToChar(const std::string& str);
@@ -181,21 +181,21 @@ namespace utils {
     inline bool isSign(char c);
     inline bool isDoubleQuoted(const std::string &content);
 
-    // === ĞòÁĞ»¯/·´ĞòÁĞ»¯ ===
+    // === åºåˆ—åŒ–/ååºåˆ—åŒ– ===
     void serializeArgType(std::ostream &os, const ArgType &argType);
     ArgType deserializeArgType(std::istream &is);
     std::tuple<char, char, char, char, char> getSeparators(TimeFormat format);
     bool parseDateFromString(const std::string &dateString, TimeFormat format,
                              int &year, int &month, int &day, int &hour, int &minute, int &second);
 
-    // === ÎÄ¼ş²Ù×÷ ===
+    // === æ–‡ä»¶æ“ä½œ ===
     std::string readFile(const std::string& path);
     std::vector<std::string> readFileToLines(const std::string &path);
     bool writeFile(const std::string &path, const std::string &content);
     bool appendFile(const std::string &path, const std::string &content);
     std::string getLineFromFile(const std::string& filePath, size_t lineNum);
 
-    // === Î»ÖÃĞÅÏ¢ ===
+    // === ä½ç½®ä¿¡æ¯ ===
     class Pos:
     public Object,
     public IRCCPosInterface {
@@ -216,11 +216,11 @@ namespace utils {
         [[nodiscard]] std::string getFilePosStr() const;
         const char* GetFilePosStr() const override;
         friend std::ostream& operator<<(std::ostream& out, const Pos& pos);
-        [[nodiscard]] std::string toString() const override; // »ñÈ¡Î»ÖÃĞÅÏ¢ÏêÏ¸×Ö·û´®
-        [[nodiscard]] std::string briefString() const override; // »ñÈ¡Î»ÖÃĞÅÏ¢¼òÂÔ×Ö·û´®
+        [[nodiscard]] std::string toString() const override; // è·å–ä½ç½®ä¿¡æ¯è¯¦ç»†å­—ç¬¦ä¸²
+        [[nodiscard]] std::string briefString() const override; // è·å–ä½ç½®ä¿¡æ¯ç®€ç•¥å­—ç¬¦ä¸²
         const char* ToString() const override;
         const char* BriefString() const override;
-        [[nodiscard]] std::string professionalString() const override; // »ñÈ¡Î»ÖÃĞÅÏ¢ÏêÏ¸×Ö·û´®
+        [[nodiscard]] std::string professionalString() const override; // è·å–ä½ç½®ä¿¡æ¯è¯¦ç»†å­—ç¬¦ä¸²
         [[nodiscard]] std::string formatString(size_t indent, size_t level) const override;
         const char* ProfessionalString() const override;
         const char* FormatString(const size_t& indent, const size_t& level) const override;
@@ -272,7 +272,7 @@ namespace utils {
         size_t endColumn{0};
     };
 
-    // === ²ÎÊı´¦Àí ===
+    // === å‚æ•°å¤„ç† ===
     struct Arg final : Object {
         Arg() = default;
         Arg(Pos pos, const std::string &value);
@@ -291,7 +291,7 @@ namespace utils {
         std::string value;
     };
 
-    // === ÃüÁîĞĞ²ÎÊı½âÎöÆ÷ ===
+    // === å‘½ä»¤è¡Œå‚æ•°è§£æå™¨ ===
     class ProgArgParser final : Object {
     public:
         enum class ProgArgType
@@ -347,8 +347,8 @@ namespace utils {
             std::string name;
             bool* var;
             bool whenPresent;
-            std::vector<std::string> aliases; // ´æ´¢±ğÃû
-            std::string description;         // ´æ´¢ÃèÊö
+            std::vector<std::string> aliases; // å­˜å‚¨åˆ«å
+            std::string description;         // å­˜å‚¨æè¿°
             FlagInfo(std::string name, bool* var, bool whenPresent, std::vector<std::string> aliases, std::string description);
             [[nodiscard]] std::string toString() const override;
         };
@@ -357,8 +357,8 @@ namespace utils {
         public:
             std::string name;
             std::function<void(const std::string&)> setter;
-            std::vector<std::string> aliases; // ´æ´¢±ğÃû
-            std::string description;         // ´æ´¢ÃèÊö
+            std::vector<std::string> aliases; // å­˜å‚¨åˆ«å
+            std::string description;         // å­˜å‚¨æè¿°
             OptionInfo(std::string name, std::function<void(const std::string&)> setter, std::vector<std::string> aliases, std::string description);
             [[nodiscard]] std::string toString() const override {
                 std::ostringstream oss;
@@ -452,7 +452,7 @@ namespace utils {
         void handleOption(const std::string& name_part, int argc, char* argv[], int& i);
     };
 
-    // === ÊıÖµ´¦Àí ===
+    // === æ•°å€¼å¤„ç† ===
     struct Number final : Object {
         NumType type;
         int int_value;
@@ -467,7 +467,7 @@ namespace utils {
     int getRandomInt(int min, int max);
     double getRandomFloat(double min, double max, int decimalPlaces = 6);
 
-    // === Ê±¼ä´¦Àí ===
+    // === æ—¶é—´å¤„ç† ===
     std::string getCurrentTime(TimeFormat format = TimeFormat::ISO);
 
     // === Utils ===
@@ -490,7 +490,7 @@ namespace utils {
 
     std::string generateUniqueId(const std::string& str);
 
-    // FNV-1a ¹şÏ£Ëã·¨ÊµÏÖ
+    // FNV-1a å“ˆå¸Œç®—æ³•å®ç°
     uint64_t hashToCode(const std::string& str);
     std::string hashToStr(const std::string& str);
 

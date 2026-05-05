@@ -11,7 +11,7 @@
 
 namespace core {
 
-    // Àà¶¨Òå
+    // ç±»å®šä¹‰
     class Token final : utils::Object {
         utils::Pos pos;
         std::string value;
@@ -38,7 +38,7 @@ namespace core {
         [[nodiscard]] rjson::RJValue toRJValue() const;
     };
 
-    // Ã¶¾ÙÀà¶¨Òå
+    // æžšä¸¾ç±»å®šä¹‰
     enum class Precedence  {
         LOWEST = 0,
         PARALLEL, // ,

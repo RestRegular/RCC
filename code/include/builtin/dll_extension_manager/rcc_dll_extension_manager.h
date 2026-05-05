@@ -12,10 +12,10 @@
 #include "../../interfaces/rcc_interface_dec.h"
 
 #ifdef _WIN32
-typedef HINSTANCE DllHandle;  // Windows ¾ä±úÀàĞÍ
+typedef HINSTANCE DllHandle;  // Windows å¥æŸ„ç±»å‹
 #elif __linux__
-#include <dlfcn.h>  // °üº¬ dlopen¡¢dlsym¡¢dlclose ÉùÃ÷
-typedef void* DllHandle;      // Linux ¾ä±úÀàĞÍ£¨ÓÃ void* ±íÊ¾£©
+#include <dlfcn.h>  // åŒ…å« dlopenã€dlsymã€dlclose å£°æ˜
+typedef void* DllHandle;      // Linux å¥æŸ„ç±»å‹ï¼ˆç”¨ void* è¡¨ç¤ºï¼‰
 #endif
 
 namespace rccdll

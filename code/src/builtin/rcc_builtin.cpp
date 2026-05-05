@@ -15,7 +15,7 @@ namespace builtin
     void initializePureBuiltinEnvironment(ast::CompileVisitor& visitor)
     {
         visitor.enterGlobalScope();
-        // ³õÊ¼»¯ - ÔØÈë´¿ÄÚÖÃº¯Êı
+        // åˆå§‹åŒ– - è½½å…¥çº¯å†…ç½®å‡½æ•°
 
         const bool &isProgramEntry = checkPathEqual(visitor.getProgramEntryFilePath(), visitor.getCurrentProcessingFilePath());
         for (const auto& [funcName, pureBuiltinFunc] : pureBuiltinFunctionMap)
