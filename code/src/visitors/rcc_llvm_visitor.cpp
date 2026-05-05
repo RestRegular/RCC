@@ -797,8 +797,9 @@ namespace ast
             }
         }
 
-        // 收集参数值
+        // 收集参数值（区分位置参数和命名参数）
         std::vector<llvm::Value*> argValues;
+        std::map<std::string, llvm::Value*> namedArgValues;
         if (argsNode)
         {
             // 参数可能是 BlockRangerNode 或 ParenRangerNode
@@ -806,9 +807,24 @@ namespace ast
             {
                 for (const auto& expr : blockRanger->getBodyExpressions())
                 {
-                    expr->acceptVisitor(*this);
-                    auto* argVal = popValue();
-                    argValues.push_back(argVal ? argVal : llvm::ConstantPointerNull::get(getValueType()));
+                    // 命名参数: end="\n" -> ARGUMENT_ASSIGNMENT
+                    if (expr->getRealType() == NodeType::ARGUMENT_ASSIGNMENT)
+                    {
+                        auto* assign = static_cast<InfixExpressionNode*>(expr.get());
+                        if (assign->getLeftNode()->getRealType() == NodeType::IDENTIFIER)
+                        {
+                            std::string paramName = static_cast<IdentifierNode*>(assign->getLeftNode().get())->getName();
+                            assign->getRightNode()->acceptVisitor(*this);
+                            auto* val = popValue();
+                            namedArgValues[paramName] = val ? val : llvm::ConstantPointerNull::get(getValueType());
+                        }
+                    }
+                    else
+                    {
+                        expr->acceptVisitor(*this);
+                        auto* argVal = popValue();
+                        argValues.push_back(argVal ? argVal : llvm::ConstantPointerNull::get(getValueType()));
+                    }
                 }
             }
             else if (const auto* parenRanger = dynamic_cast<ParenRangerNode*>(argsNode.get()))
@@ -827,6 +843,18 @@ namespace ast
                                 auto* p = static_cast<InfixExpressionNode*>(expr.get());
                                 collectArgs(p->getLeftNode());
                                 collectArgs(p->getRightNode());
+                            }
+                            else if (expr->getRealType() == NodeType::ARGUMENT_ASSIGNMENT)
+                            {
+                                // 命名参数
+                                auto* assign = static_cast<InfixExpressionNode*>(expr.get());
+                                if (assign->getLeftNode()->getRealType() == NodeType::IDENTIFIER)
+                                {
+                                    std::string paramName = static_cast<IdentifierNode*>(assign->getLeftNode().get())->getName();
+                                    assign->getRightNode()->acceptVisitor(*this);
+                                    auto* val = popValue();
+                                    namedArgValues[paramName] = val ? val : llvm::ConstantPointerNull::get(getValueType());
+                                }
                             }
                             else
                             {
@@ -858,7 +886,7 @@ namespace ast
         }
 
         // 尝试内置函数 IR 生成器
-        if (tryEmitBuiltinIR(funcName, argValues))
+        if (tryEmitBuiltinIR(funcName, argValues, namedArgValues))
         {
             LLVM_DEBUG("FunctionCallNode: " << funcName << " (builtin IR generated)");
             return;
@@ -2597,6 +2625,7 @@ namespace ast
         BuiltinIRGenerators["sout"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -2709,8 +2738,38 @@ namespace ast
                 Builder->SetInsertPoint(mergeBB);
             }
 
-            // 末尾输出 end（默认 "\n"）
-            Builder->CreateCall(putcharFunc, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), '\n')});
+            // 末尾输出 end 参数（默认 "\n"）
+            if (auto endIt = namedArgs.find("end"); endIt != namedArgs.end())
+            {
+                // end 参数是 Tagged String，提取 payload 并逐字符输出
+                llvm::Value* endVal = endIt->second;
+                auto* endTag = extractTag(endVal);
+                auto* endPayload = extractPayload(endVal);
+
+                // 简化：如果是 TAG_STRING，用 printf("%s") 输出
+                // 否则默认输出 \n
+                auto* isStr = checkTag(endVal, TAG_STRING);
+
+                auto* strEndBB = llvm::BasicBlock::Create(*TheContext, "sout.end.str", func);
+                auto* defaultEndBB = llvm::BasicBlock::Create(*TheContext, "sout.end.default", func);
+                auto* endMergeBB = llvm::BasicBlock::Create(*TheContext, "sout.end.merge", func);
+
+                Builder->CreateCondBr(isStr, strEndBB, defaultEndBB);
+
+                Builder->SetInsertPoint(strEndBB);
+                Builder->CreateCall(printfFunc, {createGlobalStringPtr("%s"), endPayload});
+                Builder->CreateBr(endMergeBB);
+
+                Builder->SetInsertPoint(defaultEndBB);
+                Builder->CreateCall(putcharFunc, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), '\n')});
+                Builder->CreateBr(endMergeBB);
+
+                Builder->SetInsertPoint(endMergeBB);
+            }
+            else
+            {
+                Builder->CreateCall(putcharFunc, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), '\n')});
+            }
 
             pushValue(createTaggedValueNull(TAG_NULL));
         };
@@ -2719,6 +2778,7 @@ namespace ast
         BuiltinIRGenerators["sin"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -2783,6 +2843,7 @@ namespace ast
         BuiltinIRGenerators["size"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -2849,6 +2910,7 @@ namespace ast
         BuiltinIRGenerators["copy"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -2864,6 +2926,7 @@ namespace ast
         BuiltinIRGenerators["listAppend"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -2947,6 +3010,7 @@ namespace ast
         BuiltinIRGenerators["listRemove"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName << " (simplified: returns original list)");
@@ -2960,6 +3024,7 @@ namespace ast
         BuiltinIRGenerators["dictRemove"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName << " (simplified: returns original dict)");
@@ -2973,6 +3038,7 @@ namespace ast
         BuiltinIRGenerators["dictKeys"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -3013,6 +3079,7 @@ namespace ast
         BuiltinIRGenerators["dictValues"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -3055,6 +3122,7 @@ namespace ast
         BuiltinIRGenerators["type"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -3138,6 +3206,7 @@ namespace ast
         BuiltinIRGenerators["checkType"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -3264,6 +3333,7 @@ namespace ast
         BuiltinIRGenerators["entry"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName << " (no-op in LLVM mode)");
@@ -3274,6 +3344,7 @@ namespace ast
         BuiltinIRGenerators["breakpoint"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
@@ -3290,6 +3361,7 @@ namespace ast
         BuiltinIRGenerators["id"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName << " (returns empty string in LLVM mode)");
@@ -3300,6 +3372,7 @@ namespace ast
         BuiltinIRGenerators["rasm"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName << " (not supported in LLVM mode)");
@@ -3310,6 +3383,7 @@ namespace ast
         BuiltinIRGenerators["repeat"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
+            const std::map<std::string, llvm::Value*>& namedArgs,
             const std::string& funcName)
         {
             LLVM_DEBUG("Builtin IR: " << funcName << " (simplified: no-op in pure IR mode)");
@@ -3322,6 +3396,7 @@ namespace ast
     BuiltinIRGenerators["export"] = [this](
         LLVMCodeGenVisitor& visitor,
         const std::vector<llvm::Value*>& args,
+        const std::map<std::string, llvm::Value*>& namedArgs,
         const std::string& funcName)
     {
         LLVM_DEBUG("Builtin IR: " << funcName);
@@ -3334,6 +3409,7 @@ namespace ast
     BuiltinIRGenerators["import"] = [this](
         LLVMCodeGenVisitor& visitor,
         const std::vector<llvm::Value*>& args,
+        const std::map<std::string, llvm::Value*>& namedArgs,
         const std::string& funcName)
     {
         LLVM_DEBUG("Builtin IR: " << funcName);
@@ -3347,7 +3423,8 @@ namespace ast
 
     bool LLVMCodeGenVisitor::tryEmitBuiltinIR(
         const std::string& funcName,
-        const std::vector<llvm::Value*>& args)
+        const std::vector<llvm::Value*>& args,
+        const std::map<std::string, llvm::Value*>& namedArgs)
     {
         // 只有被标记为 encapsulated 的函数才使用内置 IR 生成器
         if (!EncapsulatedFunctions.count(funcName))
@@ -3356,7 +3433,7 @@ namespace ast
         auto it = BuiltinIRGenerators.find(funcName);
         if (it != BuiltinIRGenerators.end())
         {
-            it->second(*this, args, funcName);
+            it->second(*this, args, namedArgs, funcName);
             return true;
         }
         return false;

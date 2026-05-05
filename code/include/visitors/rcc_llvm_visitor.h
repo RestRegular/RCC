@@ -91,6 +91,7 @@ namespace ast {
         using BuiltinIRGenerator = std::function<void(
             LLVMCodeGenVisitor&,
             const std::vector<llvm::Value*>& /* args */,
+            const std::map<std::string, llvm::Value*>& /* namedArgs */,
             const std::string& /* funcName */)>;
 
         // 内置函数注册表
