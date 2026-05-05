@@ -134,9 +134,6 @@ namespace ast {
     void CollectSymbolVisitor::visitBreakExpressionNode(BreakExpressionNode &node) {
     }
 
-    void CollectSymbolVisitor::visitContinueExpressionNode(ContinueExpressionNode &node) {
-    }
-
     void CollectSymbolVisitor::visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode &node) {
     }
 

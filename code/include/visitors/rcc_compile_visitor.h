@@ -40,28 +40,28 @@ namespace ast
         [[nodiscard]] std::string getCurScopeResult() const;
     };
 
-    // å˜é‡IDå°è£…ç±»
+    // ±äÁ¿ID·â×°Àà
     class VarID final : public Object
     {
-        static size_t _varId; // å˜é‡IDè®¡æ•°å™¨
-        static std::string rccVarPrefixField; // å˜é‡å‰ç¼€
-        size_t id = 0; // å½“å‰å˜é‡ID
-        std::string fileField, scopeField, nameField; // æ–‡ä»¶åŸŸã€ä½œç”¨åŸŸã€åç§°
-        std::string vid; // å˜é‡å”¯ä¸€æ ‡è¯†
+        static size_t _varId; // ±äÁ¿ID¼ÆÊıÆ÷
+        static std::string rccVarPrefixField; // ±äÁ¿Ç°×º
+        size_t id = 0; // µ±Ç°±äÁ¿ID
+        std::string fileField, scopeField, nameField; // ÎÄ¼şÓò¡¢×÷ÓÃÓò¡¢Ãû³Æ
+        std::string vid; // ±äÁ¿Î¨Ò»±êÊ¶
         size_t scopeLevel = 0;
-        [[nodiscard]] std::string _toVarID(); // ç”Ÿæˆå˜é‡IDå­—ç¬¦ä¸²
+        [[nodiscard]] std::string _toVarID(); // Éú³É±äÁ¿ID×Ö·û´®
 
     public:
-        // æ„é€ å‡½æ•°
+        // ¹¹Ôìº¯Êı
         VarID(const std::string& name,
               const std::string& fileField,
               const std::string& scopeField,
               const size_t& scopeLevel);
 
-        // å­—ç¬¦ä¸²è½¬æ¢
+        // ×Ö·û´®×ª»»
         [[nodiscard]] std::string toString() const override;
 
-        // Getteræ–¹æ³•
+        // Getter·½·¨
         [[nodiscard]] std::string getNameField() const;
         [[nodiscard]] std::string getScopeField() const;
         [[nodiscard]] std::string getFileField() const;
@@ -69,7 +69,7 @@ namespace ast
         [[nodiscard]] size_t getId() const;
         [[nodiscard]] std::string getVid() const;
 
-        // è¾“å‡ºè¿ç®—ç¬¦é‡è½½
+        // Êä³öÔËËã·ûÖØÔØ
         friend std::ostream& operator<<(std::ostream& os, const VarID& varID)
         {
             os << varID.vid;
@@ -77,33 +77,33 @@ namespace ast
         }
     };
 
-    // æ ‡ç­¾IDå°è£…ç±»
+    // ±êÇ©ID·â×°Àà
     class SetID final : public Object
     {
-        static size_t _setId; // é›†åˆIDè®¡æ•°å™¨
-        static std::string rccSetPrefixField; // é›†åˆå‰ç¼€
-        size_t id = 0; // å½“å‰é›†åˆID
-        std::string fileField, scopeField, nameField; // æ–‡ä»¶åŸŸã€ä½œç”¨åŸŸã€åç§°
-        std::string sid; // é›†åˆå”¯ä¸€æ ‡è¯†
-        [[nodiscard]] std::string _toSetID(); // ç”Ÿæˆé›†åˆIDå­—ç¬¦ä¸²
+        static size_t _setId; // ¼¯ºÏID¼ÆÊıÆ÷
+        static std::string rccSetPrefixField; // ¼¯ºÏÇ°×º
+        size_t id = 0; // µ±Ç°¼¯ºÏID
+        std::string fileField, scopeField, nameField; // ÎÄ¼şÓò¡¢×÷ÓÃÓò¡¢Ãû³Æ
+        std::string sid; // ¼¯ºÏÎ¨Ò»±êÊ¶
+        [[nodiscard]] std::string _toSetID(); // Éú³É¼¯ºÏID×Ö·û´®
 
     public:
-        // æ„é€ å‡½æ•°
+        // ¹¹Ôìº¯Êı
         SetID(const std::string& name,
               const std::string& fileField,
               const std::string& scopeField);
 
-        // å­—ç¬¦ä¸²è½¬æ¢
+        // ×Ö·û´®×ª»»
         [[nodiscard]] std::string toString() const override;
 
-        // Getteræ–¹æ³•
+        // Getter·½·¨
         [[nodiscard]] std::string getNameField() const;
         [[nodiscard]] std::string getScopeField() const;
         [[nodiscard]] std::string getFileField() const;
         [[nodiscard]] size_t getId() const;
         [[nodiscard]] std::string getSid() const;
 
-        // è¾“å‡ºè¿ç®—ç¬¦é‡è½½
+        // Êä³öÔËËã·ûÖØÔØ
         friend std::ostream& operator<<(std::ostream& os, const SetID& setID)
         {
             os << setID.sid;
@@ -111,23 +111,23 @@ namespace ast
         }
     };
 
-    // æ“ä½œæ•°é¡¹ç±»
+    // ²Ù×÷ÊıÏîÀà
     class OpItem final:
     public Object,
     public IRCCOpItemInterface
     {
-        std::string value; // åŸå§‹å€¼
-        std::string raValue; // RAä»£ç å€¼
-        OpItemType type; // æ“ä½œæ•°ç±»å‹
-        std::shared_ptr<symbol::TypeLabelSymbol> typeLabel; // ç±»å‹æ ‡ç­¾
-        std::shared_ptr<symbol::TypeLabelSymbol> valueType; // å€¼ç±»å‹
-        std::shared_ptr<symbol::Symbol> belonging; // å½’å±ç¬¦å·
-        std::string belongAttrRaValue; // å±æ€§åç§°
-        std::shared_ptr<symbol::Symbol> referencedSymbol; // å¼•ç”¨ç¬¦å·
+        std::string value; // Ô­Ê¼Öµ
+        std::string raValue; // RA´úÂëÖµ
+        OpItemType type; // ²Ù×÷ÊıÀàĞÍ
+        std::shared_ptr<symbol::TypeLabelSymbol> typeLabel; // ÀàĞÍ±êÇ©
+        std::shared_ptr<symbol::TypeLabelSymbol> valueType; // ÖµÀàĞÍ
+        std::shared_ptr<symbol::Symbol> belonging; // ¹éÊô·ûºÅ
+        std::string belongAttrRaValue; // ÊôĞÔÃû³Æ
+        std::shared_ptr<symbol::Symbol> referencedSymbol; // ÒıÓÃ·ûºÅ
         Pos pos;
 
     public:
-        // æ„é€ å‡½æ•°
+        // ¹¹Ôìº¯Êı
         explicit OpItem(
             const OpItemType& type,
             const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol,
@@ -141,7 +141,7 @@ namespace ast
         [[nodiscard]] bool isNot(const OpItemType& opItemType) const;
         [[nodiscard]] std::string toString() const override;
 
-        // Getteræ–¹æ³•
+        // Getter·½·¨
         [[nodiscard]] Pos getPos() const;
         void setPos(const Pos &pos_);
         [[nodiscard]] std::string getVal() const;
@@ -154,7 +154,7 @@ namespace ast
         [[nodiscard]] std::string getBelongAttrRaValue() const;
         [[nodiscard]] std::shared_ptr<symbol::Symbol> getReferencedSymbol() const;
 
-        // Setteræ–¹æ³•
+        // Setter·½·¨
         void setTypeLabel(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol);
         void setValueType(const std::shared_ptr<symbol::TypeLabelSymbol>& valueTypeSymbol);
         void setBelonging(const std::shared_ptr<symbol::Symbol>& belongingSymbol,
@@ -186,7 +186,7 @@ namespace ast
     public IRCCCompileInterface
     {
     public:
-        // =========================== æ ‡å¿—å±æ€§ ============================
+        // =========================== ±êÖ¾ÊôĞÔ ============================
         static bool __symbol_flag__;
         static bool __symbol_flag_export__;
 
@@ -197,33 +197,33 @@ namespace ast
         static int __compile_option_compile_level__;
     private:
 
-        // ========================== é™æ€æˆå‘˜å±æ€§ ==========================
-        static size_t _temVarId; // ä¸´æ—¶å˜é‡IDè®¡æ•°å™¨
-        static size_t _setId; // é›†åˆæ ‡ç­¾IDè®¡æ•°å™¨
+        // ========================== ¾²Ì¬³ÉÔ±ÊôĞÔ ==========================
+        static size_t _temVarId; // ÁÙÊ±±äÁ¿ID¼ÆÊıÆ÷
+        static size_t _setId; // ¼¯ºÏ±êÇ©ID¼ÆÊıÆ÷
         static std::unordered_map<std::string,
-                                  std::shared_ptr<symbol::ClassSymbol>> extensionMap; // æ‰©å±•ç±»æ˜ å°„
-        static std::stack<std::shared_ptr<lexer::Lexer>> _lexers; // è¯æ³•åˆ†æå™¨
-        static std::list<std::string> _lexer_paths; // è¯æ³•åˆ†æå™¨è·¯å¾„å‘é‡
+                                  std::shared_ptr<symbol::ClassSymbol>> extensionMap; // À©Õ¹ÀàÓ³Éä
+        static std::stack<std::shared_ptr<lexer::Lexer>> _lexers; // ´Ê·¨·ÖÎöÆ÷
+        static std::list<std::string> _lexer_paths; // ´Ê·¨·ÖÎöÆ÷Â·¾¶ÏòÁ¿
         static std::string fileRecord;
         static std::unordered_map<std::string, std::string> extensionPathNameMap;
         static std::stack<std::string> processingExtensionStack;
 
-        // ========================== æˆå‘˜å±æ€§ ==========================
-        ContentBuilder raCodeBuilder {}; // RAä»£ç æ„å»ºå™¨
-        ContentBuilder analyzeBuilder {}; // åˆ†æç»“æœæ„å»ºå™¨
-        symbol::SymbolTableManager symbolTable{}; // ç¬¦å·è¡¨ç®¡ç†å™¨
+        // ========================== ³ÉÔ±ÊôĞÔ ==========================
+        ContentBuilder raCodeBuilder {}; // RA´úÂë¹¹½¨Æ÷
+        ContentBuilder analyzeBuilder {}; // ·ÖÎö½á¹û¹¹½¨Æ÷
+        symbol::SymbolTableManager symbolTable{}; // ·ûºÅ±í¹ÜÀíÆ÷
 
-        std::string programEntryFilePath; // ç¨‹åºå…¥å£æ–‡ä»¶è·¯å¾„
-        std::string programTagetFilePath; // ç¨‹åºç›®æ ‡æ–‡ä»¶è·¯å¾„
-        std::string compileOutputFilePath; // ç¼–è¯‘è¾“å‡ºæ–‡ä»¶è·¯å¾„
-        std::string currentProcessingFilePath; // å½“å‰æ­£åœ¨å¤„ç†çš„æ–‡ä»¶è·¯å¾„
-        bool needSaveOutputToFile; // æ˜¯å¦ä¿å­˜ç¼–è¯‘è¾“å‡ºæ–‡ä»¶
+        std::string programEntryFilePath; // ³ÌĞòÈë¿ÚÎÄ¼şÂ·¾¶
+        std::string programTagetFilePath; // ³ÌĞòÄ¿±êÎÄ¼şÂ·¾¶
+        std::string compileOutputFilePath; // ±àÒëÊä³öÎÄ¼şÂ·¾¶
+        std::string currentProcessingFilePath; // µ±Ç°ÕıÔÚ´¦ÀíµÄÎÄ¼şÂ·¾¶
+        bool needSaveOutputToFile; // ÊÇ·ñ±£´æ±àÒëÊä³öÎÄ¼ş
 
-        // å¤„ç†æ ˆ
-        std::stack<std::shared_ptr<symbol::Symbol>> processingSymbolStack{}; // ç¬¦å·å¤„ç†æ ˆ
-        std::stack<std::shared_ptr<OpItem>> opItemStack{}; // æ“ä½œæ•°æ ˆ
-        std::stack<ScopeType> scopeTypeStack{}; // ä½œç”¨åŸŸç±»å‹æ ˆ
-        std::stack<ScopeType> loopScopeStack{}; // å¾ªç¯ä½œç”¨åŸŸæ ˆ
+        // ´¦ÀíÕ»
+        std::stack<std::shared_ptr<symbol::Symbol>> processingSymbolStack{}; // ·ûºÅ´¦ÀíÕ»
+        std::stack<std::shared_ptr<OpItem>> opItemStack{}; // ²Ù×÷ÊıÕ»
+        std::stack<ScopeType> scopeTypeStack{}; // ×÷ÓÃÓòÀàĞÍÕ»
+        std::stack<ScopeType> loopScopeStack{}; // Ñ­»·×÷ÓÃÓòÕ»
         std::unordered_map<std::string, std::shared_ptr<VarID>> varIdMap {};
 
     public:
@@ -248,66 +248,66 @@ namespace ast
         void setCurrentProcessingFilePath(const std::string& filePath);
         static void enableDebugMode(bool cond);
 
-        // ========================== å…¬å…±æ–¹æ³• ==========================
-        // ä½œç”¨åŸŸç®¡ç†
-        static std::string scopeTypeToString(ScopeType scopeType); // ä½œç”¨åŸŸç±»å‹è½¬å­—ç¬¦ä¸²
+        // ========================== ¹«¹²·½·¨ ==========================
+        // ×÷ÓÃÓò¹ÜÀí
+        static std::string scopeTypeToString(ScopeType scopeType); // ×÷ÓÃÓòÀàĞÍ×ª×Ö·û´®
         static std::string scopeTypeToFormatString(ScopeType scopeType);
-        [[nodiscard]] std::string curScopeField() const; // è·å–å½“å‰ä½œç”¨åŸŸå­—æ®µ
-        [[nodiscard]] ScopeType curScopeType() const; // è·å–å½“å‰ä½œç”¨åŸŸå­—æ®µ
-        void enterScope(ScopeType scopeType); // è¿›å…¥ä½œç”¨åŸŸ
-        void enterScope(size_t scopeLevel); // è¿›å…¥æŒ‡å®šå±‚çº§ä½œç”¨åŸŸ
-        void enterTopScope(); // è¿›å…¥é¡¶å±‚ä½œç”¨åŸŸ
-        void enterGlobalScope(); // è¿›å…¥å…¨å±€ä½œç”¨åŸŸ
-        void exitScope(ScopeType scopeType); // é€€å‡ºä½œç”¨åŸŸ
-        [[nodiscard]] size_t curScopeLevel() const; // è·å–å½“å‰ä½œç”¨åŸŸå±‚çº§
-        void enterLoopScope(); // è¿›å…¥å¾ªç¯ä½œç”¨åŸŸ
-        void exitLoopScope(); // é€€å‡ºå¾ªç¯ä½œç”¨åŸŸ
-        [[nodiscard]] bool isInLoopScope() const; // æ˜¯å¦åœ¨å¾ªç¯ä½œç”¨åŸŸä¸­
+        [[nodiscard]] std::string curScopeField() const; // »ñÈ¡µ±Ç°×÷ÓÃÓò×Ö¶Î
+        [[nodiscard]] ScopeType curScopeType() const; // »ñÈ¡µ±Ç°×÷ÓÃÓò×Ö¶Î
+        void enterScope(ScopeType scopeType); // ½øÈë×÷ÓÃÓò
+        void enterScope(size_t scopeLevel); // ½øÈëÖ¸¶¨²ã¼¶×÷ÓÃÓò
+        void enterTopScope(); // ½øÈë¶¥²ã×÷ÓÃÓò
+        void enterGlobalScope(); // ½øÈëÈ«¾Ö×÷ÓÃÓò
+        void exitScope(ScopeType scopeType); // ÍË³ö×÷ÓÃÓò
+        [[nodiscard]] size_t curScopeLevel() const; // »ñÈ¡µ±Ç°×÷ÓÃÓò²ã¼¶
+        void enterLoopScope(); // ½øÈëÑ­»·×÷ÓÃÓò
+        void exitLoopScope(); // ÍË³öÑ­»·×÷ÓÃÓò
+        [[nodiscard]] bool isInLoopScope() const; // ÊÇ·ñÔÚÑ­»·×÷ÓÃÓòÖĞ
 
-        // ç±»å‹æ£€æŸ¥ä¸è½¬æ¢
+        // ÀàĞÍ¼ì²éÓë×ª»»
         [[nodiscard]] static bool checkTypeMatch(
             const std::shared_ptr<symbol::TypeLabelSymbol>& leftTypeSymbol,
             const std::shared_ptr<symbol::TypeLabelSymbol>& rightTypeSymbol,
-            const bool& restrict = true); // æ£€æŸ¥ç±»å‹åŒ¹é…
+            const bool& restrict = true); // ¼ì²éÀàĞÍÆ¥Åä
         [[nodiscard]] static bool checkTypeMatch(
             const std::shared_ptr<symbol::Symbol>& leftSymbol,
-            const std::shared_ptr<symbol::Symbol>& rightSymbol); // æ£€æŸ¥ç¬¦å·ç±»å‹åŒ¹é…
+            const std::shared_ptr<symbol::Symbol>& rightSymbol); // ¼ì²é·ûºÅÀàĞÍÆ¥Åä
         static Pos currentPos();
         static void pushProcessingPos(const Pos& pos);
         static void popProcessingPos();
         static std::stack<Pos> _currentProcessingPos;
         [[nodiscard]] bool checkTypeMatch(
             const std::shared_ptr<symbol::Symbol>& leftSymbol,
-            const OpItem& rightOpItem) const; // æ£€æŸ¥ç¬¦å·ä¸æ“ä½œæ•°ç±»å‹åŒ¹é…
+            const OpItem& rightOpItem) const; // ¼ì²é·ûºÅÓë²Ù×÷ÊıÀàĞÍÆ¥Åä
         void processTypeAutoChange(
             const std::shared_ptr<symbol::Symbol>& sourceSymbol,
-            const OpItem& targetOpItem) const; // å¤„ç†ç±»å‹è‡ªåŠ¨è½¬æ¢
+            const OpItem& targetOpItem) const; // ´¦ÀíÀàĞÍ×Ô¶¯×ª»»
         void processTypeAutoChange(
             const std::shared_ptr<symbol::Symbol>& sourceSymbol,
-            const std::shared_ptr<OpItem>& targetOpItem) const; // å¤„ç†ç±»å‹è‡ªåŠ¨è½¬æ¢ï¼ˆæ™ºèƒ½æŒ‡é’ˆç‰ˆï¼‰
+            const std::shared_ptr<OpItem>& targetOpItem) const; // ´¦ÀíÀàĞÍ×Ô¶¯×ª»»£¨ÖÇÄÜÖ¸Õë°æ£©
 
-        // èŠ‚ç‚¹å¤„ç†
+        // ½Úµã´¦Àí
         static std::vector<std::shared_ptr<ExpressionNode>> visitParallelNode(
-            const std::shared_ptr<ExpressionNode>& node); // è®¿é—®å¹¶è¡ŒèŠ‚ç‚¹
+            const std::shared_ptr<ExpressionNode>& node); // ·ÃÎÊ²¢ĞĞ½Úµã
         std::unordered_set<std::shared_ptr<symbol::LabelSymbol>> processLabelNodes(
-            const std::vector<std::shared_ptr<LabelNode>>& labels); // å¤„ç†æ ‡ç­¾èŠ‚ç‚¹
+            const std::vector<std::shared_ptr<LabelNode>>& labels); // ´¦Àí±êÇ©½Úµã
         std::vector<std::shared_ptr<symbol::LabelSymbol>> processLabelNodesOnOrder(
             const std::vector<std::shared_ptr<LabelNode>>& labels);
 
-        // ç¬¦å·æ ˆæ“ä½œ
-        void pushNewProcessingSymbol(const std::shared_ptr<symbol::Symbol>& symbol); // å‹å…¥æ–°ç¬¦å·
-        std::shared_ptr<symbol::Symbol> topProcessingSymbol(); // è·å–æ ˆé¡¶ç¬¦å·
-        void popProcessingSymbol(); // å¼¹å‡ºæ ˆé¡¶ç¬¦å·
-        std::shared_ptr<symbol::Symbol> rPopProcessingSymbol(); // å¼¹å‡ºå¹¶è¿”å›æ ˆé¡¶ç¬¦å·
-        symbol::SymbolType topProcessingSymbolType(); // è·å–æ ˆé¡¶ç¬¦å·ç±»å‹
-        std::string topProcessingSymbolRaVal(); // è·å–æ ˆé¡¶ç¬¦å·RAå€¼
-        std::string topProcessingSymbolVal(); // è·å–æ ˆé¡¶ç¬¦å·å€¼
-        [[nodiscard]] bool isProcessingSymbol() const; // åˆ¤æ–­æ ˆå†…æ˜¯å¦æœ‰ç¬¦å·
+        // ·ûºÅÕ»²Ù×÷
+        void pushNewProcessingSymbol(const std::shared_ptr<symbol::Symbol>& symbol); // Ñ¹ÈëĞÂ·ûºÅ
+        std::shared_ptr<symbol::Symbol> topProcessingSymbol(); // »ñÈ¡Õ»¶¥·ûºÅ
+        void popProcessingSymbol(); // µ¯³öÕ»¶¥·ûºÅ
+        std::shared_ptr<symbol::Symbol> rPopProcessingSymbol(); // µ¯³ö²¢·µ»ØÕ»¶¥·ûºÅ
+        symbol::SymbolType topProcessingSymbolType(); // »ñÈ¡Õ»¶¥·ûºÅÀàĞÍ
+        std::string topProcessingSymbolRaVal(); // »ñÈ¡Õ»¶¥·ûºÅRAÖµ
+        std::string topProcessingSymbolVal(); // »ñÈ¡Õ»¶¥·ûºÅÖµ
+        [[nodiscard]] bool isProcessingSymbol() const; // ÅĞ¶ÏÕ»ÄÚÊÇ·ñÓĞ·ûºÅ
 
-        // æ“ä½œæ•°æ ˆæ“ä½œ
-        void pushOpItem(const std::shared_ptr<OpItem>& opItem); // å‹å…¥æ“ä½œæ•°ï¼ˆæ™ºèƒ½æŒ‡é’ˆï¼‰
+        // ²Ù×÷ÊıÕ»²Ù×÷
+        void pushOpItem(const std::shared_ptr<OpItem>& opItem); // Ñ¹Èë²Ù×÷Êı£¨ÖÇÄÜÖ¸Õë£©
         void pushOpItem(
-            // å‹å…¥æ“ä½œæ•°ï¼ˆå‚æ•°æ„é€ ï¼‰
+            // Ñ¹Èë²Ù×÷Êı£¨²ÎÊı¹¹Ôì£©
             const OpItemType& type,
             const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol,
             const std::string& value,
@@ -315,44 +315,44 @@ namespace ast
             const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr,
             const std::shared_ptr<symbol::TypeLabelSymbol>& valueTypeSymbol = nullptr,
             const Pos& pos = getUnknownPos());
-        void pushOpItem( // å‹å…¥æ“ä½œæ•°ï¼ˆåç§°æ„é€ ï¼‰
+        void pushOpItem( // Ñ¹Èë²Ù×÷Êı£¨Ãû³Æ¹¹Ôì£©
             const std::string& name,
             const std::string& fileField,
             const std::string& scopeField,
             const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol);
         void pushIdentItem(
-            // å‹å…¥æ ‡è¯†ç¬¦æ“ä½œæ•°
+            // Ñ¹Èë±êÊ¶·û²Ù×÷Êı
             const VarID& varID,
             const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabelSymbol,
             const std::shared_ptr<symbol::TypeLabelSymbol>& valueType = nullptr,
             const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr,
             const Pos& pos = getUnknownPos());
-        OpItem rPopOpItem(); // å¼¹å‡ºå¹¶è¿”å›æ“ä½œæ•°
-        void popOpItem(); // å¼¹å‡ºæ“ä½œæ•°
-        [[nodiscard]] OpItem topOpItem() const; // è·å–æ ˆé¡¶æ“ä½œæ•°
-        [[nodiscard]] std::shared_ptr<OpItem> topOpItemPtr() const; // è·å–æ ˆé¡¶æ“ä½œæ•°ï¼ˆæ™ºèƒ½æŒ‡é’ˆï¼‰
-        [[nodiscard]] std::string topOpRaVal() const; // è·å–æ ˆé¡¶æ“ä½œæ•°RAå€¼
-        [[nodiscard]] std::string rPopOpItemRaVal(); // å¼¹å‡ºå¹¶è¿”å›æ“ä½œæ•°RAå€¼
-        [[nodiscard]] std::string rPopOpItemVal(); // å¼¹å‡ºå¹¶è¿”å›æ“ä½œæ•°åŸå§‹å€¼
-        [[nodiscard]] bool hasNextOpItem() const; // æ£€æŸ¥æ˜¯å¦æœ‰ä¸‹ä¸€ä¸ªæ“ä½œæ•°
-        void clearOpItemStack(); // æ¸…ç©ºæ“ä½œé¡¹æ ˆ
+        OpItem rPopOpItem(); // µ¯³ö²¢·µ»Ø²Ù×÷Êı
+        void popOpItem(); // µ¯³ö²Ù×÷Êı
+        [[nodiscard]] OpItem topOpItem() const; // »ñÈ¡Õ»¶¥²Ù×÷Êı
+        [[nodiscard]] std::shared_ptr<OpItem> topOpItemPtr() const; // »ñÈ¡Õ»¶¥²Ù×÷Êı£¨ÖÇÄÜÖ¸Õë£©
+        [[nodiscard]] std::string topOpRaVal() const; // »ñÈ¡Õ»¶¥²Ù×÷ÊıRAÖµ
+        [[nodiscard]] std::string rPopOpItemRaVal(); // µ¯³ö²¢·µ»Ø²Ù×÷ÊıRAÖµ
+        [[nodiscard]] std::string rPopOpItemVal(); // µ¯³ö²¢·µ»Ø²Ù×÷ÊıÔ­Ê¼Öµ
+        [[nodiscard]] bool hasNextOpItem() const; // ¼ì²éÊÇ·ñÓĞÏÂÒ»¸ö²Ù×÷Êı
+        void clearOpItemStack(); // Çå¿Õ²Ù×÷ÏîÕ»
 
-        // ä¸´æ—¶å˜é‡/é›†åˆç”Ÿæˆ
-        [[nodiscard]] static std::string getNewTempVarName(); // è·å–æ–°ä¸´æ—¶å˜é‡å
-        [[nodiscard]] static std::string getNewSetLabelName(); // è·å–æ–°é›†åˆæ ‡ç­¾å
+        // ÁÙÊ±±äÁ¿/¼¯ºÏÉú³É
+        [[nodiscard]] static std::string getNewTempVarName(); // »ñÈ¡ĞÂÁÙÊ±±äÁ¿Ãû
+        [[nodiscard]] static std::string getNewSetLabelName(); // »ñÈ¡ĞÂ¼¯ºÏ±êÇ©Ãû
         OpItem pushTemOpVarItemWithRecord(
             const Pos& pos,
             const std::shared_ptr<symbol::TypeLabelSymbol>& valueType = nullptr,
             const std::shared_ptr<symbol::Symbol>& referencedSymbol = nullptr,
             const bool& sysDefined = {},
-            const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel = nullptr); // ç”Ÿæˆå¹¶å‹å…¥ä¸´æ—¶å˜é‡æ“ä½œæ•°
-        OpItem pushTemOpSetItem(const Pos& pos); // ç”Ÿæˆå¹¶å‹å…¥ä¸´æ—¶é›†åˆæ“ä½œæ•°
-        [[nodiscard]] OpItem newTemOpSetItem(const Pos& pos) const; // ç”Ÿæˆä¸´æ—¶é›†åˆæ“ä½œæ•°ï¼ˆä¸å‹æ ˆï¼‰
+            const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel = nullptr); // Éú³É²¢Ñ¹ÈëÁÙÊ±±äÁ¿²Ù×÷Êı
+        OpItem pushTemOpSetItem(const Pos& pos); // Éú³É²¢Ñ¹ÈëÁÙÊ±¼¯ºÏ²Ù×÷Êı
+        [[nodiscard]] OpItem newTemOpSetItem(const Pos& pos) const; // Éú³ÉÁÙÊ±¼¯ºÏ²Ù×÷Êı£¨²»Ñ¹Õ»£©
         [[nodiscard]] VarID getThisFieldVarID(const Pos& pos) const;
         [[nodiscard]] std::shared_ptr<symbol::VariableSymbol> getThisFieldSymbol(
             const std::shared_ptr<symbol::ClassSymbol>& classSymbol) const;
 
-        // è¯æ³•åˆ†æå™¨ç®¡ç†æ–¹æ³•
+        // ´Ê·¨·ÖÎöÆ÷¹ÜÀí·½·¨
         static void pushLexer(const std::shared_ptr<lexer::Lexer>& lexer);
         static void popLexer();
         static std::shared_ptr<lexer::Lexer> topLexer();
@@ -360,17 +360,17 @@ namespace ast
         static std::list<std::string> getLexerFilePaths();
         static bool checkIsRecursiveImportByLexerPath(const std::string& extPath);
 
-        // å·¥å…·æ–¹æ³•
+        // ¹¤¾ß·½·¨
         [[nodiscard]] std::shared_ptr<symbol::Symbol> getSymbolFromOpItem(
-            const OpItem& opItem) const; // ä»æ“ä½œæ•°è·å–ç¬¦å·
-        [[nodiscard]] std::string raVal(const OpItem& opItem, const bool& needSearch = true) const; // è·å–æ“ä½œæ•° RA å€¼
+            const OpItem& opItem) const; // ´Ó²Ù×÷Êı»ñÈ¡·ûºÅ
+        [[nodiscard]] std::string raVal(const OpItem& opItem, const bool& needSearch = true) const; // »ñÈ¡²Ù×÷Êı RA Öµ
         [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol> getBuiltinTypeSymbol(
-            const Pos& pos, const BuiltinType& type) const; // è·å–å†…ç½®ç±»å‹ç¬¦å·
+            const Pos& pos, const BuiltinType& type) const; // »ñÈ¡ÄÚÖÃÀàĞÍ·ûºÅ
         [[nodiscard]] std::pair<std::shared_ptr<symbol::TypeLabelSymbol>, std::shared_ptr<symbol::TypeLabelSymbol>>
         getTypesFromOpItem(const OpItem& opItem) const;
         [[nodiscard]] std::shared_ptr<symbol::TypeLabelSymbol>
         getDefiniteTypeLabelSymbolFromOpItem(const OpItem& opItem) const;
-        static std::string formatAttrField(const std::string& field); // æ ¼å¼åŒ–å±æ€§å­—æ®µ
+        static std::string formatAttrField(const std::string& field); // ¸ñÊ½»¯ÊôĞÔ×Ö¶Î
         void annotatePos(const Pos& pos);
         static std::shared_ptr<symbol::Symbol> getReferenceTargetSymbol(const OpItem& opItem);
         static std::shared_ptr<symbol::Symbol> getReferenceTargetSymbol(
@@ -398,16 +398,16 @@ namespace ast
         static std::string topProcessingExtensionPath();
         void processSymbolFlagOperation();
 
-        // å°†åŸ visitFunctionCallNode çš„é€»è¾‘è¿ç§»åˆ°è¿™é‡Œï¼ˆä¸»è°ƒåº¦å™¨ï¼‰
+        // ½«Ô­ visitFunctionCallNode µÄÂß¼­Ç¨ÒÆµ½ÕâÀï£¨Ö÷µ÷¶ÈÆ÷£©
         void processFunctionCallNode(const FunctionCallNode& node);
 
-        // å°† orderedArgs è½¬ä¸º originalArgs / halfProcessedArgs
+        // ½« orderedArgs ×ªÎª originalArgs / halfProcessedArgs
         void prepareOrderedArgs(const std::vector<std::pair<std::string, OpItem>>& orderedArgs,
                                 std::vector<std::pair<std::string, std::string>>& originalArgs,
                                 std::vector<std::string>& halfProcessedArgs) const;
 
-        // è§£æ/å¯»æ‰¾è¢«è°ƒç”¨å‡½æ•°ï¼ˆå¯èƒ½æ˜¯æ„é€ å‡½æ•°ã€å¼•ç”¨åˆ°å‡½æ•°ã€åç§°æŸ¥æ‰¾ç­‰ï¼‰ï¼Œ
-        // å¯èƒ½ä¼šä¿®æ”¹ customTypeVid å’Œ fullProcessedArgsï¼ˆå½“å±äºæŸä¸ªå¯¹è±¡æ—¶ï¼‰
+        // ½âÎö/Ñ°ÕÒ±»µ÷ÓÃº¯Êı£¨¿ÉÄÜÊÇ¹¹Ôìº¯Êı¡¢ÒıÓÃµ½º¯Êı¡¢Ãû³Æ²éÕÒµÈ£©£¬
+        // ¿ÉÄÜ»áĞŞ¸Ä customTypeVid ºÍ fullProcessedArgs£¨µ±ÊôÓÚÄ³¸ö¶ÔÏóÊ±£©
         std::shared_ptr<symbol::FunctionSymbol> resolveFunctionSymbol(const OpItem& funcNameOpItem,
                                                                       std::string& customTypeVid,
                                                                       std::vector<std::string>& fullProcessedArgs,
@@ -441,12 +441,12 @@ namespace ast
                                         const std::shared_ptr<symbol::LabelSymbol>& typeLabel,
                                         symbol::LabelType expectedType) ;
 
-        // å½“æ‰¾ä¸åˆ° funcSymbol æ—¶çš„å¤„ç†ï¼ˆä¼šåœ¨å†…éƒ¨ç”Ÿæˆ CALL/IVOK ç­‰å¹¶è¿”å› true è¡¨ç¤ºå·²å¤„ç†ï¼‰
+        // µ±ÕÒ²»µ½ funcSymbol Ê±µÄ´¦Àí£¨»áÔÚÄÚ²¿Éú³É CALL/IVOK µÈ²¢·µ»Ø true ±íÊ¾ÒÑ´¦Àí£©
         void handleNoFuncSymbolCase(const OpItem& funcNameOpItem,
                                     const std::vector<std::string>& halfProcessedArgs,
                                     const FunctionCallNode& node);
 
-        // æŒ‰ç…§ funcSymbol çš„å‚æ•°åˆ—è¡¨å¤„ç†ä¼ å…¥çš„ posArgs/namedArgsï¼Œå¡«å…… fullProcessedArgs
+        // °´ÕÕ funcSymbol µÄ²ÎÊıÁĞ±í´¦Àí´«ÈëµÄ posArgs/namedArgs£¬Ìî³ä fullProcessedArgs
         void processParameters(const std::shared_ptr<symbol::FunctionSymbol>& funcSymbol,
                                std::queue<OpItem>& posArgs,
                                std::unordered_map<std::string, OpItem>& namedArgs,
@@ -454,7 +454,7 @@ namespace ast
                                std::vector<std::string>& fullProcessedArgs,
                                const Pos& callPos);
 
-        // æœ€ç»ˆæ ¹æ® funcSymbol ç±»å‹ç”Ÿæˆè°ƒç”¨ç›¸å…³çš„ RA æŒ‡ä»¤ï¼ˆbuiltin ä¸æ™®é€šå‡½æ•°åˆ†æ”¯ï¼‰
+        // ×îÖÕ¸ù¾İ funcSymbol ÀàĞÍÉú³Éµ÷ÓÃÏà¹ØµÄ RA Ö¸Áî£¨builtin ÓëÆÕÍ¨º¯Êı·ÖÖ§£©
         void emitFinalCall(const std::shared_ptr<symbol::FunctionSymbol>& funcSymbol,
                            const builtin::CallInfos& callInfos);
 
@@ -563,7 +563,6 @@ namespace ast
         void visitReturnExpressionNode(ReturnExpressionNode& node) override;
 
         void visitBreakExpressionNode(BreakExpressionNode& node) override;
-        void visitContinueExpressionNode(ContinueExpressionNode& node) override;
 
         void visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode& node) override;
 

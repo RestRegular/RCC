@@ -121,6 +121,7 @@ add_executable(RCC
         code/declarations/builtin/dll_extension_manager/rcc_dll_extension_manager_dec.h
         code/src/builtin/dll_extension_manager/rcc_dll_extension_manager.cpp
         code/include/interfaces/rcc_builtin_interface.h
+<<<<<<< HEAD
         code/include/visitors/rcc_llvm_visitor.h
         code/src/visitors/rcc_llvm_visitor.cpp
 )

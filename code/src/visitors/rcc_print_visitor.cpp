@@ -167,10 +167,6 @@ namespace ast {
 
     }
 
-    void PrintVisitor::visitContinueExpressionNode(ContinueExpressionNode &node) {
-
-    }
-
     void PrintVisitor::visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode &node) {
 
     }

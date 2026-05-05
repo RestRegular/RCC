@@ -90,7 +90,6 @@ namespace ast {
         void visitReturnExpressionNode(ReturnExpressionNode &node) override;
 
         void visitBreakExpressionNode(BreakExpressionNode &node) override;
-        void visitContinueExpressionNode(ContinueExpressionNode &node) override;
 
         void visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode &node) override;
 
