@@ -2338,19 +2338,22 @@ namespace ast
         auto* valBufSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count * sizeof(void*));
         auto* valBuf = Builder->CreateCall(mallocFunc, {valBufSize}, "dict.values");
 
-        // 存储 keys
+        // 存储 keys（每个元素是 ptr，占 8 字节）
+        auto* dictPtrSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), sizeof(void*));
         for (int64_t i = 0; i < count; i++)
         {
             auto* idx = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), i);
-            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), keyBuf, idx, "key.gep");
+            auto* byteOffset = Builder->CreateMul(idx, dictPtrSize, "key.offset");
+            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), keyBuf, byteOffset, "key.gep");
             Builder->CreateStore(dictArgs[i * 2], gep);
         }
 
-        // 存储 values
+        // 存储 values（每个元素是 ptr，占 8 字节）
         for (int64_t i = 0; i < count; i++)
         {
             auto* idx = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), i);
-            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), valBuf, idx, "val.gep");
+            auto* byteOffset = Builder->CreateMul(idx, dictPtrSize, "val.offset");
+            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), valBuf, byteOffset, "val.gep");
             Builder->CreateStore(dictArgs[i * 2 + 1], gep);
         }
 
@@ -2426,11 +2429,13 @@ namespace ast
         auto* dataSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count * sizeof(void*));
         auto* dataBuf = Builder->CreateCall(mallocFunc, {dataSize}, "list.data");
 
-        // 存储元素
+        // 存储元素（每个元素是 ptr，占 8 字节）
+        auto* ptrSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), sizeof(void*));
         for (int64_t i = 0; i < count; i++)
         {
             auto* idx = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), i);
-            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), dataBuf, idx, "elem.gep");
+            auto* byteOffset = Builder->CreateMul(idx, ptrSize, "elem.offset");
+            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), dataBuf, byteOffset, "elem.gep");
             Builder->CreateStore(elemValues[i], gep);
         }
 
@@ -2519,8 +2524,10 @@ namespace ast
             auto* dataPtr = Builder->CreateStructGEP(listType, targetPayload, 2, "list.data");
             auto* data = Builder->CreateLoad(getValueType(), dataPtr, "data");
 
-            // data[index] - GEP (每个元素是一个 ptr，按字节偏移)
-            auto* elemPtr = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), data, indexInt, "elem.ptr");
+            // data[index] - GEP（每个元素是 ptr，占 8 字节）
+            auto* ptrSizeConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), sizeof(void*));
+            auto* byteOffset = Builder->CreateMul(indexInt, ptrSizeConst, "idx.byte.offset");
+            auto* elemPtr = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), data, byteOffset, "elem.ptr");
             auto* elem = Builder->CreateLoad(getValueType(), elemPtr, "elem");
             Builder->CreateStore(elem, resultAlloca);
             Builder->CreateBr(mergeBB);
@@ -2538,6 +2545,9 @@ namespace ast
             auto* keys = Builder->CreateLoad(getValueType(), keysPtr, "keys");
             auto* valsPtr = Builder->CreateStructGEP(dictType, targetPayload, 3, "dict.values");
             auto* vals = Builder->CreateLoad(getValueType(), valsPtr, "vals");
+
+            // 每个元素是 ptr，占 8 字节
+            auto* dictElemSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), sizeof(void*));
 
             // 线性搜索循环
             auto* loopHeaderBB = llvm::BasicBlock::Create(*TheContext, "dict.search.header", func);
@@ -2562,7 +2572,8 @@ namespace ast
             Builder->SetInsertPoint(loopBodyBB);
             {
                 auto* bi = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), iAlloca, "i.body");
-                auto* keyGep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), keys, bi, "key.gep");
+                auto* keyByteOffset = Builder->CreateMul(bi, dictElemSize, "key.byte.offset");
+                auto* keyGep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), keys, keyByteOffset, "key.gep");
                 auto* curKey = Builder->CreateLoad(getValueType(), keyGep, "key.val");
 
                 // 简化比较：比较两个 Tagged Value 的 tag 和 payload
@@ -2583,7 +2594,8 @@ namespace ast
             Builder->SetInsertPoint(foundBB);
             {
                 auto* fi = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), iAlloca, "i.found");
-                auto* valGep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), vals, fi, "val.gep");
+                auto* valByteOffset = Builder->CreateMul(fi, dictElemSize, "val.byte.offset");
+                auto* valGep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), vals, valByteOffset, "val.gep");
                 auto* val = Builder->CreateLoad(getValueType(), valGep, "val");
                 Builder->CreateStore(val, resultAlloca);
                 Builder->CreateBr(dictMergeBB);
