@@ -118,6 +118,52 @@ namespace ast {
         // this 指针的 alloca
         llvm::AllocaInst* ThisAlloca = nullptr;
 
+        // ==================== Tagged Struct 类型系统 ====================
+
+        // 类型标签常量
+        static constexpr int64_t TAG_NULL     = 0;
+        static constexpr int64_t TAG_INT      = 1;
+        static constexpr int64_t TAG_FLOAT    = 2;
+        static constexpr int64_t TAG_BOOL     = 3;
+        static constexpr int64_t TAG_STRING   = 4;
+        static constexpr int64_t TAG_LIST     = 5;
+        static constexpr int64_t TAG_DICT     = 6;
+        static constexpr int64_t TAG_FUNCTION = 7;
+
+        // RCCValue struct 类型: { i64 type_tag, ptr payload }
+        // 在 InitializeModule 中创建一次
+        llvm::StructType* RCCValueType = nullptr;
+
+        // 获取 RCCValue struct 的 LLVM 类型
+        llvm::StructType* getRCCValueType();
+
+        // 创建一个 Tagged Value: alloca RCCValue, store type_tag and payload, 返回 ptr
+        llvm::Value* createTaggedValue(int64_t typeTag, llvm::Value* payload);
+
+        // 创建一个 Tagged Value (payload 为 null)
+        llvm::Value* createTaggedValueNull(int64_t typeTag);
+
+        // 创建一个 Tagged Value (payload 为 i64 编码的整数)
+        llvm::Value* createTaggedInt(int64_t intVal);
+
+        // 创建一个 Tagged Value (payload 为 double 编码)
+        llvm::Value* createTaggedFloat(double floatVal);
+
+        // 创建一个 Tagged Value (payload 为 bool)
+        llvm::Value* createTaggedBool(bool boolVal);
+
+        // 创建一个 Tagged Value (payload 为字符串指针)
+        llvm::Value* createTaggedString(llvm::Value* strPtr);
+
+        // 从 Tagged Value 中提取 type_tag (i64)
+        llvm::Value* extractTag(llvm::Value* taggedPtr);
+
+        // 从 Tagged Value 中提取 payload (ptr)
+        llvm::Value* extractPayload(llvm::Value* taggedPtr);
+
+        // 检查 Tagged Value 的类型标签是否等于给定标签，返回 i1
+        llvm::Value* checkTag(llvm::Value* taggedPtr, int64_t expectedTag);
+
         // ==================== 辅助方法 ====================
 
         /**

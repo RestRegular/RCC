@@ -41,6 +41,9 @@ namespace ast
         TheModule = std::make_unique<llvm::Module>(ModuleName, *TheContext);
         Builder = std::make_unique<llvm::IRBuilder<>>(*TheContext);
 
+        // 创建 RCCValue struct 类型: { i64, ptr }
+        RCCValueType = llvm::StructType::create(*TheContext, {llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCValue");
+
         LLVM_DEBUG("Module initialized: " << ModuleName);
         registerBuiltinIRGenerators();
     }
@@ -166,6 +169,89 @@ namespace ast
     }
 
     // ============================================================================
+    // Tagged Struct 类型系统辅助方法
+    // ============================================================================
+
+    llvm::StructType* LLVMCodeGenVisitor::getRCCValueType()
+    {
+        if (!RCCValueType)
+        {
+            RCCValueType = llvm::StructType::create(*TheContext, {llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCValue");
+        }
+        return RCCValueType;
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::createTaggedValue(int64_t typeTag, llvm::Value* payload)
+    {
+        // alloca RCCValue
+        auto* alloca = Builder->CreateAlloca(getRCCValueType(), nullptr, "rcc.val");
+
+        // store type_tag
+        auto* tagPtr = Builder->CreateStructGEP(getRCCValueType(), alloca, 0, "tag.ptr");
+        Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), typeTag), tagPtr);
+
+        // store payload
+        auto* payloadPtr = Builder->CreateStructGEP(getRCCValueType(), alloca, 1, "payload.ptr");
+        Builder->CreateStore(payload ? payload : llvm::ConstantPointerNull::get(getValueType()), payloadPtr);
+
+        // 返回指向 RCCValue 的指针
+        return alloca;
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::createTaggedValueNull(int64_t typeTag)
+    {
+        return createTaggedValue(typeTag, llvm::ConstantPointerNull::get(getValueType()));
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::createTaggedInt(int64_t intVal)
+    {
+        // 将整数编码为 ptr (inttoptr)
+        auto* intConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), intVal);
+        auto* payload = llvm::ConstantExpr::getIntToPtr(intConst, getValueType());
+        return createTaggedValue(TAG_INT, payload);
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::createTaggedFloat(double floatVal)
+    {
+        uint64_t bits = 0;
+        std::memcpy(&bits, &floatVal, sizeof(bits));
+        auto* intConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), bits);
+        auto* payload = llvm::ConstantExpr::getIntToPtr(intConst, getValueType());
+        return createTaggedValue(TAG_FLOAT, payload);
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::createTaggedBool(bool boolVal)
+    {
+        auto* intConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), boolVal ? 1 : 0);
+        auto* payload = llvm::ConstantExpr::getIntToPtr(intConst, getValueType());
+        return createTaggedValue(TAG_BOOL, payload);
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::createTaggedString(llvm::Value* strPtr)
+    {
+        return createTaggedValue(TAG_STRING, strPtr);
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::extractTag(llvm::Value* taggedPtr)
+    {
+        auto* tagPtr = Builder->CreateStructGEP(getRCCValueType(), taggedPtr, 0, "tag.ptr");
+        return Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), tagPtr, "tag");
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::extractPayload(llvm::Value* taggedPtr)
+    {
+        auto* payloadPtr = Builder->CreateStructGEP(getRCCValueType(), taggedPtr, 1, "payload.ptr");
+        return Builder->CreateLoad(getValueType(), payloadPtr, "payload");
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::checkTag(llvm::Value* taggedPtr, int64_t expectedTag)
+    {
+        auto* tag = extractTag(taggedPtr);
+        auto* expected = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), expectedTag);
+        return Builder->CreateICmpEQ(tag, expected, "tag.check");
+    }
+
+    // ============================================================================
     // 辅助方法
     // ============================================================================
 
@@ -181,28 +267,12 @@ namespace ast
 
     llvm::Value* LLVMCodeGenVisitor::coerceToBool(llvm::Value* value)
     {
-        if (!value)
-        {
-            return llvm::ConstantInt::getFalse(*TheContext);
-        }
-        // 如果已经是 i1，直接返回
-        if (value->getType()->isIntegerTy(1))
-        {
-            return value;
-        }
-        // 如果是整数类型，比较不等于 0
-        if (value->getType()->isIntegerTy())
-        {
-            return Builder->CreateICmpNE(value, llvm::ConstantInt::get(value->getType(), 0), "tobool");
-        }
-        // 如果是指针类型，比较不等于 null
-        if (value->getType()->isPointerTy())
-        {
-            return Builder->CreateICmpNE(
-                value, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(value->getType())), "tobool");
-        }
-        // 默认：假设非 null 为 true
-        return Builder->CreateICmpNE(value, llvm::Constant::getNullValue(value->getType()), "tobool");
+        if (!value) return llvm::ConstantInt::getFalse(*TheContext);
+
+        // Tagged Value: 非 null 即为 true
+        auto* tag = extractTag(value);
+        auto* nullTag = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_NULL);
+        return Builder->CreateICmpNE(tag, nullTag, "is_not_null");
     }
 
     llvm::Function* LLVMCodeGenVisitor::getOrCreateExternalFunc(const std::string& name, llvm::FunctionType* funcType)
@@ -262,15 +332,15 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitNullLiteralNode(NullLiteralNode& node)
     {
-        LLVM_DEBUG("NullLiteralNode: null");
-        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        LLVM_DEBUG("NullLiteralNode");
+        pushValue(createTaggedValueNull(TAG_NULL));
     }
 
     void LLVMCodeGenVisitor::visitStringLiteralNode(StringLiteralNode& node)
     {
         auto* strPtr = createGlobalStringPtr(node.literalString());
         LLVM_DEBUG("StringLiteralNode: \"" << node.literalString() << "\"");
-        pushValue(strPtr);
+        pushValue(createTaggedString(strPtr));
     }
 
     void LLVMCodeGenVisitor::visitNumberLiteralNode(NumberLiteralNode& node)
@@ -281,58 +351,23 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitIntegerLiteralNode(IntegerLiteralNode& node)
     {
-        // 整数字面量：将整数值编码为 ptr（inttoptr）
-        // 在动态类型系统中，我们使用 inttoptr 将整数值存储为指针
-        int64_t intVal = 0;
-        try
-        {
-            intVal = std::stoll(node.literalString());
-        }
-        catch (...)
-        {
-            intVal = 0;
-        }
-
-        // 将整数值存储为 ptr（使用 inttoptr）
-        auto* intConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), intVal);
-        auto* ptrVal = llvm::ConstantExpr::getIntToPtr(intConst, getValueType());
-
         LLVM_DEBUG("IntegerLiteralNode: " << node.literalString());
-        pushValue(ptrVal);
+        int64_t intVal = std::stoll(node.literalString());
+        pushValue(createTaggedInt(intVal));
     }
 
     void LLVMCodeGenVisitor::visitFloatLiteralNode(FloatLiteralNode& node)
     {
-        // 浮点字面量：将 double 值的位模式转换为 ptr
-        double floatVal = 0.0;
-        try
-        {
-            floatVal = std::stod(node.literalString());
-        }
-        catch (...)
-        {
-            floatVal = 0.0;
-        }
-
-        // 将 double 的位模式解释为 int64，再 inttoptr
-        uint64_t bits = 0;
-        std::memcpy(&bits, &floatVal, sizeof(bits));
-        auto* intConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), bits);
-        auto* ptrVal = llvm::ConstantExpr::getIntToPtr(intConst, getValueType());
-
         LLVM_DEBUG("FloatLiteralNode: " << node.literalString());
-        pushValue(ptrVal);
+        double floatVal = std::stod(node.literalString());
+        pushValue(createTaggedFloat(floatVal));
     }
 
     void LLVMCodeGenVisitor::visitBooleanLiteralNode(BooleanLiteralNode& node)
     {
-        // 布尔值：true = inttoptr(1), false = inttoptr(0)
-        bool boolVal = (node.literalString() == "true");
-        auto* intConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), boolVal ? 1 : 0);
-        auto* ptrVal = llvm::ConstantExpr::getIntToPtr(intConst, getValueType());
-
         LLVM_DEBUG("BooleanLiteralNode: " << node.literalString());
-        pushValue(ptrVal);
+        bool boolVal = (node.literalString() == "true");
+        pushValue(createTaggedBool(boolVal));
     }
 
     void LLVMCodeGenVisitor::visitCharacterLiteralNode(CharacterLiteralNode& node)
@@ -945,9 +980,13 @@ namespace ast
             return;
         }
 
-        // 由于我们使用 opaque pointer 存储值，
-        // 算术运算需要先将 ptr 转回 int64，运算后再转回 ptr
+        // 由于我们使用 Tagged Struct 存储值，
+        // 算术运算需要先提取 payload，运算后再包装为 Tagged Int
         auto* int64Ty = llvm::Type::getInt64Ty(*TheContext);
+
+        // 从 Tagged Value 中提取 payload 作为运算操作数
+        left = extractPayload(left);
+        right = extractPayload(right);
 
         // ptrtoint: 将 ptr 转为 i64 以进行运算
         auto* leftInt = Builder->CreatePtrToInt(left, int64Ty, "left.int");
@@ -1121,8 +1160,8 @@ namespace ast
 
         if (result)
         {
-            // inttoptr: 将 i64 结果转回 ptr
-            auto* resultPtr = Builder->CreateIntToPtr(result, getValueType(), "result.ptr");
+            // 将运算结果包装为 Tagged Int
+            auto* resultPtr = createTaggedValue(TAG_INT, Builder->CreateIntToPtr(result, getValueType(), "int.ptr"));
             pushValue(resultPtr);
         }
         else
@@ -2443,7 +2482,7 @@ namespace ast
     {
         // ==================== IO 函数 ====================
 
-        // sout(*args) - 标准输出
+        // sout(*args) - 标准输出（纯 IR 实现，不依赖 __rcc_* 运行时函数）
         // 将所有参数转为字符串并输出，每个参数用空格分隔，最后换行
         BuiltinIRGenerators["sout"] = [this](
             LLVMCodeGenVisitor& visitor,
@@ -2452,49 +2491,207 @@ namespace ast
         {
             LLVM_DEBUG("Builtin IR: " << funcName);
 
-            // 声明运行时智能输出函数: void __rcc_print_value(ptr value)
-            auto* printType = llvm::FunctionType::get(getVoidType(), {getValueType()}, false);
-            auto* printFunc = getOrCreateExternalFunc("__rcc_print_value", printType);
+            // 声明 libc 函数
+            // int putchar(int c)
+            auto* putcharType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {llvm::Type::getInt32Ty(*TheContext)}, false);
+            auto* putcharFunc = getOrCreateExternalFunc("putchar", putcharType);
 
-            // 声明运行时换行函数: void __rcc_print_newline()
-            auto* newlineType = llvm::FunctionType::get(getVoidType(), false);
-            auto* newlineFunc = getOrCreateExternalFunc("__rcc_print_newline", newlineType);
+            // int puts(const char *s)
+            auto* putsType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, false);
+            auto* putsFunc = getOrCreateExternalFunc("puts", putsType);
 
-            // 声明运行时空格函数: void __rcc_print_space()
-            auto* spaceType = llvm::FunctionType::get(getVoidType(), false);
-            auto* spaceFunc = getOrCreateExternalFunc("__rcc_print_space", spaceType);
+            // void* malloc(size_t size)
+            auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
+            auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
 
-            if (args.empty())
+            // int printf(const char *format, ...)
+            auto* printfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, /*isVarArg=*/true);
+            auto* printfFunc = getOrCreateExternalFunc("printf", printfType);
+
+            llvm::Function* func = Builder->GetInsertBlock()->getParent();
+
+            for (size_t i = 0; i < args.size(); i++)
             {
-                // sout() 无参数，仅输出换行
-                Builder->CreateCall(newlineFunc, {});
-            }
-            else
-            {
-                // sout(a, b, c) -> 对每个参数调用 __rcc_print_value，参数间空格，末尾换行
-                for (size_t i = 0; i < args.size(); i++)
+                if (i > 0)
                 {
-                    if (i > 0)
-                    {
-                        Builder->CreateCall(spaceFunc, {});
-                    }
-                    Builder->CreateCall(printFunc, {args[i]});
+                    // 输出空格
+                    Builder->CreateCall(putcharFunc, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), ' ')});
                 }
-                Builder->CreateCall(newlineFunc, {});
+
+                llvm::Value* arg = args[i];
+
+                // === 按 type_tag 分发 ===
+                // 创建分支: TAG_INT, TAG_FLOAT, TAG_BOOL, TAG_STRING, TAG_NULL, default
+
+                auto* tag = extractTag(arg);
+                auto* payload = extractPayload(arg);
+
+                // 基本块
+                auto* intBB = llvm::BasicBlock::Create(*TheContext, "sout.int", func);
+                auto* floatBB = llvm::BasicBlock::Create(*TheContext, "sout.float", func);
+                auto* boolBB = llvm::BasicBlock::Create(*TheContext, "sout.bool", func);
+                auto* strBB = llvm::BasicBlock::Create(*TheContext, "sout.str", func);
+                auto* nullBB = llvm::BasicBlock::Create(*TheContext, "sout.null", func);
+                auto* defaultBB = llvm::BasicBlock::Create(*TheContext, "sout.default", func);
+                auto* mergeBB = llvm::BasicBlock::Create(*TheContext, "sout.merge", func);
+
+                // switch on tag
+                Builder->CreateSwitch(tag, defaultBB,
+                    {
+                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_INT), intBB},
+                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FLOAT), floatBB},
+                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_BOOL), boolBB},
+                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING), strBB},
+                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_NULL), nullBB},
+                    });
+
+                // --- TAG_INT: 输出整数 ---
+                Builder->SetInsertPoint(intBB);
+                {
+                    // payload 是 inttoptr 编码的整数，需要 ptrtoint 回来
+                    auto* intVal = Builder->CreatePtrToInt(payload, llvm::Type::getInt64Ty(*TheContext), "int.val");
+
+                    // 用 printf("%lld", intVal) 输出
+                    auto* fmtStr = createGlobalStringPtr("%lld");
+                    auto* fmtPtr = Builder->CreateBitCast(fmtStr, getValueType());
+                    Builder->CreateCall(printfFunc, {fmtPtr, payload});
+                }
+                Builder->CreateBr(mergeBB);
+
+                // --- TAG_FLOAT: 输出浮点 ---
+                Builder->SetInsertPoint(floatBB);
+                {
+                    // payload 是 double 的位模式 (inttoptr)，需要还原
+                    auto* bits = Builder->CreatePtrToInt(payload, llvm::Type::getInt64Ty(*TheContext), "float.bits");
+                    auto* floatVal = Builder->CreateBitCast(bits, llvm::Type::getDoubleTy(*TheContext), "float.val");
+
+                    // 用 printf("%g", floatVal) 输出
+                    // printf 是 vararg，double 参数直接传（x86-64 ABI）
+                    auto* fmtStr = createGlobalStringPtr("%g");
+                    auto* fmtPtr = Builder->CreateBitCast(fmtStr, getValueType());
+                    Builder->CreateCall(printfFunc, {fmtPtr, floatVal});
+                }
+                Builder->CreateBr(mergeBB);
+
+                // --- TAG_BOOL: 输出 true/false ---
+                Builder->SetInsertPoint(boolBB);
+                {
+                    // payload 是 inttoptr(0) 或 inttoptr(1)
+                    auto* intVal = Builder->CreatePtrToInt(payload, llvm::Type::getInt64Ty(*TheContext), "bool.val");
+                    auto* isTrue = Builder->CreateICmpNE(intVal, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0), "is.true");
+
+                    auto* trueBB = llvm::BasicBlock::Create(*TheContext, "sout.true", func);
+                    auto* falseBB = llvm::BasicBlock::Create(*TheContext, "sout.false", func);
+                    auto* boolMergeBB = llvm::BasicBlock::Create(*TheContext, "sout.bool.merge", func);
+
+                    Builder->CreateCondBr(isTrue, trueBB, falseBB);
+
+                    Builder->SetInsertPoint(trueBB);
+                    Builder->CreateCall(putsFunc, {createGlobalStringPtr("true")});
+                    Builder->CreateBr(boolMergeBB);
+
+                    Builder->SetInsertPoint(falseBB);
+                    Builder->CreateCall(putsFunc, {createGlobalStringPtr("false")});
+                    Builder->CreateBr(boolMergeBB);
+
+                    Builder->SetInsertPoint(boolMergeBB);
+                }
+                Builder->CreateBr(mergeBB);
+
+                // --- TAG_STRING: 输出字符串 ---
+                Builder->SetInsertPoint(strBB);
+                {
+                    // payload 是指向全局字符串的 ptr，直接 puts
+                    Builder->CreateCall(putsFunc, {payload});
+                }
+                Builder->CreateBr(mergeBB);
+
+                // --- TAG_NULL: 输出 "null" ---
+                Builder->SetInsertPoint(nullBB);
+                {
+                    Builder->CreateCall(putsFunc, {createGlobalStringPtr("null")});
+                }
+                Builder->CreateBr(mergeBB);
+
+                // --- default: 输出指针 ---
+                Builder->SetInsertPoint(defaultBB);
+                {
+                    auto* fmtStr = createGlobalStringPtr("<ptr: %p>");
+                    auto* fmtPtr = Builder->CreateBitCast(fmtStr, getValueType());
+                    Builder->CreateCall(printfFunc, {fmtPtr, payload});
+                }
+                Builder->CreateBr(mergeBB);
+
+                // merge
+                Builder->SetInsertPoint(mergeBB);
             }
 
-            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+            // 末尾换行
+            Builder->CreateCall(putcharFunc, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), '\n')});
+
+            pushValue(createTaggedValueNull(TAG_NULL));
         };
 
-        // sin() - 标准输入（简化版：返回空字符串）
+        // sin() - 标准输入（纯 IR 实现，使用 getchar 循环读取）
         BuiltinIRGenerators["sin"] = [this](
             LLVMCodeGenVisitor& visitor,
             const std::vector<llvm::Value*>& args,
             const std::string& funcName)
         {
-            LLVM_DEBUG("Builtin IR: " << funcName << " (simplified - returns empty string)");
-            // 简化实现：返回空字符串指针
-            pushValue(createGlobalStringPtr(""));
+            LLVM_DEBUG("Builtin IR: " << funcName);
+
+            // int getchar()
+            auto* getcharType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), false);
+            auto* getcharFunc = getOrCreateExternalFunc("getchar", getcharType);
+
+            // void* malloc(size_t size)
+            auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
+            auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
+
+            // 分配 256 字节缓冲区
+            auto* bufSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 256);
+            auto* buf = Builder->CreateCall(mallocFunc, {bufSize}, "input.buf");
+
+            // 逐字符读取直到换行或 EOF
+            llvm::Function* func = Builder->GetInsertBlock()->getParent();
+            auto* loopBB = llvm::BasicBlock::Create(*TheContext, "input.loop", func);
+            auto* doneBB = llvm::BasicBlock::Create(*TheContext, "input.done", func);
+
+            auto* idxAlloca = Builder->CreateAlloca(llvm::Type::getInt64Ty(*TheContext), nullptr, "input.idx");
+            Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0), idxAlloca);
+
+            Builder->CreateBr(loopBB);
+            Builder->SetInsertPoint(loopBB);
+
+            auto* ch = Builder->CreateCall(getcharFunc, {}, "input.ch");
+            auto* isNL = Builder->CreateICmpEQ(ch, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), '\n'), "is.nl");
+            auto* isEOF = Builder->CreateICmpSLT(ch, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0), "is.eof");
+            auto* isDone = Builder->CreateOr(isNL, isEOF, "is.done");
+            Builder->CreateCondBr(isDone, doneBB, loopBB);
+
+            // 在 loopBB 中：存储字符并继续
+            // 需要在 CreateCondBr 之前插入存储指令
+            // 重新设置插入点到 loopBB 开头（在 condBr 之前）
+            {
+                auto* loopTerm = loopBB->getTerminator();
+                llvm::IRBuilder<> loopBuilder(loopBB, loopTerm->getIterator());
+
+                auto* idx = loopBuilder.CreateLoad(llvm::Type::getInt64Ty(*TheContext), idxAlloca, "idx");
+                auto* gep = loopBuilder.CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), buf, idx, "buf.gep");
+                auto* chTrunc = loopBuilder.CreateTrunc(ch, llvm::Type::getInt8Ty(*TheContext), "ch.trunc");
+                loopBuilder.CreateStore(chTrunc, gep);
+
+                auto* nextIdx = loopBuilder.CreateAdd(idx, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), "next.idx");
+                loopBuilder.CreateStore(nextIdx, idxAlloca);
+            }
+
+            Builder->SetInsertPoint(doneBB);
+            // 添加 null 终止符
+            auto* idx = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), idxAlloca, "final.idx");
+            auto* gep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), buf, idx, "null.gep");
+            Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(*TheContext), 0), gep);
+
+            pushValue(createTaggedString(buf));
         };
 
         // ==================== 数据结构函数 ====================
