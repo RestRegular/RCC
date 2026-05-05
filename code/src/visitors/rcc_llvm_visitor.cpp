@@ -1022,8 +1022,9 @@ namespace ast
         const auto& infixType = node.getInfixType();
         const auto& opStr = node.getOpToken().getValue();
 
-        // 逻辑短路求值
-        if (infixType == NodeType::AND || infixType == NodeType::OR)
+        // 逻辑短路求值（同时检查 NodeType 和 opStr）
+        if ((infixType == NodeType::AND || infixType == NodeType::OR || infixType == NodeType::LOGICAL)
+            && (opStr == "&&" || opStr == "||"))
         {
             handleLogicalShortCircuit(node);
             return;
