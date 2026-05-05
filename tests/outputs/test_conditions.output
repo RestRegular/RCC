@@ -31,6 +31,10 @@ SUCCESS: Executable generated to .\tests\exes\test_conditions.exe
 
 [4/5] Running executable...
 ========================================
+if-single: pass
+if-else: pass
+elif: pass-B
+nested: pass-big
 ========================================
 
 Execution completed

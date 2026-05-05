@@ -33,7 +33,7 @@ SUCCESS: Executable generated to .\tests\exes\test_builtins.exe
 ========================================
 hello world
 123
-<ptr: 000000D7BAFFFCF0>5
+<ptr: 0000007144FFFA40>5
 ========================================
 
 Execution completed

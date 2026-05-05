@@ -31,6 +31,7 @@ SUCCESS: Executable generated to .\tests\exes\test_integration.exe
 
 [4/5] Running executable...
 ========================================
+01<ptr: 0000004330DFF750><ptr: 0000004330DFF750><ptr: 0000004330DFF750><ptr: 0000004330DFF750><ptr: 0000004330DFF750><ptr: 0000004330DFF750><ptr: 0000004330DFF750><ptr: 0000004330DFF750>
 ========================================
 
 Execution completed

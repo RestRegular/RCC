@@ -31,6 +31,10 @@ SUCCESS: Executable generated to .\tests\exes\test_functions.exe
 
 [4/5] Running executable...
 ========================================
+hello
+8
+10
+120
 ========================================
 
 Execution completed

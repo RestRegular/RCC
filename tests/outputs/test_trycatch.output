@@ -31,6 +31,11 @@ SUCCESS: Executable generated to .\tests\exes\test_trycatch.exe
 
 [4/5] Running executable...
 ========================================
+try: a = 10
+try: c = 30
+finally: pass
+try: e = 50
+finally: pass
 ========================================
 
 Execution completed

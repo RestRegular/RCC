@@ -31,6 +31,8 @@ SUCCESS: Executable generated to .\tests\exes\test_throw.exe
 
 [4/5] Running executable...
 ========================================
+3
+throw test: before throw
 ========================================
 
 Execution completed
