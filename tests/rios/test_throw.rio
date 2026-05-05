@@ -2,8 +2,8 @@
 // 测试 13: throw
 // 验证: throw 表达式
 // ============================================================================
-fun throwError() {
-    throw "an error occurred"
+fun sout(*args, end="\n"): void {
+    encapsulated
 }
 
 fun safeDivide(a, b) {
@@ -12,3 +12,6 @@ fun safeDivide(a, b) {
     }
     ret a / b
 }
+
+sout(safeDivide(10, 3))
+sout("throw test: before throw")

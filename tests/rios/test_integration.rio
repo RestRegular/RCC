@@ -2,6 +2,10 @@
 // 测试 15: 综合测试
 // 验证: 多种特性组合使用
 // ============================================================================
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
 fun fib(n) {
     if n <= 1 {
         ret n
@@ -9,11 +13,4 @@ fun fib(n) {
     ret fib(n - 1) + fib(n - 2)
 }
 
-fun main() {
-    var results = []
-    var i = 0
-    while i < 10 {
-        results += fib(i)
-        i += 1
-    }
-}
+sout(fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7), fib(8), fib(9))

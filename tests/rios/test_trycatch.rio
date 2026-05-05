@@ -2,26 +2,36 @@
 // 测试 12: try-catch-finally
 // 验证: try-catch、try-finally、try-catch-finally
 // ============================================================================
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
 
 // try-catch
 try {
     var a = 10
+    sout("try: a = ", a)
 } catch(e) {
     var b = 20
+    sout("catch: FAIL")
 }
 
 // try-finally
 try {
     var c = 30
+    sout("try: c = ", c)
 } finally {
     var d = 40
+    sout("finally: pass")
 }
 
 // try-catch-finally
 try {
     var e = 50
+    sout("try: e = ", e)
 } catch(err) {
     var f = 60
+    sout("catch: FAIL")
 } finally {
     var g = 70
+    sout("finally: pass")
 }

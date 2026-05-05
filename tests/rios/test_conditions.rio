@@ -2,37 +2,42 @@
 // 测试 4: 条件语句 (if-elif-else)
 // 验证: if 单分支、if-else、if-elif-else、嵌套 if
 // ============================================================================
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
 var x = 10
 
 // if 单分支
 if x > 5 {
     var a = 1
+    sout("if-single: pass")
 }
 
 // if-else
 if x > 20 {
-    var b = 2
+    sout("if-else: FAIL")
 } else {
-    var b = 3
+    sout("if-else: pass")
 }
 
 // if-elif-else
 var grade = 85
 if grade >= 90 {
-    var level = "A"
+    sout("elif: FAIL-A")
 } elif grade >= 80 {
-    var level = "B"
+    sout("elif: pass-B")
 } elif grade >= 70 {
-    var level = "C"
+    sout("elif: FAIL-C")
 } else {
-    var level = "D"
+    sout("elif: FAIL-D")
 }
 
 // 嵌套 if
 if x > 0 {
     if x > 5 {
-        var nested = "big"
+        sout("nested: pass-big")
     } else {
-        var nested = "small"
+        sout("nested: FAIL-small")
     }
 }
