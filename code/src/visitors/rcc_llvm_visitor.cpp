@@ -783,7 +783,7 @@ namespace ast
             {
                 if (parenRanger->getRangerNode())
                 {
-                    auto* ranger = parenRanger->getRangerNode();
+                    auto& ranger = parenRanger->getRangerNode();
                     if (ranger->getRealType() == NodeType::PARALLEL)
                     {
                         // 逗号分隔的多参数：递归遍历 PARALLEL 节点
