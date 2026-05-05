@@ -1,0 +1,37 @@
+>> run.bat -i "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous" --skip-cmake
+========================================
+RCC Build Script
+========================================
+Test directory: "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"
+Input file:     "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\test.rio
+LLVM IR file:   "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\test.ll
+Object file:    "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\test.obj
+Output exe:     "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\test.exe
+Actual output:  "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\actual.txt
+Run after build: true
+Skip CMake build: true
+========================================
+
+[0/5] Skipping CMake build (--skip-cmake specified
+
+[1/5] Generating LLVM IR from "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\test.rio...
+LLVM IR generation succeeded!
+Output is saved to: D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous\test.ll
+SUCCESS: LLVM IR generated to "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\test.ll
+
+[2/5] Generating object file from "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\test.ll...
+SUCCESS: Object file generated to "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\test.obj
+
+[3/5] Linking to generate executable...
+SUCCESS: Executable generated to "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\test.exe
+
+[4/5] Running executable...
+========================================
+========================================
+
+Output saved to "D:\ClionProjects\RCC\scripts\..\tests\test_7_anonymous"\actual.txt
+Execution completed
+
+========================================
+Build completed successfully
+========================================

@@ -1,0 +1,26 @@
+>> run.bat -i "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections" --skip-cmake
+========================================
+RCC Build Script
+========================================
+Test directory: "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"
+Input file:     "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.rio
+LLVM IR file:   "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.ll
+Object file:    "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.obj
+Output exe:     "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.exe
+Actual output:  "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\actual.txt
+Run after build: true
+Skip CMake build: true
+========================================
+
+[0/5] Skipping CMake build (--skip-cmake specified
+
+[1/5] Generating LLVM IR from "D:\ClionProjects\RCC\scripts\..\tests\test_8_collections"\test.rio...
+
+====================[ ParserError ]============================================================
+    [ Pos  ] : D:\ClionProjects\RCC\scripts\..\tests\test_8_collections\test.rio:5:5, line 5, column 5
+
+    [ Info ] : This error occurred because an unexpected token appeared, causing the analyzer to fail to recognize it correctly.
+             - Unexpected token: [<TOKEN_LABEL> "list" (test.rio:5:5)]
+             - Expected token type: TOKEN_IDENTIFIER
+
+ERROR: LLVM IR generation failed
