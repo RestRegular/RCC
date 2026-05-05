@@ -1242,7 +1242,7 @@ namespace ast
         }
 
         // 如果当前基本块没有终止指令，添加 return null
-        if (getCurrentBlock() && !getCurrentBlock()->getTerminator())
+        if (getCurrentBlock() && !getCurrentBlock()->hasTerminator())
         {
             Builder->CreateRet(llvm::ConstantPointerNull::get(getValueType()));
         }
@@ -1295,7 +1295,7 @@ namespace ast
         {
             node.getBodyNode()->acceptVisitor(*this);
         }
-        if (!getCurrentBlock()->getTerminator())
+        if (!getCurrentBlock()->hasTerminator())
         {
             Builder->CreateBr(mergeBB);
         }
@@ -1357,7 +1357,7 @@ namespace ast
                 {
                     branchNode->getBodyNode()->acceptVisitor(*this);
                 }
-                if (!getCurrentBlock()->getTerminator())
+                if (!getCurrentBlock()->hasTerminator())
                 {
                     Builder->CreateBr(mergeBB);
                 }
@@ -1372,7 +1372,7 @@ namespace ast
                 {
                     branchNode->getBodyNode()->acceptVisitor(*this);
                 }
-                if (!getCurrentBlock()->getTerminator())
+                if (!getCurrentBlock()->hasTerminator())
                 {
                     Builder->CreateBr(mergeBB);
                 }
@@ -1381,7 +1381,7 @@ namespace ast
         }
 
         // 如果当前块没有终止指令，跳到 merge
-        if (!getCurrentBlock()->getTerminator())
+        if (!getCurrentBlock()->hasTerminator())
         {
             Builder->CreateBr(mergeBB);
         }
@@ -1441,7 +1441,7 @@ namespace ast
         }
 
         // 循环体结束后跳回条件判断
-        if (!getCurrentBlock()->getTerminator())
+        if (!getCurrentBlock()->hasTerminator())
         {
             Builder->CreateBr(condBB);
         }
@@ -1508,7 +1508,7 @@ namespace ast
         {
             node.getBodyNode()->acceptVisitor(*this);
         }
-        if (!getCurrentBlock()->getTerminator())
+        if (!getCurrentBlock()->hasTerminator())
         {
             Builder->CreateBr(updateBB);
         }
@@ -1519,7 +1519,7 @@ namespace ast
         {
             node.getUpdateNode()->acceptVisitor(*this);
         }
-        if (!getCurrentBlock()->getTerminator())
+        if (!getCurrentBlock()->hasTerminator())
         {
             Builder->CreateBr(condBB);
         }
@@ -1692,7 +1692,7 @@ namespace ast
         }
 
         // 如果当前基本块没有终止指令，添加 return null
-        if (getCurrentBlock() && !getCurrentBlock()->getTerminator())
+        if (getCurrentBlock() && !getCurrentBlock()->hasTerminator())
         {
             Builder->CreateRet(llvm::ConstantPointerNull::get(getValueType()));
         }
@@ -1955,7 +1955,7 @@ namespace ast
         }
 
         // 检查 try 块是否有终止指令（如 return/break）
-        if (!getCurrentBlock()->getTerminator())
+        if (!getCurrentBlock()->hasTerminator())
         {
             // 调用 __rcc_try_end 检查是否有异常
             Builder->CreateCall(tryEndFunc, {context}, "try.end.check");
@@ -1990,7 +1990,7 @@ namespace ast
             }
         }
 
-        if (!getCurrentBlock()->getTerminator())
+        if (!getCurrentBlock()->hasTerminator())
         {
             Builder->CreateBr(finallyBB);
         }
@@ -2004,7 +2004,7 @@ namespace ast
             node.getFinallyBody()->acceptVisitor(*this);
         }
 
-        if (!getCurrentBlock()->getTerminator())
+        if (!getCurrentBlock()->hasTerminator())
         {
             Builder->CreateBr(endBB);
         }
