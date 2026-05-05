@@ -1,0 +1,38 @@
+// ============================================================================
+// 测试 4: 条件语句 (if-elif-else)
+// 验证: if 单分支、if-else、if-elif-else、嵌套 if
+// ============================================================================
+var x = 10
+
+// if 单分支
+if x > 5 {
+    var a = 1
+}
+
+// if-else
+if x > 20 {
+    var b = 2
+} else {
+    var b = 3
+}
+
+// if-elif-else
+var grade = 85
+if grade >= 90 {
+    var level = "A"
+} elif grade >= 80 {
+    var level = "B"
+} elif grade >= 70 {
+    var level = "C"
+} else {
+    var level = "D"
+}
+
+// 嵌套 if
+if x > 0 {
+    if x > 5 {
+        var nested = "big"
+    } else {
+        var nested = "small"
+    }
+}

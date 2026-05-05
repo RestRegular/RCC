@@ -1,0 +1,35 @@
+// ============================================================================
+// 测试 5: 循环 (while, until, for)
+// 验证: while 循环、until 循环、for 循环、break
+// ============================================================================
+
+// while 循环
+var i = 0
+var sum = 0
+while i < 10 {
+    sum += i
+    i += 1
+}
+
+// until 循环
+var j = 0
+var count = 0
+until j >= 5 {
+    count += 1
+    j += 1
+}
+
+// for 循环
+var total = 0
+for k in 0..10 {
+    total += k
+}
+
+// break
+var n = 0
+while true {
+    if n >= 3 {
+        break
+    }
+    n += 1
+}

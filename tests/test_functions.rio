@@ -1,0 +1,32 @@
+// ============================================================================
+// 测试 6: 函数定义和调用
+// 验证: 无参函数、有参函数、多参函数、递归、return
+// ============================================================================
+
+// 无参函数
+fun greet(): void {
+    var msg = "hello"
+}
+
+// 有参函数
+fun add(a, b) {
+    ret a + b
+}
+
+// 多参函数
+fun multiArg(x, y, z) {
+    ret x * y + z
+}
+
+// 递归函数 (阶乘)
+fun factorial(n) {
+    if n <= 1 {
+        ret 1
+    }
+    ret n * factorial(n - 1)
+}
+
+// 调用
+var result1 = add(3, 5)
+var result2 = multiArg(2, 3, 4)
+var result3 = factorial(5)

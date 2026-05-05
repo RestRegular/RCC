@@ -1,0 +1,27 @@
+// ============================================================================
+// 测试 12: try-catch-finally
+// 验证: try-catch、try-finally、try-catch-finally
+// ============================================================================
+
+// try-catch
+try {
+    var a = 10
+} catch(e) {
+    var b = 20
+}
+
+// try-finally
+try {
+    var c = 30
+} finally {
+    var d = 40
+}
+
+// try-catch-finally
+try {
+    var e = 50
+} catch(err) {
+    var f = 60
+} finally {
+    var g = 70
+}

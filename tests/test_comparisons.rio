@@ -1,0 +1,21 @@
+// ============================================================================
+// 测试 3: 比较和逻辑运算
+// 验证: ==, !=, <, <=, >, >=, &&, ||, !
+// ============================================================================
+var a = 10
+var b = 20
+
+var eq = a == b
+var ne = a != b
+var lt = a < b
+var le = a <= b
+var gt = a > b
+var ge = a >= b
+
+var andResult = a < b && b > 15
+var orResult = a > b || b > 15
+var notResult = !true
+
+// 短路求值
+var shortCircuit = false && true
+var shortCircuit2 = true || false
