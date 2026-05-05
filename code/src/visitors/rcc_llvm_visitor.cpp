@@ -1265,6 +1265,17 @@ namespace ast
         llvm::Value* leftVal = popValue();
         auto* leftBool = coerceToBool(leftVal);
 
+        // 在分支前创建短路值（必须在 condBB 中，以满足 dominance）
+        llvm::Value* shortCircuitVal = nullptr;
+        if (op == "&&")
+        {
+            shortCircuitVal = createTaggedBool(false);
+        }
+        else
+        {
+            shortCircuitVal = createTaggedBool(true);
+        }
+
         if (op == "&&")
         {
             // 对于 &&，如果左边为 false，跳过右边
@@ -1287,18 +1298,8 @@ namespace ast
 
         // 使用 phi 节点合并结果
         auto* phi = Builder->CreatePHI(getValueType(), 2, "logical.phi");
-        if (op == "&&")
-        {
-            // &&: 左 false -> Tagged Bool(false), 右 -> rightVal
-            phi->addIncoming(createTaggedBool(false), condBB);
-            phi->addIncoming(rightVal, evalRightBB);
-        }
-        else
-        {
-            // ||: 左 true -> Tagged Bool(true), 右 -> rightVal
-            phi->addIncoming(createTaggedBool(true), condBB);
-            phi->addIncoming(rightVal, evalRightBB);
-        }
+        phi->addIncoming(shortCircuitVal, condBB);
+        phi->addIncoming(rightVal, evalRightBB);
 
         pushValue(phi);
     }
