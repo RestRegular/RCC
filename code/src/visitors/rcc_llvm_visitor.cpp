@@ -1222,8 +1222,16 @@ namespace ast
 
         if (result)
         {
-            // 将运算结果包装为 Tagged Int
-            auto* resultPtr = createTaggedValue(TAG_INT, Builder->CreateIntToPtr(result, getValueType(), "int.ptr"));
+            // 比较运算返回 Tagged Bool，其他运算返回 Tagged Int
+            i64 resultTag = TAG_INT;
+            if (infixType == NodeType::EQUALITY || infixType == NodeType::NOT_EQUAL ||
+                infixType == NodeType::LESS || infixType == NodeType::LESS_EQUAL ||
+                infixType == NodeType::GREATER || infixType == NodeType::GREATER_EQUAL ||
+                infixType == NodeType::COMPARE)
+            {
+                resultTag = TAG_BOOL;
+            }
+            auto* resultPtr = createTaggedValue(resultTag, Builder->CreateIntToPtr(result, getValueType(), "int.ptr"));
             pushValue(resultPtr);
         }
         else
@@ -2122,8 +2130,8 @@ namespace ast
         NamedValues = prevNamedValues;
         Builder->restoreIP(prevInsertPoint);
 
-        // 将函数指针作为值 push 到栈上
-        pushValue(func);
+        // 将函数指针作为 Tagged Function push 到栈上
+        pushValue(createTaggedValue(TAG_FUNCTION, func));
 
         LLVM_DEBUG("AnonFunctionDefinitionNode: " << funcName << " (" << paramNames.size() << " params) defined");
     }
@@ -2729,8 +2737,9 @@ namespace ast
                 // --- TAG_INT ---
                 Builder->SetInsertPoint(intBB);
                 {
+                    auto* intVal = Builder->CreatePtrToInt(payload, llvm::Type::getInt64Ty(*TheContext), "int.val");
                     auto* fmtStr = createGlobalStringPtr("%lld");
-                    Builder->CreateCall(printfFunc, {fmtStr, payload});
+                    Builder->CreateCall(printfFunc, {fmtStr, intVal});
                 }
                 Builder->CreateBr(mergeBB);
 

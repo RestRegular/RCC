@@ -2,7 +2,7 @@ fun sout(*args, end="\n"): void {
     encapsulated
 }
 
-var list = [10, 20, 30]
-sout(list[0])
-sout(list[1])
-sout(list[2])
+var arr = [10, 20, 30]
+sout(arr[0])
+sout(arr[1])
+sout(arr[2])
