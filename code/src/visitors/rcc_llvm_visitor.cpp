@@ -1224,7 +1224,7 @@ namespace ast
         Builder->SetInsertPoint(entryBB);
 
         // 为参数创建 alloca 并存储
-        unsigned idx = 0;
+        idx = 0;
         for (auto& arg : func->args())
         {
             if (idx < paramNames.size())
