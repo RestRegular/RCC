@@ -937,15 +937,32 @@ namespace ast
         }
         else
         {
-            // 未找到函数：声明为外部函数并调用
-            // 外部函数签名: ptr @funcName(ptr, ptr, ...)
-            std::vector<llvm::Type*> paramTypes(argValues.size(), getValueType());
-            auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
-            callee = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, funcName, TheModule.get());
+            // 尝试从变量中加载函数指针进行间接调用
+            auto* varVal = loadVariable(funcName);
+            if (varVal)
+            {
+                // varVal 是 Tagged Function，payload 是函数指针
+                auto* funcPtr = extractPayload(varVal);
 
-            auto* callInst = Builder->CreateCall(callee, argValues, "call." + funcName);
-            LLVM_DEBUG("FunctionCallNode: " << funcName << " (external, " << argValues.size() << " args)");
-            pushValue(callInst);
+                // 创建函数类型: ptr (ptr, ptr, ...)
+                std::vector<llvm::Type*> paramTypes(argValues.size(), getValueType());
+                auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
+
+                auto* callInst = Builder->CreateCall(funcType, funcPtr, argValues, "call.indirect." + funcName);
+                LLVM_DEBUG("FunctionCallNode: " << funcName << " (indirect, " << argValues.size() << " args)");
+                pushValue(callInst);
+            }
+            else
+            {
+                // 未找到函数也未找到变量：声明为外部函数并调用
+                std::vector<llvm::Type*> paramTypes(argValues.size(), getValueType());
+                auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
+                callee = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, funcName, TheModule.get());
+
+                auto* callInst = Builder->CreateCall(callee, argValues, "call." + funcName);
+                LLVM_DEBUG("FunctionCallNode: " << funcName << " (external, " << argValues.size() << " args)");
+                pushValue(callInst);
+            }
         }
     }
 
@@ -979,6 +996,12 @@ namespace ast
             // 清空值栈，避免语句间值泄漏
             while (!ValueStack.empty())
                 ValueStack.pop();
+        }
+
+        // 如果用户定义了 main 函数，在程序末尾调用它
+        if (auto mainIt = Functions.find("main"); mainIt != Functions.end() && mainIt->second && mainIt->second != mainFunc)
+        {
+            Builder->CreateCall(mainIt->second, {}, "call.user_main");
         }
 
         // 添加 return 0
@@ -1257,18 +1280,14 @@ namespace ast
         auto* phi = Builder->CreatePHI(getValueType(), 2, "logical.phi");
         if (op == "&&")
         {
-            // &&: 左 false -> inttoptr(0), 右 -> rightVal
-            phi->addIncoming(llvm::ConstantExpr::getIntToPtr(
-                                 llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0), getValueType()),
-                             condBB);
+            // &&: 左 false -> Tagged Bool(false), 右 -> rightVal
+            phi->addIncoming(createTaggedBool(false), condBB);
             phi->addIncoming(rightVal, evalRightBB);
         }
         else
         {
-            // ||: 左 true -> inttoptr(1), 右 -> rightVal
-            phi->addIncoming(llvm::ConstantExpr::getIntToPtr(
-                                 llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), getValueType()),
-                             condBB);
+            // ||: 左 true -> Tagged Bool(true), 右 -> rightVal
+            phi->addIncoming(createTaggedBool(true), condBB);
             phi->addIncoming(rightVal, evalRightBB);
         }
 
@@ -1318,12 +1337,22 @@ namespace ast
 
         if (result)
         {
-            auto* resultPtr = Builder->CreateIntToPtr(result, getValueType(), "unary.ptr");
-            pushValue(resultPtr);
+            if (op == "!")
+            {
+                // 逻辑非返回 Tagged Bool
+                auto* boolVal = Builder->CreateTrunc(result, llvm::Type::getInt1Ty(*TheContext), "not.trunc");
+                auto* boolInt = Builder->CreateZExt(boolVal, llvm::Type::getInt64Ty(*TheContext), "not.zext");
+                pushValue(createTaggedBool(boolInt->getSExtValue() != 0));
+            }
+            else
+            {
+                // 其他一元运算返回 Tagged Int
+                pushValue(createTaggedValue(TAG_INT, Builder->CreateIntToPtr(result, getValueType(), "unary.ptr")));
+            }
         }
         else
         {
-            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+            pushValue(createTaggedValueNull(TAG_NULL));
         }
     }
 
