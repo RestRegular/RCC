@@ -5,6 +5,9 @@ REM 设置默认路径变量
 set RCC_EXE=.\release\RCC.exe
 set LLC_EXE=D:\repositories\llvm-project\build\bin\llc.exe
 set GXX_EXE=g++.exe
+set CMAKE_EXE=D:\soft\Clion\CLion-2024.2.3\bin\cmake\win\x64\bin\cmake.exe
+set CMAKE_BUILD_DIR=D:\ClionProjects\RCC\cmake-build-debug
+set CMAKE_TARGET=RCC
 
 REM 默认输入输出文件
 set INPUT_RIO=.\tests\test_builtins.rio
@@ -12,6 +15,7 @@ set INPUT_LL=.\tests\irs\test.ll
 set INPUT_OBJ=.\tests\irs\test.obj
 set OUTPUT_EXE=.\tests\exes\test.exe
 set RUN_EXE=true
+set SKIP_CMAKE=false
 
 REM 显示帮助信息
 if "%1"=="/?" goto :help
@@ -44,6 +48,11 @@ if "%1"=="-ir-o" (
     shift
     goto :parse_args
 )
+if "%1"=="--skip-cmake" (
+    set SKIP_CMAKE=true
+    shift
+    goto :parse_args
+)
 echo Unknown option: %1
 goto :help
 
@@ -68,8 +77,44 @@ echo Output exe:   %OUTPUT_EXE%
 echo LLVM IR file: %INPUT_LL%
 echo Object file:  %INPUT_OBJ%
 echo Run after build: %RUN_EXE%
+echo Skip CMake build: %SKIP_CMAKE%
 echo ========================================
 echo.
+
+REM 步骤0: CMake 构建 RCC 编译器
+if "%SKIP_CMAKE%"=="false" (
+    echo [0/5] Building RCC compiler with CMake...
+    echo Build directory: %CMAKE_BUILD_DIR%
+    echo Target: %CMAKE_TARGET%
+    echo Using %CMAKE_NUM_JOBS% parallel jobs
+
+    if not exist "%CMAKE_BUILD_DIR%" (
+        echo WARNING: Build directory not found: %CMAKE_BUILD_DIR%
+        echo Please ensure CMake has been configured first
+        echo Run: cmake -B %CMAKE_BUILD_DIR% -G "Ninja" or similar
+        echo.
+        set /p continue="Continue anyway? (y/n): "
+        if /i not "!continue!"=="y" exit /b 1
+    )
+
+    %CMAKE_EXE% --build %CMAKE_BUILD_DIR% --target %CMAKE_TARGET% -j 10
+    if %errorlevel% neq 0 (
+        echo ERROR: CMake build failed!
+        exit /b %errorlevel%
+    )
+    echo SUCCESS: RCC compiler built successfully
+    echo.
+) else (
+    echo [0/5] Skipping CMake build (--skip-cmake specified)
+    echo.
+)
+
+REM 检查 RCC 编译器是否存在
+if not exist "%RCC_EXE%" (
+    echo ERROR: RCC compiler not found: %RCC_EXE%
+    echo Please build the compiler first or use --skip-cmake if already built
+    exit /b 1
+)
 
 REM 检查输入文件是否存在
 if not exist "%INPUT_RIO%" (
@@ -82,7 +127,7 @@ for %%i in ("%INPUT_LL%") do if not exist "%%~dpi" mkdir "%%~dpi"
 for %%i in ("%OUTPUT_EXE%") do if not exist "%%~dpi" mkdir "%%~dpi"
 
 REM 步骤1: 生成LLVM IR
-echo [1/4] Generating LLVM IR from %INPUT_RIO%...
+echo [1/5] Generating LLVM IR from %INPUT_RIO%...
 %RCC_EXE% -ir --p "%INPUT_RIO%" --ir-o "%INPUT_LL%"
 if %errorlevel% neq 0 (
     echo ERROR: LLVM IR generation failed!
@@ -92,7 +137,7 @@ echo SUCCESS: LLVM IR generated to %INPUT_LL%
 echo.
 
 REM 步骤2: 生成目标文件
-echo [2/4] Generating object file from %INPUT_LL%...
+echo [2/5] Generating object file from %INPUT_LL%...
 %LLC_EXE% -filetype=obj -O2 "%INPUT_LL%" -o "%INPUT_OBJ%"
 if %errorlevel% neq 0 (
     echo ERROR: Object file generation failed!
@@ -102,7 +147,7 @@ echo SUCCESS: Object file generated to %INPUT_OBJ%
 echo.
 
 REM 步骤3: 链接生成可执行文件
-echo [3/4] Linking to generate executable...
+echo [3/5] Linking to generate executable...
 %GXX_EXE% -O2 "%INPUT_OBJ%" -o "%OUTPUT_EXE%"
 if %errorlevel% neq 0 (
     echo ERROR: Linking failed!
@@ -113,18 +158,20 @@ echo.
 
 REM 步骤4: 运行可执行文件
 if "%RUN_EXE%"=="true" (
-    echo [4/4] Running executable...
+    echo [4/5] Running executable...
     echo ========================================
     "%OUTPUT_EXE%"
     echo ========================================
     echo.
     echo Execution completed!
 ) else (
-    echo [4/4] Skipping execution (--no-run specified)
+    echo [4/5] Skipping execution (--no-run specified)
 )
 
 echo.
+echo ========================================
 echo Build completed successfully!
+echo ========================================
 goto :eof
 
 :help
@@ -135,6 +182,7 @@ echo   -i ^<file^>        Input .rio file (default: .\tests\test_builtins.rio)
 echo   -o ^<file^>        Output executable file (default: auto-generated from input name)
 echo   -ir-o ^<file^>     Output LLVM IR file (default: auto-generated from input name)
 echo   --no-run           Skip running the executable after building
+echo   --skip-cmake       Skip CMake build step (use existing RCC.exe)
 echo   -h, --help, /?     Show this help message
 echo.
 echo Examples:
@@ -142,5 +190,6 @@ echo   %~nx0                                      Build with default settings
 echo   %~nx0 -i myfile.rio                        Build myfile.rio
 echo   %~nx0 -i myfile.rio -o myprogram.exe       Build with custom output name
 echo   %~nx0 -i myfile.rio --no-run               Build only, don't run
+echo   %~nx0 -i myfile.rio --skip-cmake           Skip rebuilding RCC compiler
 echo.
 goto :eof

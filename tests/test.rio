@@ -1,6 +1,11 @@
-fun sout(*args): void {
+fun sout(*args, end="\n"): void {
     encapsulated
 }
 
-sout("Hello world!")
+if true {
+    sout("Hello world! true")
+} else {
+    sout("Hello world! false")
+}
+
 sout("Hello world!")
