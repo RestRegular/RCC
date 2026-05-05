@@ -899,10 +899,7 @@ namespace ast
             // 外部函数签名: ptr @funcName(ptr, ptr, ...)
             std::vector<llvm::Type*> paramTypes(argValues.size(), getValueType());
             auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
-            auto linkage = ExportedSymbols.count(funcName)
-                ? llvm::Function::ExternalLinkage
-                : llvm::Function::PrivateLinkage;
-            callee = llvm::Function::Create(funcType, linkage, funcName, TheModule.get());
+            callee = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, funcName, TheModule.get());
 
             auto* callInst = Builder->CreateCall(callee, argValues, "call." + funcName);
             LLVM_DEBUG("FunctionCallNode: " << funcName << " (external, " << argValues.size() << " args)");
