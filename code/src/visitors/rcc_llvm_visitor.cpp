@@ -42,6 +42,7 @@ namespace ast
         Builder = std::make_unique<llvm::IRBuilder<>>(*TheContext);
 
         LLVM_DEBUG("Module initialized: " << ModuleName);
+        registerBuiltinIRGenerators();
     }
 
     // ============================================================================
@@ -492,7 +493,128 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitConstructorDefinitionNode(ConstructorDefinitionNode& node)
     {
-        logUnimplemented("ConstructorDefinitionNode");
+        if (CurrentClassName.empty())
+        {
+            LLVM_DEBUG("ConstructorDefinitionNode: not inside a class");
+            return;
+        }
+
+        LLVM_DEBUG("ConstructorDefinitionNode: " << CurrentClassName);
+
+        // 收集参数名
+        std::vector<std::string> paramNames;
+        if (node.getParamNode())
+        {
+            if (auto* parenRanger = dynamic_cast<ParenRangerNode*>(node.getParamNode().get()))
+            {
+                if (parenRanger->getRangerNode())
+                {
+                    if (parenRanger->getRangerNode()->getRealType() == NodeType::PARALLEL)
+                    {
+                        std::function<void(const std::shared_ptr<ExpressionNode>&)> collectParams;
+                        collectParams = [&](const std::shared_ptr<ExpressionNode>& expr)
+                        {
+                            if (expr->getRealType() == NodeType::PARALLEL)
+                            {
+                                auto* p = static_cast<InfixExpressionNode*>(expr.get());
+                                collectParams(p->getLeftNode());
+                                collectParams(p->getRightNode());
+                            }
+                            else if (expr->getRealType() == NodeType::IDENTIFIER)
+                            {
+                                auto* id = static_cast<IdentifierNode*>(expr.get());
+                                paramNames.push_back(id->getName());
+                            }
+                        };
+                        collectParams(parenRanger->getRangerNode());
+                    }
+                    else if (parenRanger->getRangerNode()->getRealType() == NodeType::IDENTIFIER)
+                    {
+                        paramNames.push_back(static_cast<IdentifierNode*>(
+                            parenRanger->getRangerNode().get())->getName());
+                    }
+                }
+            }
+        }
+
+        // 构造函数名: className.__init__
+        std::string ctorName = CurrentClassName + ".__init__";
+
+        // 创建函数类型: ptr (ptr this, ptr, ptr, ...) -> ptr
+        std::vector<llvm::Type*> paramTypes(paramNames.size() + 1, getValueType());
+        auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
+        auto* func = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, ctorName, TheModule.get());
+
+        // 设置参数名
+        unsigned idx = 0;
+        func->getArg(idx)->setName("this");
+        idx++;
+        for (const auto& pname : paramNames)
+        {
+            if (idx < func->arg_size())
+            {
+                func->getArg(idx)->setName(pname);
+            }
+            idx++;
+        }
+
+        Functions[ctorName] = func;
+        if (!CurrentClassName.empty())
+        {
+            ClassMethodTables[CurrentClassName]["__init__"] = func;
+        }
+
+        // 保存上下文
+        auto* prevFunction = CurrentFunction;
+        auto prevNamedValues = NamedValues;
+        auto prevThisAlloca = ThisAlloca;
+        auto prevInsertPoint = Builder->saveIP();
+
+        CurrentFunction = func;
+        NamedValues.clear();
+
+        // 创建入口基本块
+        auto* entryBB = llvm::BasicBlock::Create(*TheContext, "entry", func);
+        Builder->SetInsertPoint(entryBB);
+
+        // this 参数 alloca
+        ThisAlloca = createEntryBlockAlloca(func, "this", getValueType());
+        Builder->CreateStore(&func->getArg(0), ThisAlloca);
+        NamedValues["this"] = ThisAlloca;
+
+        // 其他参数 alloca
+        idx = 1;
+        for (const auto& pname : paramNames)
+        {
+            if (idx < func->arg_size())
+            {
+                auto* alloca = createEntryBlockAlloca(func, pname, getValueType());
+                Builder->CreateStore(&func->getArg(idx), alloca);
+                NamedValues[pname] = alloca;
+            }
+            idx++;
+        }
+
+        // 生成构造函数体
+        if (node.getBodyNode())
+        {
+            node.getBodyNode()->acceptVisitor(*this);
+        }
+
+        // 返回 this
+        if (getCurrentBlock() && !getCurrentBlock()->hasTerminator())
+        {
+            auto* thisVal = Builder->CreateLoad(getValueType(), ThisAlloca, "this.load");
+            Builder->CreateRet(thisVal);
+        }
+
+        // 恢复上下文
+        CurrentFunction = prevFunction;
+        NamedValues = prevNamedValues;
+        ThisAlloca = prevThisAlloca;
+        Builder->restoreIP(prevInsertPoint);
+
+        LLVM_DEBUG("ConstructorDefinitionNode: " << ctorName << " (" << paramNames.size() << " params) defined");
         pushValue(llvm::ConstantPointerNull::get(getValueType()));
     }
 
@@ -502,13 +624,92 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitClassDeclarationNode(ClassDeclarationNode& node)
     {
-        logUnimplemented("ClassDeclarationNode");
+        if (auto* ident = dynamic_cast<IdentifierNode*>(node.getNameNode().get()))
+        {
+            const std::string& className = ident->getName();
+            // 创建不透明 struct 类型（前向声明）
+            auto* structType = llvm::StructType::create(*TheContext, className);
+            ClassTypes[className] = structType;
+            LLVM_DEBUG("ClassDeclarationNode: " << className << " (forward declared)");
+        }
         pushValue(llvm::ConstantPointerNull::get(getValueType()));
     }
 
     void LLVMCodeGenVisitor::visitClassDefinitionNode(ClassDefinitionNode& node)
     {
-        logUnimplemented("ClassDefinitionNode");
+        // 获取类名
+        std::string className;
+        if (auto* ident = dynamic_cast<IdentifierNode*>(node.getNameNode().get()))
+        {
+            className = ident->getName();
+        }
+        if (className.empty())
+        {
+            LLVM_DEBUG("ClassDefinitionNode: unable to determine class name");
+            return;
+        }
+
+        LLVM_DEBUG("ClassDefinitionNode: " << className);
+
+        // 保存上下文
+        auto prevClassName = CurrentClassName;
+        auto prevThisAlloca = ThisAlloca;
+        CurrentClassName = className;
+        ThisAlloca = nullptr;
+
+        // 收集类成员
+        std::vector<std::string> memberNames;
+        std::vector<std::shared_ptr<ExpressionNode>> methodNodes;
+
+        if (auto* body = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get()))
+        {
+            for (const auto& expr : body->getBodyExpressions())
+            {
+                if (expr->getRealType() == NodeType::VAR)
+                {
+                    // 成员变量
+                    if (auto* varDef = dynamic_cast<VariableDefinitionNode*>(expr.get()))
+                    {
+                        for (const auto& var : varDef->getVarDefs())
+                        {
+                            memberNames.push_back(var->getNameNode()->getName());
+                        }
+                    }
+                }
+                else if (expr->getRealType() == NodeType::FUNCTION_DEF ||
+                         expr->getRealType() == NodeType::ANNO_FUNC_DEF)
+                {
+                    // 方法
+                    methodNodes.push_back(expr);
+                }
+                else if (expr->getRealType() == NodeType::CONSTRUCTOR)
+                {
+                    // 构造函数
+                    methodNodes.push_back(expr);
+                }
+            }
+        }
+
+        // 创建 LLVM StructType（所有字段为 ptr）
+        std::vector<llvm::Type*> fieldTypes(memberNames.size(), getValueType());
+        auto* structType = llvm::StructType::create(*TheContext, fieldTypes, className);
+        ClassTypes[className] = structType;
+
+        // 初始化方法表
+        ClassMethodTables[className] = {};
+
+        LLVM_DEBUG("  " << memberNames.size() << " members, " << methodNodes.size() << " methods");
+
+        // 编译方法
+        for (const auto& methodNode : methodNodes)
+        {
+            methodNode->acceptVisitor(*this);
+        }
+
+        // 恢复上下文
+        CurrentClassName = prevClassName;
+        ThisAlloca = prevThisAlloca;
+
         pushValue(llvm::ConstantPointerNull::get(getValueType()));
     }
 
@@ -525,10 +726,43 @@ namespace ast
 
         // 获取函数名
         std::string funcName;
+        llvm::Value* receiverValue = nullptr; // 方法调用的接收者（this）
+
         if (callTarget->getRealType() == NodeType::IDENTIFIER)
         {
             auto* ident = static_cast<IdentifierNode*>(callTarget.get());
             funcName = ident->getName();
+        }
+        else if (callTarget->getRealType() == NodeType::FUNC_CALL)
+        {
+            // 方法调用: obj.method(args)
+            // callTarget 是一个 FunctionCallNode: leftNode=obj, rightNode=method名
+            auto* methodCall = static_cast<FunctionCallNode*>(callTarget.get());
+            if (methodCall->getLeftNode()->getRealType() == NodeType::IDENTIFIER)
+            {
+                // 获取接收者对象
+                auto* objIdent = static_cast<IdentifierNode*>(methodCall->getLeftNode().get());
+                receiverValue = loadVariable(objIdent->getName());
+                if (!receiverValue)
+                {
+                    // 尝试从函数表查找（对象可能是函数引用）
+                    auto funcIt = Functions.find(objIdent->getName());
+                    if (funcIt != Functions.end())
+                    {
+                        receiverValue = funcIt->second;
+                    }
+                }
+                if (!receiverValue)
+                {
+                    receiverValue = llvm::ConstantPointerNull::get(getValueType());
+                }
+
+                // 获取方法名
+                if (methodCall->getRightNode()->getRealType() == NodeType::IDENTIFIER)
+                {
+                    funcName = static_cast<IdentifierNode*>(methodCall->getRightNode().get())->getName();
+                }
+            }
         }
 
         // 收集参数值
@@ -566,6 +800,19 @@ namespace ast
             }
         }
 
+        // 尝试内置函数 IR 生成器
+        if (tryEmitBuiltinIR(funcName, argValues))
+        {
+            LLVM_DEBUG("FunctionCallNode: " << funcName << " (builtin IR generated)");
+            return;
+        }
+
+        // 方法调用：将 receiver 作为第一个参数
+        if (receiverValue)
+        {
+            argValues.insert(argValues.begin(), receiverValue);
+        }
+
         // 查找已定义的函数
         auto* callee = TheModule->getFunction(funcName);
         if (!callee)
@@ -591,7 +838,10 @@ namespace ast
             // 外部函数签名: ptr @funcName(ptr, ptr, ...)
             std::vector<llvm::Type*> paramTypes(argValues.size(), getValueType());
             auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
-            callee = getOrCreateExternalFunc(funcName, funcType);
+            auto linkage = ExportedSymbols.count(funcName)
+                ? llvm::Function::ExternalLinkage
+                : llvm::Function::PrivateLinkage;
+            callee = llvm::Function::Create(funcType, linkage, funcName, TheModule.get());
 
             auto* callInst = Builder->CreateCall(callee, argValues, "call." + funcName);
             LLVM_DEBUG("FunctionCallNode: " << funcName << " (external, " << argValues.size() << " args)");
@@ -1195,8 +1445,11 @@ namespace ast
         std::vector<llvm::Type*> paramTypes(paramNames.size(), getValueType());
         auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
 
-        // 创建函数
-        auto* func = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, funcName, TheModule.get());
+        // 创建函数（导出的函数使用 ExternalLinkage，否则 PrivateLinkage）
+        auto linkage = ExportedSymbols.count(funcName)
+            ? llvm::Function::ExternalLinkage
+            : llvm::Function::PrivateLinkage;
+        auto* func = llvm::Function::Create(funcType, linkage, funcName, TheModule.get());
 
         // 设置参数名
         unsigned idx = 0;
@@ -1236,10 +1489,34 @@ namespace ast
             idx++;
         }
 
-        // 生成函数体
+        // 检查函数体是否为 encapsulated
+        CurrentFunctionIsEncapsulated = false;
         if (node.getBodyNode())
         {
-            node.getBodyNode()->acceptVisitor(*this);
+            auto* bodyBlock = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get());
+            if (bodyBlock && !bodyBlock->getBodyExpressions().empty())
+            {
+                // 检查最后一个表达式是否是 EncapsulatedExpressionNode
+                const auto& lastExpr = bodyBlock->getBodyExpressions().back();
+                if (lastExpr && lastExpr->getRealType() == NodeType::ENCAPSULATED)
+                {
+                    CurrentFunctionIsEncapsulated = true;
+                    LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
+
+                    // 注册为内置函数（如果函数体中有 encapsulated 关键字）
+                    // 不生成函数体，函数实现由内置 IR 生成器提供
+                    // 但仍然创建函数定义（空函数体）
+                }
+                else
+                {
+                    // 正常生成函数体
+                    node.getBodyNode()->acceptVisitor(*this);
+                }
+            }
+            else
+            {
+                node.getBodyNode()->acceptVisitor(*this);
+            }
         }
 
         // 如果当前基本块没有终止指令，添加 return null
@@ -1555,7 +1832,8 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitEncapsulatedExpressionNode(EncapsulatedExpressionNode& node)
     {
-        LLVM_DEBUG("EncapsulatedExpressionNode: implementation is encapsulated");
+        LLVM_DEBUG("EncapsulatedExpressionNode: marking current function as builtin");
+        CurrentFunctionIsEncapsulated = true;
         pushValue(llvm::ConstantPointerNull::get(getValueType()));
     }
 
@@ -2098,6 +2376,452 @@ namespace ast
 
         LLVM_DEBUG("=== Compilation succeeded ===");
         return true;
+    }
+
+    // ============================================================================
+    // 内置函数 IR 生成器
+    // ============================================================================
+
+    llvm::Function* LLVMCodeGenVisitor::getPrintfFunction()
+    {
+        auto* printfType = llvm::FunctionType::get(
+            llvm::Type::getInt32Ty(*TheContext),
+            {getValueType()},
+            /*isVarArg=*/true);
+        return getOrCreateExternalFunc("printf", printfType);
+    }
+
+    llvm::Function* LLVMCodeGenVisitor::getPutsFunction()
+    {
+        auto* putsType = llvm::FunctionType::get(
+            llvm::Type::getInt32Ty(*TheContext),
+            {getValueType()}, false);
+        return getOrCreateExternalFunc("puts", putsType);
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::createPrintfCall(
+        const std::string& format,
+        const std::vector<llvm::Value*>& args)
+    {
+        auto* printfFunc = getPrintfFunction();
+        auto* fmtStr = createGlobalStringPtr(format);
+
+        std::vector<llvm::Value*> callArgs;
+        callArgs.push_back(fmtStr);
+        callArgs.insert(callArgs.end(), args.begin(), args.end());
+
+        return Builder->CreateCall(printfFunc, callArgs, "printf");
+    }
+
+    void LLVMCodeGenVisitor::registerBuiltinIRGenerators()
+    {
+        // ==================== IO 函数 ====================
+
+        // sout(*args) - 标准输出
+        // 将所有参数转为字符串并输出，每个参数用空格分隔，最后换行
+        BuiltinIRGenerators["sout"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+
+            if (args.empty())
+            {
+                // sout() 无参数，仅输出换行
+                auto* putsFunc = getPutsFunction();
+                auto* newline = createGlobalStringPtr("\n");
+                Builder->CreateCall(putsFunc, {newline});
+            }
+            else
+            {
+                // sout(a, b, c) -> printf("%s %s %s\n", a, b, c)
+                std::string fmt;
+                for (size_t i = 0; i < args.size(); i++)
+                {
+                    if (i > 0) fmt += " ";
+                    fmt += "%s";  // 动态类型，统一用 %s 占位
+                }
+                fmt += "\n";
+
+                // 将 ptr 参数直接传递（运行时 %s 会将指针作为字符串处理）
+                std::vector<llvm::Value*> printfArgs;
+                for (auto* arg : args)
+                {
+                    printfArgs.push_back(arg);
+                }
+                createPrintfCall(fmt, printfArgs);
+            }
+
+            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        };
+
+        // sin() - 标准输入（简化版：返回空字符串）
+        BuiltinIRGenerators["sin"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName << " (simplified - returns empty string)");
+            // 简化实现：返回空字符串指针
+            pushValue(createGlobalStringPtr(""));
+        };
+
+        // ==================== 数据结构函数 ====================
+
+        // size(obj) - 获取大小
+        BuiltinIRGenerators["size"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            // 动态类型：调用运行时 __rcc_size
+            auto* sizeType = llvm::FunctionType::get(
+                llvm::Type::getInt64Ty(*TheContext),
+                {getValueType()}, false);
+            auto* sizeFunc = getOrCreateExternalFunc("__rcc_size", sizeType);
+
+            llvm::Value* arg = args.empty()
+                ? llvm::ConstantPointerNull::get(getValueType())
+                : args[0];
+            auto* result = Builder->CreateCall(sizeFunc, {arg}, "size");
+            auto* resultPtr = Builder->CreateIntToPtr(result, getValueType(), "size.ptr");
+            pushValue(resultPtr);
+        };
+
+        // copy(obj) - 浅拷贝
+        BuiltinIRGenerators["copy"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            auto* copyType = llvm::FunctionType::get(getValueType(), {getValueType()}, false);
+            auto* copyFunc = getOrCreateExternalFunc("__rcc_copy", copyType);
+
+            llvm::Value* arg = args.empty()
+                ? llvm::ConstantPointerNull::get(getValueType())
+                : args[0];
+            auto* result = Builder->CreateCall(copyFunc, {arg}, "copy");
+            pushValue(result);
+        };
+
+        // listAppend(list, elem) - 列表追加
+        BuiltinIRGenerators["listAppend"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            auto* appendType = llvm::FunctionType::get(
+                getVoidType(),
+                {getValueType(), getValueType()}, false);
+            auto* appendFunc = getOrCreateExternalFunc("__rcc_list_append", appendType);
+
+            llvm::Value* list = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
+            llvm::Value* elem = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
+            Builder->CreateCall(appendFunc, {list, elem});
+            pushValue(list);
+        };
+
+        // listRemove(list, index) - 列表删除
+        BuiltinIRGenerators["listRemove"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            auto* removeType = llvm::FunctionType::get(
+                getVoidType(),
+                {getValueType(), getValueType()}, false);
+            auto* removeFunc = getOrCreateExternalFunc("__rcc_list_remove", removeType);
+
+            llvm::Value* list = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
+            llvm::Value* idx = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
+            Builder->CreateCall(removeFunc, {list, idx});
+            pushValue(list);
+        };
+
+        // dictRemove(dict, key) - 字典删除
+        BuiltinIRGenerators["dictRemove"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            auto* removeType = llvm::FunctionType::get(
+                getVoidType(),
+                {getValueType(), getValueType()}, false);
+            auto* removeFunc = getOrCreateExternalFunc("__rcc_dict_remove", removeType);
+
+            llvm::Value* dict = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
+            llvm::Value* key = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
+            Builder->CreateCall(removeFunc, {dict, key});
+            pushValue(dict);
+        };
+
+        // dictKeys(dict) - 获取字典所有键
+        BuiltinIRGenerators["dictKeys"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            auto* keysType = llvm::FunctionType::get(getValueType(), {getValueType()}, false);
+            auto* keysFunc = getOrCreateExternalFunc("__rcc_dict_keys", keysType);
+
+            llvm::Value* dict = args.empty()
+                ? llvm::ConstantPointerNull::get(getValueType())
+                : args[0];
+            auto* result = Builder->CreateCall(keysFunc, {dict}, "dict.keys");
+            pushValue(result);
+        };
+
+        // dictValues(dict) - 获取字典所有值
+        BuiltinIRGenerators["dictValues"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            auto* valsType = llvm::FunctionType::get(getValueType(), {getValueType()}, false);
+            auto* valsFunc = getOrCreateExternalFunc("__rcc_dict_values", valsType);
+
+            llvm::Value* dict = args.empty()
+                ? llvm::ConstantPointerNull::get(getValueType())
+                : args[0];
+            auto* result = Builder->CreateCall(valsFunc, {dict}, "dict.values");
+            pushValue(result);
+        };
+
+        // ==================== 数据类型函数 ====================
+
+        // type(obj) - 获取类型名
+        BuiltinIRGenerators["type"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            auto* typeFuncType = llvm::FunctionType::get(getValueType(), {getValueType()}, false);
+            auto* typeFunc = getOrCreateExternalFunc("__rcc_type", typeFuncType);
+
+            llvm::Value* arg = args.empty()
+                ? llvm::ConstantPointerNull::get(getValueType())
+                : args[0];
+            auto* result = Builder->CreateCall(typeFunc, {arg}, "type");
+            pushValue(result);
+        };
+
+        // checkType(obj, typeName) - 类型检查
+        BuiltinIRGenerators["checkType"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            auto* checkType = llvm::FunctionType::get(
+                llvm::Type::getInt1Ty(*TheContext),
+                {getValueType(), getValueType()}, false);
+            auto* checkFunc = getOrCreateExternalFunc("__rcc_check_type", checkType);
+
+            llvm::Value* obj = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
+            llvm::Value* typeName = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
+            auto* result = Builder->CreateCall(checkFunc, {obj, typeName}, "checktype");
+            auto* ext = Builder->CreateZExt(result, llvm::Type::getInt64Ty(*TheContext), "checktype.ext");
+            pushValue(Builder->CreateIntToPtr(ext, getValueType(), "checktype.ptr"));
+        };
+
+        // ==================== 程序控制函数 ====================
+
+        // entry(func) - 程序入口
+        BuiltinIRGenerators["entry"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName << " (no-op in LLVM mode)");
+            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        };
+
+        // breakpoint() - 调试断点
+        BuiltinIRGenerators["breakpoint"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            // 调用 debugger trap
+            auto* trapType = llvm::FunctionType::get(getVoidType(), false);
+            auto* trapFunc = getOrCreateExternalFunc("llvm.debugtrap", trapType);
+            Builder->CreateCall(trapFunc, {});
+            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        };
+
+        // ==================== 底层函数 ====================
+
+        // id() - 获取标识符
+        BuiltinIRGenerators["id"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName << " (returns empty string in LLVM mode)");
+            pushValue(createGlobalStringPtr(""));
+        };
+
+        // rasm(code) - 内联汇编（LLVM 模式下不支持，返回 null）
+        BuiltinIRGenerators["rasm"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName << " (not supported in LLVM mode)");
+            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+        };
+
+        // repeat(count, func) - 重复执行
+        BuiltinIRGenerators["repeat"] = [this](
+            LLVMCodeGenVisitor& visitor,
+            const std::vector<llvm::Value*>& args,
+            const std::string& funcName)
+        {
+            LLVM_DEBUG("Builtin IR: " << funcName);
+            // repeat(count, handler) - 调用运行时实现
+            auto* repeatType = llvm::FunctionType::get(
+                getValueType(),
+                {getValueType(), getValueType()}, false);
+            auto* repeatFunc = getOrCreateExternalFunc("__rcc_repeat", repeatType);
+
+            llvm::Value* count = args.size() > 0 ? args[0] : llvm::ConstantPointerNull::get(getValueType());
+            llvm::Value* handler = args.size() > 1 ? args[1] : llvm::ConstantPointerNull::get(getValueType());
+            auto* result = Builder->CreateCall(repeatFunc, {count, handler}, "repeat");
+            pushValue(result);
+        };
+
+        // ==================== 模块化函数 ====================
+    
+    // export(*args) - 标记符号为导出
+    BuiltinIRGenerators["export"] = [this](
+        LLVMCodeGenVisitor& visitor,
+        const std::vector<llvm::Value*>& args,
+        const std::string& funcName)
+    {
+        LLVM_DEBUG("Builtin IR: " << funcName);
+        // export 在 LLVM 模式下通过 ExportedSymbols 集合标记
+        // 参数在编译期处理，此处仅记录
+        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+    };
+    
+    // import(path) - 导入模块
+    BuiltinIRGenerators["import"] = [this](
+        LLVMCodeGenVisitor& visitor,
+        const std::vector<llvm::Value*>& args,
+        const std::string& funcName)
+    {
+        LLVM_DEBUG("Builtin IR: " << funcName);
+        // import 在 LLVM 模式下通过 compileImportedModule 处理
+        // 此处仅返回 null（实际导入在编译期处理）
+        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+    };
+
+    LLVM_DEBUG("Registered " << BuiltinIRGenerators.size() << " builtin IR generators");
+    }
+
+    bool LLVMCodeGenVisitor::tryEmitBuiltinIR(
+        const std::string& funcName,
+        const std::vector<llvm::Value*>& args)
+    {
+        auto it = BuiltinIRGenerators.find(funcName);
+        if (it != BuiltinIRGenerators.end())
+        {
+            it->second(*this, args, funcName);
+            return true;
+        }
+        return false;
+    }
+
+    // ============================================================================
+    // 模块导入与合并
+    // ============================================================================
+
+    bool LLVMCodeGenVisitor::compileImportedModule(const std::string& importPath)
+    {
+        // 检查循环导入
+        if (ImportedModules.count(importPath))
+        {
+            LLVM_DEBUG("Import: skipping already imported: " << importPath);
+            return true;
+        }
+        ImportedModules.insert(importPath);
+
+        LLVM_DEBUG("Import: compiling " << importPath);
+
+        // 创建新的 LLVMCodeGenVisitor 编译导入的文件
+        LLVMCodeGenVisitor importVisitor(ModuleName + ".import");
+        importVisitor.enableDebug(DebugMode);
+
+        if (!importVisitor.compile(importPath))
+        {
+            LLVM_DEBUG("Import: failed to compile " << importPath);
+            return false;
+        }
+
+        // 合并导入模块的函数声明到当前模块
+        mergeModuleDeclarations(importVisitor.getModule());
+
+        LLVM_DEBUG("Import: successfully compiled " << importPath);
+        return true;
+    }
+
+    void LLVMCodeGenVisitor::mergeModuleDeclarations(llvm::Module* sourceModule)
+    {
+        if (!sourceModule) return;
+
+        // 遍历源模块的所有函数
+        for (auto& func : *sourceModule)
+        {
+            // 跳过已在当前模块中存在的函数
+            if (TheModule->getFunction(func.getName()))
+            {
+                continue;
+            }
+
+            // 创建函数声明（不复制函数体）
+            auto* decl = llvm::Function::Create(
+                llvm::cast<llvm::FunctionType>(func.getValueType()),
+                func.getLinkage(),
+                func.getName(),
+                TheModule.get());
+
+            // 复制参数属性
+            for (auto& arg : func.args())
+            {
+                auto* declArg = decl->getArg(arg.getArgNo());
+                declArg->setName(arg.getName());
+            }
+
+            LLVM_DEBUG("  merged declaration: " << func.getName());
+        }
+
+        // 遍历源模块的所有全局变量
+        for (auto& global : sourceModule->globals())
+        {
+            if (TheModule->getGlobalVariable(global.getName()))
+            {
+                continue;
+            }
+
+            auto* newGlobal = new llvm::GlobalVariable(
+                *TheModule,
+                global.getValueType(),
+                global.isConstant(),
+                global.getLinkage(),
+                global.getInitializer(),
+                global.getName());
+            newGlobal->setAlignment(global.getAlign());
+        }
     }
 
 } // namespace ast

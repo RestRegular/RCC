@@ -10,6 +10,8 @@
 #include <stack>
 #include <string>
 #include <vector>
+#include <functional>
+#include <unordered_set>
 
 // LLVM 头文件
 #include <llvm/IR/LLVMContext.h>
@@ -84,6 +86,38 @@ namespace ast {
         // 当前是否在循环中
         bool InLoop = false;
 
+        // ==================== 内置函数支持 ====================
+        // 内置函数 IR 生成器类型
+        using BuiltinIRGenerator = std::function<void(
+            LLVMCodeGenVisitor&,
+            const std::vector<llvm::Value*>& /* args */,
+            const std::string& /* funcName */)>;
+
+        // 内置函数注册表
+        std::map<std::string, BuiltinIRGenerator> BuiltinIRGenerators;
+
+        // 当前正在定义的函数是否为 encapsulated
+        bool CurrentFunctionIsEncapsulated = false;
+
+        // 导出的符号名集合
+        std::unordered_set<std::string> ExportedSymbols;
+
+        // 已导入的模块路径集合（防止循环导入）
+        std::unordered_set<std::string> ImportedModules;
+
+        // ==================== 类支持 ====================
+        // 类名 -> LLVM StructType
+        std::map<std::string, llvm::StructType*> ClassTypes;
+
+        // 类名 -> 方法表 (方法名 -> llvm::Function)
+        std::map<std::string, std::map<std::string, llvm::Function*>> ClassMethodTables;
+
+        // 当前正在编译的类名
+        std::string CurrentClassName;
+
+        // this 指针的 alloca
+        llvm::AllocaInst* ThisAlloca = nullptr;
+
         // ==================== 辅助方法 ====================
 
         /**
@@ -128,6 +162,46 @@ namespace ast {
          */
         void logUnimplemented(const std::string& nodeName);
 
+        /**
+         * 注册所有内置函数的 IR 生成器
+         */
+        void registerBuiltinIRGenerators();
+
+        /**
+         * 尝试调用内置函数 IR 生成器
+         * @return 是否成功调用
+         */
+        bool tryEmitBuiltinIR(const std::string& funcName,
+                               const std::vector<llvm::Value*>& args);
+
+        /**
+         * 获取或创建 LLVM printf 函数
+         */
+        llvm::Function* getPrintfFunction();
+
+        /**
+         * 获取或创建 LLVM puts 函数
+         */
+        llvm::Function* getPutsFunction();
+
+        /**
+         * 创建格式化字符串并调用 printf
+         */
+        llvm::Value* createPrintfCall(const std::string& format,
+                                        const std::vector<llvm::Value*>& args);
+
+        /**
+         * 编译导入的模块文件并合并到当前 Module
+         * @param importPath 导入路径
+         * @return 是否成功
+         */
+        bool compileImportedModule(const std::string& importPath);
+
+        /**
+         * 将另一个 Module 的函数声明合并到当前 Module
+         */
+        void mergeModuleDeclarations(llvm::Module* sourceModule);
+
     public:
         // ==================== 构造函数 ====================
         explicit LLVMCodeGenVisitor(const std::string& moduleName = "rcc_module");
@@ -141,6 +215,21 @@ namespace ast {
          * 获取生成的 LLVM Module
          */
         llvm::Module* getModule() const;
+
+        /**
+         * 获取当前 Module 的引用（用于模块合并）
+         */
+        llvm::Module& getModuleRef() const { return *TheModule; }
+
+        /**
+         * 获取导出符号集合
+         */
+        const std::unordered_set<std::string>& getExportedSymbols() const { return ExportedSymbols; }
+
+        /**
+         * 标记符号为已导出
+         */
+        void markExported(const std::string& name) { ExportedSymbols.insert(name); }
 
         /**
          * 打印 IR 到标准输出
