@@ -1,0 +1,6 @@
+fun sout(*args): void {
+    encapsulated
+}
+
+sout("Hello world!")
+sout("Hello world!")

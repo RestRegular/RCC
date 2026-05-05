@@ -16,7 +16,7 @@ namespace ast {
     using namespace base;
     using namespace core;
 
-    // Àà¶¨Òå
+    // ç±»å®šä¹‰
     class Node : public Object {
         Token mainToken;
         NodeType type;
@@ -177,6 +177,8 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
 
         [[nodiscard]] std::string literalString() const override;
+
+        [[nodiscard]] std::string unescapedString() const;
     };
 
     class NumberLiteralNode : public LiteralNode {

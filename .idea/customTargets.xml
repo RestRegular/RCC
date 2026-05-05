@@ -4,5 +4,14 @@
     <target id="b5874f55-5a63-4538-b958-995195387aa8" name="RVM" defaultType="TOOL">
       <configuration id="6334c8c5-48a4-450e-b450-9a1c4d5d2eff" name="RVM" />
     </target>
+    <target id="4ca77410-6312-4ef7-8c67-feba7767f28e" name="llvm" defaultType="TOOL">
+      <configuration id="2b494ca9-18e7-4e69-8945-1a5546c46092" name="llvm" />
+    </target>
+    <target id="d8c6bb49-6f5a-41ff-aa4d-9213bb316fe8" name="g++" defaultType="TOOL">
+      <configuration id="b2bf556f-9506-4145-a9e8-6f511fe5fc86" name="g++" />
+    </target>
+    <target id="1ca30105-7606-48de-9c49-37040b85e662" name="exe" defaultType="TOOL">
+      <configuration id="4cecd499-790c-4fe4-a4ee-d8c93ba6d475" name="exe" />
+    </target>
   </component>
 </project>

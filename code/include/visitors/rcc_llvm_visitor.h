@@ -196,17 +196,17 @@ namespace ast {
          */
         llvm::Function* getOrCreateExternalFunc(
             const std::string& name,
-            llvm::FunctionType* funcType);
+            llvm::FunctionType* funcType) const;
 
         /**
          * 创建 printf 调用（用于调试输出）
          */
-        llvm::Value* createDebugPrint(const std::string& message);
+        llvm::Value* createDebugPrint(const std::string& message) const;
 
         /**
          * 生成未实现节点的警告日志
          */
-        void logUnimplemented(const std::string& nodeName);
+        void logUnimplemented(const std::string& nodeName) const;
 
         /**
          * 注册所有内置函数的 IR 生成器
@@ -223,18 +223,18 @@ namespace ast {
         /**
          * 获取或创建 LLVM printf 函数
          */
-        llvm::Function* getPrintfFunction();
+        llvm::Function* getPrintfFunction() const;
 
         /**
          * 获取或创建 LLVM puts 函数
          */
-        llvm::Function* getPutsFunction();
+        llvm::Function* getPutsFunction() const;
 
         /**
          * 创建格式化字符串并调用 printf
          */
         llvm::Value* createPrintfCall(const std::string& format,
-                                        const std::vector<llvm::Value*>& args);
+                                        const std::vector<llvm::Value*>& args) const;
 
         /**
          * 编译导入的模块文件并合并到当前 Module
@@ -246,7 +246,7 @@ namespace ast {
         /**
          * 将另一个 Module 的函数声明合并到当前 Module
          */
-        void mergeModuleDeclarations(llvm::Module* sourceModule);
+        void mergeModuleDeclarations(llvm::Module* sourceModule) const;
 
     public:
         // ==================== 构造函数 ====================
@@ -309,7 +309,7 @@ namespace ast {
         /**
          * 将你的类型系统转换为 LLVM 类型
          */
-        llvm::Type* getLLVMType(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel);
+        llvm::Type* getLLVMType(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel) const;
 
         /**
          * 获取 LLVM 整数类型（指定位数）
@@ -329,7 +329,7 @@ namespace ast {
         /**
          * 在当前函数中创建变量分配
          */
-        llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* func,
+        static llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* func,
                                                   const std::string& varName,
                                                   llvm::Type* type);
 
@@ -343,7 +343,7 @@ namespace ast {
          */
         llvm::Value* loadVariable(const std::string& name);
 
-        void handleLogicalShortCircuit(InfixExpressionNode& node);
+        void handleLogicalShortCircuit(const InfixExpressionNode& node);
 
     // ==================== 节点访问方法 ====================
 

@@ -90,7 +90,7 @@ namespace ast
     // 类型系统
     // ============================================================================
 
-    llvm::Type* LLVMCodeGenVisitor::getLLVMType(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel)
+    llvm::Type* LLVMCodeGenVisitor::getLLVMType(const std::shared_ptr<symbol::TypeLabelSymbol>& typeLabel) const
     {
         // 动态类型语言：统一使用 opaque pointer
         return getValueType();
@@ -275,7 +275,7 @@ namespace ast
         return Builder->CreateICmpNE(tag, nullTag, "is_not_null");
     }
 
-    llvm::Function* LLVMCodeGenVisitor::getOrCreateExternalFunc(const std::string& name, llvm::FunctionType* funcType)
+    llvm::Function* LLVMCodeGenVisitor::getOrCreateExternalFunc(const std::string& name, llvm::FunctionType* funcType) const
     {
         auto* func = TheModule->getFunction(name);
         if (!func)
@@ -285,7 +285,7 @@ namespace ast
         return func;
     }
 
-    llvm::Value* LLVMCodeGenVisitor::createDebugPrint(const std::string& message)
+    llvm::Value* LLVMCodeGenVisitor::createDebugPrint(const std::string& message) const
     {
         // 声明 printf: i32 @printf(ptr, ...)
         auto* printfType =
@@ -296,7 +296,7 @@ namespace ast
         return Builder->CreateCall(printfFunc, {fmtStr}, "debug.print");
     }
 
-    void LLVMCodeGenVisitor::logUnimplemented(const std::string& nodeName)
+    void LLVMCodeGenVisitor::logUnimplemented(const std::string& nodeName) const
     {
         LLVM_DEBUG("UNIMPLEMENTED: visit" << nodeName);
     }
@@ -338,8 +338,8 @@ namespace ast
 
     void LLVMCodeGenVisitor::visitStringLiteralNode(StringLiteralNode& node)
     {
-        auto* strPtr = createGlobalStringPtr(node.literalString());
-        LLVM_DEBUG("StringLiteralNode: \"" << node.literalString() << "\"");
+        auto* strPtr = createGlobalStringPtr(node.unescapedString());
+        LLVM_DEBUG("StringLiteralNode: " << node.literalString() << "");
         pushValue(createTaggedString(strPtr));
     }
 
@@ -366,7 +366,7 @@ namespace ast
     void LLVMCodeGenVisitor::visitBooleanLiteralNode(BooleanLiteralNode& node)
     {
         LLVM_DEBUG("BooleanLiteralNode: " << node.literalString());
-        bool boolVal = (node.literalString() == "true");
+        const bool boolVal = node.literalString() == "true";
         pushValue(createTaggedBool(boolVal));
     }
 
@@ -393,8 +393,7 @@ namespace ast
     void LLVMCodeGenVisitor::visitIdentifierNode(IdentifierNode& node)
     {
         const std::string& name = node.getName();
-        auto* val = loadVariable(name);
-        if (val)
+        if (auto* val = loadVariable(name))
         {
             LLVM_DEBUG("IdentifierNode: " << name << " (loaded from alloca)");
             pushValue(val);
@@ -402,8 +401,7 @@ namespace ast
         else
         {
             // 尝试从函数表中查找
-            auto funcIt = Functions.find(name);
-            if (funcIt != Functions.end())
+            if (const auto funcIt = Functions.find(name); funcIt != Functions.end())
             {
                 LLVM_DEBUG("IdentifierNode: " << name << " (function reference)");
                 pushValue(funcIt->second);
@@ -448,8 +446,7 @@ namespace ast
             if (varDef->hasInitialValue() && varDef->getValueNode())
             {
                 varDef->getValueNode()->acceptVisitor(*this);
-                auto* initVal = popValue();
-                if (initVal)
+                if (auto* initVal = popValue())
                 {
                     Builder->CreateStore(initVal, alloca);
                     LLVM_DEBUG("  initialized with value");
@@ -853,8 +850,7 @@ namespace ast
             {
                 // 直接表达式参数
                 argsNode->acceptVisitor(*this);
-                auto* argVal = popValue();
-                if (argVal)
+                if (auto* argVal = popValue())
                 {
                     argValues.push_back(argVal);
                 }
@@ -1171,10 +1167,10 @@ namespace ast
     // 逻辑短路求值
     // ============================================================================
 
-    void LLVMCodeGenVisitor::handleLogicalShortCircuit(InfixExpressionNode& node)
+    void LLVMCodeGenVisitor::handleLogicalShortCircuit(const InfixExpressionNode& node)
     {
         const Token& opToken = node.getOpToken();
-        std::string op = opToken.getValue();
+        const std::string op = opToken.getValue();
 
         // 获取当前函数
         llvm::Function* func = Builder->GetInsertBlock()->getParent();
@@ -1416,8 +1412,7 @@ namespace ast
         for (const auto& expr : node.getBodyExpressions())
         {
             expr->acceptVisitor(*this);
-            auto* val = popValue();
-            if (val)
+            if (auto* val = popValue())
             {
                 lastValue = val;
             }
@@ -1508,7 +1503,7 @@ namespace ast
         auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
 
         // 创建函数（导出的函数使用 ExternalLinkage，否则 PrivateLinkage）
-        auto linkage = ExportedSymbols.count(funcName)
+        const auto linkage = ExportedSymbols.contains(funcName)
             ? llvm::Function::ExternalLinkage
             : llvm::Function::PrivateLinkage;
         auto* func = llvm::Function::Create(funcType, linkage, funcName, TheModule.get());
@@ -1555,12 +1550,12 @@ namespace ast
         CurrentFunctionIsEncapsulated = false;
         if (node.getBodyNode())
         {
-            auto* bodyBlock = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get());
-            if (bodyBlock && !bodyBlock->getBodyExpressions().empty())
+            if (const auto* bodyBlock = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get());
+                bodyBlock && !bodyBlock->getBodyExpressions().empty())
             {
                 // 检查最后一个表达式是否是 EncapsulatedExpressionNode
-                const auto& lastExpr = bodyBlock->getBodyExpressions().back();
-                if (lastExpr && lastExpr->getRealType() == NodeType::ENCAPSULATED)
+                if (const auto lastExpr = bodyBlock->getBodyExpressions().back();
+                    lastExpr && lastExpr->getRealType() == NodeType::ENCAPSULATED)
                 {
                     CurrentFunctionIsEncapsulated = true;
                     LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
@@ -1674,13 +1669,12 @@ namespace ast
         for (size_t i = 0; i < branches.size(); i++)
         {
             const auto& branch = branches[i];
-            auto* branchNode = static_cast<BranchNode*>(branch.get());
+            const auto* branchNode = static_cast<BranchNode*>(branch.get());
 
             // 获取条件节点
             // 第一个分支是 if，后续是 elif（条件非空）或 else（条件为空）
-            auto condExpr = branchNode->getConditionNode();
 
-            if (condExpr)
+            if (const auto condExpr = branchNode->getConditionNode())
             {
                 // 有条件：生成条件判断
                 condExpr->acceptVisitor(*this);
@@ -1960,9 +1954,8 @@ namespace ast
 
         // 从 getParamNode() 收集参数名（递归遍历 PARALLEL 节点）
         std::vector<std::string> paramNames;
-        const auto& paramNode = node.getParamNode();
 
-        if (paramNode)
+        if (const auto& paramNode = node.getParamNode())
         {
             // 递归收集 PARALLEL 节点中的标识符
             std::function<void(const std::shared_ptr<ExpressionNode>&)> collectParams;
@@ -2092,9 +2085,7 @@ namespace ast
         // 收集所有 key-value 对
         std::vector<llvm::Value*> dictArgs;
 
-        const auto& bodyNode = node.getBodyNode();
-
-        if (bodyNode)
+        if (const auto& bodyNode = node.getBodyNode())
         {
             // body 可能是 PARALLEL 节点包含多个 PairExpressionNode
             // 递归遍历 PARALLEL 节点收集所有 PairExpressionNode
@@ -2195,9 +2186,7 @@ namespace ast
         // 收集所有元素值
         std::vector<llvm::Value*> elemValues;
 
-        const auto& bodyNode = node.getBodyNode();
-
-        if (bodyNode)
+        if (const auto& bodyNode = node.getBodyNode())
         {
             // body 可能是 PARALLEL 节点（逗号分隔的列表）或单个表达式
             std::vector<std::shared_ptr<ExpressionNode>> elements;
@@ -2567,7 +2556,7 @@ namespace ast
     // 内置函数 IR 生成器
     // ============================================================================
 
-    llvm::Function* LLVMCodeGenVisitor::getPrintfFunction()
+    llvm::Function* LLVMCodeGenVisitor::getPrintfFunction() const
     {
         auto* printfType = llvm::FunctionType::get(
             llvm::Type::getInt32Ty(*TheContext),
@@ -2576,7 +2565,7 @@ namespace ast
         return getOrCreateExternalFunc("printf", printfType);
     }
 
-    llvm::Function* LLVMCodeGenVisitor::getPutsFunction()
+    llvm::Function* LLVMCodeGenVisitor::getPutsFunction() const
     {
         auto* putsType = llvm::FunctionType::get(
             llvm::Type::getInt32Ty(*TheContext),
@@ -2586,7 +2575,7 @@ namespace ast
 
     llvm::Value* LLVMCodeGenVisitor::createPrintfCall(
         const std::string& format,
-        const std::vector<llvm::Value*>& args)
+        const std::vector<llvm::Value*>& args) const
     {
         auto* printfFunc = getPrintfFunction();
         auto* fmtStr = createGlobalStringPtr(format);
@@ -2621,8 +2610,8 @@ namespace ast
             auto* putsFunc = getOrCreateExternalFunc("puts", putsType);
 
             // void* malloc(size_t size)
-            auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
-            auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
+            // auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
+            // auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
 
             // int printf(const char *format, ...)
             auto* printfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, /*isVarArg=*/true);
@@ -2667,7 +2656,7 @@ namespace ast
                 Builder->SetInsertPoint(intBB);
                 {
                     // payload 是 inttoptr 编码的整数，需要 ptrtoint 回来
-                    auto* intVal = Builder->CreatePtrToInt(payload, llvm::Type::getInt64Ty(*TheContext), "int.val");
+                    // auto* intVal = Builder->CreatePtrToInt(payload, llvm::Type::getInt64Ty(*TheContext), "int.val");
 
                     // 用 printf("%lld", intVal) 输出
                     auto* fmtStr = createGlobalStringPtr("%lld");
@@ -2924,7 +2913,7 @@ namespace ast
             auto* size = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), sizePtr, "size");
 
             auto* dataPtr = Builder->CreateStructGEP(listType, payload, 2, "list.data");
-            auto* data = Builder->CreateLoad(getValueType(), dataPtr, "data");
+            // auto* data = Builder->CreateLoad(getValueType(), dataPtr, "data");
 
             // 检查是否需要扩容
             auto* needGrow = Builder->CreateICmpUGE(size, capacity, "need.grow");
@@ -3400,7 +3389,7 @@ namespace ast
     bool LLVMCodeGenVisitor::compileImportedModule(const std::string& importPath)
     {
         // 检查循环导入
-        if (ImportedModules.count(importPath))
+        if (ImportedModules.contains(importPath))
         {
             LLVM_DEBUG("Import: skipping already imported: " << importPath);
             return true;
@@ -3426,7 +3415,7 @@ namespace ast
         return true;
     }
 
-    void LLVMCodeGenVisitor::mergeModuleDeclarations(llvm::Module* sourceModule)
+    void LLVMCodeGenVisitor::mergeModuleDeclarations(llvm::Module* sourceModule) const
     {
         if (!sourceModule) return;
 

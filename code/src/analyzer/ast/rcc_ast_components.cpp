@@ -515,6 +515,11 @@ namespace ast {
         return value;
     }
 
+    std::string StringLiteralNode::unescapedString() const
+    {
+        return utils::StringManager::parseStringFormat(value);
+    }
+
     [[maybe_unused]] NumberLiteralNode::NumberLiteralNode(const core::Token& token, NodeType type_)
     : LiteralNode(token, type_) {}
 

@@ -311,18 +311,18 @@ namespace symbol
 
     enum class LabelType: int  {
         UNKNOWN_TYPE_LABEL = 0,
-        TYPE_LABEL, // 数据类型标签
-        PERMISSION_LABEL, // 权限标签
-        LIFE_CYCLE_LABEL, // 生命周期标签
-        RESTRICTION_LABEL, // 限制标签
-        OBJECT_ORIENTED_LABEL, // 对象关系标签
+        TYPE_LABEL, // 鏁版嵁绫诲瀷鏍囩
+        PERMISSION_LABEL, // 鏉冮檺鏍囩
+        LIFE_CYCLE_LABEL, // 鐢熷懡鍛ㄦ湡鏍囩
+        RESTRICTION_LABEL, // 闄愬埗鏍囩
+        OBJECT_ORIENTED_LABEL, // 瀵硅薄鍏崇郴鏍囩
     };
 
     enum class LifeCycleLabel: int {
-        STATIC = 0,   // 对应 "static"
-        GLOBAL,       // 对应 "global"
-        ORDINARY,     // 对应 "ordinary"
-        INSTANCE,     // 对应 "instance"
+        STATIC = 0,   // 瀵瑰簲 "static"
+        GLOBAL,       // 瀵瑰簲 "global"
+        ORDINARY,     // 瀵瑰簲 "ordinary"
+        INSTANCE,     // 瀵瑰簲 "instance"
         COUNT
     };
 
