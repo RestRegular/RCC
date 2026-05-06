@@ -112,20 +112,20 @@ entry:
   store ptr %rcc.val.heap1, ptr %val.gep, align 8
   %val.gep11 = getelementptr inbounds i8, ptr %dict.values, i64 8
   store ptr %rcc.val.heap7, ptr %val.gep11, align 8
-  %dict = alloca %RCCDict, align 8
-  %2 = getelementptr inbounds nuw %RCCDict, ptr %dict, i32 0, i32 0
+  %dict.struct = call ptr @malloc(i64 32)
+  %2 = getelementptr inbounds nuw %RCCDict, ptr %dict.struct, i32 0, i32 0
   store i64 2, ptr %2, align 4
-  %3 = getelementptr inbounds nuw %RCCDict, ptr %dict, i32 0, i32 1
+  %3 = getelementptr inbounds nuw %RCCDict, ptr %dict.struct, i32 0, i32 1
   store i64 2, ptr %3, align 4
-  %4 = getelementptr inbounds nuw %RCCDict, ptr %dict, i32 0, i32 2
+  %4 = getelementptr inbounds nuw %RCCDict, ptr %dict.struct, i32 0, i32 2
   store ptr %dict.keys, ptr %4, align 8
-  %5 = getelementptr inbounds nuw %RCCDict, ptr %dict, i32 0, i32 3
+  %5 = getelementptr inbounds nuw %RCCDict, ptr %dict.struct, i32 0, i32 3
   store ptr %dict.values, ptr %5, align 8
   %rcc.val.heap12 = call ptr @malloc(i64 16)
   %tag.ptr13 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap12, i32 0, i32 0
   store i64 6, ptr %tag.ptr13, align 4
   %payload.ptr14 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap12, i32 0, i32 1
-  store ptr %dict, ptr %payload.ptr14, align 8
+  store ptr %dict.struct, ptr %payload.ptr14, align 8
   store ptr %rcc.val.heap12, ptr %dic, align 8
   %dic.load = load ptr, ptr %dic, align 8
   %rcc.val.heap15 = call ptr @malloc(i64 16)
@@ -451,20 +451,20 @@ sout.merge110:                                    ; preds = %sout.default109, %s
   store ptr %rcc.val.heap131, ptr %val.gep146, align 8
   %val.gep147 = getelementptr inbounds i8, ptr %dict.values141, i64 16
   store ptr %rcc.val.heap137, ptr %val.gep147, align 8
-  %dict148 = alloca %RCCDict.3, align 8
-  %20 = getelementptr inbounds nuw %RCCDict.3, ptr %dict148, i32 0, i32 0
+  %dict.struct148 = call ptr @malloc(i64 32)
+  %20 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct148, i32 0, i32 0
   store i64 3, ptr %20, align 4
-  %21 = getelementptr inbounds nuw %RCCDict.3, ptr %dict148, i32 0, i32 1
+  %21 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct148, i32 0, i32 1
   store i64 3, ptr %21, align 4
-  %22 = getelementptr inbounds nuw %RCCDict.3, ptr %dict148, i32 0, i32 2
+  %22 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct148, i32 0, i32 2
   store ptr %dict.keys140, ptr %22, align 8
-  %23 = getelementptr inbounds nuw %RCCDict.3, ptr %dict148, i32 0, i32 3
+  %23 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct148, i32 0, i32 3
   store ptr %dict.values141, ptr %23, align 8
   %rcc.val.heap149 = call ptr @malloc(i64 16)
   %tag.ptr150 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap149, i32 0, i32 0
   store i64 6, ptr %tag.ptr150, align 4
   %payload.ptr151 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap149, i32 0, i32 1
-  store ptr %dict148, ptr %payload.ptr151, align 8
+  store ptr %dict.struct148, ptr %payload.ptr151, align 8
   store ptr %rcc.val.heap149, ptr %dic2, align 8
   %dic2.load = load ptr, ptr %dic2, align 8
   %rcc.val.heap152 = call ptr @malloc(i64 16)
