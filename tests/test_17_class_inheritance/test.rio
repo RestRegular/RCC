@@ -22,3 +22,5 @@ fun main(): void {
     sout(d.val)
     sout(d.extra)
 }
+
+main()

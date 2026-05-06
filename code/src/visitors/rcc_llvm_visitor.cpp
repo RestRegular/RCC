@@ -1179,13 +1179,6 @@ namespace ast
                 ValueStack.pop();
         }
 
-        // 如果用户定义了 main 函数，在程序末尾调用它
-        // 用户 main 已被重命名为 __rio_main，通过 Functions["main"] 查找
-        if (auto mainIt = Functions.find("main"); mainIt != Functions.end() && mainIt->second && mainIt->second != mainFunc)
-        {
-            Builder->CreateCall(mainIt->second, {}, "call.user_main");
-        }
-
         // 添加 return 0
         Builder->CreateRet(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0));
 

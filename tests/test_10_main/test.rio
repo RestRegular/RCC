@@ -5,3 +5,5 @@ fun sout(*args, end="\n"): void {
 fun main() {
     sout("main entry: pass")
 }
+
+main()
