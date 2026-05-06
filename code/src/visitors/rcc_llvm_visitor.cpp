@@ -844,6 +844,12 @@ namespace ast
         {
             for (const auto& expr : body->getBodyExpressions())
             {
+                LLVM_DEBUG("  class body expr: type=" << static_cast<int>(expr->getRealType()) 
+                          << " isVarDef=" << (dynamic_cast<VariableDefinitionNode*>(expr.get()) != nullptr)
+                          << " isCtor=" << (dynamic_cast<ConstructorDefinitionNode*>(expr.get()) != nullptr)
+                          << " isFuncDef=" << (dynamic_cast<FunctionDefinitionNode*>(expr.get()) != nullptr)
+                          << " isAnonFunc=" << (dynamic_cast<AnonFunctionDefinitionNode*>(expr.get()) != nullptr));
+
                 if (expr->getRealType() == NodeType::VAR)
                 {
                     // 成员变量
