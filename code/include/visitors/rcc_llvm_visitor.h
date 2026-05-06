@@ -125,6 +125,9 @@ namespace ast {
         // 当前正在编译的类名
         std::string CurrentClassName;
 
+        // 变量名 -> 类名（用于属性访问时确定对象类型）
+        std::map<std::string, std::string> VariableClassTypes;
+
         // this 指针的 alloca
         llvm::AllocaInst* ThisAlloca = nullptr;
 

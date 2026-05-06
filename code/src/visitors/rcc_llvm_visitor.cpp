@@ -1215,12 +1215,55 @@ namespace ast
             auto* objPayload = extractPayload(objVal);
 
             // 确定类名
-            std::string className = CurrentClassName;
+            std::string className;
+            
+            // 1. 如果在类内部访问 this.field，使用 CurrentClassName
             if (auto* ident = dynamic_cast<IdentifierNode*>(node.getLeftNode().get()))
             {
                 if (ident->getName() == "this" && !CurrentClassName.empty())
                 {
                     className = CurrentClassName;
+                }
+                else
+                {
+                    // 2. 尝试从变量名推断类名（变量名通常是小写的类名）
+                    // 例如变量 p 可能对应类 Point
+                    std::string varName = ident->getName();
+                    // 尝试直接匹配（类名可能和变量名相同）
+                    if (ClassTypes.count(varName))
+                    {
+                        className = varName;
+                    }
+                    else
+                    {
+                        // 3. 尝试首字母大写的类名
+                        if (!varName.empty())
+                        {
+                            std::string capitalized = varName;
+                            capitalized[0] = std::toupper(capitalized[0]);
+                            if (ClassTypes.count(capitalized))
+                            {
+                                className = capitalized;
+                            }
+                        }
+                    }
+                    
+                    // 4. 如果还是找不到，遍历所有类查找包含该字段的类
+                    if (className.empty())
+                    {
+                        for (const auto& [clsName, fieldNames] : ClassFieldNames)
+                        {
+                            for (const auto& f : fieldNames)
+                            {
+                                if (f == attrName)
+                                {
+                                    className = clsName;
+                                    break;
+                                }
+                            }
+                            if (!className.empty()) break;
+                        }
+                    }
                 }
             }
 
