@@ -183,19 +183,22 @@ namespace ast
 
     llvm::Value* LLVMCodeGenVisitor::createTaggedValue(int64_t typeTag, llvm::Value* payload)
     {
-        // alloca RCCValue
-        auto* alloca = Builder->CreateAlloca(getRCCValueType(), nullptr, "rcc.val");
+        // 使用 malloc 分配 RCCValue（堆内存，生命周期不受函数返回影响）
+        auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
+        auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
+        auto* sizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 16); // i64 + ptr = 16 bytes
+        auto* mem = Builder->CreateCall(mallocFunc, {sizeVal}, "rcc.val.heap");
 
         // store type_tag
-        auto* tagPtr = Builder->CreateStructGEP(getRCCValueType(), alloca, 0, "tag.ptr");
+        auto* tagPtr = Builder->CreateStructGEP(getRCCValueType(), mem, 0, "tag.ptr");
         Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), typeTag), tagPtr);
 
         // store payload
-        auto* payloadPtr = Builder->CreateStructGEP(getRCCValueType(), alloca, 1, "payload.ptr");
+        auto* payloadPtr = Builder->CreateStructGEP(getRCCValueType(), mem, 1, "payload.ptr");
         Builder->CreateStore(payload ? payload : llvm::ConstantPointerNull::get(getValueType()), payloadPtr);
 
-        // 返回指向 RCCValue 的指针
-        return alloca;
+        // 返回指向 RCCValue 的指针（堆内存）
+        return mem;
     }
 
     llvm::Value* LLVMCodeGenVisitor::createTaggedValueNull(int64_t typeTag)
