@@ -2339,7 +2339,8 @@ namespace ast
             {
                 if (pairExpr->getRealType() == NodeType::PAIR)
                 {
-                    auto* pair = static_cast<PairExpressionNode*>(pairExpr.get());
+                    // PAIR 类型实际上是 InfixExpressionNode（冒号运算符）
+                    auto* pair = static_cast<InfixExpressionNode*>(pairExpr.get());
                     pair->getLeftNode()->acceptVisitor(*this);
                     auto* keyVal = popValue();
                     pair->getRightNode()->acceptVisitor(*this);
