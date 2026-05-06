@@ -856,16 +856,21 @@ namespace ast
                     }
                 }
                 else if (expr->getRealType() == NodeType::FUNCTION_DEFINITION ||
-                         expr->getRealType() == NodeType::ANON_FUNCTION_DEFINITION)
-                {
-                    // 方法
-                    methodNodes.push_back(expr);
-                }
-                else if (expr->getRealType() == NodeType::CONSTRUCTOR ||
+                         expr->getRealType() == NodeType::ANON_FUNCTION_DEFINITION ||
                          expr->getRealType() == NodeType::PREFIX)
                 {
-                    // 构造函数（ConstructorDefinitionNode 的 getRealType() 实际返回 PREFIX）
+                    // 方法或构造函数
+                    // FunctionDefinitionNode 和 ConstructorDefinitionNode 的 getRealType() 都返回 PREFIX
+                    // 需要用 dynamic_cast 区分
                     if (dynamic_cast<ConstructorDefinitionNode*>(expr.get()))
+                    {
+                        methodNodes.push_back(expr);
+                    }
+                    else if (dynamic_cast<FunctionDefinitionNode*>(expr.get()))
+                    {
+                        methodNodes.push_back(expr);
+                    }
+                    else if (dynamic_cast<AnonFunctionDefinitionNode*>(expr.get()))
                     {
                         methodNodes.push_back(expr);
                     }
