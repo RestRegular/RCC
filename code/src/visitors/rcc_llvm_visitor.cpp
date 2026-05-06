@@ -2629,14 +2629,25 @@ namespace ast
 
                 auto* keyEq = Builder->CreateAnd(tagEq, payloadEq, "key.eq");
 
-                auto* nextI = Builder->CreateAdd(bi, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), "next.i");
-                Builder->CreateStore(nextI, iAlloca);
+                // 保存当前索引 bi 到 alloca，供 foundBB 使用
+                Builder->CreateStore(bi, iAlloca);
 
-                Builder->CreateCondBr(keyEq, foundBB, loopHeaderBB);
+                // 如果 key 匹配，跳到 foundBB；否则递增 i 后继续循环
+                auto* nextIterBB = llvm::BasicBlock::Create(*TheContext, "next.iter", func);
+                Builder->CreateCondBr(keyEq, foundBB, nextIterBB);
+
+                // next.iter: 递增 i，然后跳到 loopHeaderBB
+                Builder->SetInsertPoint(nextIterBB);
+                {
+                    auto* nextI = Builder->CreateAdd(bi, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), "next.i");
+                    Builder->CreateStore(nextI, iAlloca);
+                    Builder->CreateBr(loopHeaderBB);
+                }
             }
 
             Builder->SetInsertPoint(foundBB);
             {
+                // 使用保存的索引读取 value
                 auto* fi = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), iAlloca, "i.found");
                 auto* valByteOffset = Builder->CreateMul(fi, dictElemSize, "val.byte.offset");
                 auto* valGep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), vals, valByteOffset, "val.gep");
