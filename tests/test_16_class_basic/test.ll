@@ -2,135 +2,189 @@
 source_filename = "rcc_module"
 
 %RCCValue = type { i64, ptr }
+%Point = type { ptr, ptr }
 
-@.str = private constant [6 x i8] c"Alice\00"
+@.str = private constant [5 x i8] c"%lld\00"
+@.str.1 = private constant [3 x i8] c"%g\00"
+@.str.2 = private constant [3 x i8] c"%s\00"
+@.str.3 = private constant [5 x i8] c"true\00"
+@.str.4 = private constant [3 x i8] c"%s\00"
+@.str.5 = private constant [6 x i8] c"false\00"
+@.str.6 = private constant [3 x i8] c"%s\00"
+@.str.7 = private constant [3 x i8] c"%s\00"
+@.str.8 = private constant [5 x i8] c"null\00"
+@.str.9 = private constant [10 x i8] c"<ptr: %p>\00"
+@.str.10 = private constant [5 x i8] c"%lld\00"
+@.str.11 = private constant [3 x i8] c"%g\00"
+@.str.12 = private constant [3 x i8] c"%s\00"
+@.str.13 = private constant [5 x i8] c"true\00"
+@.str.14 = private constant [3 x i8] c"%s\00"
+@.str.15 = private constant [6 x i8] c"false\00"
+@.str.16 = private constant [3 x i8] c"%s\00"
+@.str.17 = private constant [3 x i8] c"%s\00"
+@.str.18 = private constant [5 x i8] c"null\00"
+@.str.19 = private constant [10 x i8] c"<ptr: %p>\00"
 
 define dso_local i32 @main(i32 %0, ptr %1) {
 entry:
-  %call.user_main = call ptr @main.1()
+  %call.user_main = call ptr @__rio_main()
   ret i32 0
 }
 
-define private ptr @main.1() {
+define private ptr @__rio_main() {
 entry:
-  %age = alloca ptr, align 8
-  %arith.result26 = alloca ptr, align 8
-  %arith.result = alloca ptr, align 8
   %p = alloca ptr, align 8
   store ptr null, ptr %p, align 8
   %rcc.val.heap = call ptr @malloc(i64 16)
   %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 0
-  store i64 4, ptr %tag.ptr, align 4
+  store i64 1, ptr %tag.ptr, align 4
   %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 1
-  store ptr @.str, ptr %payload.ptr, align 8
+  store ptr inttoptr (i64 10 to ptr), ptr %payload.ptr, align 8
   %rcc.val.heap1 = call ptr @malloc(i64 16)
   %tag.ptr2 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap1, i32 0, i32 0
   store i64 1, ptr %tag.ptr2, align 4
   %payload.ptr3 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap1, i32 0, i32 1
-  store ptr inttoptr (i64 25 to ptr), ptr %payload.ptr3, align 8
-  %call.Person = call ptr @Person(ptr %rcc.val.heap, ptr %rcc.val.heap1)
-  store ptr %call.Person, ptr %p, align 8
+  store ptr inttoptr (i64 20 to ptr), ptr %payload.ptr3, align 8
+  %new.Point = call ptr @malloc(i64 16)
+  %rcc.val.heap4 = call ptr @malloc(i64 16)
+  %tag.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap4, i32 0, i32 0
+  store i64 0, ptr %tag.ptr5, align 4
+  %payload.ptr6 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap4, i32 0, i32 1
+  store ptr %new.Point, ptr %payload.ptr6, align 8
+  store ptr %rcc.val.heap4, ptr %p, align 8
   %p.load = load ptr, ptr %p, align 8
-  %tag.ptr4 = getelementptr inbounds nuw %RCCValue, ptr %p.load, i32 0, i32 0
-  %tag = load i64, ptr %tag.ptr4, align 4
-  %tag5 = load i64, ptr null, align 4
-  %is_float.left = icmp eq i64 %tag, 2
-  %is_float.right = icmp eq i64 %tag5, 2
-  %is_float = or i1 %is_float.left, %is_float.right
-  store ptr null, ptr %arith.result, align 8
-  br i1 %is_float, label %arith.float, label %arith.int
+  %payload.ptr7 = getelementptr inbounds nuw %RCCValue, ptr %p.load, i32 0, i32 1
+  %payload = load ptr, ptr %payload.ptr7, align 8
+  %x.ptr = getelementptr inbounds nuw %Point, ptr %payload, i32 0, i32 0
+  %x.val = load ptr, ptr %x.ptr, align 8
+  %tag.ptr8 = getelementptr inbounds nuw %RCCValue, ptr %x.val, i32 0, i32 0
+  %tag = load i64, ptr %tag.ptr8, align 4
+  %payload.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %x.val, i32 0, i32 1
+  %payload10 = load ptr, ptr %payload.ptr9, align 8
+  switch i64 %tag, label %sout.default [
+    i64 1, label %sout.int
+    i64 2, label %sout.float
+    i64 3, label %sout.bool
+    i64 4, label %sout.str
+    i64 0, label %sout.null
+  ]
 
-arith.float:                                      ; preds = %entry
-  %payload.ptr6 = getelementptr inbounds nuw %RCCValue, ptr %p.load, i32 0, i32 1
-  %payload = load ptr, ptr %payload.ptr6, align 8
-  %payload7 = load ptr, ptr getelementptr inbounds nuw (%RCCValue, ptr null, i32 0, i32 1), align 8
-  %left.bits = ptrtoint ptr %payload to i64
-  %right.bits = ptrtoint ptr %payload7 to i64
-  %left.sitofp = sitofp i64 %left.bits to double
-  %left.bitcast = bitcast i64 %left.bits to double
-  %left.double = select i1 %is_float.left, double %left.bitcast, double %left.sitofp
-  %right.sitofp = sitofp i64 %right.bits to double
-  %right.bitcast = bitcast i64 %right.bits to double
-  %right.double = select i1 %is_float.right, double %right.bitcast, double %right.sitofp
-  %result.bits = bitcast double %left.double to i64
-  %result.float.ptr = inttoptr i64 %result.bits to ptr
-  %rcc.val.heap8 = call ptr @malloc(i64 16)
-  %tag.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap8, i32 0, i32 0
-  store i64 2, ptr %tag.ptr9, align 4
-  %payload.ptr10 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap8, i32 0, i32 1
-  store ptr %result.float.ptr, ptr %payload.ptr10, align 8
-  store ptr %rcc.val.heap8, ptr %arith.result, align 8
-  br label %arith.merge
+sout.int:                                         ; preds = %entry
+  %int.val = ptrtoint ptr %payload10 to i64
+  %0 = call i32 (ptr, ...) @printf(ptr @.str, i64 %int.val)
+  br label %sout.merge
 
-arith.int:                                        ; preds = %entry
-  %payload.ptr11 = getelementptr inbounds nuw %RCCValue, ptr %p.load, i32 0, i32 1
-  %payload12 = load ptr, ptr %payload.ptr11, align 8
-  %payload13 = load ptr, ptr getelementptr inbounds nuw (%RCCValue, ptr null, i32 0, i32 1), align 8
-  %left.int = ptrtoint ptr %payload12 to i64
-  %right.int = ptrtoint ptr %payload13 to i64
-  %payload.ptr14 = getelementptr inbounds nuw %RCCValue, ptr %p.load, i32 0, i32 1
-  %payload15 = load ptr, ptr %payload.ptr14, align 8
-  %call.sout = call ptr @sout(ptr null)
-  %p.load16 = load ptr, ptr %p, align 8
-  %tag.ptr17 = getelementptr inbounds nuw %RCCValue, ptr %p.load16, i32 0, i32 0
+sout.float:                                       ; preds = %entry
+  %float.bits = ptrtoint ptr %payload10 to i64
+  %float.val = bitcast i64 %float.bits to double
+  %1 = call i32 (ptr, ...) @printf(ptr @.str.1, double %float.val)
+  br label %sout.merge
+
+sout.bool:                                        ; preds = %entry
+  %bool.val = ptrtoint ptr %payload10 to i64
+  %is.true = icmp ne i64 %bool.val, 0
+  br i1 %is.true, label %sout.true, label %sout.false
+
+sout.str:                                         ; preds = %entry
+  %2 = call i32 (ptr, ...) @printf(ptr @.str.6, ptr %payload10)
+  br label %sout.merge
+
+sout.null:                                        ; preds = %entry
+  %3 = call i32 (ptr, ...) @printf(ptr @.str.7, ptr @.str.8)
+  br label %sout.merge
+
+sout.default:                                     ; preds = %entry
+  %4 = call i32 (ptr, ...) @printf(ptr @.str.9, ptr %payload10)
+  br label %sout.merge
+
+sout.merge:                                       ; preds = %sout.default, %sout.null, %sout.str, %sout.bool.merge, %sout.float, %sout.int
+  %5 = call i32 @putchar(i32 10)
+  %rcc.val.heap11 = call ptr @malloc(i64 16)
+  %tag.ptr12 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap11, i32 0, i32 0
+  store i64 0, ptr %tag.ptr12, align 4
+  %payload.ptr13 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap11, i32 0, i32 1
+  store ptr null, ptr %payload.ptr13, align 8
+  %p.load14 = load ptr, ptr %p, align 8
+  %payload.ptr15 = getelementptr inbounds nuw %RCCValue, ptr %p.load14, i32 0, i32 1
+  %payload16 = load ptr, ptr %payload.ptr15, align 8
+  %y.ptr = getelementptr inbounds nuw %Point, ptr %payload16, i32 0, i32 1
+  %y.val = load ptr, ptr %y.ptr, align 8
+  %tag.ptr17 = getelementptr inbounds nuw %RCCValue, ptr %y.val, i32 0, i32 0
   %tag18 = load i64, ptr %tag.ptr17, align 4
-  %tag19 = load i64, ptr null, align 4
-  %is_float.left20 = icmp eq i64 %tag18, 2
-  %is_float.right21 = icmp eq i64 %tag19, 2
-  %is_float22 = or i1 %is_float.left20, %is_float.right21
-  store ptr null, ptr %arith.result26, align 8
-  br i1 %is_float22, label %arith.float23, label %arith.int24
+  %payload.ptr19 = getelementptr inbounds nuw %RCCValue, ptr %y.val, i32 0, i32 1
+  %payload20 = load ptr, ptr %payload.ptr19, align 8
+  switch i64 %tag18, label %sout.default26 [
+    i64 1, label %sout.int21
+    i64 2, label %sout.float22
+    i64 3, label %sout.bool23
+    i64 4, label %sout.str24
+    i64 0, label %sout.null25
+  ]
 
-arith.merge:                                      ; preds = %arith.float
+sout.true:                                        ; preds = %sout.bool
+  %6 = call i32 (ptr, ...) @printf(ptr @.str.2, ptr @.str.3)
+  br label %sout.bool.merge
 
-arith.float23:                                    ; preds = %arith.int
-  %payload.ptr27 = getelementptr inbounds nuw %RCCValue, ptr %p.load16, i32 0, i32 1
-  %payload28 = load ptr, ptr %payload.ptr27, align 8
-  %payload29 = load ptr, ptr getelementptr inbounds nuw (%RCCValue, ptr null, i32 0, i32 1), align 8
-  %left.bits30 = ptrtoint ptr %payload28 to i64
-  %right.bits31 = ptrtoint ptr %payload29 to i64
-  %left.sitofp32 = sitofp i64 %left.bits30 to double
-  %left.bitcast33 = bitcast i64 %left.bits30 to double
-  %left.double34 = select i1 %is_float.left20, double %left.bitcast33, double %left.sitofp32
-  %right.sitofp35 = sitofp i64 %right.bits31 to double
-  %right.bitcast36 = bitcast i64 %right.bits31 to double
-  %right.double37 = select i1 %is_float.right21, double %right.bitcast36, double %right.sitofp35
-  %result.bits38 = bitcast double %left.double34 to i64
-  %result.float.ptr39 = inttoptr i64 %result.bits38 to ptr
-  %rcc.val.heap40 = call ptr @malloc(i64 16)
-  %tag.ptr41 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap40, i32 0, i32 0
-  store i64 2, ptr %tag.ptr41, align 4
-  %payload.ptr42 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap40, i32 0, i32 1
-  store ptr %result.float.ptr39, ptr %payload.ptr42, align 8
-  store ptr %rcc.val.heap40, ptr %arith.result26, align 8
-  br label %arith.merge25
+sout.false:                                       ; preds = %sout.bool
+  %7 = call i32 (ptr, ...) @printf(ptr @.str.4, ptr @.str.5)
+  br label %sout.bool.merge
 
-arith.int24:                                      ; preds = %arith.int
-  %payload.ptr43 = getelementptr inbounds nuw %RCCValue, ptr %p.load16, i32 0, i32 1
-  %payload44 = load ptr, ptr %payload.ptr43, align 8
-  %payload45 = load ptr, ptr getelementptr inbounds nuw (%RCCValue, ptr null, i32 0, i32 1), align 8
-  %left.int46 = ptrtoint ptr %payload44 to i64
-  %right.int47 = ptrtoint ptr %payload45 to i64
-  %payload.ptr48 = getelementptr inbounds nuw %RCCValue, ptr %p.load16, i32 0, i32 1
-  %payload49 = load ptr, ptr %payload.ptr48, align 8
-  %call.sout50 = call ptr @sout(ptr null)
-  %call. = call ptr @0()
-  store ptr null, ptr %age, align 8
-  %call.51 = call ptr @1()
-  store ptr %call.51, ptr %age, align 8
-  %age.load = load ptr, ptr %age, align 8
-  %call.sout52 = call ptr @sout(ptr %age.load)
+sout.bool.merge:                                  ; preds = %sout.false, %sout.true
+  br label %sout.merge
+
+sout.int21:                                       ; preds = %sout.merge
+  %int.val28 = ptrtoint ptr %payload20 to i64
+  %8 = call i32 (ptr, ...) @printf(ptr @.str.10, i64 %int.val28)
+  br label %sout.merge27
+
+sout.float22:                                     ; preds = %sout.merge
+  %float.bits29 = ptrtoint ptr %payload20 to i64
+  %float.val30 = bitcast i64 %float.bits29 to double
+  %9 = call i32 (ptr, ...) @printf(ptr @.str.11, double %float.val30)
+  br label %sout.merge27
+
+sout.bool23:                                      ; preds = %sout.merge
+  %bool.val31 = ptrtoint ptr %payload20 to i64
+  %is.true32 = icmp ne i64 %bool.val31, 0
+  br i1 %is.true32, label %sout.true33, label %sout.false34
+
+sout.str24:                                       ; preds = %sout.merge
+  %10 = call i32 (ptr, ...) @printf(ptr @.str.16, ptr %payload20)
+  br label %sout.merge27
+
+sout.null25:                                      ; preds = %sout.merge
+  %11 = call i32 (ptr, ...) @printf(ptr @.str.17, ptr @.str.18)
+  br label %sout.merge27
+
+sout.default26:                                   ; preds = %sout.merge
+  %12 = call i32 (ptr, ...) @printf(ptr @.str.19, ptr %payload20)
+  br label %sout.merge27
+
+sout.merge27:                                     ; preds = %sout.default26, %sout.null25, %sout.str24, %sout.bool.merge35, %sout.float22, %sout.int21
+  %13 = call i32 @putchar(i32 10)
+  %rcc.val.heap36 = call ptr @malloc(i64 16)
+  %tag.ptr37 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap36, i32 0, i32 0
+  store i64 0, ptr %tag.ptr37, align 4
+  %payload.ptr38 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap36, i32 0, i32 1
+  store ptr null, ptr %payload.ptr38, align 8
   ret ptr null
 
-arith.merge25:                                    ; preds = %arith.float23
+sout.true33:                                      ; preds = %sout.bool23
+  %14 = call i32 (ptr, ...) @printf(ptr @.str.12, ptr @.str.13)
+  br label %sout.bool.merge35
+
+sout.false34:                                     ; preds = %sout.bool23
+  %15 = call i32 (ptr, ...) @printf(ptr @.str.14, ptr @.str.15)
+  br label %sout.bool.merge35
+
+sout.bool.merge35:                                ; preds = %sout.false34, %sout.true33
+  br label %sout.merge27
 }
 
 declare ptr @malloc(i64)
 
-declare ptr @Person(ptr, ptr)
+declare i32 @putchar(i32)
 
-declare ptr @sout(ptr)
+declare i32 @printf(ptr, ...)
 
-declare ptr @0()
-
-declare ptr @1()
+declare i32 @strcmp(ptr, ptr)

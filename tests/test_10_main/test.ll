@@ -4,24 +4,24 @@ source_filename = "rcc_module"
 %RCCValue = type { i64, ptr }
 
 @.str = private constant [17 x i8] c"main entry: pass\00"
-@.str.2 = private constant [5 x i8] c"%lld\00"
-@.str.3 = private constant [3 x i8] c"%g\00"
-@.str.4 = private constant [3 x i8] c"%s\00"
-@.str.5 = private constant [5 x i8] c"true\00"
-@.str.6 = private constant [3 x i8] c"%s\00"
-@.str.7 = private constant [6 x i8] c"false\00"
+@.str.1 = private constant [5 x i8] c"%lld\00"
+@.str.2 = private constant [3 x i8] c"%g\00"
+@.str.3 = private constant [3 x i8] c"%s\00"
+@.str.4 = private constant [5 x i8] c"true\00"
+@.str.5 = private constant [3 x i8] c"%s\00"
+@.str.6 = private constant [6 x i8] c"false\00"
+@.str.7 = private constant [3 x i8] c"%s\00"
 @.str.8 = private constant [3 x i8] c"%s\00"
-@.str.9 = private constant [3 x i8] c"%s\00"
-@.str.10 = private constant [5 x i8] c"null\00"
-@.str.11 = private constant [10 x i8] c"<ptr: %p>\00"
+@.str.9 = private constant [5 x i8] c"null\00"
+@.str.10 = private constant [10 x i8] c"<ptr: %p>\00"
 
 define dso_local i32 @main(i32 %0, ptr %1) {
 entry:
-  %call.user_main = call ptr @main.1()
+  %call.user_main = call ptr @__rio_main()
   ret i32 0
 }
 
-define private ptr @main.1() {
+define private ptr @__rio_main() {
 entry:
   %rcc.val.heap = call ptr @malloc(i64 16)
   %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 0
@@ -42,13 +42,13 @@ entry:
 
 sout.int:                                         ; preds = %entry
   %int.val = ptrtoint ptr %payload to i64
-  %0 = call i32 (ptr, ...) @printf(ptr @.str.2, i64 %int.val)
+  %0 = call i32 (ptr, ...) @printf(ptr @.str.1, i64 %int.val)
   br label %sout.merge
 
 sout.float:                                       ; preds = %entry
   %float.bits = ptrtoint ptr %payload to i64
   %float.val = bitcast i64 %float.bits to double
-  %1 = call i32 (ptr, ...) @printf(ptr @.str.3, double %float.val)
+  %1 = call i32 (ptr, ...) @printf(ptr @.str.2, double %float.val)
   br label %sout.merge
 
 sout.bool:                                        ; preds = %entry
@@ -57,15 +57,15 @@ sout.bool:                                        ; preds = %entry
   br i1 %is.true, label %sout.true, label %sout.false
 
 sout.str:                                         ; preds = %entry
-  %2 = call i32 (ptr, ...) @printf(ptr @.str.8, ptr %payload)
+  %2 = call i32 (ptr, ...) @printf(ptr @.str.7, ptr %payload)
   br label %sout.merge
 
 sout.null:                                        ; preds = %entry
-  %3 = call i32 (ptr, ...) @printf(ptr @.str.9, ptr @.str.10)
+  %3 = call i32 (ptr, ...) @printf(ptr @.str.8, ptr @.str.9)
   br label %sout.merge
 
 sout.default:                                     ; preds = %entry
-  %4 = call i32 (ptr, ...) @printf(ptr @.str.11, ptr %payload)
+  %4 = call i32 (ptr, ...) @printf(ptr @.str.10, ptr %payload)
   br label %sout.merge
 
 sout.merge:                                       ; preds = %sout.default, %sout.null, %sout.str, %sout.bool.merge, %sout.float, %sout.int
@@ -78,11 +78,11 @@ sout.merge:                                       ; preds = %sout.default, %sout
   ret ptr null
 
 sout.true:                                        ; preds = %sout.bool
-  %6 = call i32 (ptr, ...) @printf(ptr @.str.4, ptr @.str.5)
+  %6 = call i32 (ptr, ...) @printf(ptr @.str.3, ptr @.str.4)
   br label %sout.bool.merge
 
 sout.false:                                       ; preds = %sout.bool
-  %7 = call i32 (ptr, ...) @printf(ptr @.str.6, ptr @.str.7)
+  %7 = call i32 (ptr, ...) @printf(ptr @.str.5, ptr @.str.6)
   br label %sout.bool.merge
 
 sout.bool.merge:                                  ; preds = %sout.false, %sout.true
