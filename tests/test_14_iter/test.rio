@@ -5,41 +5,41 @@ fun sout(*args, end="\n"): void {
 }
 
 // Test 1: iter over list
-var list = [1, 2, 3, 4, 5]
+var myList = [1, 2, 3, 4, 5]
 var sum1 = 0
-iter(list, (item) -> {
+iter(myList, (item) -> {
     sum1 = sum1 + item
 })
 sout("Test 1 - Sum of list: ", sum1)  // Expected: 15
 
 // Test 2: iter with index
-var list2 = [10, 20, 30]
+var myList2 = [10, 20, 30]
 var sum2 = 0
-iter(list2, (item, index, length, _) -> {
+iter(myList2, (item, index, length, _) -> {
     sum2 = sum2 + index
 })
 sout("Test 2 - Sum of indices: ", sum2)  // Expected: 0+1+2 = 3
 
 // Test 3: iter in reverse
-var list3 = [1, 2, 3, 4]
+var myList3 = [1, 2, 3, 4]
 var result = []
-iter(list3, (item) -> {
+iter(myList3, (item) -> {
     result = result + [item]
 }, reverse=true)
 sout("Test 3 - Reversed list size: ", size(result))  // Expected: 4
 
 // Test 4: iter over dict keys
-var dict = {"a": 1, "b": 2, "c": 3}
+var myDict = {"a": 1, "b": 2, "c": 3}
 var key_count = 0
-iter(dict, (key) -> {
+iter(myDict, (key) -> {
     key_count = key_count + 1
 })
 sout("Test 4 - Dict key count: ", key_count)  // Expected: 3
 
 // Test 5: iter early stop
-var list5 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+var myList5 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 var partial_sum = 0
-iter(list5, (item, index, _, kwargs) -> {
+iter(myList5, (item, index, _, kwargs) -> {
     if index >= 5 {
         ret false  // Stop iteration
     }
