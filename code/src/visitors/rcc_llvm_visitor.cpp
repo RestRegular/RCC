@@ -950,6 +950,36 @@ namespace ast
                 }
             }
         }
+        else if (callTarget->getRealType() == NodeType::ATTRIBUTE_EXPRESSION)
+        {
+            // 方法调用: obj.method(args)
+            // callTarget 是一个 InfixExpressionNode(type=ATTRIBUTE_EXPRESSION, left=obj, right=method名)
+            auto* attrExpr = static_cast<InfixExpressionNode*>(callTarget.get());
+            if (attrExpr->getLeftNode()->getRealType() == NodeType::IDENTIFIER)
+            {
+                // 获取接收者对象
+                auto* objIdent = static_cast<IdentifierNode*>(attrExpr->getLeftNode().get());
+                receiverValue = loadVariable(objIdent->getName());
+                if (!receiverValue)
+                {
+                    auto funcIt = Functions.find(objIdent->getName());
+                    if (funcIt != Functions.end())
+                    {
+                        receiverValue = funcIt->second;
+                    }
+                }
+                if (!receiverValue)
+                {
+                    receiverValue = llvm::ConstantPointerNull::get(getValueType());
+                }
+
+                // 获取方法名
+                if (attrExpr->getRightNode()->getRealType() == NodeType::IDENTIFIER)
+                {
+                    funcName = static_cast<IdentifierNode*>(attrExpr->getRightNode().get())->getName();
+                }
+            }
+        }
 
         // 收集参数值（区分位置参数和命名参数）
         std::vector<llvm::Value*> argValues;
@@ -2013,23 +2043,14 @@ namespace ast
             if (const auto* bodyBlock = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get());
                 bodyBlock && !bodyBlock->getBodyExpressions().empty())
             {
-                const auto lastExpr = bodyBlock->getBodyExpressions().back();
-                if (lastExpr)
+                if (const auto lastExpr = bodyBlock->getBodyExpressions().back();
+                    lastExpr && (lastExpr->getRealType() == NodeType::ENCAPSULATED
+                                 || dynamic_cast<EncapsulatedExpressionNode*>(lastExpr.get())))
                 {
-                    auto lastExprType = lastExpr->getRealType();
-                    bool isEncapsulatedNode = (lastExprType == NodeType::ENCAPSULATED);
-                    bool isEncapsulatedCast = (dynamic_cast<EncapsulatedExpressionNode*>(lastExpr.get()) != nullptr);
-                    
-                    LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " lastExpr type=" << static_cast<int>(lastExprType) 
-                              << " ENCAPSULATED=" << isEncapsulatedNode << " cast=" << isEncapsulatedCast);
-                    
-                    if (isEncapsulatedNode || isEncapsulatedCast)
-                    {
-                        isEncapsulated = true;
-                        CurrentFunctionIsEncapsulated = true;
-                        EncapsulatedFunctions.insert(funcName);
-                        LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
-                    }
+                    isEncapsulated = true;
+                    CurrentFunctionIsEncapsulated = true;
+                    EncapsulatedFunctions.insert(funcName);
+                    LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
                 }
             }
         }
