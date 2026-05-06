@@ -28,7 +28,7 @@ source_filename = "rcc_module"
 
 define dso_local i32 @main(i32 %0, ptr %1) {
 entry:
-  %call.main = call i32 @main()
+  %call.main = call ptr @__rio_main()
   ret i32 0
 }
 

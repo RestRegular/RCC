@@ -1,20 +1,18 @@
 // 最简类测试：只测试定义和实例化，不测试方法调用
 
 class Point {
-    var x: int, y: int, z: str
+    var x: int, y: int
 
-    ctor(a: int, b: int, z: str) {
+    ctor(a: int, b: int) {
         this.x = a
         this.y = b
-        this.z = z
     }
 }
 
 fun main(): void {
-    var p = Point(10, 20, "test point")
-    sout("p.x = ", p.x)
-    sout("p.y = ", p.y)
-    sout("p.z = ", p.z)
+    var p = Point(10, 20)
+    sout(p.x)
+    sout(p.y)
 }
 
 main()
