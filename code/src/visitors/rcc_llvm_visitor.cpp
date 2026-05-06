@@ -1100,7 +1100,14 @@ namespace ast
         }
 
         // 查找已定义的函数
-        auto* callee = TheModule->getFunction(funcName);
+        // 注意：用户定义的 main 被重命名为 __rio_main，需要特殊处理
+        std::string lookupName = funcName;
+        if (funcName == "main")
+        {
+            lookupName = "__rio_main";
+        }
+        
+        auto* callee = TheModule->getFunction(lookupName);
         if (!callee)
         {
             // 尝试从 Functions 映射中查找
