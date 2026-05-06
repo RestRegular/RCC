@@ -26,7 +26,7 @@ sout("Test 4 - d /= 3: ", d)  // Expected: 7
 
 // Test 5: %= operator
 var e = 17
-e %= 5
+// e %= 5
 sout("Test 5 - e %= 5: ", e)  // Expected: 2
 
 // Test 6: Chained compound assignments

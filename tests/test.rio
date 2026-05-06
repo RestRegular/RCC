@@ -1,0 +1,19 @@
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+class Object {
+    var x: int
+
+    ctor (x: int) {
+        this.x = x
+    }
+
+    fun print(): void {
+        sout(this.x)
+    }
+}
+
+var o: Object = Object(42)
+sout(o.x)
+o.print()
