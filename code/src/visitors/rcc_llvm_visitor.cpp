@@ -1205,7 +1205,9 @@ namespace ast
         const auto& opStr = node.getOpToken().getValue();
 
         // 增强赋值运算符 (+=, -=, *=, /=, %=)
-        if (opStr == "+=" || opStr == "-=" || opStr == "*=" || opStr == "/=" || opStr == "%=")
+        // 支持 INFIX 类型（通过opStr检测）或 ARGUMENT_ASSIGNMENT 类型
+        if (infixType == NodeType::ARGUMENT_ASSIGNMENT ||
+            opStr == "+=" || opStr == "-=" || opStr == "*=" || opStr == "/=" || opStr == "%=")
         {
             handleCompoundAssignment(node);
             return;
