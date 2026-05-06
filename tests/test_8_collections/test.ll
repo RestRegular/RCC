@@ -206,7 +206,11 @@ dict.search.body:                                 ; preds = %dict.search.header
   %tag.eq = icmp eq i64 %tag29, %tag31
   %payload.ptr32 = getelementptr inbounds nuw %RCCValue, ptr %key.val, i32 0, i32 1
   %payload33 = load ptr, ptr %payload.ptr32, align 8
-  %payload.eq = icmp eq ptr %payload33, %payload
+  %is.string = icmp eq i64 %tag29, 4
+  %strcmp.result = call i32 @strcmp(ptr %payload33, ptr %payload)
+  %strcmp.eq = icmp eq i32 %strcmp.result, 0
+  %ptr.eq = icmp eq ptr %payload33, %payload
+  %payload.eq = select i1 %is.string, i1 %strcmp.eq, i1 %ptr.eq
   %key.eq = and i1 %tag.eq, %payload.eq
   %next.i = add i64 %i.body, 1
   store i64 %next.i, ptr %dict.i, align 4
@@ -321,17 +325,17 @@ idx.default60:                                    ; preds = %sout.merge
   br label %idx.merge61
 
 idx.merge61:                                      ; preds = %idx.default60, %dict.search.merge77, %idx.list58
-  %idx.result99 = load ptr, ptr %idx.result54, align 8
-  %tag.ptr100 = getelementptr inbounds nuw %RCCValue, ptr %idx.result99, i32 0, i32 0
-  %tag101 = load i64, ptr %tag.ptr100, align 4
-  %payload.ptr102 = getelementptr inbounds nuw %RCCValue, ptr %idx.result99, i32 0, i32 1
-  %payload103 = load ptr, ptr %payload.ptr102, align 8
-  switch i64 %tag101, label %sout.default109 [
-    i64 1, label %sout.int104
-    i64 2, label %sout.float105
-    i64 3, label %sout.bool106
-    i64 4, label %sout.str107
-    i64 0, label %sout.null108
+  %idx.result103 = load ptr, ptr %idx.result54, align 8
+  %tag.ptr104 = getelementptr inbounds nuw %RCCValue, ptr %idx.result103, i32 0, i32 0
+  %tag105 = load i64, ptr %tag.ptr104, align 4
+  %payload.ptr106 = getelementptr inbounds nuw %RCCValue, ptr %idx.result103, i32 0, i32 1
+  %payload107 = load ptr, ptr %payload.ptr106, align 8
+  switch i64 %tag105, label %sout.default113 [
+    i64 1, label %sout.int108
+    i64 2, label %sout.float109
+    i64 3, label %sout.bool110
+    i64 4, label %sout.str111
+    i64 0, label %sout.null112
   ]
 
 dict.search.header73:                             ; preds = %dict.search.body74, %idx.dict59
@@ -351,18 +355,22 @@ dict.search.body74:                               ; preds = %dict.search.header7
   %tag.eq89 = icmp eq i64 %tag86, %tag88
   %payload.ptr90 = getelementptr inbounds nuw %RCCValue, ptr %key.val84, i32 0, i32 1
   %payload91 = load ptr, ptr %payload.ptr90, align 8
-  %payload.eq92 = icmp eq ptr %payload91, %payload48
-  %key.eq93 = and i1 %tag.eq89, %payload.eq92
-  %next.i94 = add i64 %i.body81, 1
-  store i64 %next.i94, ptr %dict.i78, align 4
-  br i1 %key.eq93, label %dict.found75, label %dict.search.header73
+  %is.string92 = icmp eq i64 %tag86, 4
+  %strcmp.result93 = call i32 @strcmp(ptr %payload91, ptr %payload48)
+  %strcmp.eq94 = icmp eq i32 %strcmp.result93, 0
+  %ptr.eq95 = icmp eq ptr %payload91, %payload48
+  %payload.eq96 = select i1 %is.string92, i1 %strcmp.eq94, i1 %ptr.eq95
+  %key.eq97 = and i1 %tag.eq89, %payload.eq96
+  %next.i98 = add i64 %i.body81, 1
+  store i64 %next.i98, ptr %dict.i78, align 4
+  br i1 %key.eq97, label %dict.found75, label %dict.search.header73
 
 dict.found75:                                     ; preds = %dict.search.body74
-  %i.found95 = load i64, ptr %dict.i78, align 4
-  %val.byte.offset96 = mul i64 %i.found95, 8
-  %val.gep97 = getelementptr inbounds i8, ptr %vals72, i64 %val.byte.offset96
-  %val98 = load ptr, ptr %val.gep97, align 8
-  store ptr %val98, ptr %idx.result54, align 8
+  %i.found99 = load i64, ptr %dict.i78, align 4
+  %val.byte.offset100 = mul i64 %i.found99, 8
+  %val.gep101 = getelementptr inbounds i8, ptr %vals72, i64 %val.byte.offset100
+  %val102 = load ptr, ptr %val.gep101, align 8
+  store ptr %val102, ptr %idx.result54, align 8
   br label %dict.search.merge77
 
 dict.notfound76:                                  ; preds = %dict.search.header73
@@ -371,554 +379,566 @@ dict.notfound76:                                  ; preds = %dict.search.header7
 dict.search.merge77:                              ; preds = %dict.notfound76, %dict.found75
   br label %idx.merge61
 
-sout.int104:                                      ; preds = %idx.merge61
-  %int.val111 = ptrtoint ptr %payload103 to i64
-  %14 = call i32 (ptr, ...) @printf(ptr @.str.15, i64 %int.val111)
-  br label %sout.merge110
+sout.int108:                                      ; preds = %idx.merge61
+  %int.val115 = ptrtoint ptr %payload107 to i64
+  %14 = call i32 (ptr, ...) @printf(ptr @.str.15, i64 %int.val115)
+  br label %sout.merge114
 
-sout.float105:                                    ; preds = %idx.merge61
-  %float.bits112 = ptrtoint ptr %payload103 to i64
-  %float.val113 = bitcast i64 %float.bits112 to double
-  %15 = call i32 (ptr, ...) @printf(ptr @.str.16, double %float.val113)
-  br label %sout.merge110
+sout.float109:                                    ; preds = %idx.merge61
+  %float.bits116 = ptrtoint ptr %payload107 to i64
+  %float.val117 = bitcast i64 %float.bits116 to double
+  %15 = call i32 (ptr, ...) @printf(ptr @.str.16, double %float.val117)
+  br label %sout.merge114
 
-sout.bool106:                                     ; preds = %idx.merge61
-  %bool.val114 = ptrtoint ptr %payload103 to i64
-  %is.true115 = icmp ne i64 %bool.val114, 0
-  br i1 %is.true115, label %sout.true116, label %sout.false117
+sout.bool110:                                     ; preds = %idx.merge61
+  %bool.val118 = ptrtoint ptr %payload107 to i64
+  %is.true119 = icmp ne i64 %bool.val118, 0
+  br i1 %is.true119, label %sout.true120, label %sout.false121
 
-sout.str107:                                      ; preds = %idx.merge61
-  %16 = call i32 (ptr, ...) @printf(ptr @.str.21, ptr %payload103)
-  br label %sout.merge110
+sout.str111:                                      ; preds = %idx.merge61
+  %16 = call i32 (ptr, ...) @printf(ptr @.str.21, ptr %payload107)
+  br label %sout.merge114
 
-sout.null108:                                     ; preds = %idx.merge61
+sout.null112:                                     ; preds = %idx.merge61
   %17 = call i32 (ptr, ...) @printf(ptr @.str.22, ptr @.str.23)
-  br label %sout.merge110
+  br label %sout.merge114
 
-sout.default109:                                  ; preds = %idx.merge61
-  %18 = call i32 (ptr, ...) @printf(ptr @.str.24, ptr %payload103)
-  br label %sout.merge110
+sout.default113:                                  ; preds = %idx.merge61
+  %18 = call i32 (ptr, ...) @printf(ptr @.str.24, ptr %payload107)
+  br label %sout.merge114
 
-sout.merge110:                                    ; preds = %sout.default109, %sout.null108, %sout.str107, %sout.bool.merge118, %sout.float105, %sout.int104
+sout.merge114:                                    ; preds = %sout.default113, %sout.null112, %sout.str111, %sout.bool.merge122, %sout.float109, %sout.int108
   %19 = call i32 @putchar(i32 10)
-  %rcc.val.heap119 = call ptr @malloc(i64 16)
-  %tag.ptr120 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap119, i32 0, i32 0
-  store i64 0, ptr %tag.ptr120, align 4
-  %payload.ptr121 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap119, i32 0, i32 1
-  store ptr null, ptr %payload.ptr121, align 8
+  %rcc.val.heap123 = call ptr @malloc(i64 16)
+  %tag.ptr124 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap123, i32 0, i32 0
+  store i64 0, ptr %tag.ptr124, align 4
+  %payload.ptr125 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap123, i32 0, i32 1
+  store ptr null, ptr %payload.ptr125, align 8
   store ptr null, ptr %dic2, align 8
-  %rcc.val.heap122 = call ptr @malloc(i64 16)
-  %tag.ptr123 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap122, i32 0, i32 0
-  store i64 4, ptr %tag.ptr123, align 4
-  %payload.ptr124 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap122, i32 0, i32 1
-  store ptr @.str.25, ptr %payload.ptr124, align 8
-  %rcc.val.heap125 = call ptr @malloc(i64 16)
-  %tag.ptr126 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap125, i32 0, i32 0
-  store i64 1, ptr %tag.ptr126, align 4
-  %payload.ptr127 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap125, i32 0, i32 1
-  store ptr inttoptr (i64 1 to ptr), ptr %payload.ptr127, align 8
-  %rcc.val.heap128 = call ptr @malloc(i64 16)
-  %tag.ptr129 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap128, i32 0, i32 0
-  store i64 4, ptr %tag.ptr129, align 4
-  %payload.ptr130 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap128, i32 0, i32 1
-  store ptr @.str.26, ptr %payload.ptr130, align 8
-  %rcc.val.heap131 = call ptr @malloc(i64 16)
-  %tag.ptr132 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap131, i32 0, i32 0
-  store i64 1, ptr %tag.ptr132, align 4
-  %payload.ptr133 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap131, i32 0, i32 1
-  store ptr inttoptr (i64 2 to ptr), ptr %payload.ptr133, align 8
-  %rcc.val.heap134 = call ptr @malloc(i64 16)
-  %tag.ptr135 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap134, i32 0, i32 0
-  store i64 4, ptr %tag.ptr135, align 4
-  %payload.ptr136 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap134, i32 0, i32 1
-  store ptr @.str.27, ptr %payload.ptr136, align 8
-  %rcc.val.heap137 = call ptr @malloc(i64 16)
-  %tag.ptr138 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap137, i32 0, i32 0
-  store i64 1, ptr %tag.ptr138, align 4
-  %payload.ptr139 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap137, i32 0, i32 1
-  store ptr inttoptr (i64 3 to ptr), ptr %payload.ptr139, align 8
-  %dict.keys140 = call ptr @malloc(i64 24)
-  %dict.values141 = call ptr @malloc(i64 24)
-  %key.gep142 = getelementptr inbounds i8, ptr %dict.keys140, i64 0
-  store ptr %rcc.val.heap122, ptr %key.gep142, align 8
-  %key.gep143 = getelementptr inbounds i8, ptr %dict.keys140, i64 8
-  store ptr %rcc.val.heap128, ptr %key.gep143, align 8
-  %key.gep144 = getelementptr inbounds i8, ptr %dict.keys140, i64 16
-  store ptr %rcc.val.heap134, ptr %key.gep144, align 8
-  %val.gep145 = getelementptr inbounds i8, ptr %dict.values141, i64 0
-  store ptr %rcc.val.heap125, ptr %val.gep145, align 8
-  %val.gep146 = getelementptr inbounds i8, ptr %dict.values141, i64 8
-  store ptr %rcc.val.heap131, ptr %val.gep146, align 8
-  %val.gep147 = getelementptr inbounds i8, ptr %dict.values141, i64 16
-  store ptr %rcc.val.heap137, ptr %val.gep147, align 8
-  %dict.struct148 = call ptr @malloc(i64 32)
-  %20 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct148, i32 0, i32 0
+  %rcc.val.heap126 = call ptr @malloc(i64 16)
+  %tag.ptr127 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap126, i32 0, i32 0
+  store i64 4, ptr %tag.ptr127, align 4
+  %payload.ptr128 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap126, i32 0, i32 1
+  store ptr @.str.25, ptr %payload.ptr128, align 8
+  %rcc.val.heap129 = call ptr @malloc(i64 16)
+  %tag.ptr130 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap129, i32 0, i32 0
+  store i64 1, ptr %tag.ptr130, align 4
+  %payload.ptr131 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap129, i32 0, i32 1
+  store ptr inttoptr (i64 1 to ptr), ptr %payload.ptr131, align 8
+  %rcc.val.heap132 = call ptr @malloc(i64 16)
+  %tag.ptr133 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap132, i32 0, i32 0
+  store i64 4, ptr %tag.ptr133, align 4
+  %payload.ptr134 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap132, i32 0, i32 1
+  store ptr @.str.26, ptr %payload.ptr134, align 8
+  %rcc.val.heap135 = call ptr @malloc(i64 16)
+  %tag.ptr136 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap135, i32 0, i32 0
+  store i64 1, ptr %tag.ptr136, align 4
+  %payload.ptr137 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap135, i32 0, i32 1
+  store ptr inttoptr (i64 2 to ptr), ptr %payload.ptr137, align 8
+  %rcc.val.heap138 = call ptr @malloc(i64 16)
+  %tag.ptr139 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap138, i32 0, i32 0
+  store i64 4, ptr %tag.ptr139, align 4
+  %payload.ptr140 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap138, i32 0, i32 1
+  store ptr @.str.27, ptr %payload.ptr140, align 8
+  %rcc.val.heap141 = call ptr @malloc(i64 16)
+  %tag.ptr142 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap141, i32 0, i32 0
+  store i64 1, ptr %tag.ptr142, align 4
+  %payload.ptr143 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap141, i32 0, i32 1
+  store ptr inttoptr (i64 3 to ptr), ptr %payload.ptr143, align 8
+  %dict.keys144 = call ptr @malloc(i64 24)
+  %dict.values145 = call ptr @malloc(i64 24)
+  %key.gep146 = getelementptr inbounds i8, ptr %dict.keys144, i64 0
+  store ptr %rcc.val.heap126, ptr %key.gep146, align 8
+  %key.gep147 = getelementptr inbounds i8, ptr %dict.keys144, i64 8
+  store ptr %rcc.val.heap132, ptr %key.gep147, align 8
+  %key.gep148 = getelementptr inbounds i8, ptr %dict.keys144, i64 16
+  store ptr %rcc.val.heap138, ptr %key.gep148, align 8
+  %val.gep149 = getelementptr inbounds i8, ptr %dict.values145, i64 0
+  store ptr %rcc.val.heap129, ptr %val.gep149, align 8
+  %val.gep150 = getelementptr inbounds i8, ptr %dict.values145, i64 8
+  store ptr %rcc.val.heap135, ptr %val.gep150, align 8
+  %val.gep151 = getelementptr inbounds i8, ptr %dict.values145, i64 16
+  store ptr %rcc.val.heap141, ptr %val.gep151, align 8
+  %dict.struct152 = call ptr @malloc(i64 32)
+  %20 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct152, i32 0, i32 0
   store i64 3, ptr %20, align 4
-  %21 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct148, i32 0, i32 1
+  %21 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct152, i32 0, i32 1
   store i64 3, ptr %21, align 4
-  %22 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct148, i32 0, i32 2
-  store ptr %dict.keys140, ptr %22, align 8
-  %23 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct148, i32 0, i32 3
-  store ptr %dict.values141, ptr %23, align 8
-  %rcc.val.heap149 = call ptr @malloc(i64 16)
-  %tag.ptr150 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap149, i32 0, i32 0
-  store i64 6, ptr %tag.ptr150, align 4
-  %payload.ptr151 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap149, i32 0, i32 1
-  store ptr %dict.struct148, ptr %payload.ptr151, align 8
-  store ptr %rcc.val.heap149, ptr %dic2, align 8
+  %22 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct152, i32 0, i32 2
+  store ptr %dict.keys144, ptr %22, align 8
+  %23 = getelementptr inbounds nuw %RCCDict.3, ptr %dict.struct152, i32 0, i32 3
+  store ptr %dict.values145, ptr %23, align 8
+  %rcc.val.heap153 = call ptr @malloc(i64 16)
+  %tag.ptr154 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap153, i32 0, i32 0
+  store i64 6, ptr %tag.ptr154, align 4
+  %payload.ptr155 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap153, i32 0, i32 1
+  store ptr %dict.struct152, ptr %payload.ptr155, align 8
+  store ptr %rcc.val.heap153, ptr %dic2, align 8
   %dic2.load = load ptr, ptr %dic2, align 8
-  %rcc.val.heap152 = call ptr @malloc(i64 16)
-  %tag.ptr153 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap152, i32 0, i32 0
-  store i64 4, ptr %tag.ptr153, align 4
-  %payload.ptr154 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap152, i32 0, i32 1
-  store ptr @.str.28, ptr %payload.ptr154, align 8
-  %payload.ptr155 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap152, i32 0, i32 1
-  %payload156 = load ptr, ptr %payload.ptr155, align 8
-  %index.int157 = ptrtoint ptr %payload156 to i64
-  %payload.ptr158 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load, i32 0, i32 1
-  %payload159 = load ptr, ptr %payload.ptr158, align 8
-  %tag.ptr160 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load, i32 0, i32 0
-  %tag161 = load i64, ptr %tag.ptr160, align 4
-  %idx.result162 = alloca ptr, align 8
-  %rcc.val.heap163 = call ptr @malloc(i64 16)
-  %tag.ptr164 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap163, i32 0, i32 0
-  store i64 0, ptr %tag.ptr164, align 4
-  %payload.ptr165 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap163, i32 0, i32 1
-  store ptr null, ptr %payload.ptr165, align 8
-  store ptr %rcc.val.heap163, ptr %idx.result162, align 8
-  switch i64 %tag161, label %idx.default168 [
-    i64 5, label %idx.list166
-    i64 6, label %idx.dict167
+  %rcc.val.heap156 = call ptr @malloc(i64 16)
+  %tag.ptr157 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap156, i32 0, i32 0
+  store i64 4, ptr %tag.ptr157, align 4
+  %payload.ptr158 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap156, i32 0, i32 1
+  store ptr @.str.28, ptr %payload.ptr158, align 8
+  %payload.ptr159 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap156, i32 0, i32 1
+  %payload160 = load ptr, ptr %payload.ptr159, align 8
+  %index.int161 = ptrtoint ptr %payload160 to i64
+  %payload.ptr162 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load, i32 0, i32 1
+  %payload163 = load ptr, ptr %payload.ptr162, align 8
+  %tag.ptr164 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load, i32 0, i32 0
+  %tag165 = load i64, ptr %tag.ptr164, align 4
+  %idx.result166 = alloca ptr, align 8
+  %rcc.val.heap167 = call ptr @malloc(i64 16)
+  %tag.ptr168 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap167, i32 0, i32 0
+  store i64 0, ptr %tag.ptr168, align 4
+  %payload.ptr169 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap167, i32 0, i32 1
+  store ptr null, ptr %payload.ptr169, align 8
+  store ptr %rcc.val.heap167, ptr %idx.result166, align 8
+  switch i64 %tag165, label %idx.default172 [
+    i64 5, label %idx.list170
+    i64 6, label %idx.dict171
   ]
 
-sout.true116:                                     ; preds = %sout.bool106
+sout.true120:                                     ; preds = %sout.bool110
   %24 = call i32 (ptr, ...) @printf(ptr @.str.17, ptr @.str.18)
-  br label %sout.bool.merge118
+  br label %sout.bool.merge122
 
-sout.false117:                                    ; preds = %sout.bool106
+sout.false121:                                    ; preds = %sout.bool110
   %25 = call i32 (ptr, ...) @printf(ptr @.str.19, ptr @.str.20)
-  br label %sout.bool.merge118
+  br label %sout.bool.merge122
 
-sout.bool.merge118:                               ; preds = %sout.false117, %sout.true116
-  br label %sout.merge110
+sout.bool.merge122:                               ; preds = %sout.false121, %sout.true120
+  br label %sout.merge114
 
-idx.list166:                                      ; preds = %sout.merge110
-  %list.data170 = getelementptr inbounds nuw %RCCList.4, ptr %payload159, i32 0, i32 2
-  %data171 = load ptr, ptr %list.data170, align 8
-  %idx.byte.offset172 = mul i64 %index.int157, 8
-  %elem.ptr173 = getelementptr inbounds i8, ptr %data171, i64 %idx.byte.offset172
-  %elem174 = load ptr, ptr %elem.ptr173, align 8
-  store ptr %elem174, ptr %idx.result162, align 8
-  br label %idx.merge169
+idx.list170:                                      ; preds = %sout.merge114
+  %list.data174 = getelementptr inbounds nuw %RCCList.4, ptr %payload163, i32 0, i32 2
+  %data175 = load ptr, ptr %list.data174, align 8
+  %idx.byte.offset176 = mul i64 %index.int161, 8
+  %elem.ptr177 = getelementptr inbounds i8, ptr %data175, i64 %idx.byte.offset176
+  %elem178 = load ptr, ptr %elem.ptr177, align 8
+  store ptr %elem178, ptr %idx.result166, align 8
+  br label %idx.merge173
 
-idx.dict167:                                      ; preds = %sout.merge110
-  %dict.size175 = getelementptr inbounds nuw %RCCDict.5, ptr %payload159, i32 0, i32 1
-  %size176 = load i64, ptr %dict.size175, align 4
-  %dict.keys177 = getelementptr inbounds nuw %RCCDict.5, ptr %payload159, i32 0, i32 2
-  %keys178 = load ptr, ptr %dict.keys177, align 8
-  %dict.values179 = getelementptr inbounds nuw %RCCDict.5, ptr %payload159, i32 0, i32 3
-  %vals180 = load ptr, ptr %dict.values179, align 8
-  %dict.i186 = alloca i64, align 8
-  store i64 0, ptr %dict.i186, align 4
-  br label %dict.search.header181
+idx.dict171:                                      ; preds = %sout.merge114
+  %dict.size179 = getelementptr inbounds nuw %RCCDict.5, ptr %payload163, i32 0, i32 1
+  %size180 = load i64, ptr %dict.size179, align 4
+  %dict.keys181 = getelementptr inbounds nuw %RCCDict.5, ptr %payload163, i32 0, i32 2
+  %keys182 = load ptr, ptr %dict.keys181, align 8
+  %dict.values183 = getelementptr inbounds nuw %RCCDict.5, ptr %payload163, i32 0, i32 3
+  %vals184 = load ptr, ptr %dict.values183, align 8
+  %dict.i190 = alloca i64, align 8
+  store i64 0, ptr %dict.i190, align 4
+  br label %dict.search.header185
 
-idx.default168:                                   ; preds = %sout.merge110
-  br label %idx.merge169
+idx.default172:                                   ; preds = %sout.merge114
+  br label %idx.merge173
 
-idx.merge169:                                     ; preds = %idx.default168, %dict.search.merge185, %idx.list166
-  %idx.result207 = load ptr, ptr %idx.result162, align 8
-  %tag.ptr208 = getelementptr inbounds nuw %RCCValue, ptr %idx.result207, i32 0, i32 0
-  %tag209 = load i64, ptr %tag.ptr208, align 4
-  %payload.ptr210 = getelementptr inbounds nuw %RCCValue, ptr %idx.result207, i32 0, i32 1
-  %payload211 = load ptr, ptr %payload.ptr210, align 8
-  switch i64 %tag209, label %sout.default217 [
-    i64 1, label %sout.int212
-    i64 2, label %sout.float213
-    i64 3, label %sout.bool214
-    i64 4, label %sout.str215
-    i64 0, label %sout.null216
+idx.merge173:                                     ; preds = %idx.default172, %dict.search.merge189, %idx.list170
+  %idx.result215 = load ptr, ptr %idx.result166, align 8
+  %tag.ptr216 = getelementptr inbounds nuw %RCCValue, ptr %idx.result215, i32 0, i32 0
+  %tag217 = load i64, ptr %tag.ptr216, align 4
+  %payload.ptr218 = getelementptr inbounds nuw %RCCValue, ptr %idx.result215, i32 0, i32 1
+  %payload219 = load ptr, ptr %payload.ptr218, align 8
+  switch i64 %tag217, label %sout.default225 [
+    i64 1, label %sout.int220
+    i64 2, label %sout.float221
+    i64 3, label %sout.bool222
+    i64 4, label %sout.str223
+    i64 0, label %sout.null224
   ]
 
-dict.search.header181:                            ; preds = %dict.search.body182, %idx.dict167
-  %i187 = load i64, ptr %dict.i186, align 4
-  %in.bounds188 = icmp slt i64 %i187, %size176
-  br i1 %in.bounds188, label %dict.search.body182, label %dict.notfound184
+dict.search.header185:                            ; preds = %dict.search.body186, %idx.dict171
+  %i191 = load i64, ptr %dict.i190, align 4
+  %in.bounds192 = icmp slt i64 %i191, %size180
+  br i1 %in.bounds192, label %dict.search.body186, label %dict.notfound188
 
-dict.search.body182:                              ; preds = %dict.search.header181
-  %i.body189 = load i64, ptr %dict.i186, align 4
-  %key.byte.offset190 = mul i64 %i.body189, 8
-  %key.gep191 = getelementptr inbounds i8, ptr %keys178, i64 %key.byte.offset190
-  %key.val192 = load ptr, ptr %key.gep191, align 8
-  %tag.ptr193 = getelementptr inbounds nuw %RCCValue, ptr %key.val192, i32 0, i32 0
-  %tag194 = load i64, ptr %tag.ptr193, align 4
-  %tag.ptr195 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap152, i32 0, i32 0
-  %tag196 = load i64, ptr %tag.ptr195, align 4
-  %tag.eq197 = icmp eq i64 %tag194, %tag196
-  %payload.ptr198 = getelementptr inbounds nuw %RCCValue, ptr %key.val192, i32 0, i32 1
-  %payload199 = load ptr, ptr %payload.ptr198, align 8
-  %payload.eq200 = icmp eq ptr %payload199, %payload156
-  %key.eq201 = and i1 %tag.eq197, %payload.eq200
-  %next.i202 = add i64 %i.body189, 1
-  store i64 %next.i202, ptr %dict.i186, align 4
-  br i1 %key.eq201, label %dict.found183, label %dict.search.header181
+dict.search.body186:                              ; preds = %dict.search.header185
+  %i.body193 = load i64, ptr %dict.i190, align 4
+  %key.byte.offset194 = mul i64 %i.body193, 8
+  %key.gep195 = getelementptr inbounds i8, ptr %keys182, i64 %key.byte.offset194
+  %key.val196 = load ptr, ptr %key.gep195, align 8
+  %tag.ptr197 = getelementptr inbounds nuw %RCCValue, ptr %key.val196, i32 0, i32 0
+  %tag198 = load i64, ptr %tag.ptr197, align 4
+  %tag.ptr199 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap156, i32 0, i32 0
+  %tag200 = load i64, ptr %tag.ptr199, align 4
+  %tag.eq201 = icmp eq i64 %tag198, %tag200
+  %payload.ptr202 = getelementptr inbounds nuw %RCCValue, ptr %key.val196, i32 0, i32 1
+  %payload203 = load ptr, ptr %payload.ptr202, align 8
+  %is.string204 = icmp eq i64 %tag198, 4
+  %strcmp.result205 = call i32 @strcmp(ptr %payload203, ptr %payload160)
+  %strcmp.eq206 = icmp eq i32 %strcmp.result205, 0
+  %ptr.eq207 = icmp eq ptr %payload203, %payload160
+  %payload.eq208 = select i1 %is.string204, i1 %strcmp.eq206, i1 %ptr.eq207
+  %key.eq209 = and i1 %tag.eq201, %payload.eq208
+  %next.i210 = add i64 %i.body193, 1
+  store i64 %next.i210, ptr %dict.i190, align 4
+  br i1 %key.eq209, label %dict.found187, label %dict.search.header185
 
-dict.found183:                                    ; preds = %dict.search.body182
-  %i.found203 = load i64, ptr %dict.i186, align 4
-  %val.byte.offset204 = mul i64 %i.found203, 8
-  %val.gep205 = getelementptr inbounds i8, ptr %vals180, i64 %val.byte.offset204
-  %val206 = load ptr, ptr %val.gep205, align 8
-  store ptr %val206, ptr %idx.result162, align 8
-  br label %dict.search.merge185
+dict.found187:                                    ; preds = %dict.search.body186
+  %i.found211 = load i64, ptr %dict.i190, align 4
+  %val.byte.offset212 = mul i64 %i.found211, 8
+  %val.gep213 = getelementptr inbounds i8, ptr %vals184, i64 %val.byte.offset212
+  %val214 = load ptr, ptr %val.gep213, align 8
+  store ptr %val214, ptr %idx.result166, align 8
+  br label %dict.search.merge189
 
-dict.notfound184:                                 ; preds = %dict.search.header181
-  br label %dict.search.merge185
+dict.notfound188:                                 ; preds = %dict.search.header185
+  br label %dict.search.merge189
 
-dict.search.merge185:                             ; preds = %dict.notfound184, %dict.found183
-  br label %idx.merge169
+dict.search.merge189:                             ; preds = %dict.notfound188, %dict.found187
+  br label %idx.merge173
 
-sout.int212:                                      ; preds = %idx.merge169
-  %int.val219 = ptrtoint ptr %payload211 to i64
-  %26 = call i32 (ptr, ...) @printf(ptr @.str.29, i64 %int.val219)
-  br label %sout.merge218
+sout.int220:                                      ; preds = %idx.merge173
+  %int.val227 = ptrtoint ptr %payload219 to i64
+  %26 = call i32 (ptr, ...) @printf(ptr @.str.29, i64 %int.val227)
+  br label %sout.merge226
 
-sout.float213:                                    ; preds = %idx.merge169
-  %float.bits220 = ptrtoint ptr %payload211 to i64
-  %float.val221 = bitcast i64 %float.bits220 to double
-  %27 = call i32 (ptr, ...) @printf(ptr @.str.30, double %float.val221)
-  br label %sout.merge218
+sout.float221:                                    ; preds = %idx.merge173
+  %float.bits228 = ptrtoint ptr %payload219 to i64
+  %float.val229 = bitcast i64 %float.bits228 to double
+  %27 = call i32 (ptr, ...) @printf(ptr @.str.30, double %float.val229)
+  br label %sout.merge226
 
-sout.bool214:                                     ; preds = %idx.merge169
-  %bool.val222 = ptrtoint ptr %payload211 to i64
-  %is.true223 = icmp ne i64 %bool.val222, 0
-  br i1 %is.true223, label %sout.true224, label %sout.false225
+sout.bool222:                                     ; preds = %idx.merge173
+  %bool.val230 = ptrtoint ptr %payload219 to i64
+  %is.true231 = icmp ne i64 %bool.val230, 0
+  br i1 %is.true231, label %sout.true232, label %sout.false233
 
-sout.str215:                                      ; preds = %idx.merge169
-  %28 = call i32 (ptr, ...) @printf(ptr @.str.35, ptr %payload211)
-  br label %sout.merge218
+sout.str223:                                      ; preds = %idx.merge173
+  %28 = call i32 (ptr, ...) @printf(ptr @.str.35, ptr %payload219)
+  br label %sout.merge226
 
-sout.null216:                                     ; preds = %idx.merge169
+sout.null224:                                     ; preds = %idx.merge173
   %29 = call i32 (ptr, ...) @printf(ptr @.str.36, ptr @.str.37)
-  br label %sout.merge218
+  br label %sout.merge226
 
-sout.default217:                                  ; preds = %idx.merge169
-  %30 = call i32 (ptr, ...) @printf(ptr @.str.38, ptr %payload211)
-  br label %sout.merge218
+sout.default225:                                  ; preds = %idx.merge173
+  %30 = call i32 (ptr, ...) @printf(ptr @.str.38, ptr %payload219)
+  br label %sout.merge226
 
-sout.merge218:                                    ; preds = %sout.default217, %sout.null216, %sout.str215, %sout.bool.merge226, %sout.float213, %sout.int212
+sout.merge226:                                    ; preds = %sout.default225, %sout.null224, %sout.str223, %sout.bool.merge234, %sout.float221, %sout.int220
   %31 = call i32 @putchar(i32 10)
-  %rcc.val.heap227 = call ptr @malloc(i64 16)
-  %tag.ptr228 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap227, i32 0, i32 0
-  store i64 0, ptr %tag.ptr228, align 4
-  %payload.ptr229 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap227, i32 0, i32 1
-  store ptr null, ptr %payload.ptr229, align 8
-  %dic2.load230 = load ptr, ptr %dic2, align 8
-  %rcc.val.heap231 = call ptr @malloc(i64 16)
-  %tag.ptr232 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap231, i32 0, i32 0
-  store i64 4, ptr %tag.ptr232, align 4
-  %payload.ptr233 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap231, i32 0, i32 1
-  store ptr @.str.39, ptr %payload.ptr233, align 8
-  %payload.ptr234 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap231, i32 0, i32 1
-  %payload235 = load ptr, ptr %payload.ptr234, align 8
-  %index.int236 = ptrtoint ptr %payload235 to i64
-  %payload.ptr237 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load230, i32 0, i32 1
-  %payload238 = load ptr, ptr %payload.ptr237, align 8
-  %tag.ptr239 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load230, i32 0, i32 0
-  %tag240 = load i64, ptr %tag.ptr239, align 4
-  %idx.result241 = alloca ptr, align 8
-  %rcc.val.heap242 = call ptr @malloc(i64 16)
-  %tag.ptr243 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap242, i32 0, i32 0
-  store i64 0, ptr %tag.ptr243, align 4
-  %payload.ptr244 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap242, i32 0, i32 1
-  store ptr null, ptr %payload.ptr244, align 8
-  store ptr %rcc.val.heap242, ptr %idx.result241, align 8
-  switch i64 %tag240, label %idx.default247 [
-    i64 5, label %idx.list245
-    i64 6, label %idx.dict246
+  %rcc.val.heap235 = call ptr @malloc(i64 16)
+  %tag.ptr236 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap235, i32 0, i32 0
+  store i64 0, ptr %tag.ptr236, align 4
+  %payload.ptr237 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap235, i32 0, i32 1
+  store ptr null, ptr %payload.ptr237, align 8
+  %dic2.load238 = load ptr, ptr %dic2, align 8
+  %rcc.val.heap239 = call ptr @malloc(i64 16)
+  %tag.ptr240 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap239, i32 0, i32 0
+  store i64 4, ptr %tag.ptr240, align 4
+  %payload.ptr241 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap239, i32 0, i32 1
+  store ptr @.str.39, ptr %payload.ptr241, align 8
+  %payload.ptr242 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap239, i32 0, i32 1
+  %payload243 = load ptr, ptr %payload.ptr242, align 8
+  %index.int244 = ptrtoint ptr %payload243 to i64
+  %payload.ptr245 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load238, i32 0, i32 1
+  %payload246 = load ptr, ptr %payload.ptr245, align 8
+  %tag.ptr247 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load238, i32 0, i32 0
+  %tag248 = load i64, ptr %tag.ptr247, align 4
+  %idx.result249 = alloca ptr, align 8
+  %rcc.val.heap250 = call ptr @malloc(i64 16)
+  %tag.ptr251 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap250, i32 0, i32 0
+  store i64 0, ptr %tag.ptr251, align 4
+  %payload.ptr252 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap250, i32 0, i32 1
+  store ptr null, ptr %payload.ptr252, align 8
+  store ptr %rcc.val.heap250, ptr %idx.result249, align 8
+  switch i64 %tag248, label %idx.default255 [
+    i64 5, label %idx.list253
+    i64 6, label %idx.dict254
   ]
 
-sout.true224:                                     ; preds = %sout.bool214
+sout.true232:                                     ; preds = %sout.bool222
   %32 = call i32 (ptr, ...) @printf(ptr @.str.31, ptr @.str.32)
-  br label %sout.bool.merge226
+  br label %sout.bool.merge234
 
-sout.false225:                                    ; preds = %sout.bool214
+sout.false233:                                    ; preds = %sout.bool222
   %33 = call i32 (ptr, ...) @printf(ptr @.str.33, ptr @.str.34)
-  br label %sout.bool.merge226
+  br label %sout.bool.merge234
 
-sout.bool.merge226:                               ; preds = %sout.false225, %sout.true224
-  br label %sout.merge218
+sout.bool.merge234:                               ; preds = %sout.false233, %sout.true232
+  br label %sout.merge226
 
-idx.list245:                                      ; preds = %sout.merge218
-  %list.data249 = getelementptr inbounds nuw %RCCList.6, ptr %payload238, i32 0, i32 2
-  %data250 = load ptr, ptr %list.data249, align 8
-  %idx.byte.offset251 = mul i64 %index.int236, 8
-  %elem.ptr252 = getelementptr inbounds i8, ptr %data250, i64 %idx.byte.offset251
-  %elem253 = load ptr, ptr %elem.ptr252, align 8
-  store ptr %elem253, ptr %idx.result241, align 8
-  br label %idx.merge248
+idx.list253:                                      ; preds = %sout.merge226
+  %list.data257 = getelementptr inbounds nuw %RCCList.6, ptr %payload246, i32 0, i32 2
+  %data258 = load ptr, ptr %list.data257, align 8
+  %idx.byte.offset259 = mul i64 %index.int244, 8
+  %elem.ptr260 = getelementptr inbounds i8, ptr %data258, i64 %idx.byte.offset259
+  %elem261 = load ptr, ptr %elem.ptr260, align 8
+  store ptr %elem261, ptr %idx.result249, align 8
+  br label %idx.merge256
 
-idx.dict246:                                      ; preds = %sout.merge218
-  %dict.size254 = getelementptr inbounds nuw %RCCDict.7, ptr %payload238, i32 0, i32 1
-  %size255 = load i64, ptr %dict.size254, align 4
-  %dict.keys256 = getelementptr inbounds nuw %RCCDict.7, ptr %payload238, i32 0, i32 2
-  %keys257 = load ptr, ptr %dict.keys256, align 8
-  %dict.values258 = getelementptr inbounds nuw %RCCDict.7, ptr %payload238, i32 0, i32 3
-  %vals259 = load ptr, ptr %dict.values258, align 8
-  %dict.i265 = alloca i64, align 8
-  store i64 0, ptr %dict.i265, align 4
-  br label %dict.search.header260
+idx.dict254:                                      ; preds = %sout.merge226
+  %dict.size262 = getelementptr inbounds nuw %RCCDict.7, ptr %payload246, i32 0, i32 1
+  %size263 = load i64, ptr %dict.size262, align 4
+  %dict.keys264 = getelementptr inbounds nuw %RCCDict.7, ptr %payload246, i32 0, i32 2
+  %keys265 = load ptr, ptr %dict.keys264, align 8
+  %dict.values266 = getelementptr inbounds nuw %RCCDict.7, ptr %payload246, i32 0, i32 3
+  %vals267 = load ptr, ptr %dict.values266, align 8
+  %dict.i273 = alloca i64, align 8
+  store i64 0, ptr %dict.i273, align 4
+  br label %dict.search.header268
 
-idx.default247:                                   ; preds = %sout.merge218
-  br label %idx.merge248
+idx.default255:                                   ; preds = %sout.merge226
+  br label %idx.merge256
 
-idx.merge248:                                     ; preds = %idx.default247, %dict.search.merge264, %idx.list245
-  %idx.result286 = load ptr, ptr %idx.result241, align 8
-  %tag.ptr287 = getelementptr inbounds nuw %RCCValue, ptr %idx.result286, i32 0, i32 0
-  %tag288 = load i64, ptr %tag.ptr287, align 4
-  %payload.ptr289 = getelementptr inbounds nuw %RCCValue, ptr %idx.result286, i32 0, i32 1
-  %payload290 = load ptr, ptr %payload.ptr289, align 8
-  switch i64 %tag288, label %sout.default296 [
-    i64 1, label %sout.int291
-    i64 2, label %sout.float292
-    i64 3, label %sout.bool293
-    i64 4, label %sout.str294
-    i64 0, label %sout.null295
+idx.merge256:                                     ; preds = %idx.default255, %dict.search.merge272, %idx.list253
+  %idx.result298 = load ptr, ptr %idx.result249, align 8
+  %tag.ptr299 = getelementptr inbounds nuw %RCCValue, ptr %idx.result298, i32 0, i32 0
+  %tag300 = load i64, ptr %tag.ptr299, align 4
+  %payload.ptr301 = getelementptr inbounds nuw %RCCValue, ptr %idx.result298, i32 0, i32 1
+  %payload302 = load ptr, ptr %payload.ptr301, align 8
+  switch i64 %tag300, label %sout.default308 [
+    i64 1, label %sout.int303
+    i64 2, label %sout.float304
+    i64 3, label %sout.bool305
+    i64 4, label %sout.str306
+    i64 0, label %sout.null307
   ]
 
-dict.search.header260:                            ; preds = %dict.search.body261, %idx.dict246
-  %i266 = load i64, ptr %dict.i265, align 4
-  %in.bounds267 = icmp slt i64 %i266, %size255
-  br i1 %in.bounds267, label %dict.search.body261, label %dict.notfound263
+dict.search.header268:                            ; preds = %dict.search.body269, %idx.dict254
+  %i274 = load i64, ptr %dict.i273, align 4
+  %in.bounds275 = icmp slt i64 %i274, %size263
+  br i1 %in.bounds275, label %dict.search.body269, label %dict.notfound271
 
-dict.search.body261:                              ; preds = %dict.search.header260
-  %i.body268 = load i64, ptr %dict.i265, align 4
-  %key.byte.offset269 = mul i64 %i.body268, 8
-  %key.gep270 = getelementptr inbounds i8, ptr %keys257, i64 %key.byte.offset269
-  %key.val271 = load ptr, ptr %key.gep270, align 8
-  %tag.ptr272 = getelementptr inbounds nuw %RCCValue, ptr %key.val271, i32 0, i32 0
-  %tag273 = load i64, ptr %tag.ptr272, align 4
-  %tag.ptr274 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap231, i32 0, i32 0
-  %tag275 = load i64, ptr %tag.ptr274, align 4
-  %tag.eq276 = icmp eq i64 %tag273, %tag275
-  %payload.ptr277 = getelementptr inbounds nuw %RCCValue, ptr %key.val271, i32 0, i32 1
-  %payload278 = load ptr, ptr %payload.ptr277, align 8
-  %payload.eq279 = icmp eq ptr %payload278, %payload235
-  %key.eq280 = and i1 %tag.eq276, %payload.eq279
-  %next.i281 = add i64 %i.body268, 1
-  store i64 %next.i281, ptr %dict.i265, align 4
-  br i1 %key.eq280, label %dict.found262, label %dict.search.header260
+dict.search.body269:                              ; preds = %dict.search.header268
+  %i.body276 = load i64, ptr %dict.i273, align 4
+  %key.byte.offset277 = mul i64 %i.body276, 8
+  %key.gep278 = getelementptr inbounds i8, ptr %keys265, i64 %key.byte.offset277
+  %key.val279 = load ptr, ptr %key.gep278, align 8
+  %tag.ptr280 = getelementptr inbounds nuw %RCCValue, ptr %key.val279, i32 0, i32 0
+  %tag281 = load i64, ptr %tag.ptr280, align 4
+  %tag.ptr282 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap239, i32 0, i32 0
+  %tag283 = load i64, ptr %tag.ptr282, align 4
+  %tag.eq284 = icmp eq i64 %tag281, %tag283
+  %payload.ptr285 = getelementptr inbounds nuw %RCCValue, ptr %key.val279, i32 0, i32 1
+  %payload286 = load ptr, ptr %payload.ptr285, align 8
+  %is.string287 = icmp eq i64 %tag281, 4
+  %strcmp.result288 = call i32 @strcmp(ptr %payload286, ptr %payload243)
+  %strcmp.eq289 = icmp eq i32 %strcmp.result288, 0
+  %ptr.eq290 = icmp eq ptr %payload286, %payload243
+  %payload.eq291 = select i1 %is.string287, i1 %strcmp.eq289, i1 %ptr.eq290
+  %key.eq292 = and i1 %tag.eq284, %payload.eq291
+  %next.i293 = add i64 %i.body276, 1
+  store i64 %next.i293, ptr %dict.i273, align 4
+  br i1 %key.eq292, label %dict.found270, label %dict.search.header268
 
-dict.found262:                                    ; preds = %dict.search.body261
-  %i.found282 = load i64, ptr %dict.i265, align 4
-  %val.byte.offset283 = mul i64 %i.found282, 8
-  %val.gep284 = getelementptr inbounds i8, ptr %vals259, i64 %val.byte.offset283
-  %val285 = load ptr, ptr %val.gep284, align 8
-  store ptr %val285, ptr %idx.result241, align 8
-  br label %dict.search.merge264
+dict.found270:                                    ; preds = %dict.search.body269
+  %i.found294 = load i64, ptr %dict.i273, align 4
+  %val.byte.offset295 = mul i64 %i.found294, 8
+  %val.gep296 = getelementptr inbounds i8, ptr %vals267, i64 %val.byte.offset295
+  %val297 = load ptr, ptr %val.gep296, align 8
+  store ptr %val297, ptr %idx.result249, align 8
+  br label %dict.search.merge272
 
-dict.notfound263:                                 ; preds = %dict.search.header260
-  br label %dict.search.merge264
+dict.notfound271:                                 ; preds = %dict.search.header268
+  br label %dict.search.merge272
 
-dict.search.merge264:                             ; preds = %dict.notfound263, %dict.found262
-  br label %idx.merge248
+dict.search.merge272:                             ; preds = %dict.notfound271, %dict.found270
+  br label %idx.merge256
 
-sout.int291:                                      ; preds = %idx.merge248
-  %int.val298 = ptrtoint ptr %payload290 to i64
-  %34 = call i32 (ptr, ...) @printf(ptr @.str.40, i64 %int.val298)
-  br label %sout.merge297
+sout.int303:                                      ; preds = %idx.merge256
+  %int.val310 = ptrtoint ptr %payload302 to i64
+  %34 = call i32 (ptr, ...) @printf(ptr @.str.40, i64 %int.val310)
+  br label %sout.merge309
 
-sout.float292:                                    ; preds = %idx.merge248
-  %float.bits299 = ptrtoint ptr %payload290 to i64
-  %float.val300 = bitcast i64 %float.bits299 to double
-  %35 = call i32 (ptr, ...) @printf(ptr @.str.41, double %float.val300)
-  br label %sout.merge297
+sout.float304:                                    ; preds = %idx.merge256
+  %float.bits311 = ptrtoint ptr %payload302 to i64
+  %float.val312 = bitcast i64 %float.bits311 to double
+  %35 = call i32 (ptr, ...) @printf(ptr @.str.41, double %float.val312)
+  br label %sout.merge309
 
-sout.bool293:                                     ; preds = %idx.merge248
-  %bool.val301 = ptrtoint ptr %payload290 to i64
-  %is.true302 = icmp ne i64 %bool.val301, 0
-  br i1 %is.true302, label %sout.true303, label %sout.false304
+sout.bool305:                                     ; preds = %idx.merge256
+  %bool.val313 = ptrtoint ptr %payload302 to i64
+  %is.true314 = icmp ne i64 %bool.val313, 0
+  br i1 %is.true314, label %sout.true315, label %sout.false316
 
-sout.str294:                                      ; preds = %idx.merge248
-  %36 = call i32 (ptr, ...) @printf(ptr @.str.46, ptr %payload290)
-  br label %sout.merge297
+sout.str306:                                      ; preds = %idx.merge256
+  %36 = call i32 (ptr, ...) @printf(ptr @.str.46, ptr %payload302)
+  br label %sout.merge309
 
-sout.null295:                                     ; preds = %idx.merge248
+sout.null307:                                     ; preds = %idx.merge256
   %37 = call i32 (ptr, ...) @printf(ptr @.str.47, ptr @.str.48)
-  br label %sout.merge297
+  br label %sout.merge309
 
-sout.default296:                                  ; preds = %idx.merge248
-  %38 = call i32 (ptr, ...) @printf(ptr @.str.49, ptr %payload290)
-  br label %sout.merge297
+sout.default308:                                  ; preds = %idx.merge256
+  %38 = call i32 (ptr, ...) @printf(ptr @.str.49, ptr %payload302)
+  br label %sout.merge309
 
-sout.merge297:                                    ; preds = %sout.default296, %sout.null295, %sout.str294, %sout.bool.merge305, %sout.float292, %sout.int291
+sout.merge309:                                    ; preds = %sout.default308, %sout.null307, %sout.str306, %sout.bool.merge317, %sout.float304, %sout.int303
   %39 = call i32 @putchar(i32 10)
-  %rcc.val.heap306 = call ptr @malloc(i64 16)
-  %tag.ptr307 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap306, i32 0, i32 0
-  store i64 0, ptr %tag.ptr307, align 4
-  %payload.ptr308 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap306, i32 0, i32 1
-  store ptr null, ptr %payload.ptr308, align 8
-  %dic2.load309 = load ptr, ptr %dic2, align 8
-  %rcc.val.heap310 = call ptr @malloc(i64 16)
-  %tag.ptr311 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap310, i32 0, i32 0
-  store i64 4, ptr %tag.ptr311, align 4
-  %payload.ptr312 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap310, i32 0, i32 1
-  store ptr @.str.50, ptr %payload.ptr312, align 8
-  %payload.ptr313 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap310, i32 0, i32 1
-  %payload314 = load ptr, ptr %payload.ptr313, align 8
-  %index.int315 = ptrtoint ptr %payload314 to i64
-  %payload.ptr316 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load309, i32 0, i32 1
-  %payload317 = load ptr, ptr %payload.ptr316, align 8
-  %tag.ptr318 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load309, i32 0, i32 0
-  %tag319 = load i64, ptr %tag.ptr318, align 4
-  %idx.result320 = alloca ptr, align 8
-  %rcc.val.heap321 = call ptr @malloc(i64 16)
-  %tag.ptr322 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap321, i32 0, i32 0
-  store i64 0, ptr %tag.ptr322, align 4
-  %payload.ptr323 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap321, i32 0, i32 1
-  store ptr null, ptr %payload.ptr323, align 8
-  store ptr %rcc.val.heap321, ptr %idx.result320, align 8
-  switch i64 %tag319, label %idx.default326 [
-    i64 5, label %idx.list324
-    i64 6, label %idx.dict325
+  %rcc.val.heap318 = call ptr @malloc(i64 16)
+  %tag.ptr319 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap318, i32 0, i32 0
+  store i64 0, ptr %tag.ptr319, align 4
+  %payload.ptr320 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap318, i32 0, i32 1
+  store ptr null, ptr %payload.ptr320, align 8
+  %dic2.load321 = load ptr, ptr %dic2, align 8
+  %rcc.val.heap322 = call ptr @malloc(i64 16)
+  %tag.ptr323 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap322, i32 0, i32 0
+  store i64 4, ptr %tag.ptr323, align 4
+  %payload.ptr324 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap322, i32 0, i32 1
+  store ptr @.str.50, ptr %payload.ptr324, align 8
+  %payload.ptr325 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap322, i32 0, i32 1
+  %payload326 = load ptr, ptr %payload.ptr325, align 8
+  %index.int327 = ptrtoint ptr %payload326 to i64
+  %payload.ptr328 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load321, i32 0, i32 1
+  %payload329 = load ptr, ptr %payload.ptr328, align 8
+  %tag.ptr330 = getelementptr inbounds nuw %RCCValue, ptr %dic2.load321, i32 0, i32 0
+  %tag331 = load i64, ptr %tag.ptr330, align 4
+  %idx.result332 = alloca ptr, align 8
+  %rcc.val.heap333 = call ptr @malloc(i64 16)
+  %tag.ptr334 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap333, i32 0, i32 0
+  store i64 0, ptr %tag.ptr334, align 4
+  %payload.ptr335 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap333, i32 0, i32 1
+  store ptr null, ptr %payload.ptr335, align 8
+  store ptr %rcc.val.heap333, ptr %idx.result332, align 8
+  switch i64 %tag331, label %idx.default338 [
+    i64 5, label %idx.list336
+    i64 6, label %idx.dict337
   ]
 
-sout.true303:                                     ; preds = %sout.bool293
+sout.true315:                                     ; preds = %sout.bool305
   %40 = call i32 (ptr, ...) @printf(ptr @.str.42, ptr @.str.43)
-  br label %sout.bool.merge305
+  br label %sout.bool.merge317
 
-sout.false304:                                    ; preds = %sout.bool293
+sout.false316:                                    ; preds = %sout.bool305
   %41 = call i32 (ptr, ...) @printf(ptr @.str.44, ptr @.str.45)
-  br label %sout.bool.merge305
+  br label %sout.bool.merge317
 
-sout.bool.merge305:                               ; preds = %sout.false304, %sout.true303
-  br label %sout.merge297
+sout.bool.merge317:                               ; preds = %sout.false316, %sout.true315
+  br label %sout.merge309
 
-idx.list324:                                      ; preds = %sout.merge297
-  %list.data328 = getelementptr inbounds nuw %RCCList.8, ptr %payload317, i32 0, i32 2
-  %data329 = load ptr, ptr %list.data328, align 8
-  %idx.byte.offset330 = mul i64 %index.int315, 8
-  %elem.ptr331 = getelementptr inbounds i8, ptr %data329, i64 %idx.byte.offset330
-  %elem332 = load ptr, ptr %elem.ptr331, align 8
-  store ptr %elem332, ptr %idx.result320, align 8
-  br label %idx.merge327
+idx.list336:                                      ; preds = %sout.merge309
+  %list.data340 = getelementptr inbounds nuw %RCCList.8, ptr %payload329, i32 0, i32 2
+  %data341 = load ptr, ptr %list.data340, align 8
+  %idx.byte.offset342 = mul i64 %index.int327, 8
+  %elem.ptr343 = getelementptr inbounds i8, ptr %data341, i64 %idx.byte.offset342
+  %elem344 = load ptr, ptr %elem.ptr343, align 8
+  store ptr %elem344, ptr %idx.result332, align 8
+  br label %idx.merge339
 
-idx.dict325:                                      ; preds = %sout.merge297
-  %dict.size333 = getelementptr inbounds nuw %RCCDict.9, ptr %payload317, i32 0, i32 1
-  %size334 = load i64, ptr %dict.size333, align 4
-  %dict.keys335 = getelementptr inbounds nuw %RCCDict.9, ptr %payload317, i32 0, i32 2
-  %keys336 = load ptr, ptr %dict.keys335, align 8
-  %dict.values337 = getelementptr inbounds nuw %RCCDict.9, ptr %payload317, i32 0, i32 3
-  %vals338 = load ptr, ptr %dict.values337, align 8
-  %dict.i344 = alloca i64, align 8
-  store i64 0, ptr %dict.i344, align 4
-  br label %dict.search.header339
+idx.dict337:                                      ; preds = %sout.merge309
+  %dict.size345 = getelementptr inbounds nuw %RCCDict.9, ptr %payload329, i32 0, i32 1
+  %size346 = load i64, ptr %dict.size345, align 4
+  %dict.keys347 = getelementptr inbounds nuw %RCCDict.9, ptr %payload329, i32 0, i32 2
+  %keys348 = load ptr, ptr %dict.keys347, align 8
+  %dict.values349 = getelementptr inbounds nuw %RCCDict.9, ptr %payload329, i32 0, i32 3
+  %vals350 = load ptr, ptr %dict.values349, align 8
+  %dict.i356 = alloca i64, align 8
+  store i64 0, ptr %dict.i356, align 4
+  br label %dict.search.header351
 
-idx.default326:                                   ; preds = %sout.merge297
-  br label %idx.merge327
+idx.default338:                                   ; preds = %sout.merge309
+  br label %idx.merge339
 
-idx.merge327:                                     ; preds = %idx.default326, %dict.search.merge343, %idx.list324
-  %idx.result365 = load ptr, ptr %idx.result320, align 8
-  %tag.ptr366 = getelementptr inbounds nuw %RCCValue, ptr %idx.result365, i32 0, i32 0
-  %tag367 = load i64, ptr %tag.ptr366, align 4
-  %payload.ptr368 = getelementptr inbounds nuw %RCCValue, ptr %idx.result365, i32 0, i32 1
-  %payload369 = load ptr, ptr %payload.ptr368, align 8
-  switch i64 %tag367, label %sout.default375 [
-    i64 1, label %sout.int370
-    i64 2, label %sout.float371
-    i64 3, label %sout.bool372
-    i64 4, label %sout.str373
-    i64 0, label %sout.null374
+idx.merge339:                                     ; preds = %idx.default338, %dict.search.merge355, %idx.list336
+  %idx.result381 = load ptr, ptr %idx.result332, align 8
+  %tag.ptr382 = getelementptr inbounds nuw %RCCValue, ptr %idx.result381, i32 0, i32 0
+  %tag383 = load i64, ptr %tag.ptr382, align 4
+  %payload.ptr384 = getelementptr inbounds nuw %RCCValue, ptr %idx.result381, i32 0, i32 1
+  %payload385 = load ptr, ptr %payload.ptr384, align 8
+  switch i64 %tag383, label %sout.default391 [
+    i64 1, label %sout.int386
+    i64 2, label %sout.float387
+    i64 3, label %sout.bool388
+    i64 4, label %sout.str389
+    i64 0, label %sout.null390
   ]
 
-dict.search.header339:                            ; preds = %dict.search.body340, %idx.dict325
-  %i345 = load i64, ptr %dict.i344, align 4
-  %in.bounds346 = icmp slt i64 %i345, %size334
-  br i1 %in.bounds346, label %dict.search.body340, label %dict.notfound342
+dict.search.header351:                            ; preds = %dict.search.body352, %idx.dict337
+  %i357 = load i64, ptr %dict.i356, align 4
+  %in.bounds358 = icmp slt i64 %i357, %size346
+  br i1 %in.bounds358, label %dict.search.body352, label %dict.notfound354
 
-dict.search.body340:                              ; preds = %dict.search.header339
-  %i.body347 = load i64, ptr %dict.i344, align 4
-  %key.byte.offset348 = mul i64 %i.body347, 8
-  %key.gep349 = getelementptr inbounds i8, ptr %keys336, i64 %key.byte.offset348
-  %key.val350 = load ptr, ptr %key.gep349, align 8
-  %tag.ptr351 = getelementptr inbounds nuw %RCCValue, ptr %key.val350, i32 0, i32 0
-  %tag352 = load i64, ptr %tag.ptr351, align 4
-  %tag.ptr353 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap310, i32 0, i32 0
-  %tag354 = load i64, ptr %tag.ptr353, align 4
-  %tag.eq355 = icmp eq i64 %tag352, %tag354
-  %payload.ptr356 = getelementptr inbounds nuw %RCCValue, ptr %key.val350, i32 0, i32 1
-  %payload357 = load ptr, ptr %payload.ptr356, align 8
-  %payload.eq358 = icmp eq ptr %payload357, %payload314
-  %key.eq359 = and i1 %tag.eq355, %payload.eq358
-  %next.i360 = add i64 %i.body347, 1
-  store i64 %next.i360, ptr %dict.i344, align 4
-  br i1 %key.eq359, label %dict.found341, label %dict.search.header339
+dict.search.body352:                              ; preds = %dict.search.header351
+  %i.body359 = load i64, ptr %dict.i356, align 4
+  %key.byte.offset360 = mul i64 %i.body359, 8
+  %key.gep361 = getelementptr inbounds i8, ptr %keys348, i64 %key.byte.offset360
+  %key.val362 = load ptr, ptr %key.gep361, align 8
+  %tag.ptr363 = getelementptr inbounds nuw %RCCValue, ptr %key.val362, i32 0, i32 0
+  %tag364 = load i64, ptr %tag.ptr363, align 4
+  %tag.ptr365 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap322, i32 0, i32 0
+  %tag366 = load i64, ptr %tag.ptr365, align 4
+  %tag.eq367 = icmp eq i64 %tag364, %tag366
+  %payload.ptr368 = getelementptr inbounds nuw %RCCValue, ptr %key.val362, i32 0, i32 1
+  %payload369 = load ptr, ptr %payload.ptr368, align 8
+  %is.string370 = icmp eq i64 %tag364, 4
+  %strcmp.result371 = call i32 @strcmp(ptr %payload369, ptr %payload326)
+  %strcmp.eq372 = icmp eq i32 %strcmp.result371, 0
+  %ptr.eq373 = icmp eq ptr %payload369, %payload326
+  %payload.eq374 = select i1 %is.string370, i1 %strcmp.eq372, i1 %ptr.eq373
+  %key.eq375 = and i1 %tag.eq367, %payload.eq374
+  %next.i376 = add i64 %i.body359, 1
+  store i64 %next.i376, ptr %dict.i356, align 4
+  br i1 %key.eq375, label %dict.found353, label %dict.search.header351
 
-dict.found341:                                    ; preds = %dict.search.body340
-  %i.found361 = load i64, ptr %dict.i344, align 4
-  %val.byte.offset362 = mul i64 %i.found361, 8
-  %val.gep363 = getelementptr inbounds i8, ptr %vals338, i64 %val.byte.offset362
-  %val364 = load ptr, ptr %val.gep363, align 8
-  store ptr %val364, ptr %idx.result320, align 8
-  br label %dict.search.merge343
+dict.found353:                                    ; preds = %dict.search.body352
+  %i.found377 = load i64, ptr %dict.i356, align 4
+  %val.byte.offset378 = mul i64 %i.found377, 8
+  %val.gep379 = getelementptr inbounds i8, ptr %vals350, i64 %val.byte.offset378
+  %val380 = load ptr, ptr %val.gep379, align 8
+  store ptr %val380, ptr %idx.result332, align 8
+  br label %dict.search.merge355
 
-dict.notfound342:                                 ; preds = %dict.search.header339
-  br label %dict.search.merge343
+dict.notfound354:                                 ; preds = %dict.search.header351
+  br label %dict.search.merge355
 
-dict.search.merge343:                             ; preds = %dict.notfound342, %dict.found341
-  br label %idx.merge327
+dict.search.merge355:                             ; preds = %dict.notfound354, %dict.found353
+  br label %idx.merge339
 
-sout.int370:                                      ; preds = %idx.merge327
-  %int.val377 = ptrtoint ptr %payload369 to i64
-  %42 = call i32 (ptr, ...) @printf(ptr @.str.51, i64 %int.val377)
-  br label %sout.merge376
+sout.int386:                                      ; preds = %idx.merge339
+  %int.val393 = ptrtoint ptr %payload385 to i64
+  %42 = call i32 (ptr, ...) @printf(ptr @.str.51, i64 %int.val393)
+  br label %sout.merge392
 
-sout.float371:                                    ; preds = %idx.merge327
-  %float.bits378 = ptrtoint ptr %payload369 to i64
-  %float.val379 = bitcast i64 %float.bits378 to double
-  %43 = call i32 (ptr, ...) @printf(ptr @.str.52, double %float.val379)
-  br label %sout.merge376
+sout.float387:                                    ; preds = %idx.merge339
+  %float.bits394 = ptrtoint ptr %payload385 to i64
+  %float.val395 = bitcast i64 %float.bits394 to double
+  %43 = call i32 (ptr, ...) @printf(ptr @.str.52, double %float.val395)
+  br label %sout.merge392
 
-sout.bool372:                                     ; preds = %idx.merge327
-  %bool.val380 = ptrtoint ptr %payload369 to i64
-  %is.true381 = icmp ne i64 %bool.val380, 0
-  br i1 %is.true381, label %sout.true382, label %sout.false383
+sout.bool388:                                     ; preds = %idx.merge339
+  %bool.val396 = ptrtoint ptr %payload385 to i64
+  %is.true397 = icmp ne i64 %bool.val396, 0
+  br i1 %is.true397, label %sout.true398, label %sout.false399
 
-sout.str373:                                      ; preds = %idx.merge327
-  %44 = call i32 (ptr, ...) @printf(ptr @.str.57, ptr %payload369)
-  br label %sout.merge376
+sout.str389:                                      ; preds = %idx.merge339
+  %44 = call i32 (ptr, ...) @printf(ptr @.str.57, ptr %payload385)
+  br label %sout.merge392
 
-sout.null374:                                     ; preds = %idx.merge327
+sout.null390:                                     ; preds = %idx.merge339
   %45 = call i32 (ptr, ...) @printf(ptr @.str.58, ptr @.str.59)
-  br label %sout.merge376
+  br label %sout.merge392
 
-sout.default375:                                  ; preds = %idx.merge327
-  %46 = call i32 (ptr, ...) @printf(ptr @.str.60, ptr %payload369)
-  br label %sout.merge376
+sout.default391:                                  ; preds = %idx.merge339
+  %46 = call i32 (ptr, ...) @printf(ptr @.str.60, ptr %payload385)
+  br label %sout.merge392
 
-sout.merge376:                                    ; preds = %sout.default375, %sout.null374, %sout.str373, %sout.bool.merge384, %sout.float371, %sout.int370
+sout.merge392:                                    ; preds = %sout.default391, %sout.null390, %sout.str389, %sout.bool.merge400, %sout.float387, %sout.int386
   %47 = call i32 @putchar(i32 10)
-  %rcc.val.heap385 = call ptr @malloc(i64 16)
-  %tag.ptr386 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap385, i32 0, i32 0
-  store i64 0, ptr %tag.ptr386, align 4
-  %payload.ptr387 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap385, i32 0, i32 1
-  store ptr null, ptr %payload.ptr387, align 8
+  %rcc.val.heap401 = call ptr @malloc(i64 16)
+  %tag.ptr402 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap401, i32 0, i32 0
+  store i64 0, ptr %tag.ptr402, align 4
+  %payload.ptr403 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap401, i32 0, i32 1
+  store ptr null, ptr %payload.ptr403, align 8
   ret i32 0
 
-sout.true382:                                     ; preds = %sout.bool372
+sout.true398:                                     ; preds = %sout.bool388
   %48 = call i32 (ptr, ...) @printf(ptr @.str.53, ptr @.str.54)
-  br label %sout.bool.merge384
+  br label %sout.bool.merge400
 
-sout.false383:                                    ; preds = %sout.bool372
+sout.false399:                                    ; preds = %sout.bool388
   %49 = call i32 (ptr, ...) @printf(ptr @.str.55, ptr @.str.56)
-  br label %sout.bool.merge384
+  br label %sout.bool.merge400
 
-sout.bool.merge384:                               ; preds = %sout.false383, %sout.true382
-  br label %sout.merge376
+sout.bool.merge400:                               ; preds = %sout.false399, %sout.true398
+  br label %sout.merge392
 }
 
 declare ptr @malloc(i64)
 
+declare i32 @strcmp(ptr, ptr)
+
 declare i32 @putchar(i32)
 
 declare i32 @printf(ptr, ...)
-
-declare i32 @strcmp(ptr, ptr)
