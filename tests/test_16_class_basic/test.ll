@@ -1,8 +1,8 @@
 ; ModuleID = 'rcc_module'
 source_filename = "rcc_module"
 
-%RCCValue = type { i64, ptr }
 %Point = type { ptr, ptr }
+%RCCValue = type { i64, ptr }
 
 @.str = private constant [5 x i8] c"%lld\00"
 @.str.1 = private constant [3 x i8] c"%g\00"
@@ -31,6 +31,26 @@ entry:
   ret i32 0
 }
 
+define ptr @Point.__init__(ptr %this, ptr %a, ptr %b) {
+entry:
+  %b3 = alloca ptr, align 8
+  %a2 = alloca ptr, align 8
+  %this1 = alloca ptr, align 8
+  store ptr %this, ptr %this1, align 8
+  store ptr %a, ptr %a2, align 8
+  store ptr %b, ptr %b3, align 8
+  %a.load = load ptr, ptr %a2, align 8
+  %this.load = load ptr, ptr %this1, align 8
+  %x.ptr = getelementptr inbounds nuw %Point, ptr %this.load, i32 0, i32 0
+  store ptr %a.load, ptr %x.ptr, align 8
+  %b.load = load ptr, ptr %b3, align 8
+  %this.load4 = load ptr, ptr %this1, align 8
+  %y.ptr = getelementptr inbounds nuw %Point, ptr %this.load4, i32 0, i32 1
+  store ptr %b.load, ptr %y.ptr, align 8
+  %this.load5 = load ptr, ptr %this1, align 8
+  ret ptr %this.load5
+}
+
 define private ptr @__rio_main() {
 entry:
   %p = alloca ptr, align 8
@@ -51,6 +71,7 @@ entry:
   store i64 0, ptr %tag.ptr5, align 4
   %payload.ptr6 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap4, i32 0, i32 1
   store ptr %new.Point, ptr %payload.ptr6, align 8
+  %ctor.Point = call ptr @Point.__init__(ptr %new.Point, ptr %rcc.val.heap, ptr %rcc.val.heap1)
   store ptr %rcc.val.heap4, ptr %p, align 8
   %p.load = load ptr, ptr %p, align 8
   %payload.ptr7 = getelementptr inbounds nuw %RCCValue, ptr %p.load, i32 0, i32 1

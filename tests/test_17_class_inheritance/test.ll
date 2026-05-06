@@ -1,9 +1,9 @@
 ; ModuleID = 'rcc_module'
 source_filename = "rcc_module"
 
-%RCCValue = type { i64, ptr }
 %Base = type { ptr }
 %Derived = type { ptr, ptr }
+%RCCValue = type { i64, ptr }
 
 @.str = private constant [5 x i8] c"%lld\00"
 @.str.1 = private constant [3 x i8] c"%g\00"
@@ -32,6 +32,39 @@ entry:
   ret i32 0
 }
 
+define ptr @Base.__init__(ptr %this, ptr %v) {
+entry:
+  %v2 = alloca ptr, align 8
+  %this1 = alloca ptr, align 8
+  store ptr %this, ptr %this1, align 8
+  store ptr %v, ptr %v2, align 8
+  %v.load = load ptr, ptr %v2, align 8
+  %this.load = load ptr, ptr %this1, align 8
+  %val.ptr = getelementptr inbounds nuw %Base, ptr %this.load, i32 0, i32 0
+  store ptr %v.load, ptr %val.ptr, align 8
+  %this.load3 = load ptr, ptr %this1, align 8
+  ret ptr %this.load3
+}
+
+define ptr @Derived.__init__(ptr %this, ptr %v, ptr %e) {
+entry:
+  %e3 = alloca ptr, align 8
+  %v2 = alloca ptr, align 8
+  %this1 = alloca ptr, align 8
+  store ptr %this, ptr %this1, align 8
+  store ptr %v, ptr %v2, align 8
+  store ptr %e, ptr %e3, align 8
+  %v.load = load ptr, ptr %v2, align 8
+  %this.load = load ptr, ptr %this1, align 8
+  %super.call = call ptr @Base.__init__(ptr %this.load, ptr %v.load)
+  %e.load = load ptr, ptr %e3, align 8
+  %this.load4 = load ptr, ptr %this1, align 8
+  %extra.ptr = getelementptr inbounds nuw %Derived, ptr %this.load4, i32 0, i32 1
+  store ptr %e.load, ptr %extra.ptr, align 8
+  %this.load5 = load ptr, ptr %this1, align 8
+  ret ptr %this.load5
+}
+
 define private ptr @__rio_main() {
 entry:
   %d = alloca ptr, align 8
@@ -52,6 +85,7 @@ entry:
   store i64 0, ptr %tag.ptr5, align 4
   %payload.ptr6 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap4, i32 0, i32 1
   store ptr %new.Derived, ptr %payload.ptr6, align 8
+  %ctor.Derived = call ptr @Derived.__init__(ptr %new.Derived, ptr %rcc.val.heap, ptr %rcc.val.heap1)
   store ptr %rcc.val.heap4, ptr %d, align 8
   %d.load = load ptr, ptr %d, align 8
   %payload.ptr7 = getelementptr inbounds nuw %RCCValue, ptr %d.load, i32 0, i32 1
