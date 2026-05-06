@@ -1,26 +1,28 @@
 // Test forInRange builtin function in LLVM IR backend
 
+import ds
+
 fun sout(*args, end="\n"): void {
     encapsulated
 }
 
 // Test 1: Basic forInRange
 var sum1 = 0
-forInRange(0, 5, (value, isFirst, isLast) -> {
+ds.forInRange(0, 5, (value, isFirst, isLast) -> {
     sum1 = sum1 + value
 })
 sout("Test 1 - Sum 0 to 4: ", sum1)  // Expected: 0+1+2+3+4 = 10
 
 // Test 2: forInRange with step
 var sum2 = 0
-forInRange(0, 10, (value) -> {
+ds.forInRange(0, 10, (value) -> {
     sum2 = sum2 + value
 }, sep=2)
 sout("Test 2 - Sum with step 2: ", sum2)  // Expected: 0+2+4+6+8 = 20
 
 // Test 3: forInRange with negative step
 var sum3 = 0
-forInRange(10, 0, (value) -> {
+ds.forInRange(10, 0, (value) -> {
     sum3 = sum3 + value
 }, sep=-2)
 sout("Test 3 - Sum 10 to 2 (step -2): ", sum3)  // Expected: 10+8+6+4+2 = 30
@@ -28,7 +30,7 @@ sout("Test 3 - Sum 10 to 2 (step -2): ", sum3)  // Expected: 10+8+6+4+2 = 30
 // Test 4: forInRange with isFirst and isLast
 var first_val = -1
 var last_val = -1
-forInRange(3, 7, (value, isFirst, isLast) -> {
+ds.forInRange(3, 7, (value, isFirst, isLast) -> {
     if isFirst {
         first_val = value
     }
@@ -40,7 +42,7 @@ sout("Test 4 - First: ", first_val, ", Last: ", last_val)  // Expected: 3, 6
 
 // Test 5: forInRange early stop
 var sum5 = 0
-forInRange(0, 100, (value, isFirst, isLast) -> {
+ds.forInRange(0, 100, (value, isFirst, isLast) -> {
     if value >= 5 {
         ret false
     }
