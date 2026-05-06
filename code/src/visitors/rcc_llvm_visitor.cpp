@@ -528,16 +528,44 @@ namespace ast
                 return;
             }
 
-            // 从 Tagged Value 中提取对象指针
-            auto* objPayload = extractPayload(objVal);
-
-            // 确定类名
-            std::string className = CurrentClassName;
+            // 确定类名，并判断对象是否为 Tagged Value
+            std::string className;
+            bool isTaggedValue = true;
+            llvm::Value* objPayload = nullptr;
+            
             if (auto* ident = dynamic_cast<IdentifierNode*>(attrExpr->getLeftNode().get()))
             {
                 if (ident->getName() == "this" && !CurrentClassName.empty())
                 {
+                    // 在构造函数/方法中，this 是直接的类实例指针，不是 Tagged Value
                     className = CurrentClassName;
+                    isTaggedValue = false;
+                    objPayload = objVal;
+                }
+            }
+            
+            // 如果不在类上下文中，需要从 Tagged Value 提取
+            if (isTaggedValue)
+            {
+                objPayload = extractPayload(objVal);
+                // 尝试推断类名（从变量名或字段查找）
+                // 简化：这里使用之前的推断逻辑
+                if (auto* ident = dynamic_cast<IdentifierNode*>(attrExpr->getLeftNode().get()))
+                {
+                    std::string varName = ident->getName();
+                    if (ClassTypes.count(varName))
+                    {
+                        className = varName;
+                    }
+                    else if (!varName.empty())
+                    {
+                        std::string capitalized = varName;
+                        capitalized[0] = std::toupper(capitalized[0]);
+                        if (ClassTypes.count(capitalized))
+                        {
+                            className = capitalized;
+                        }
+                    }
                 }
             }
 
@@ -1211,23 +1239,31 @@ namespace ast
                 return;
             }
 
-            // 从 Tagged Value 中提取对象指针（payload）
-            auto* objPayload = extractPayload(objVal);
-
-            // 确定类名
+            // 确定类名，并判断对象是否为 Tagged Value
             std::string className;
+            bool isTaggedValue = true;
+            llvm::Value* objPayload = nullptr;
             
             // 1. 如果在类内部访问 this.field，使用 CurrentClassName
+            // 在构造函数/方法中，this 是直接的类实例指针，不是 Tagged Value
             if (auto* ident = dynamic_cast<IdentifierNode*>(node.getLeftNode().get()))
             {
                 if (ident->getName() == "this" && !CurrentClassName.empty())
                 {
                     className = CurrentClassName;
+                    isTaggedValue = false;
+                    objPayload = objVal;
                 }
-                else
+            }
+            
+            // 如果不在类上下文中，需要从 Tagged Value 提取
+            if (isTaggedValue)
+            {
+                objPayload = extractPayload(objVal);
+                
+                // 2. 尝试从变量名推断类名（变量名通常是小写的类名）
+                if (auto* ident = dynamic_cast<IdentifierNode*>(node.getLeftNode().get()))
                 {
-                    // 2. 尝试从变量名推断类名（变量名通常是小写的类名）
-                    // 例如变量 p 可能对应类 Point
                     std::string varName = ident->getName();
                     // 尝试直接匹配（类名可能和变量名相同）
                     if (ClassTypes.count(varName))
@@ -1247,22 +1283,22 @@ namespace ast
                             }
                         }
                     }
-                    
-                    // 4. 如果还是找不到，遍历所有类查找包含该字段的类
-                    if (className.empty())
+                }
+                
+                // 4. 如果还是找不到，遍历所有类查找包含该字段的类
+                if (className.empty())
+                {
+                    for (const auto& [clsName, fieldNames] : ClassFieldNames)
                     {
-                        for (const auto& [clsName, fieldNames] : ClassFieldNames)
+                        for (const auto& f : fieldNames)
                         {
-                            for (const auto& f : fieldNames)
+                            if (f == attrName)
                             {
-                                if (f == attrName)
-                                {
-                                    className = clsName;
-                                    break;
-                                }
+                                className = clsName;
+                                break;
                             }
-                            if (!className.empty()) break;
                         }
+                        if (!className.empty()) break;
                     }
                 }
             }
