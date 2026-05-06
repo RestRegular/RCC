@@ -1125,22 +1125,6 @@ namespace ast
     {
         LLVM_DEBUG("=== ProgramNode: start ===");
 
-        // 第一遍：处理所有顶层语句（函数定义、类定义等）
-        // 必须在创建 C main 入口之前完成，否则用户定义的 main 会与 C main 冲突
-        for (const auto& statement : node.getStatements())
-        {
-            statement->acceptVisitor(*this);
-            while (!ValueStack.empty())
-                ValueStack.pop();
-        }
-
-        // 检查用户是否定义了 main 函数
-        llvm::Function* userMainFunc = nullptr;
-        if (auto mainIt = Functions.find("main"); mainIt != Functions.end() && mainIt->second)
-        {
-            userMainFunc = mainIt->second;
-        }
-
         // 创建 C main 函数作为程序入口
         // int main(int argc, char** argv)
         auto* mainType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext),
@@ -1155,10 +1139,19 @@ namespace ast
         // 设置当前函数上下文
         CurrentFunction = mainFunc;
 
-        // 如果用户定义了 main 函数，在入口处调用它
-        if (userMainFunc)
+        // 遍历所有语句（函数定义、类定义、顶层表达式等）
+        for (const auto& statement : node.getStatements())
         {
-            Builder->CreateCall(userMainFunc, {}, "call.user_main");
+            statement->acceptVisitor(*this);
+            while (!ValueStack.empty())
+                ValueStack.pop();
+        }
+
+        // 如果用户定义了 main 函数，在程序末尾调用它
+        // 用户 main 已被重命名为 __rio_main，通过 Functions["main"] 查找
+        if (auto mainIt = Functions.find("main"); mainIt != Functions.end() && mainIt->second && mainIt->second != mainFunc)
+        {
+            Builder->CreateCall(mainIt->second, {}, "call.user_main");
         }
 
         // 添加 return 0
@@ -1933,6 +1926,13 @@ namespace ast
             return;
         }
 
+        // 用户定义的 main 函数重命名为 __rio_main，避免与 C main 入口冲突
+        std::string llvmFuncName = funcName;
+        if (funcName == "main")
+        {
+            llvmFuncName = "__rio_main";
+        }
+
         // 创建函数类型: ptr @funcName(ptr, ptr, ...) -> ptr
         std::vector<llvm::Type*> paramTypes(paramNames.size(), getValueType());
         auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
@@ -1941,7 +1941,7 @@ namespace ast
         const auto linkage = ExportedSymbols.contains(funcName)
             ? llvm::Function::ExternalLinkage
             : llvm::Function::PrivateLinkage;
-        auto* func = llvm::Function::Create(funcType, linkage, funcName, TheModule.get());
+        auto* func = llvm::Function::Create(funcType, linkage, llvmFuncName, TheModule.get());
 
         // 设置参数名
         unsigned idx = 0;
