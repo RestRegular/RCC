@@ -89,6 +89,8 @@ namespace ast {
 
         virtual void visitBreakExpressionNode(BreakExpressionNode &node) = 0;
 
+        virtual void visitContinueExpressionNode(ContinueExpressionNode &node) = 0;
+
         virtual void visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode &node) = 0;
 
         virtual void visitPairExpressionNode(PairExpressionNode &node) = 0;

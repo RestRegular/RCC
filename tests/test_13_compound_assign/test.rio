@@ -1,0 +1,43 @@
+// Test compound assignment operators in LLVM IR backend
+
+fun sout(*args, end="\n"): void {
+    encapsulated
+}
+
+// Test 1: += operator
+var a = 10
+a += 5
+sout("Test 1 - a += 5: ", a)  // Expected: 15
+
+// Test 2: -= operator
+var b = 20
+b -= 3
+sout("Test 2 - b -= 3: ", b)  // Expected: 17
+
+// Test 3: *= operator
+var c = 4
+c *= 6
+sout("Test 3 - c *= 6: ", c)  // Expected: 24
+
+// Test 4: /= operator
+var d = 21
+d /= 3
+sout("Test 4 - d /= 3: ", d)  // Expected: 7
+
+// Test 5: %= operator
+var e = 17
+e %= 5
+sout("Test 5 - e %= 5: ", e)  // Expected: 2
+
+// Test 6: Chained compound assignments
+var f = 10
+f += 5
+f *= 2
+f -= 3
+sout("Test 6 - Chained: ", f)  // Expected: (10+5)*2-3 = 27
+
+// Test 7: Compound assignment with variables
+var x = 5
+var y = 3
+x += y
+sout("Test 7 - x += y: ", x)  // Expected: 8

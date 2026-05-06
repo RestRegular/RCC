@@ -518,6 +518,12 @@ namespace ast {
         void acceptVisitor(Visitor &visitor) override;
     };
 
+    class ContinueExpressionNode : public ExpressionNode {
+    public:
+        explicit ContinueExpressionNode(const Token &mainToken_);
+        void acceptVisitor(Visitor &visitor) override;
+    };
+
     class BranchNode : public ExpressionNode {
         std::shared_ptr<ExpressionNode> conditionNode;
         std::shared_ptr<ExpressionNode> bodyNode;

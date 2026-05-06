@@ -227,12 +227,39 @@ namespace ast {
         void registerBuiltinIRGenerators();
 
         /**
+         * 注册 iter 内置函数
+         */
+        void registerIterBuiltin();
+
+        /**
+         * 注册 forInRange 内置函数
+         */
+        void registerForInRangeBuiltin();
+
+        /**
          * 尝试调用内置函数 IR 生成器
          * @return 是否成功调用
          */
         bool tryEmitBuiltinIR(const std::string& funcName,
                                const std::vector<llvm::Value*>& args,
                                const std::map<std::string, llvm::Value*>& namedArgs);
+
+        /**
+         * 生成增强赋值运算的 IR
+         * @param varName 变量名
+         * @param opStr 运算符 ("+=", "-=", "*=", "/=", "%=")
+         * @param rhs 右操作数值
+         * @return 运算结果值
+         */
+        llvm::Value* emitCompoundAssign(
+            const std::string& varName,
+            const std::string& opStr,
+            llvm::Value* rhs);
+
+        /**
+         * 处理增强赋值表达式节点
+         */
+        void handleCompoundAssignment(InfixExpressionNode& node);
 
         /**
          * 获取或创建 LLVM printf 函数
@@ -397,6 +424,7 @@ namespace ast {
         void visitEncapsulatedExpressionNode(EncapsulatedExpressionNode &node) override;
         void visitReturnExpressionNode(ReturnExpressionNode &node) override;
         void visitBreakExpressionNode(BreakExpressionNode &node) override;
+        void visitContinueExpressionNode(ContinueExpressionNode &node) override;
         void visitAnonFunctionDefinitionNode(
             AnonFunctionDefinitionNode &node) override;
         void visitPairExpressionNode(PairExpressionNode &node) override;

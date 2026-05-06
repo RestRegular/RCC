@@ -1204,6 +1204,13 @@ namespace ast
         const auto& infixType = node.getInfixType();
         const auto& opStr = node.getOpToken().getValue();
 
+        // 增强赋值运算符 (+=, -=, *=, /=, %=)
+        if (opStr == "+=" || opStr == "-=" || opStr == "*=" || opStr == "/=" || opStr == "%=")
+        {
+            handleCompoundAssignment(node);
+            return;
+        }
+
         // 逻辑短路求值（同时检查 NodeType 和 opStr）
         if ((infixType == NodeType::AND || infixType == NodeType::OR || infixType == NodeType::LOGICAL)
             && (opStr == "&&" || opStr == "||"))
@@ -2433,6 +2440,24 @@ namespace ast
         }
 
         LLVM_DEBUG("BreakExpressionNode");
+    }
+
+    void LLVMCodeGenVisitor::visitContinueExpressionNode(ContinueExpressionNode& node)
+    {
+        if (!ContinueTargetStack.empty())
+        {
+            Builder->CreateBr(ContinueTargetStack.top());
+            // 创建一个 unreachable 块，因为 continue 后的代码不可达
+            llvm::Function* func = Builder->GetInsertBlock()->getParent();
+            auto* unreachableBB = llvm::BasicBlock::Create(*TheContext, "continue.unreachable", func);
+            Builder->SetInsertPoint(unreachableBB);
+        }
+        else
+        {
+            LLVM_DEBUG("ContinueExpressionNode: not inside a loop");
+        }
+
+        LLVM_DEBUG("ContinueExpressionNode");
     }
 
     // ============================================================================
@@ -4038,6 +4063,265 @@ namespace ast
         pushValue(llvm::ConstantPointerNull::get(getValueType()));
     };
 
+    // iter(iterData, handler, reverse=false) - iterate over iterable data
+    BuiltinIRGenerators["iter"] = [this](
+        LLVMCodeGenVisitor& visitor,
+        const std::vector<llvm::Value*>& args,
+        const std::map<std::string, llvm::Value*>& namedArgs,
+        const std::string& funcName)
+    {
+        LLVM_DEBUG("Builtin IR: " << funcName);
+
+        llvm::Value* iterData = args.size() > 0 ? args[0] : createTaggedValueNull(TAG_NULL);
+        llvm::Value* handler = args.size() > 1 ? args[1] : createTaggedValueNull(TAG_NULL);
+        
+        // Get reverse parameter (default false)
+        bool reverse = false;
+        if (auto it = namedArgs.find("reverse"); it != namedArgs.end())
+        {
+            reverse = false; // Simplified for now
+        }
+
+        llvm::Function* func = Builder->GetInsertBlock()->getParent();
+        auto* dataTag = extractTag(iterData);
+        auto* dataPayload = extractPayload(iterData);
+
+        auto* resultAlloca = Builder->CreateAlloca(getValueType(), nullptr, "iter.result");
+        Builder->CreateStore(createTaggedBool(true), resultAlloca);
+
+        auto* listBB = llvm::BasicBlock::Create(*TheContext, "iter.list", func);
+        auto* dictBB = llvm::BasicBlock::Create(*TheContext, "iter.dict", func);
+        auto* strBB = llvm::BasicBlock::Create(*TheContext, "iter.str", func);
+        auto* defaultBB = llvm::BasicBlock::Create(*TheContext, "iter.default", func);
+        auto* mergeBB = llvm::BasicBlock::Create(*TheContext, "iter.merge", func);
+
+        auto* switchInst = Builder->CreateSwitch(dataTag, defaultBB, 3);
+        switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_LIST), listBB);
+        switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_DICT), dictBB);
+        switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING), strBB);
+
+        // List iteration
+        Builder->SetInsertPoint(listBB);
+        {
+            auto* listType = llvm::StructType::create(*TheContext,
+                {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCList");
+            
+            auto* sizePtr = Builder->CreateStructGEP(listType, dataPayload, 1, "list.size.ptr");
+            auto* size = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), sizePtr, "list.size");
+            auto* dataPtr = Builder->CreateStructGEP(listType, dataPayload, 2, "list.data.ptr");
+            auto* data = Builder->CreateLoad(getValueType(), dataPtr, "list.data");
+
+            auto* condBB = llvm::BasicBlock::Create(*TheContext, "iter.list.cond", func);
+            auto* bodyBB = llvm::BasicBlock::Create(*TheContext, "iter.list.body", func);
+            auto* afterBB = llvm::BasicBlock::Create(*TheContext, "iter.list.after", func);
+
+            auto* idxAlloca = Builder->CreateAlloca(llvm::Type::getInt64Ty(*TheContext), nullptr, "iter.idx");
+            if (reverse)
+            {
+                Builder->CreateStore(Builder->CreateSub(size, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1)), idxAlloca);
+            }
+            else
+            {
+                Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0), idxAlloca);
+            }
+            Builder->CreateBr(condBB);
+
+            Builder->SetInsertPoint(condBB);
+            {
+                auto* idx = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), idxAlloca, "idx");
+                llvm::Value* cond = nullptr;
+                if (reverse)
+                    cond = Builder->CreateICmpSGE(idx, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0), "iter.cond");
+                else
+                    cond = Builder->CreateICmpSLT(idx, size, "iter.cond");
+                Builder->CreateCondBr(cond, bodyBB, afterBB);
+            }
+
+            Builder->SetInsertPoint(bodyBB);
+            {
+                auto* idx = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), idxAlloca, "idx");
+                auto* ptrSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), sizeof(void*));
+                auto* byteOffset = Builder->CreateMul(idx, ptrSize, "byte.offset");
+                auto* elemPtr = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), data, byteOffset, "elem.ptr");
+                auto* elem = Builder->CreateLoad(getValueType(), elemPtr, "elem");
+
+                auto* handlerTag = extractTag(handler);
+                auto* isFunc = Builder->CreateICmpEQ(handlerTag, 
+                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FUNCTION), "is.func");
+                
+                auto* callHandlerBB = llvm::BasicBlock::Create(*TheContext, "iter.call.handler", func);
+                auto* skipHandlerBB = llvm::BasicBlock::Create(*TheContext, "iter.skip.handler", func);
+
+                Builder->CreateCondBr(isFunc, callHandlerBB, skipHandlerBB);
+
+                Builder->SetInsertPoint(callHandlerBB);
+                {
+                    auto* handlerPtr = extractPayload(handler);
+                    std::vector<llvm::Type*> paramTypes(4, getValueType());
+                    auto* handlerType = llvm::FunctionType::get(getValueType(), paramTypes, false);
+                    
+                    std::vector<llvm::Value*> handlerArgs = {
+                        elem,
+                        createTaggedInt(0),
+                        createTaggedInt(0),
+                        createTaggedBool(true)
+                    };
+                    
+                    Builder->CreateCall(handlerType, handlerPtr, handlerArgs, "handler.call");
+                    Builder->CreateBr(skipHandlerBB);
+                }
+
+                Builder->SetInsertPoint(skipHandlerBB);
+                
+                auto* curIdx = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), idxAlloca, "cur.idx");
+                llvm::Value* nextIdx = nullptr;
+                if (reverse)
+                    nextIdx = Builder->CreateSub(curIdx, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), "next.idx");
+                else
+                    nextIdx = Builder->CreateAdd(curIdx, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), "next.idx");
+                Builder->CreateStore(nextIdx, idxAlloca);
+                Builder->CreateBr(condBB);
+            }
+
+            Builder->SetInsertPoint(afterBB);
+            Builder->CreateBr(mergeBB);
+        }
+
+        // Dict iteration (simplified)
+        Builder->SetInsertPoint(dictBB);
+        Builder->CreateBr(mergeBB);
+
+        // String iteration (simplified)
+        Builder->SetInsertPoint(strBB);
+        Builder->CreateBr(mergeBB);
+
+        // Default (non-iterable)
+        Builder->SetInsertPoint(defaultBB);
+        {
+            Builder->CreateStore(createTaggedBool(false), resultAlloca);
+            Builder->CreateBr(mergeBB);
+        }
+
+        Builder->SetInsertPoint(mergeBB);
+        auto* result = Builder->CreateLoad(getValueType(), resultAlloca, "iter.result.load");
+        pushValue(result);
+    };
+
+    // forInRange(start, end, handler, sep=1) - iterate over numeric range
+    BuiltinIRGenerators["forInRange"] = [this](
+        LLVMCodeGenVisitor& visitor,
+        const std::vector<llvm::Value*>& args,
+        const std::map<std::string, llvm::Value*>& namedArgs,
+        const std::string& funcName)
+    {
+        LLVM_DEBUG("Builtin IR: " << funcName);
+
+        llvm::Value* startVal = args.size() > 0 ? args[0] : createTaggedInt(0);
+        llvm::Value* endVal = args.size() > 1 ? args[1] : createTaggedInt(0);
+        llvm::Value* handler = args.size() > 2 ? args[2] : createTaggedValueNull(TAG_NULL);
+        
+        llvm::Value* sepVal = createTaggedInt(1);
+        if (auto it = namedArgs.find("sep"); it != namedArgs.end())
+        {
+            sepVal = it->second;
+        }
+
+        llvm::Function* func = Builder->GetInsertBlock()->getParent();
+
+        auto* startPayload = extractPayload(startVal);
+        auto* endPayload = extractPayload(endVal);
+        auto* sepPayload = extractPayload(sepVal);
+        
+        auto* startInt = Builder->CreatePtrToInt(startPayload, llvm::Type::getInt64Ty(*TheContext), "start.int");
+        auto* endInt = Builder->CreatePtrToInt(endPayload, llvm::Type::getInt64Ty(*TheContext), "end.int");
+        auto* sepInt = Builder->CreatePtrToInt(sepPayload, llvm::Type::getInt64Ty(*TheContext), "sep.int");
+
+        auto* isZeroSep = Builder->CreateICmpEQ(sepInt, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0), "is.zero.sep");
+        auto* zeroSepBB = llvm::BasicBlock::Create(*TheContext, "range.zero.sep", func);
+        auto* validSepBB = llvm::BasicBlock::Create(*TheContext, "range.valid.sep", func);
+        auto* afterCheckBB = llvm::BasicBlock::Create(*TheContext, "range.after.check", func);
+
+        Builder->CreateCondBr(isZeroSep, zeroSepBB, validSepBB);
+
+        Builder->SetInsertPoint(zeroSepBB);
+        {
+            auto* printfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType()}, /*isVarArg=*/true);
+            auto* printfFunc = getOrCreateExternalFunc("printf", printfType);
+            Builder->CreateCall(printfFunc, {createGlobalStringPtr("The sep cannot be 0\\n")});
+            Builder->CreateBr(afterCheckBB);
+        }
+
+        Builder->SetInsertPoint(validSepBB);
+        {
+            auto* condBB = llvm::BasicBlock::Create(*TheContext, "range.cond", func);
+            auto* bodyBB = llvm::BasicBlock::Create(*TheContext, "range.body", func);
+            auto* afterBB = llvm::BasicBlock::Create(*TheContext, "range.after", func);
+
+            auto* isIncreasing = Builder->CreateICmpSGT(sepInt, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 0), "is.increasing");
+
+            auto* curAlloca = Builder->CreateAlloca(llvm::Type::getInt64Ty(*TheContext), nullptr, "range.cur");
+            Builder->CreateStore(startInt, curAlloca);
+            Builder->CreateBr(condBB);
+
+            Builder->SetInsertPoint(condBB);
+            {
+                auto* cur = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), curAlloca, "cur");
+                auto* incCond = Builder->CreateICmpSLT(cur, endInt, "range.inc.cond");
+                auto* decCond = Builder->CreateICmpSGT(cur, endInt, "range.dec.cond");
+                auto* cond = Builder->CreateSelect(isIncreasing, incCond, decCond, "range.cond");
+                Builder->CreateCondBr(cond, bodyBB, afterBB);
+            }
+
+            Builder->SetInsertPoint(bodyBB);
+            {
+                auto* cur = Builder->CreateLoad(llvm::Type::getInt64Ty(*TheContext), curAlloca, "cur");
+                
+                auto* handlerTag = extractTag(handler);
+                auto* isFunc = Builder->CreateICmpEQ(handlerTag, 
+                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_FUNCTION), "is.func");
+                
+                auto* callHandlerBB = llvm::BasicBlock::Create(*TheContext, "range.call.handler", func);
+                auto* skipHandlerBB = llvm::BasicBlock::Create(*TheContext, "range.skip.handler", func);
+
+                Builder->CreateCondBr(isFunc, callHandlerBB, skipHandlerBB);
+
+                Builder->SetInsertPoint(callHandlerBB);
+                {
+                    auto* handlerPtr = extractPayload(handler);
+                    std::vector<llvm::Type*> paramTypes(3, getValueType());
+                    auto* handlerType = llvm::FunctionType::get(getValueType(), paramTypes, false);
+                    
+                    auto* isFirst = Builder->CreateICmpEQ(cur, startInt, "is.first");
+                    auto* nextVal = Builder->CreateAdd(cur, sepInt, "next.val");
+                    auto* incLastCond = Builder->CreateICmpSGE(nextVal, endInt, "last.inc.cond");
+                    auto* decLastCond = Builder->CreateICmpSLE(nextVal, endInt, "last.dec.cond");
+                    auto* isLast = Builder->CreateSelect(isIncreasing, incLastCond, decLastCond, "is.last");
+
+                    std::vector<llvm::Value*> handlerArgs = {
+                        createTaggedValue(TAG_INT, Builder->CreateIntToPtr(cur, getValueType())),
+                        createTaggedBool(true),
+                        createTaggedBool(false)
+                    };
+                    
+                    Builder->CreateCall(handlerType, handlerPtr, handlerArgs, "handler.call");
+                    Builder->CreateBr(skipHandlerBB);
+                }
+
+                Builder->SetInsertPoint(skipHandlerBB);
+                
+                auto* newCur = Builder->CreateAdd(cur, sepInt, "new.cur");
+                Builder->CreateStore(newCur, curAlloca);
+                Builder->CreateBr(condBB);
+            }
+
+            Builder->SetInsertPoint(afterBB);
+            Builder->CreateBr(afterCheckBB);
+        }
+
+        Builder->SetInsertPoint(afterCheckBB);
+        pushValue(createTaggedValueNull(TAG_NULL));
+    };
+
     LLVM_DEBUG("Registered " << BuiltinIRGenerators.size() << " builtin IR generators");
     }
 
@@ -4138,6 +4422,154 @@ namespace ast
                 global.getName());
             newGlobal->setAlignment(global.getAlign());
         }
+    }
+
+    // ============================================================================
+    // 增强赋值运算符实现
+    // ============================================================================
+
+    void LLVMCodeGenVisitor::handleCompoundAssignment(InfixExpressionNode& node)
+    {
+        const auto& opStr = node.getOpToken().getValue();
+        
+        // 获取左操作数（必须是标识符）
+        std::string varName;
+        if (auto* ident = dynamic_cast<IdentifierNode*>(node.getLeftNode().get()))
+        {
+            varName = ident->getName();
+        }
+        else
+        {
+            LLVM_DEBUG("CompoundAssignment: left operand must be an identifier");
+            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+            return;
+        }
+
+        // 计算右操作数
+        node.getRightNode()->acceptVisitor(*this);
+        auto* rhs = popValue();
+
+        // 生成增强赋值 IR
+        auto* result = emitCompoundAssign(varName, opStr, rhs);
+        pushValue(result);
+    }
+
+    llvm::Value* LLVMCodeGenVisitor::emitCompoundAssign(
+        const std::string& varName,
+        const std::string& opStr,
+        llvm::Value* rhs)
+    {
+        // 加载当前值
+        auto* currentVal = loadVariable(varName);
+        if (!currentVal)
+        {
+            LLVM_DEBUG("CompoundAssign: variable not found - " << varName);
+            return rhs ? rhs : llvm::ConstantPointerNull::get(getValueType());
+        }
+
+        if (!rhs)
+        {
+            rhs = llvm::ConstantPointerNull::get(getValueType());
+        }
+
+        auto* int64Ty = llvm::Type::getInt64Ty(*TheContext);
+        auto* doubleTy = llvm::Type::getDoubleTy(*TheContext);
+
+        // 检查操作数类型
+        auto* currentTag = extractTag(currentVal);
+        auto* rhsTag = extractTag(rhs);
+        auto* floatTagConst = llvm::ConstantInt::get(int64Ty, TAG_FLOAT);
+        auto* isFloatCurrent = Builder->CreateICmpEQ(currentTag, floatTagConst, "is_float.current");
+        auto* isFloatRhs = Builder->CreateICmpEQ(rhsTag, floatTagConst, "is_float.rhs");
+        auto* isFloat = Builder->CreateOr(isFloatCurrent, isFloatRhs, "is_float");
+
+        auto* currentFunc = Builder->GetInsertBlock()->getParent();
+        auto* floatBB = llvm::BasicBlock::Create(*TheContext, "compound.float", currentFunc);
+        auto* intBB = llvm::BasicBlock::Create(*TheContext, "compound.int", currentFunc);
+        auto* mergeBB = llvm::BasicBlock::Create(*TheContext, "compound.merge", currentFunc);
+
+        auto* resultAlloca = createEntryBlockAlloca(currentFunc, "compound.result", getValueType());
+        Builder->CreateStore(currentVal, resultAlloca);
+
+        Builder->CreateCondBr(isFloat, floatBB, intBB);
+
+        // --- 浮点数运算 ---
+        Builder->SetInsertPoint(floatBB);
+        {
+            auto* currentPayload = extractPayload(currentVal);
+            auto* rhsPayload = extractPayload(rhs);
+            auto* currentBits = Builder->CreatePtrToInt(currentPayload, int64Ty, "current.bits");
+            auto* rhsBits = Builder->CreatePtrToInt(rhsPayload, int64Ty, "rhs.bits");
+
+            auto* currentDouble = Builder->CreateSelect(
+                isFloatCurrent,
+                Builder->CreateBitCast(currentBits, doubleTy, "current.bitcast"),
+                Builder->CreateSIToFP(currentBits, doubleTy, "current.sitofp"),
+                "current.double");
+
+            auto* rhsDouble = Builder->CreateSelect(
+                isFloatRhs,
+                Builder->CreateBitCast(rhsBits, doubleTy, "rhs.bitcast"),
+                Builder->CreateSIToFP(rhsBits, doubleTy, "rhs.sitofp"),
+                "rhs.double");
+
+            llvm::Value* resultDouble = nullptr;
+            if (opStr == "+=")
+                resultDouble = Builder->CreateFAdd(currentDouble, rhsDouble, "compound.fadd");
+            else if (opStr == "-=")
+                resultDouble = Builder->CreateFSub(currentDouble, rhsDouble, "compound.fsub");
+            else if (opStr == "*=")
+                resultDouble = Builder->CreateFMul(currentDouble, rhsDouble, "compound.fmul");
+            else if (opStr == "/=")
+                resultDouble = Builder->CreateFDiv(currentDouble, rhsDouble, "compound.fdiv");
+            else if (opStr == "%=")
+                resultDouble = Builder->CreateFRem(currentDouble, rhsDouble, "compound.frem");
+            else
+                resultDouble = currentDouble;
+
+            auto* resultBits = Builder->CreateBitCast(resultDouble, int64Ty, "result.bits");
+            auto* resultPtr = Builder->CreateIntToPtr(resultBits, getValueType(), "result.ptr");
+            auto* taggedResult = createTaggedValue(TAG_FLOAT, resultPtr);
+            Builder->CreateStore(taggedResult, resultAlloca);
+            Builder->CreateBr(mergeBB);
+        }
+
+        // --- 整数运算 ---
+        Builder->SetInsertPoint(intBB);
+        {
+            auto* currentPayload = extractPayload(currentVal);
+            auto* rhsPayload = extractPayload(rhs);
+            auto* currentInt = Builder->CreatePtrToInt(currentPayload, int64Ty, "current.int");
+            auto* rhsInt = Builder->CreatePtrToInt(rhsPayload, int64Ty, "rhs.int");
+
+            llvm::Value* resultInt = nullptr;
+            if (opStr == "+=")
+                resultInt = Builder->CreateAdd(currentInt, rhsInt, "compound.add");
+            else if (opStr == "-=")
+                resultInt = Builder->CreateSub(currentInt, rhsInt, "compound.sub");
+            else if (opStr == "*=")
+                resultInt = Builder->CreateMul(currentInt, rhsInt, "compound.mul");
+            else if (opStr == "/=")
+                resultInt = Builder->CreateSDiv(currentInt, rhsInt, "compound.div");
+            else if (opStr == "%=")
+                resultInt = Builder->CreateSRem(currentInt, rhsInt, "compound.rem");
+            else
+                resultInt = currentInt;
+
+            auto* resultPtr = Builder->CreateIntToPtr(resultInt, getValueType(), "result.ptr");
+            auto* taggedResult = createTaggedValue(TAG_INT, resultPtr);
+            Builder->CreateStore(taggedResult, resultAlloca);
+            Builder->CreateBr(mergeBB);
+        }
+
+        // --- 合并 ---
+        Builder->SetInsertPoint(mergeBB);
+        auto* result = Builder->CreateLoad(getValueType(), resultAlloca, "compound.result");
+        
+        // 存储回变量
+        storeVariable(varName, result);
+        
+        return result;
     }
 
 } // namespace ast

@@ -91,6 +91,8 @@ namespace ast {
 
         void visitBreakExpressionNode(BreakExpressionNode &node) override;
 
+        void visitContinueExpressionNode(ContinueExpressionNode &node) override;
+
         void visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode &node) override;
 
         void visitPairExpressionNode(PairExpressionNode &node) override;
