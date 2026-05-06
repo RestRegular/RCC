@@ -109,7 +109,7 @@ if not exist "%INPUT_RIO%" (
 
 REM 步骤1: 生成LLVM IR
 echo [1/5] Generating LLVM IR from %INPUT_RIO%...
-%RCC_EXE% -ir --p "%INPUT_RIO%" --ir-o "%INPUT_LL%"
+%RCC_EXE% -ir --p "%INPUT_RIO%" --ir-o "%INPUT_LL%" 2>&1
 if %errorlevel% neq 0 (
     echo ERROR: LLVM IR generation failed!
     exit /b %errorlevel%
