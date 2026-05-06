@@ -1134,6 +1134,84 @@ namespace ast
             return;
         }
 
+        // ==================== 属性访问 ====================
+        // 属性访问不走算术/浮点分支逻辑，单独处理
+        if (infixType == NodeType::ATTRIBUTE_EXPRESSION)
+        {
+            // 属性访问: obj.attr
+            LLVM_DEBUG("InfixNode: ATTRIBUTE_EXPRESSION");
+
+            // 计算左操作数（对象）
+            node.getLeftNode()->acceptVisitor(*this);
+            auto* objVal = popValue();
+
+            // 获取属性名
+            std::string attrName;
+            if (auto* ident = dynamic_cast<IdentifierNode*>(node.getRightNode().get()))
+            {
+                attrName = ident->getName();
+            }
+            else
+            {
+                LLVM_DEBUG("Attribute access: right node is not an identifier");
+                pushValue(llvm::ConstantPointerNull::get(getValueType()));
+                return;
+            }
+
+            if (!objVal)
+            {
+                LLVM_DEBUG("Attribute access: null object for " << attrName);
+                pushValue(llvm::ConstantPointerNull::get(getValueType()));
+                return;
+            }
+
+            // 从 Tagged Value 中提取对象指针（payload）
+            auto* objPayload = extractPayload(objVal);
+
+            // 确定类名
+            std::string className = CurrentClassName;
+            if (auto* ident = dynamic_cast<IdentifierNode*>(node.getLeftNode().get()))
+            {
+                if (ident->getName() == "this" && !CurrentClassName.empty())
+                {
+                    className = CurrentClassName;
+                }
+            }
+
+            if (!className.empty())
+            {
+                auto it = ClassFieldNames.find(className);
+                if (it != ClassFieldNames.end())
+                {
+                    const auto& fieldNames = it->second;
+                    int fieldIndex = -1;
+                    for (size_t i = 0; i < fieldNames.size(); ++i)
+                    {
+                        if (fieldNames[i] == attrName)
+                        {
+                            fieldIndex = static_cast<int>(i);
+                            break;
+                        }
+                    }
+
+                    if (fieldIndex >= 0)
+                    {
+                        auto* structType = ClassTypes[className];
+                        auto* fieldPtr = Builder->CreateStructGEP(structType, objPayload, fieldIndex, attrName + ".ptr");
+                        auto* fieldVal = Builder->CreateLoad(getValueType(), fieldPtr, attrName + ".val");
+
+                        LLVM_DEBUG("Attribute access: " << className << "." << attrName << " [index " << fieldIndex << "]");
+                        pushValue(fieldVal);
+                        return;
+                    }
+                }
+            }
+
+            LLVM_DEBUG("Attribute access: field not found - " << attrName);
+            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+            return;
+        }
+
         // 计算左右操作数
         node.getLeftNode()->acceptVisitor(*this);
         auto* left = popValue();
@@ -1365,93 +1443,6 @@ namespace ast
                 result = Builder->CreateZExt(cmp, int64Ty, "cmp.ext");
             }
             break;
-
-            // ==================== 属性访问 ====================
-            case NodeType::ATTRIBUTE_EXPRESSION:
-            {
-                // 属性访问: obj.attr
-                // left = 对象, right = 属性名
-                LLVM_DEBUG("InfixNode: ATTRIBUTE_EXPRESSION");
-
-                // 获取属性名
-                std::string attrName;
-                if (auto* ident = dynamic_cast<IdentifierNode*>(node.getRightNode().get()))
-                {
-                    attrName = ident->getName();
-                }
-                else
-                {
-                    LLVM_DEBUG("Attribute access: right node is not an identifier");
-                    pushValue(llvm::ConstantPointerNull::get(getValueType()));
-                    return;
-                }
-
-                // 从 Tagged Value 中提取对象指针（payload）
-                auto* objPayload = extractPayload(left);
-
-                // 需要确定对象的类类型以查找字段索引
-                // 目前简化处理：假设对象是类实例，直接使用指针作为 struct 指针
-                // 实际应该从 type_tag 中确定类类型
-
-                // 尝试从当前已知的类类型中查找字段
-                // 由于我们在编译期不知道对象的具体类型，这里采用保守策略：
-                // 假设对象是当前正在编译的类实例，或者使用一个通用的查找机制
-
-                // 简化实现：假设对象是 RCCValue* 数组，通过索引访问
-                // 实际应该根据类定义确定字段偏移
-
-                // 目前先尝试从 ClassFieldNames 中查找字段索引
-                // 但我们需要知道对象的类名，这里暂时使用 CurrentClassName 作为回退
-                std::string className = CurrentClassName;
-
-                // 如果 left 是 this 指针，使用 CurrentClassName
-                if (auto* ident = dynamic_cast<IdentifierNode*>(node.getLeftNode().get()))
-                {
-                    if (ident->getName() == "this" && !CurrentClassName.empty())
-                    {
-                        className = CurrentClassName;
-                    }
-                }
-
-                if (!className.empty())
-                {
-                    auto it = ClassFieldNames.find(className);
-                    if (it != ClassFieldNames.end())
-                    {
-                        const auto& fieldNames = it->second;
-                        int fieldIndex = -1;
-                        for (size_t i = 0; i < fieldNames.size(); ++i)
-                        {
-                            if (fieldNames[i] == attrName)
-                            {
-                                fieldIndex = static_cast<int>(i);
-                                break;
-                            }
-                        }
-
-                        if (fieldIndex >= 0)
-                        {
-                            // 获取类的 StructType
-                            auto* structType = ClassTypes[className];
-
-                            // 计算字段地址: objPtr + fieldIndex
-                            auto* fieldPtr = Builder->CreateStructGEP(structType, objPayload, fieldIndex, attrName + ".ptr");
-
-                            // 加载字段值
-                            auto* fieldVal = Builder->CreateLoad(getValueType(), fieldPtr, attrName + ".val");
-
-                            LLVM_DEBUG("Attribute access: " << className << "." << attrName << " [index " << fieldIndex << "]");
-                            pushValue(fieldVal);
-                            return;
-                        }
-                    }
-                }
-
-                // 如果找不到字段，返回 null
-                LLVM_DEBUG("Attribute access: field not found - " << attrName);
-                pushValue(llvm::ConstantPointerNull::get(getValueType()));
-                return;
-            }
 
             // ==================== 位运算及其他 ====================
             // 注意：位运算在 NodeType 中没有专门的枚举值，
