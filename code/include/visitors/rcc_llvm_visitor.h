@@ -116,6 +116,12 @@ namespace ast {
         // 类名 -> 方法表 (方法名 -> llvm::Function)
         std::map<std::string, std::map<std::string, llvm::Function*>> ClassMethodTables;
 
+        // 类名 -> 字段名列表（用于确定字段索引）
+        std::map<std::string, std::vector<std::string>> ClassFieldNames;
+
+        // 类名 -> 父类名（用于继承）
+        std::map<std::string, std::string> ClassParentNames;
+
         // 当前正在编译的类名
         std::string CurrentClassName;
 

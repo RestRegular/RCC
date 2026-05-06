@@ -506,6 +506,78 @@ namespace ast
             }
             pushValue(rVal ? rVal : llvm::ConstantPointerNull::get(getValueType()));
         }
+        else if (identNode->getRealType() == NodeType::ATTRIBUTE_EXPRESSION)
+        {
+            // 属性赋值: obj.attr = value
+            auto* attrExpr = static_cast<InfixExpressionNode*>(identNode.get());
+
+            // 获取对象
+            attrExpr->getLeftNode()->acceptVisitor(*this);
+            auto* objVal = popValue();
+
+            // 获取属性名
+            std::string attrName;
+            if (auto* ident = dynamic_cast<IdentifierNode*>(attrExpr->getRightNode().get()))
+            {
+                attrName = ident->getName();
+            }
+            else
+            {
+                LLVM_DEBUG("AssignmentNode: attribute name is not an identifier");
+                pushValue(rVal ? rVal : llvm::ConstantPointerNull::get(getValueType()));
+                return;
+            }
+
+            // 从 Tagged Value 中提取对象指针
+            auto* objPayload = extractPayload(objVal);
+
+            // 确定类名
+            std::string className = CurrentClassName;
+            if (auto* ident = dynamic_cast<IdentifierNode*>(attrExpr->getLeftNode().get()))
+            {
+                if (ident->getName() == "this" && !CurrentClassName.empty())
+                {
+                    className = CurrentClassName;
+                }
+            }
+
+            if (!className.empty())
+            {
+                auto it = ClassFieldNames.find(className);
+                if (it != ClassFieldNames.end())
+                {
+                    const auto& fieldNames = it->second;
+                    int fieldIndex = -1;
+                    for (size_t i = 0; i < fieldNames.size(); ++i)
+                    {
+                        if (fieldNames[i] == attrName)
+                        {
+                            fieldIndex = static_cast<int>(i);
+                            break;
+                        }
+                    }
+
+                    if (fieldIndex >= 0)
+                    {
+                        // 获取类的 StructType
+                        auto* structType = ClassTypes[className];
+
+                        // 计算字段地址
+                        auto* fieldPtr = Builder->CreateStructGEP(structType, objPayload, fieldIndex, attrName + ".ptr");
+
+                        // 存储值到字段
+                        Builder->CreateStore(rVal ? rVal : llvm::ConstantPointerNull::get(getValueType()), fieldPtr);
+
+                        LLVM_DEBUG("AssignmentNode: " << className << "." << attrName << " = value [index " << fieldIndex << "]");
+                        pushValue(rVal ? rVal : llvm::ConstantPointerNull::get(getValueType()));
+                        return;
+                    }
+                }
+            }
+
+            LLVM_DEBUG("AssignmentNode: attribute assignment failed - " << attrName);
+            pushValue(rVal ? rVal : llvm::ConstantPointerNull::get(getValueType()));
+        }
         else
         {
             LLVM_DEBUG("AssignmentNode: complex lvalue not fully supported");
@@ -704,15 +776,40 @@ namespace ast
 
         LLVM_DEBUG("ClassDefinitionNode: " << className);
 
+        // 解析继承关系（从标签中获取父类名）
+        auto labels = node.getLabelNode();
+        if (!labels.empty())
+        {
+            // 第一个标签通常是父类名，如 class Child: Parent { }
+            if (auto* parentIdent = dynamic_cast<IdentifierNode*>(labels[0]->getLabelNode().get()))
+            {
+                std::string parentName = parentIdent->getName();
+                ClassParentNames[className] = parentName;
+                LLVM_DEBUG("  inherits from: " << parentName);
+            }
+        }
+
         // 保存上下文
         auto prevClassName = CurrentClassName;
         auto prevThisAlloca = ThisAlloca;
         CurrentClassName = className;
         ThisAlloca = nullptr;
 
-        // 收集类成员
+        // 收集类成员（包括父类的字段）
         std::vector<std::string> memberNames;
         std::vector<std::shared_ptr<ExpressionNode>> methodNodes;
+
+        // 如果有父类，先添加父类的字段
+        auto parentIt = ClassParentNames.find(className);
+        if (parentIt != ClassParentNames.end())
+        {
+            auto fieldIt = ClassFieldNames.find(parentIt->second);
+            if (fieldIt != ClassFieldNames.end())
+            {
+                memberNames = fieldIt->second; // 复制父类字段
+                LLVM_DEBUG("  inherited " << memberNames.size() << " fields from parent");
+            }
+        }
 
         if (auto* body = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get()))
         {
@@ -747,6 +844,9 @@ namespace ast
         std::vector<llvm::Type*> fieldTypes(memberNames.size(), getValueType());
         auto* structType = llvm::StructType::create(*TheContext, fieldTypes, className);
         ClassTypes[className] = structType;
+
+        // 保存字段名列表（用于属性访问）
+        ClassFieldNames[className] = memberNames;
 
         // 初始化方法表
         ClassMethodTables[className] = {};
@@ -1264,6 +1364,93 @@ namespace ast
                 result = Builder->CreateZExt(cmp, int64Ty, "cmp.ext");
             }
             break;
+
+            // ==================== 属性访问 ====================
+            case NodeType::ATTRIBUTE_EXPRESSION:
+            {
+                // 属性访问: obj.attr
+                // left = 对象, right = 属性名
+                LLVM_DEBUG("InfixNode: ATTRIBUTE_EXPRESSION");
+
+                // 获取属性名
+                std::string attrName;
+                if (auto* ident = dynamic_cast<IdentifierNode*>(node.getRightNode().get()))
+                {
+                    attrName = ident->getName();
+                }
+                else
+                {
+                    LLVM_DEBUG("Attribute access: right node is not an identifier");
+                    pushValue(llvm::ConstantPointerNull::get(getValueType()));
+                    return;
+                }
+
+                // 从 Tagged Value 中提取对象指针（payload）
+                auto* objPayload = extractPayload(left);
+
+                // 需要确定对象的类类型以查找字段索引
+                // 目前简化处理：假设对象是类实例，直接使用指针作为 struct 指针
+                // 实际应该从 type_tag 中确定类类型
+
+                // 尝试从当前已知的类类型中查找字段
+                // 由于我们在编译期不知道对象的具体类型，这里采用保守策略：
+                // 假设对象是当前正在编译的类实例，或者使用一个通用的查找机制
+
+                // 简化实现：假设对象是 RCCValue* 数组，通过索引访问
+                // 实际应该根据类定义确定字段偏移
+
+                // 目前先尝试从 ClassFieldNames 中查找字段索引
+                // 但我们需要知道对象的类名，这里暂时使用 CurrentClassName 作为回退
+                std::string className = CurrentClassName;
+
+                // 如果 left 是 this 指针，使用 CurrentClassName
+                if (auto* ident = dynamic_cast<IdentifierNode*>(node.getLeftNode().get()))
+                {
+                    if (ident->getName() == "this" && !CurrentClassName.empty())
+                    {
+                        className = CurrentClassName;
+                    }
+                }
+
+                if (!className.empty())
+                {
+                    auto it = ClassFieldNames.find(className);
+                    if (it != ClassFieldNames.end())
+                    {
+                        const auto& fieldNames = it->second;
+                        int fieldIndex = -1;
+                        for (size_t i = 0; i < fieldNames.size(); ++i)
+                        {
+                            if (fieldNames[i] == attrName)
+                            {
+                                fieldIndex = static_cast<int>(i);
+                                break;
+                            }
+                        }
+
+                        if (fieldIndex >= 0)
+                        {
+                            // 获取类的 StructType
+                            auto* structType = ClassTypes[className];
+
+                            // 计算字段地址: objPtr + fieldIndex
+                            auto* fieldPtr = Builder->CreateStructGEP(structType, objPayload, fieldIndex, attrName + ".ptr");
+
+                            // 加载字段值
+                            auto* fieldVal = Builder->CreateLoad(getValueType(), fieldPtr, attrName + ".val");
+
+                            LLVM_DEBUG("Attribute access: " << className << "." << attrName << " [index " << fieldIndex << "]");
+                            pushValue(fieldVal);
+                            return;
+                        }
+                    }
+                }
+
+                // 如果找不到字段，返回 null
+                LLVM_DEBUG("Attribute access: field not found - " << attrName);
+                pushValue(llvm::ConstantPointerNull::get(getValueType()));
+                return;
+            }
 
             // ==================== 位运算及其他 ====================
             // 注意：位运算在 NodeType 中没有专门的枚举值，
@@ -3652,6 +3839,74 @@ namespace ast
         LLVM_DEBUG("Builtin IR: " << funcName);
         // import 在 LLVM 模式下通过 compileImportedModule 处理
         // 此处仅返回 null（实际导入在编译期处理）
+        pushValue(llvm::ConstantPointerNull::get(getValueType()));
+    };
+
+    // super(*args, **kwargs) - 调用父类构造函数
+    BuiltinIRGenerators["super"] = [this](
+        LLVMCodeGenVisitor& visitor,
+        const std::vector<llvm::Value*>& args,
+        const std::map<std::string, llvm::Value*>& namedArgs,
+        const std::string& funcName)
+    {
+        LLVM_DEBUG("Builtin IR: " << funcName);
+
+        // 检查当前是否在类构造函数中
+        if (CurrentClassName.empty() || !ThisAlloca)
+        {
+            LLVM_DEBUG("Builtin IR: super() called outside of class constructor");
+            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+            return;
+        }
+
+        // 查找父类
+        auto parentIt = ClassParentNames.find(CurrentClassName);
+        if (parentIt == ClassParentNames.end())
+        {
+            LLVM_DEBUG("Builtin IR: super() called but class " << CurrentClassName << " has no parent");
+            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+            return;
+        }
+
+        std::string parentName = parentIt->second;
+        std::string parentCtorName = parentName + ".__init__";
+
+        // 查找父类构造函数
+        auto* parentCtor = TheModule->getFunction(parentCtorName);
+        if (!parentCtor)
+        {
+            // 尝试从 Functions 映射中查找
+            auto funcIt = Functions.find(parentCtorName);
+            if (funcIt != Functions.end())
+            {
+                parentCtor = funcIt->second;
+            }
+        }
+
+        if (!parentCtor)
+        {
+            LLVM_DEBUG("Builtin IR: parent constructor not found - " << parentCtorName);
+            pushValue(llvm::ConstantPointerNull::get(getValueType()));
+            return;
+        }
+
+        // 准备参数：this 指针 + super 的参数
+        std::vector<llvm::Value*> ctorArgs;
+
+        // 第一个参数是 this 指针
+        auto* thisVal = Builder->CreateLoad(getValueType(), ThisAlloca, "this.load");
+        ctorArgs.push_back(thisVal);
+
+        // 添加 super 的参数（如果有）
+        for (const auto& arg : args)
+        {
+            ctorArgs.push_back(arg);
+        }
+
+        // 调用父类构造函数
+        Builder->CreateCall(parentCtor, ctorArgs, "super.call");
+
+        LLVM_DEBUG("Builtin IR: super() called " << parentCtorName << " with " << ctorArgs.size() << " args");
         pushValue(llvm::ConstantPointerNull::get(getValueType()));
     };
 

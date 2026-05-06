@@ -1,0 +1,35 @@
+// 测试类基础功能：定义、实例化、构造函数、属性访问、方法调用
+
+class Person {
+    var name: str
+    var age: int
+
+    ctor(n: str, a: int) {
+        this.name = n
+        this.age = a
+    }
+
+    fun greet(): void {
+        sout("Hello, my name is " + this.name)
+    }
+
+    fun getAge(): int {
+        return this.age
+    }
+}
+
+fun main(): void {
+    // 创建实例
+    var p = Person("Alice", 25)
+
+    // 测试属性访问
+    sout(p.name)
+    sout(p.age)
+
+    // 测试方法调用
+    p.greet()
+
+    // 测试获取返回值
+    var age = p.getAge()
+    sout(age)
+}
