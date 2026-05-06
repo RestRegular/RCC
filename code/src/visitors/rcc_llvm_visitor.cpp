@@ -1018,16 +1018,19 @@ namespace ast
         if (!receiverValue && ClassTypes.count(funcName))
         {
             auto* structType = ClassTypes[funcName];
-            auto* fieldIt = ClassFieldNames.find(funcName);
+            auto fieldIt = ClassFieldNames.find(funcName);
             size_t fieldCount = (fieldIt != ClassFieldNames.end()) ? fieldIt->second.size() : 0;
 
             // 在堆上分配类实例内存
+            // 计算结构体大小：字段数 * sizeof(ptr)
+            size_t structSize = fieldCount * sizeof(void*);
             auto* sizeVal = llvm::ConstantInt::get(
                 llvm::Type::getInt64Ty(*TheContext),
-                structType->getPrimitiveSizeInBits().getFixedSize() / 8);
+                structSize);
             auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
             auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
-            auto* instancePtr = Builder->CreateCall(mallocFunc, {sizeVal}, "new." + funcName);
+            std::vector<llvm::Value*> mallocArgs = {sizeVal};
+            auto* instancePtr = Builder->CreateCall(mallocType, mallocFunc, mallocArgs, "new." + funcName);
 
             // 将实例指针包装为 Tagged Value
             // 使用一个特殊的 tag 来标识类实例（暂时复用 TAG_NULL，后续应添加 TAG_OBJECT）
