@@ -861,10 +861,14 @@ namespace ast
                     // 方法
                     methodNodes.push_back(expr);
                 }
-                else if (expr->getRealType() == NodeType::CONSTRUCTOR)
+                else if (expr->getRealType() == NodeType::CONSTRUCTOR ||
+                         expr->getRealType() == NodeType::PREFIX)
                 {
-                    // 构造函数
-                    methodNodes.push_back(expr);
+                    // 构造函数（ConstructorDefinitionNode 的 getRealType() 实际返回 PREFIX）
+                    if (dynamic_cast<ConstructorDefinitionNode*>(expr.get()))
+                    {
+                        methodNodes.push_back(expr);
+                    }
                 }
             }
         }
