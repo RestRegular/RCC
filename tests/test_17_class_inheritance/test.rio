@@ -1,52 +1,24 @@
-// 测试类继承：继承、super调用、访问父类属性
+// 最简继承测试：只测试继承和 super
 
-class Animal {
-    var species: str
+class Base {
+    var val: int
 
-    ctor(s: str) {
-        this.species = s
-    }
-
-    fun makeSound(): void {
-        sout("Some generic animal sound")
-    }
-
-    fun getSpecies(): str {
-        return this.species
+    ctor(v: int) {
+        this.val = v
     }
 }
 
-class Dog: Animal {
-    var name: str
+class Derived: Base {
+    var extra: int
 
-    ctor(n: str) {
-        super("Dog")
-        this.name = n
-    }
-
-    fun makeSound(): void {
-        sout("Woof! Woof!")
-    }
-
-    fun getName(): str {
-        return this.name
+    ctor(v: int, e: int) {
+        super(v)
+        this.extra = e
     }
 }
 
 fun main(): void {
-    // 创建 Dog 实例
-    var d = Dog("Buddy")
-
-    // 测试访问继承的属性
-    sout(d.species)
-    sout(d.name)
-
-    // 测试调用方法
-    d.makeSound()
-
-    // 测试获取返回值
-    var s = d.getSpecies()
-    var n = d.getName()
-    sout(s)
-    sout(n)
+    var d = Derived(42, 99)
+    sout(d.val)
+    sout(d.extra)
 }

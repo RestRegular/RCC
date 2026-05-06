@@ -1,5 +1,2 @@
-Dog
-Buddy
-Woof! Woof!
-Dog
-Buddy
+42
+99

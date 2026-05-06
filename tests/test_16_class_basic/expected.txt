@@ -1,4 +1,2 @@
-Alice
-25
-Hello, my name is Alice
-25
+10
+20
