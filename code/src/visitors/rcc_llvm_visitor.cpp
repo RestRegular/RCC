@@ -2364,18 +2364,20 @@ namespace ast
         // 创建 RCCDict struct: { i64 capacity, i64 size, ptr keys, ptr values }
         auto* dictStructType = llvm::StructType::create(*TheContext,
             {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType(), getValueType()}, "RCCDict");
-        auto* dictAlloca = Builder->CreateAlloca(dictStructType, nullptr, "dict");
+        // 使用 malloc 分配 struct（堆内存，生命周期不受函数返回影响）
+        auto* dictStructSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 32); // i64 + i64 + ptr + ptr = 32 bytes
+        auto* dictHeap = Builder->CreateCall(mallocFunc, {dictStructSize}, "dict.struct");
 
         Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count),
-            Builder->CreateStructGEP(dictStructType, dictAlloca, 0));
+            Builder->CreateStructGEP(dictStructType, dictHeap, 0));
         Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count),
-            Builder->CreateStructGEP(dictStructType, dictAlloca, 1));
+            Builder->CreateStructGEP(dictStructType, dictHeap, 1));
         Builder->CreateStore(keyBuf,
-            Builder->CreateStructGEP(dictStructType, dictAlloca, 2));
+            Builder->CreateStructGEP(dictStructType, dictHeap, 2));
         Builder->CreateStore(valBuf,
-            Builder->CreateStructGEP(dictStructType, dictAlloca, 3));
+            Builder->CreateStructGEP(dictStructType, dictHeap, 3));
 
-        pushValue(createTaggedValue(TAG_DICT, dictAlloca));
+        pushValue(createTaggedValue(TAG_DICT, dictHeap));
 
         LLVM_DEBUG("DictionaryExpressionNode: " << count << " entries");
     }
@@ -2446,16 +2448,18 @@ namespace ast
         // 创建 RCCList struct: { i64 capacity, i64 size, ptr data }
         auto* listStructType = llvm::StructType::create(*TheContext,
             {llvm::Type::getInt64Ty(*TheContext), llvm::Type::getInt64Ty(*TheContext), getValueType()}, "RCCList");
-        auto* listAlloca = Builder->CreateAlloca(listStructType, nullptr, "list");
+        // 使用 malloc 分配 struct（堆内存，生命周期不受函数返回影响）
+        auto* listStructSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 24); // i64 + i64 + ptr = 24 bytes
+        auto* listHeap = Builder->CreateCall(mallocFunc, {listStructSize}, "list.struct");
 
         Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count),
-            Builder->CreateStructGEP(listStructType, listAlloca, 0));
+            Builder->CreateStructGEP(listStructType, listHeap, 0));
         Builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), count),
-            Builder->CreateStructGEP(listStructType, listAlloca, 1));
+            Builder->CreateStructGEP(listStructType, listHeap, 1));
         Builder->CreateStore(dataBuf,
-            Builder->CreateStructGEP(listStructType, listAlloca, 2));
+            Builder->CreateStructGEP(listStructType, listHeap, 2));
 
-        pushValue(createTaggedValue(TAG_LIST, listAlloca));
+        pushValue(createTaggedValue(TAG_LIST, listHeap));
 
         LLVM_DEBUG("ListExpressionNode: " << count << " elements");
     }
