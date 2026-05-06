@@ -16,8 +16,7 @@ Skip CMake build: false
 Build directory: D:\ClionProjects\RCC\cmake-build-debug
 Target: RCC
 Using 10 parallel jobs
-[1/2] Building CXX object CMakeFiles/RCC.dir/code/src/visitors/rcc_llvm_visitor.cpp.obj
-[2/2] Linking CXX executable D:\ClionProjects\RCC\release\RCC.exe
+ninja: no work to do.
 SUCCESS: RCC compiler built successfully
 
 
