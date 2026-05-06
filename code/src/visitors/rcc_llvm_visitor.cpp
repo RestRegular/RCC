@@ -2591,6 +2591,7 @@ namespace ast
 
                 auto* curKeyPayload = extractPayload(curKey);
                 // 对于字符串类型，使用 strcmp 比较内容；其他类型使用指针比较
+                // [DICT_STRCMP_FIX] 字符串键使用 strcmp 而非指针比较
                 auto* strTagConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING);
                 auto* isString = Builder->CreateICmpEQ(curKeyTag, strTagConst, "is.string");
 
