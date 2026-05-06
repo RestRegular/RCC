@@ -1,0 +1,4 @@
+try: pass
+finally: pass
+try2: pass
+finally2: pass
