@@ -2584,13 +2584,29 @@ namespace ast
                 auto* keyGep = Builder->CreateInBoundsGEP(llvm::Type::getInt8Ty(*TheContext), keys, keyByteOffset, "key.gep");
                 auto* curKey = Builder->CreateLoad(getValueType(), keyGep, "key.val");
 
-                // 简化比较：比较两个 Tagged Value 的 tag 和 payload
+                // 比较两个 Tagged Value 的 tag 和 payload
                 auto* curKeyTag = extractTag(curKey);
                 auto* indexTag = extractTag(indexVal);
                 auto* tagEq = Builder->CreateICmpEQ(curKeyTag, indexTag, "tag.eq");
 
                 auto* curKeyPayload = extractPayload(curKey);
-                auto* payloadEq = Builder->CreateICmpEQ(curKeyPayload, indexPayload, "payload.eq");
+                // 对于字符串类型，使用 strcmp 比较内容；其他类型使用指针比较
+                auto* strTagConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING);
+                auto* isString = Builder->CreateICmpEQ(curKeyTag, strTagConst, "is.string");
+
+                // 声明 strcmp
+                auto* strcmpType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType(), getValueType()}, false);
+                auto* strcmpFunc = getOrCreateExternalFunc("strcmp", strcmpType);
+
+                // 字符串比较：strcmp == 0
+                auto* strcmpResult = Builder->CreateCall(strcmpFunc, {curKeyPayload, indexPayload}, "strcmp.result");
+                auto* strcmpEq = Builder->CreateICmpEQ(strcmpResult, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0), "strcmp.eq");
+
+                // 非字符串比较：指针相等
+                auto* ptrEq = Builder->CreateICmpEQ(curKeyPayload, indexPayload, "ptr.eq");
+
+                // 根据类型选择比较方式
+                auto* payloadEq = Builder->CreateSelect(isString, strcmpEq, ptrEq, "payload.eq");
                 auto* keyEq = Builder->CreateAnd(tagEq, payloadEq, "key.eq");
 
                 auto* nextI = Builder->CreateAdd(bi, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), "next.i");
