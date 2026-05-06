@@ -255,6 +255,13 @@ namespace ast {
         visitor.visitBreakExpressionNode(*this);
     }
 
+    ContinueExpressionNode::ContinueExpressionNode(const Token &mainToken_)
+        : ExpressionNode(mainToken_, NodeType::PREFIX) {}
+
+    void ContinueExpressionNode::acceptVisitor(Visitor &visitor) {
+        visitor.visitContinueExpressionNode(*this);
+    }
+
     BranchNode::BranchNode(const Token &branchOpToken, const std::shared_ptr<ExpressionNode> &conditionNode,
                            const std::shared_ptr<ExpressionNode> &bodyNode)
             : ExpressionNode(branchOpToken, NodeType::BRANCH),

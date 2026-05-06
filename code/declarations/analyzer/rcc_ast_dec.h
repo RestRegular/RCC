@@ -72,6 +72,7 @@ namespace ast
     class FunctionCallNode;
     class ReturnExpressionNode;
     class BreakExpressionNode;
+    class ContinueExpressionNode;
     class ProgramNode;
     class ThrowNode;
     class TryNode;

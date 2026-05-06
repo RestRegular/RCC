@@ -3529,6 +3529,26 @@ namespace ast
         raCodeBuilder << ri::EXIT("LOOP");
     }
 
+    void CompileVisitor::visitContinueExpressionNode(ContinueExpressionNode& node)
+    {
+        if (!isInLoopScope())
+        {
+            throw RCCCompilerError::semanticError(
+                node.getPosStr(),
+                getCodeLine(node.getPos()),
+                StringVector{
+                    "Invalid use of `continue` keyword.",
+                    "The `continue` keyword can only be used inside loop scopes (for, while).",
+                    "Current scope type: " + scopeTypeToFormatString(curScopeType())
+                },
+                {
+                    "Move the continue statement inside a loop structure."
+                }
+            );
+        }
+        raCodeBuilder << ri::EXIT("LOOP_CONTINUE");
+    }
+
     void CompileVisitor::visitAnonFunctionDefinitionNode(AnonFunctionDefinitionNode& node)
     {
         enterScope(ScopeType::ANONYMOUS);
