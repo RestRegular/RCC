@@ -1014,6 +1014,50 @@ namespace ast
             return;
         }
 
+        // 类实例化：当函数名匹配一个已定义的类时
+        if (!receiverValue && ClassTypes.count(funcName))
+        {
+            auto* structType = ClassTypes[funcName];
+            auto* fieldIt = ClassFieldNames.find(funcName);
+            size_t fieldCount = (fieldIt != ClassFieldNames.end()) ? fieldIt->second.size() : 0;
+
+            // 在堆上分配类实例内存
+            auto* sizeVal = llvm::ConstantInt::get(
+                llvm::Type::getInt64Ty(*TheContext),
+                structType->getPrimitiveSizeInBits().getFixedSize() / 8);
+            auto* mallocType = llvm::FunctionType::get(getValueType(), {llvm::Type::getInt64Ty(*TheContext)}, false);
+            auto* mallocFunc = getOrCreateExternalFunc("malloc", mallocType);
+            auto* instancePtr = Builder->CreateCall(mallocFunc, {sizeVal}, "new." + funcName);
+
+            // 将实例指针包装为 Tagged Value
+            // 使用一个特殊的 tag 来标识类实例（暂时复用 TAG_NULL，后续应添加 TAG_OBJECT）
+            auto* taggedInstance = createTaggedValue(TAG_NULL, instancePtr);
+
+            // 查找并调用构造函数
+            std::string ctorName = funcName + ".__init__";
+            auto* ctorFunc = TheModule->getFunction(ctorName);
+            if (!ctorFunc)
+            {
+                auto funcIt = Functions.find(ctorName);
+                if (funcIt != Functions.end())
+                    ctorFunc = funcIt->second;
+            }
+
+            if (ctorFunc)
+            {
+                // 参数：this + 用户参数
+                std::vector<llvm::Value*> ctorArgs;
+                ctorArgs.push_back(instancePtr);
+                for (const auto& arg : argValues)
+                    ctorArgs.push_back(arg);
+                Builder->CreateCall(ctorFunc, ctorArgs, "ctor." + funcName);
+            }
+
+            LLVM_DEBUG("FunctionCallNode: " << funcName << " (class instantiation, " << fieldCount << " fields)");
+            pushValue(taggedInstance);
+            return;
+        }
+
         // 方法调用：将 receiver 作为第一个参数
         if (receiverValue)
         {
@@ -3910,10 +3954,9 @@ namespace ast
         const std::vector<llvm::Value*>& args,
         const std::map<std::string, llvm::Value*>& namedArgs)
     {
-        // 只有被标记为 encapsulated 的函数才使用内置 IR 生成器
-        if (!EncapsulatedFunctions.count(funcName))
-            return false;
-
+        // 对于已注册的内置函数 IR 生成器，始终尝试匹配
+        // 不再要求函数名必须在 EncapsulatedFunctions 集合中
+        // 因为标准库函数（如 sout）是通过 import 导入的，不会被标记为 encapsulated
         auto it = BuiltinIRGenerators.find(funcName);
         if (it != BuiltinIRGenerators.end())
         {
