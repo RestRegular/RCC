@@ -1106,7 +1106,7 @@ namespace ast
         {
             lookupName = "__rio_main";
         }
-        
+
         auto* callee = TheModule->getFunction(lookupName);
         if (!callee)
         {
@@ -1115,6 +1115,21 @@ namespace ast
             if (it != Functions.end())
             {
                 callee = it->second;
+            }
+        }
+
+        // 方法调用：如果直接查找失败，尝试从所有类的方法表中查找
+        if (!callee && receiverValue)
+        {
+            for (const auto& [clsName, methodTable] : ClassMethodTables)
+            {
+                auto methodIt = methodTable.find(funcName);
+                if (methodIt != methodTable.end() && methodIt->second)
+                {
+                    callee = methodIt->second;
+                    LLVM_DEBUG("FunctionCallNode: found method " << funcName << " in class " << clsName);
+                    break;
+                }
             }
         }
 
@@ -2025,18 +2040,32 @@ namespace ast
             llvmFuncName = "__rio_main";
         }
 
+        // 类方法：添加 className. 前缀，自动添加 this 参数
+        bool isMethod = !CurrentClassName.empty();
+        if (isMethod)
+        {
+            llvmFuncName = CurrentClassName + "." + funcName;
+        }
+
         // 创建函数类型: ptr @funcName(ptr, ptr, ...) -> ptr
-        std::vector<llvm::Type*> paramTypes(paramNames.size(), getValueType());
+        // 类方法额外添加一个 this 参数
+        size_t thisParamOffset = isMethod ? 1 : 0;
+        std::vector<llvm::Type*> paramTypes(paramNames.size() + thisParamOffset, getValueType());
         auto* funcType = llvm::FunctionType::get(getValueType(), paramTypes, false);
 
-        // 创建函数（导出的函数使用 ExternalLinkage，否则 PrivateLinkage）
-        const auto linkage = ExportedSymbols.contains(funcName)
+        // 创建函数（类方法和导出函数使用 ExternalLinkage，否则 PrivateLinkage）
+        const auto linkage = (ExportedSymbols.contains(funcName) || isMethod)
             ? llvm::Function::ExternalLinkage
             : llvm::Function::PrivateLinkage;
         auto* func = llvm::Function::Create(funcType, linkage, llvmFuncName, TheModule.get());
 
         // 设置参数名
         unsigned idx = 0;
+        if (isMethod)
+        {
+            func->getArg(idx)->setName("this");
+            idx++;
+        }
         for (auto& arg : func->args())
         {
             if (idx < paramNames.size())
@@ -2047,10 +2076,15 @@ namespace ast
         }
 
         Functions[funcName] = func;
+        if (isMethod && !CurrentClassName.empty())
+        {
+            ClassMethodTables[CurrentClassName][funcName] = func;
+        }
 
         // 保存当前上下文
         auto* prevFunction = CurrentFunction;
         auto prevNamedValues = NamedValues;
+        auto prevThisAlloca = ThisAlloca;
         auto prevInsertPoint = Builder->saveIP();
 
         CurrentFunction = func;
@@ -2062,13 +2096,21 @@ namespace ast
 
         // 为参数创建 alloca 并存储
         idx = 0;
-        for (auto& arg : func->args())
+        if (isMethod)
         {
-            if (idx < paramNames.size())
+            // this 参数 alloca
+            ThisAlloca = createEntryBlockAlloca(func, "this", getValueType());
+            Builder->CreateStore(func->getArg(0), ThisAlloca);
+            NamedValues["this"] = ThisAlloca;
+            idx = 1;
+        }
+        for (const auto& pname : paramNames)
+        {
+            if (idx < func->arg_size())
             {
-                auto* alloca = createEntryBlockAlloca(func, paramNames[idx], getValueType());
-                Builder->CreateStore(&arg, alloca);
-                NamedValues[paramNames[idx]] = alloca;
+                auto* alloca = createEntryBlockAlloca(func, pname, getValueType());
+                Builder->CreateStore(func->getArg(idx), alloca);
+                NamedValues[pname] = alloca;
             }
             idx++;
         }
@@ -2088,9 +2130,10 @@ namespace ast
         // 恢复上下文
         CurrentFunction = prevFunction;
         NamedValues = prevNamedValues;
+        ThisAlloca = prevThisAlloca;
         Builder->restoreIP(prevInsertPoint);
 
-        LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " (" << paramNames.size() << " params) defined");
+        LLVM_DEBUG("FunctionDefinitionNode: " << llvmFuncName << " (" << paramNames.size() << " params" << (isMethod ? ", method of " + CurrentClassName : "") << ") defined");
     }
 
     // ============================================================================
