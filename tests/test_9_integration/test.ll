@@ -116,12 +116,12 @@ source_filename = "rcc_module"
 
 define dso_local i32 @main(i32 %0, ptr %1) {
 entry:
-  %rcc.val = alloca %RCCValue, align 8
-  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
+  %rcc.val.heap = call ptr @malloc(i64 16)
+  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 0
   store i64 1, ptr %tag.ptr, align 4
-  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 1
   store ptr null, ptr %payload.ptr, align 8
-  %call.fib = call ptr @fib(ptr %rcc.val)
+  %call.fib = call ptr @fib(ptr %rcc.val.heap)
   %tag.ptr1 = getelementptr inbounds nuw %RCCValue, ptr %call.fib, i32 0, i32 0
   %tag = load i64, ptr %tag.ptr1, align 4
   %payload.ptr2 = getelementptr inbounds nuw %RCCValue, ptr %call.fib, i32 0, i32 1
@@ -164,17 +164,17 @@ sout.default:                                     ; preds = %entry
 
 sout.merge:                                       ; preds = %sout.default, %sout.null, %sout.str, %sout.bool.merge, %sout.float, %sout.int
   %7 = call i32 @putchar(i32 10)
-  %rcc.val3 = alloca %RCCValue, align 8
-  %tag.ptr4 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val3, i32 0, i32 0
+  %rcc.val.heap3 = call ptr @malloc(i64 16)
+  %tag.ptr4 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap3, i32 0, i32 0
   store i64 0, ptr %tag.ptr4, align 4
-  %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val3, i32 0, i32 1
+  %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap3, i32 0, i32 1
   store ptr null, ptr %payload.ptr5, align 8
-  %rcc.val6 = alloca %RCCValue, align 8
-  %tag.ptr7 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val6, i32 0, i32 0
+  %rcc.val.heap6 = call ptr @malloc(i64 16)
+  %tag.ptr7 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap6, i32 0, i32 0
   store i64 1, ptr %tag.ptr7, align 4
-  %payload.ptr8 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val6, i32 0, i32 1
+  %payload.ptr8 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap6, i32 0, i32 1
   store ptr inttoptr (i64 1 to ptr), ptr %payload.ptr8, align 8
-  %call.fib9 = call ptr @fib(ptr %rcc.val6)
+  %call.fib9 = call ptr @fib(ptr %rcc.val.heap6)
   %tag.ptr10 = getelementptr inbounds nuw %RCCValue, ptr %call.fib9, i32 0, i32 0
   %tag11 = load i64, ptr %tag.ptr10, align 4
   %payload.ptr12 = getelementptr inbounds nuw %RCCValue, ptr %call.fib9, i32 0, i32 1
@@ -228,17 +228,17 @@ sout.default19:                                   ; preds = %sout.merge
 
 sout.merge20:                                     ; preds = %sout.default19, %sout.null18, %sout.str17, %sout.bool.merge28, %sout.float15, %sout.int14
   %15 = call i32 @putchar(i32 10)
-  %rcc.val29 = alloca %RCCValue, align 8
-  %tag.ptr30 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val29, i32 0, i32 0
+  %rcc.val.heap29 = call ptr @malloc(i64 16)
+  %tag.ptr30 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap29, i32 0, i32 0
   store i64 0, ptr %tag.ptr30, align 4
-  %payload.ptr31 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val29, i32 0, i32 1
+  %payload.ptr31 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap29, i32 0, i32 1
   store ptr null, ptr %payload.ptr31, align 8
-  %rcc.val32 = alloca %RCCValue, align 8
-  %tag.ptr33 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val32, i32 0, i32 0
+  %rcc.val.heap32 = call ptr @malloc(i64 16)
+  %tag.ptr33 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap32, i32 0, i32 0
   store i64 1, ptr %tag.ptr33, align 4
-  %payload.ptr34 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val32, i32 0, i32 1
+  %payload.ptr34 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap32, i32 0, i32 1
   store ptr inttoptr (i64 2 to ptr), ptr %payload.ptr34, align 8
-  %call.fib35 = call ptr @fib(ptr %rcc.val32)
+  %call.fib35 = call ptr @fib(ptr %rcc.val.heap32)
   %tag.ptr36 = getelementptr inbounds nuw %RCCValue, ptr %call.fib35, i32 0, i32 0
   %tag37 = load i64, ptr %tag.ptr36, align 4
   %payload.ptr38 = getelementptr inbounds nuw %RCCValue, ptr %call.fib35, i32 0, i32 1
@@ -292,17 +292,17 @@ sout.default45:                                   ; preds = %sout.merge20
 
 sout.merge46:                                     ; preds = %sout.default45, %sout.null44, %sout.str43, %sout.bool.merge54, %sout.float41, %sout.int40
   %23 = call i32 @putchar(i32 10)
-  %rcc.val55 = alloca %RCCValue, align 8
-  %tag.ptr56 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val55, i32 0, i32 0
+  %rcc.val.heap55 = call ptr @malloc(i64 16)
+  %tag.ptr56 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap55, i32 0, i32 0
   store i64 0, ptr %tag.ptr56, align 4
-  %payload.ptr57 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val55, i32 0, i32 1
+  %payload.ptr57 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap55, i32 0, i32 1
   store ptr null, ptr %payload.ptr57, align 8
-  %rcc.val58 = alloca %RCCValue, align 8
-  %tag.ptr59 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val58, i32 0, i32 0
+  %rcc.val.heap58 = call ptr @malloc(i64 16)
+  %tag.ptr59 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap58, i32 0, i32 0
   store i64 1, ptr %tag.ptr59, align 4
-  %payload.ptr60 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val58, i32 0, i32 1
+  %payload.ptr60 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap58, i32 0, i32 1
   store ptr inttoptr (i64 3 to ptr), ptr %payload.ptr60, align 8
-  %call.fib61 = call ptr @fib(ptr %rcc.val58)
+  %call.fib61 = call ptr @fib(ptr %rcc.val.heap58)
   %tag.ptr62 = getelementptr inbounds nuw %RCCValue, ptr %call.fib61, i32 0, i32 0
   %tag63 = load i64, ptr %tag.ptr62, align 4
   %payload.ptr64 = getelementptr inbounds nuw %RCCValue, ptr %call.fib61, i32 0, i32 1
@@ -356,17 +356,17 @@ sout.default71:                                   ; preds = %sout.merge46
 
 sout.merge72:                                     ; preds = %sout.default71, %sout.null70, %sout.str69, %sout.bool.merge80, %sout.float67, %sout.int66
   %31 = call i32 @putchar(i32 10)
-  %rcc.val81 = alloca %RCCValue, align 8
-  %tag.ptr82 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val81, i32 0, i32 0
+  %rcc.val.heap81 = call ptr @malloc(i64 16)
+  %tag.ptr82 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap81, i32 0, i32 0
   store i64 0, ptr %tag.ptr82, align 4
-  %payload.ptr83 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val81, i32 0, i32 1
+  %payload.ptr83 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap81, i32 0, i32 1
   store ptr null, ptr %payload.ptr83, align 8
-  %rcc.val84 = alloca %RCCValue, align 8
-  %tag.ptr85 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val84, i32 0, i32 0
+  %rcc.val.heap84 = call ptr @malloc(i64 16)
+  %tag.ptr85 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap84, i32 0, i32 0
   store i64 1, ptr %tag.ptr85, align 4
-  %payload.ptr86 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val84, i32 0, i32 1
+  %payload.ptr86 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap84, i32 0, i32 1
   store ptr inttoptr (i64 4 to ptr), ptr %payload.ptr86, align 8
-  %call.fib87 = call ptr @fib(ptr %rcc.val84)
+  %call.fib87 = call ptr @fib(ptr %rcc.val.heap84)
   %tag.ptr88 = getelementptr inbounds nuw %RCCValue, ptr %call.fib87, i32 0, i32 0
   %tag89 = load i64, ptr %tag.ptr88, align 4
   %payload.ptr90 = getelementptr inbounds nuw %RCCValue, ptr %call.fib87, i32 0, i32 1
@@ -420,17 +420,17 @@ sout.default97:                                   ; preds = %sout.merge72
 
 sout.merge98:                                     ; preds = %sout.default97, %sout.null96, %sout.str95, %sout.bool.merge106, %sout.float93, %sout.int92
   %39 = call i32 @putchar(i32 10)
-  %rcc.val107 = alloca %RCCValue, align 8
-  %tag.ptr108 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val107, i32 0, i32 0
+  %rcc.val.heap107 = call ptr @malloc(i64 16)
+  %tag.ptr108 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap107, i32 0, i32 0
   store i64 0, ptr %tag.ptr108, align 4
-  %payload.ptr109 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val107, i32 0, i32 1
+  %payload.ptr109 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap107, i32 0, i32 1
   store ptr null, ptr %payload.ptr109, align 8
-  %rcc.val110 = alloca %RCCValue, align 8
-  %tag.ptr111 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val110, i32 0, i32 0
+  %rcc.val.heap110 = call ptr @malloc(i64 16)
+  %tag.ptr111 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap110, i32 0, i32 0
   store i64 1, ptr %tag.ptr111, align 4
-  %payload.ptr112 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val110, i32 0, i32 1
+  %payload.ptr112 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap110, i32 0, i32 1
   store ptr inttoptr (i64 5 to ptr), ptr %payload.ptr112, align 8
-  %call.fib113 = call ptr @fib(ptr %rcc.val110)
+  %call.fib113 = call ptr @fib(ptr %rcc.val.heap110)
   %tag.ptr114 = getelementptr inbounds nuw %RCCValue, ptr %call.fib113, i32 0, i32 0
   %tag115 = load i64, ptr %tag.ptr114, align 4
   %payload.ptr116 = getelementptr inbounds nuw %RCCValue, ptr %call.fib113, i32 0, i32 1
@@ -484,17 +484,17 @@ sout.default123:                                  ; preds = %sout.merge98
 
 sout.merge124:                                    ; preds = %sout.default123, %sout.null122, %sout.str121, %sout.bool.merge132, %sout.float119, %sout.int118
   %47 = call i32 @putchar(i32 10)
-  %rcc.val133 = alloca %RCCValue, align 8
-  %tag.ptr134 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val133, i32 0, i32 0
+  %rcc.val.heap133 = call ptr @malloc(i64 16)
+  %tag.ptr134 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap133, i32 0, i32 0
   store i64 0, ptr %tag.ptr134, align 4
-  %payload.ptr135 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val133, i32 0, i32 1
+  %payload.ptr135 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap133, i32 0, i32 1
   store ptr null, ptr %payload.ptr135, align 8
-  %rcc.val136 = alloca %RCCValue, align 8
-  %tag.ptr137 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val136, i32 0, i32 0
+  %rcc.val.heap136 = call ptr @malloc(i64 16)
+  %tag.ptr137 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap136, i32 0, i32 0
   store i64 1, ptr %tag.ptr137, align 4
-  %payload.ptr138 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val136, i32 0, i32 1
+  %payload.ptr138 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap136, i32 0, i32 1
   store ptr inttoptr (i64 6 to ptr), ptr %payload.ptr138, align 8
-  %call.fib139 = call ptr @fib(ptr %rcc.val136)
+  %call.fib139 = call ptr @fib(ptr %rcc.val.heap136)
   %tag.ptr140 = getelementptr inbounds nuw %RCCValue, ptr %call.fib139, i32 0, i32 0
   %tag141 = load i64, ptr %tag.ptr140, align 4
   %payload.ptr142 = getelementptr inbounds nuw %RCCValue, ptr %call.fib139, i32 0, i32 1
@@ -548,17 +548,17 @@ sout.default149:                                  ; preds = %sout.merge124
 
 sout.merge150:                                    ; preds = %sout.default149, %sout.null148, %sout.str147, %sout.bool.merge158, %sout.float145, %sout.int144
   %55 = call i32 @putchar(i32 10)
-  %rcc.val159 = alloca %RCCValue, align 8
-  %tag.ptr160 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val159, i32 0, i32 0
+  %rcc.val.heap159 = call ptr @malloc(i64 16)
+  %tag.ptr160 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap159, i32 0, i32 0
   store i64 0, ptr %tag.ptr160, align 4
-  %payload.ptr161 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val159, i32 0, i32 1
+  %payload.ptr161 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap159, i32 0, i32 1
   store ptr null, ptr %payload.ptr161, align 8
-  %rcc.val162 = alloca %RCCValue, align 8
-  %tag.ptr163 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val162, i32 0, i32 0
+  %rcc.val.heap162 = call ptr @malloc(i64 16)
+  %tag.ptr163 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap162, i32 0, i32 0
   store i64 1, ptr %tag.ptr163, align 4
-  %payload.ptr164 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val162, i32 0, i32 1
+  %payload.ptr164 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap162, i32 0, i32 1
   store ptr inttoptr (i64 7 to ptr), ptr %payload.ptr164, align 8
-  %call.fib165 = call ptr @fib(ptr %rcc.val162)
+  %call.fib165 = call ptr @fib(ptr %rcc.val.heap162)
   %tag.ptr166 = getelementptr inbounds nuw %RCCValue, ptr %call.fib165, i32 0, i32 0
   %tag167 = load i64, ptr %tag.ptr166, align 4
   %payload.ptr168 = getelementptr inbounds nuw %RCCValue, ptr %call.fib165, i32 0, i32 1
@@ -612,17 +612,17 @@ sout.default175:                                  ; preds = %sout.merge150
 
 sout.merge176:                                    ; preds = %sout.default175, %sout.null174, %sout.str173, %sout.bool.merge184, %sout.float171, %sout.int170
   %63 = call i32 @putchar(i32 10)
-  %rcc.val185 = alloca %RCCValue, align 8
-  %tag.ptr186 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val185, i32 0, i32 0
+  %rcc.val.heap185 = call ptr @malloc(i64 16)
+  %tag.ptr186 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap185, i32 0, i32 0
   store i64 0, ptr %tag.ptr186, align 4
-  %payload.ptr187 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val185, i32 0, i32 1
+  %payload.ptr187 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap185, i32 0, i32 1
   store ptr null, ptr %payload.ptr187, align 8
-  %rcc.val188 = alloca %RCCValue, align 8
-  %tag.ptr189 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val188, i32 0, i32 0
+  %rcc.val.heap188 = call ptr @malloc(i64 16)
+  %tag.ptr189 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap188, i32 0, i32 0
   store i64 1, ptr %tag.ptr189, align 4
-  %payload.ptr190 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val188, i32 0, i32 1
+  %payload.ptr190 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap188, i32 0, i32 1
   store ptr inttoptr (i64 8 to ptr), ptr %payload.ptr190, align 8
-  %call.fib191 = call ptr @fib(ptr %rcc.val188)
+  %call.fib191 = call ptr @fib(ptr %rcc.val.heap188)
   %tag.ptr192 = getelementptr inbounds nuw %RCCValue, ptr %call.fib191, i32 0, i32 0
   %tag193 = load i64, ptr %tag.ptr192, align 4
   %payload.ptr194 = getelementptr inbounds nuw %RCCValue, ptr %call.fib191, i32 0, i32 1
@@ -676,17 +676,17 @@ sout.default201:                                  ; preds = %sout.merge176
 
 sout.merge202:                                    ; preds = %sout.default201, %sout.null200, %sout.str199, %sout.bool.merge210, %sout.float197, %sout.int196
   %71 = call i32 @putchar(i32 10)
-  %rcc.val211 = alloca %RCCValue, align 8
-  %tag.ptr212 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val211, i32 0, i32 0
+  %rcc.val.heap211 = call ptr @malloc(i64 16)
+  %tag.ptr212 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap211, i32 0, i32 0
   store i64 0, ptr %tag.ptr212, align 4
-  %payload.ptr213 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val211, i32 0, i32 1
+  %payload.ptr213 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap211, i32 0, i32 1
   store ptr null, ptr %payload.ptr213, align 8
-  %rcc.val214 = alloca %RCCValue, align 8
-  %tag.ptr215 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val214, i32 0, i32 0
+  %rcc.val.heap214 = call ptr @malloc(i64 16)
+  %tag.ptr215 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap214, i32 0, i32 0
   store i64 1, ptr %tag.ptr215, align 4
-  %payload.ptr216 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val214, i32 0, i32 1
+  %payload.ptr216 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap214, i32 0, i32 1
   store ptr inttoptr (i64 9 to ptr), ptr %payload.ptr216, align 8
-  %call.fib217 = call ptr @fib(ptr %rcc.val214)
+  %call.fib217 = call ptr @fib(ptr %rcc.val.heap214)
   %tag.ptr218 = getelementptr inbounds nuw %RCCValue, ptr %call.fib217, i32 0, i32 0
   %tag219 = load i64, ptr %tag.ptr218, align 4
   %payload.ptr220 = getelementptr inbounds nuw %RCCValue, ptr %call.fib217, i32 0, i32 1
@@ -740,17 +740,17 @@ sout.default227:                                  ; preds = %sout.merge202
 
 sout.merge228:                                    ; preds = %sout.default227, %sout.null226, %sout.str225, %sout.bool.merge236, %sout.float223, %sout.int222
   %79 = call i32 @putchar(i32 10)
-  %rcc.val237 = alloca %RCCValue, align 8
-  %tag.ptr238 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val237, i32 0, i32 0
+  %rcc.val.heap237 = call ptr @malloc(i64 16)
+  %tag.ptr238 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap237, i32 0, i32 0
   store i64 0, ptr %tag.ptr238, align 4
-  %payload.ptr239 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val237, i32 0, i32 1
+  %payload.ptr239 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap237, i32 0, i32 1
   store ptr null, ptr %payload.ptr239, align 8
-  %rcc.val240 = alloca %RCCValue, align 8
-  %tag.ptr241 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val240, i32 0, i32 0
+  %rcc.val.heap240 = call ptr @malloc(i64 16)
+  %tag.ptr241 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap240, i32 0, i32 0
   store i64 1, ptr %tag.ptr241, align 4
-  %payload.ptr242 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val240, i32 0, i32 1
+  %payload.ptr242 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap240, i32 0, i32 1
   store ptr inttoptr (i64 10 to ptr), ptr %payload.ptr242, align 8
-  %call.fib243 = call ptr @fib(ptr %rcc.val240)
+  %call.fib243 = call ptr @fib(ptr %rcc.val.heap240)
   %tag.ptr244 = getelementptr inbounds nuw %RCCValue, ptr %call.fib243, i32 0, i32 0
   %tag245 = load i64, ptr %tag.ptr244, align 4
   %payload.ptr246 = getelementptr inbounds nuw %RCCValue, ptr %call.fib243, i32 0, i32 1
@@ -804,10 +804,10 @@ sout.default253:                                  ; preds = %sout.merge228
 
 sout.merge254:                                    ; preds = %sout.default253, %sout.null252, %sout.str251, %sout.bool.merge262, %sout.float249, %sout.int248
   %87 = call i32 @putchar(i32 10)
-  %rcc.val263 = alloca %RCCValue, align 8
-  %tag.ptr264 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val263, i32 0, i32 0
+  %rcc.val.heap263 = call ptr @malloc(i64 16)
+  %tag.ptr264 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap263, i32 0, i32 0
   store i64 0, ptr %tag.ptr264, align 4
-  %payload.ptr265 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val263, i32 0, i32 1
+  %payload.ptr265 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap263, i32 0, i32 1
   store ptr null, ptr %payload.ptr265, align 8
   ret i32 0
 
@@ -832,14 +832,14 @@ entry:
   %n1 = alloca ptr, align 8
   store ptr %n, ptr %n1, align 8
   %n.load = load ptr, ptr %n1, align 8
-  %rcc.val = alloca %RCCValue, align 8
-  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
+  %rcc.val.heap = call ptr @malloc(i64 16)
+  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 0
   store i64 1, ptr %tag.ptr, align 4
-  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 1
   store ptr inttoptr (i64 1 to ptr), ptr %payload.ptr, align 8
   %tag.ptr2 = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 0
   %tag = load i64, ptr %tag.ptr2, align 4
-  %tag.ptr3 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
+  %tag.ptr3 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 0
   %tag4 = load i64, ptr %tag.ptr3, align 4
   %is_float.left = icmp eq i64 %tag, 2
   %is_float.right = icmp eq i64 %tag4, 2
@@ -849,14 +849,14 @@ entry:
 
 cond.merge:                                       ; preds = %cond.next.0
   %n.load23 = load ptr, ptr %n1, align 8
-  %rcc.val24 = alloca %RCCValue, align 8
-  %tag.ptr25 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 0
+  %rcc.val.heap24 = call ptr @malloc(i64 16)
+  %tag.ptr25 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap24, i32 0, i32 0
   store i64 1, ptr %tag.ptr25, align 4
-  %payload.ptr26 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 1
+  %payload.ptr26 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap24, i32 0, i32 1
   store ptr inttoptr (i64 1 to ptr), ptr %payload.ptr26, align 8
   %tag.ptr27 = getelementptr inbounds nuw %RCCValue, ptr %n.load23, i32 0, i32 0
   %tag28 = load i64, ptr %tag.ptr27, align 4
-  %tag.ptr29 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 0
+  %tag.ptr29 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap24, i32 0, i32 0
   %tag30 = load i64, ptr %tag.ptr29, align 4
   %is_float.left31 = icmp eq i64 %tag28, 2
   %is_float.right32 = icmp eq i64 %tag30, 2
@@ -867,7 +867,7 @@ cond.merge:                                       ; preds = %cond.next.0
 arith.float:                                      ; preds = %entry
   %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 1
   %payload = load ptr, ptr %payload.ptr5, align 8
-  %payload.ptr6 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload.ptr6 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 1
   %payload7 = load ptr, ptr %payload.ptr6, align 8
   %left.bits = ptrtoint ptr %payload to i64
   %right.bits = ptrtoint ptr %payload7 to i64
@@ -879,30 +879,30 @@ arith.float:                                      ; preds = %entry
   %right.double = select i1 %is_float.right, double %right.bitcast, double %right.sitofp
   %result.bits = bitcast double %left.double to i64
   %result.float.ptr = inttoptr i64 %result.bits to ptr
-  %rcc.val8 = alloca %RCCValue, align 8
-  %tag.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val8, i32 0, i32 0
+  %rcc.val.heap8 = call ptr @malloc(i64 16)
+  %tag.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap8, i32 0, i32 0
   store i64 2, ptr %tag.ptr9, align 4
-  %payload.ptr10 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val8, i32 0, i32 1
+  %payload.ptr10 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap8, i32 0, i32 1
   store ptr %result.float.ptr, ptr %payload.ptr10, align 8
-  store ptr %rcc.val8, ptr %arith.result, align 8
+  store ptr %rcc.val.heap8, ptr %arith.result, align 8
   br label %arith.merge
 
 arith.int:                                        ; preds = %entry
   %payload.ptr11 = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 1
   %payload12 = load ptr, ptr %payload.ptr11, align 8
-  %payload.ptr13 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload.ptr13 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 1
   %payload14 = load ptr, ptr %payload.ptr13, align 8
   %left.int = ptrtoint ptr %payload12 to i64
   %right.int = ptrtoint ptr %payload14 to i64
   %cmp.le = icmp sle i64 %left.int, %right.int
   %cmp.ext = zext i1 %cmp.le to i64
   %int.ptr = inttoptr i64 %cmp.ext to ptr
-  %rcc.val15 = alloca %RCCValue, align 8
-  %tag.ptr16 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val15, i32 0, i32 0
+  %rcc.val.heap15 = call ptr @malloc(i64 16)
+  %tag.ptr16 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap15, i32 0, i32 0
   store i64 3, ptr %tag.ptr16, align 4
-  %payload.ptr17 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val15, i32 0, i32 1
+  %payload.ptr17 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap15, i32 0, i32 1
   store ptr %int.ptr, ptr %payload.ptr17, align 8
-  store ptr %rcc.val15, ptr %arith.result, align 8
+  store ptr %rcc.val.heap15, ptr %arith.result, align 8
   br label %arith.merge
 
 arith.merge:                                      ; preds = %arith.int, %arith.float
@@ -932,7 +932,7 @@ cond.next.0:                                      ; preds = %arith.merge
 arith.float34:                                    ; preds = %cond.merge
   %payload.ptr38 = getelementptr inbounds nuw %RCCValue, ptr %n.load23, i32 0, i32 1
   %payload39 = load ptr, ptr %payload.ptr38, align 8
-  %payload.ptr40 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 1
+  %payload.ptr40 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap24, i32 0, i32 1
   %payload41 = load ptr, ptr %payload.ptr40, align 8
   %left.bits42 = ptrtoint ptr %payload39 to i64
   %right.bits43 = ptrtoint ptr %payload41 to i64
@@ -945,43 +945,43 @@ arith.float34:                                    ; preds = %cond.merge
   %fsub = fsub double %left.double46, %right.double49
   %result.bits50 = bitcast double %fsub to i64
   %result.float.ptr51 = inttoptr i64 %result.bits50 to ptr
-  %rcc.val52 = alloca %RCCValue, align 8
-  %tag.ptr53 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val52, i32 0, i32 0
+  %rcc.val.heap52 = call ptr @malloc(i64 16)
+  %tag.ptr53 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap52, i32 0, i32 0
   store i64 2, ptr %tag.ptr53, align 4
-  %payload.ptr54 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val52, i32 0, i32 1
+  %payload.ptr54 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap52, i32 0, i32 1
   store ptr %result.float.ptr51, ptr %payload.ptr54, align 8
-  store ptr %rcc.val52, ptr %arith.result37, align 8
+  store ptr %rcc.val.heap52, ptr %arith.result37, align 8
   br label %arith.merge36
 
 arith.int35:                                      ; preds = %cond.merge
   %payload.ptr55 = getelementptr inbounds nuw %RCCValue, ptr %n.load23, i32 0, i32 1
   %payload56 = load ptr, ptr %payload.ptr55, align 8
-  %payload.ptr57 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 1
+  %payload.ptr57 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap24, i32 0, i32 1
   %payload58 = load ptr, ptr %payload.ptr57, align 8
   %left.int59 = ptrtoint ptr %payload56 to i64
   %right.int60 = ptrtoint ptr %payload58 to i64
   %sub = sub i64 %left.int59, %right.int60
   %int.ptr61 = inttoptr i64 %sub to ptr
-  %rcc.val62 = alloca %RCCValue, align 8
-  %tag.ptr63 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val62, i32 0, i32 0
+  %rcc.val.heap62 = call ptr @malloc(i64 16)
+  %tag.ptr63 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap62, i32 0, i32 0
   store i64 1, ptr %tag.ptr63, align 4
-  %payload.ptr64 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val62, i32 0, i32 1
+  %payload.ptr64 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap62, i32 0, i32 1
   store ptr %int.ptr61, ptr %payload.ptr64, align 8
-  store ptr %rcc.val62, ptr %arith.result37, align 8
+  store ptr %rcc.val.heap62, ptr %arith.result37, align 8
   br label %arith.merge36
 
 arith.merge36:                                    ; preds = %arith.int35, %arith.float34
   %arith.result.load65 = load ptr, ptr %arith.result37, align 8
   %call.fib = call ptr @fib(ptr %arith.result.load65)
   %n.load66 = load ptr, ptr %n1, align 8
-  %rcc.val67 = alloca %RCCValue, align 8
-  %tag.ptr68 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 0
+  %rcc.val.heap67 = call ptr @malloc(i64 16)
+  %tag.ptr68 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap67, i32 0, i32 0
   store i64 1, ptr %tag.ptr68, align 4
-  %payload.ptr69 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 1
+  %payload.ptr69 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap67, i32 0, i32 1
   store ptr inttoptr (i64 2 to ptr), ptr %payload.ptr69, align 8
   %tag.ptr70 = getelementptr inbounds nuw %RCCValue, ptr %n.load66, i32 0, i32 0
   %tag71 = load i64, ptr %tag.ptr70, align 4
-  %tag.ptr72 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 0
+  %tag.ptr72 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap67, i32 0, i32 0
   %tag73 = load i64, ptr %tag.ptr72, align 4
   %is_float.left74 = icmp eq i64 %tag71, 2
   %is_float.right75 = icmp eq i64 %tag73, 2
@@ -992,7 +992,7 @@ arith.merge36:                                    ; preds = %arith.int35, %arith
 arith.float77:                                    ; preds = %arith.merge36
   %payload.ptr81 = getelementptr inbounds nuw %RCCValue, ptr %n.load66, i32 0, i32 1
   %payload82 = load ptr, ptr %payload.ptr81, align 8
-  %payload.ptr83 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 1
+  %payload.ptr83 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap67, i32 0, i32 1
   %payload84 = load ptr, ptr %payload.ptr83, align 8
   %left.bits85 = ptrtoint ptr %payload82 to i64
   %right.bits86 = ptrtoint ptr %payload84 to i64
@@ -1005,29 +1005,29 @@ arith.float77:                                    ; preds = %arith.merge36
   %fsub93 = fsub double %left.double89, %right.double92
   %result.bits94 = bitcast double %fsub93 to i64
   %result.float.ptr95 = inttoptr i64 %result.bits94 to ptr
-  %rcc.val96 = alloca %RCCValue, align 8
-  %tag.ptr97 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val96, i32 0, i32 0
+  %rcc.val.heap96 = call ptr @malloc(i64 16)
+  %tag.ptr97 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap96, i32 0, i32 0
   store i64 2, ptr %tag.ptr97, align 4
-  %payload.ptr98 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val96, i32 0, i32 1
+  %payload.ptr98 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap96, i32 0, i32 1
   store ptr %result.float.ptr95, ptr %payload.ptr98, align 8
-  store ptr %rcc.val96, ptr %arith.result80, align 8
+  store ptr %rcc.val.heap96, ptr %arith.result80, align 8
   br label %arith.merge79
 
 arith.int78:                                      ; preds = %arith.merge36
   %payload.ptr99 = getelementptr inbounds nuw %RCCValue, ptr %n.load66, i32 0, i32 1
   %payload100 = load ptr, ptr %payload.ptr99, align 8
-  %payload.ptr101 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 1
+  %payload.ptr101 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap67, i32 0, i32 1
   %payload102 = load ptr, ptr %payload.ptr101, align 8
   %left.int103 = ptrtoint ptr %payload100 to i64
   %right.int104 = ptrtoint ptr %payload102 to i64
   %sub105 = sub i64 %left.int103, %right.int104
   %int.ptr106 = inttoptr i64 %sub105 to ptr
-  %rcc.val107 = alloca %RCCValue, align 8
-  %tag.ptr108 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val107, i32 0, i32 0
+  %rcc.val.heap107 = call ptr @malloc(i64 16)
+  %tag.ptr108 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap107, i32 0, i32 0
   store i64 1, ptr %tag.ptr108, align 4
-  %payload.ptr109 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val107, i32 0, i32 1
+  %payload.ptr109 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap107, i32 0, i32 1
   store ptr %int.ptr106, ptr %payload.ptr109, align 8
-  store ptr %rcc.val107, ptr %arith.result80, align 8
+  store ptr %rcc.val.heap107, ptr %arith.result80, align 8
   br label %arith.merge79
 
 arith.merge79:                                    ; preds = %arith.int78, %arith.float77
@@ -1059,12 +1059,12 @@ arith.float119:                                   ; preds = %arith.merge79
   %fadd = fadd double %left.double131, %right.double134
   %result.bits135 = bitcast double %fadd to i64
   %result.float.ptr136 = inttoptr i64 %result.bits135 to ptr
-  %rcc.val137 = alloca %RCCValue, align 8
-  %tag.ptr138 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val137, i32 0, i32 0
+  %rcc.val.heap137 = call ptr @malloc(i64 16)
+  %tag.ptr138 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap137, i32 0, i32 0
   store i64 2, ptr %tag.ptr138, align 4
-  %payload.ptr139 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val137, i32 0, i32 1
+  %payload.ptr139 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap137, i32 0, i32 1
   store ptr %result.float.ptr136, ptr %payload.ptr139, align 8
-  store ptr %rcc.val137, ptr %arith.result122, align 8
+  store ptr %rcc.val.heap137, ptr %arith.result122, align 8
   br label %arith.merge121
 
 arith.int120:                                     ; preds = %arith.merge79
@@ -1076,18 +1076,20 @@ arith.int120:                                     ; preds = %arith.merge79
   %right.int145 = ptrtoint ptr %payload143 to i64
   %add = add i64 %left.int144, %right.int145
   %int.ptr146 = inttoptr i64 %add to ptr
-  %rcc.val147 = alloca %RCCValue, align 8
-  %tag.ptr148 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val147, i32 0, i32 0
+  %rcc.val.heap147 = call ptr @malloc(i64 16)
+  %tag.ptr148 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap147, i32 0, i32 0
   store i64 1, ptr %tag.ptr148, align 4
-  %payload.ptr149 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val147, i32 0, i32 1
+  %payload.ptr149 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap147, i32 0, i32 1
   store ptr %int.ptr146, ptr %payload.ptr149, align 8
-  store ptr %rcc.val147, ptr %arith.result122, align 8
+  store ptr %rcc.val.heap147, ptr %arith.result122, align 8
   br label %arith.merge121
 
 arith.merge121:                                   ; preds = %arith.int120, %arith.float119
   %arith.result.load150 = load ptr, ptr %arith.result122, align 8
   ret ptr %arith.result.load150
 }
+
+declare ptr @malloc(i64)
 
 declare i32 @putchar(i32)
 

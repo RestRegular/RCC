@@ -23,14 +23,14 @@ entry:
 
 define private ptr @main.1() {
 entry:
-  %rcc.val = alloca %RCCValue, align 8
-  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
+  %rcc.val.heap = call ptr @malloc(i64 16)
+  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 0
   store i64 4, ptr %tag.ptr, align 4
-  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 1
   store ptr @.str, ptr %payload.ptr, align 8
-  %tag.ptr1 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
+  %tag.ptr1 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 0
   %tag = load i64, ptr %tag.ptr1, align 4
-  %payload.ptr2 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload.ptr2 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap, i32 0, i32 1
   %payload = load ptr, ptr %payload.ptr2, align 8
   switch i64 %tag, label %sout.default [
     i64 1, label %sout.int
@@ -70,10 +70,10 @@ sout.default:                                     ; preds = %entry
 
 sout.merge:                                       ; preds = %sout.default, %sout.null, %sout.str, %sout.bool.merge, %sout.float, %sout.int
   %5 = call i32 @putchar(i32 10)
-  %rcc.val3 = alloca %RCCValue, align 8
-  %tag.ptr4 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val3, i32 0, i32 0
+  %rcc.val.heap3 = call ptr @malloc(i64 16)
+  %tag.ptr4 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap3, i32 0, i32 0
   store i64 0, ptr %tag.ptr4, align 4
-  %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val3, i32 0, i32 1
+  %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val.heap3, i32 0, i32 1
   store ptr null, ptr %payload.ptr5, align 8
   ret ptr null
 
@@ -88,6 +88,8 @@ sout.false:                                       ; preds = %sout.bool
 sout.bool.merge:                                  ; preds = %sout.false, %sout.true
   br label %sout.merge
 }
+
+declare ptr @malloc(i64)
 
 declare i32 @putchar(i32)
 
