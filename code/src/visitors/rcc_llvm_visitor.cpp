@@ -555,8 +555,9 @@ namespace ast
         std::vector<std::string> paramNames;
         if (node.getParamNode())
         {
-            if (auto* parenRanger = static_cast<ParenRangerNode*>(node.getParamNode().get()))
+            if (node.getParamNode()->getRealType() == NodeType::PAREN)
             {
+                auto* parenRanger = static_cast<ParenRangerNode*>(node.getParamNode().get());
                 if (parenRanger->getRangerNode())
                 {
                     if (parenRanger->getRangerNode()->getRealType() == NodeType::PARALLEL)
@@ -711,8 +712,9 @@ namespace ast
         std::vector<std::string> memberNames;
         std::vector<std::shared_ptr<ExpressionNode>> methodNodes;
 
-        if (auto* body = static_cast<BlockRangerNode*>(node.getBodyNode().get()))
+        if (node.getBodyNode() && node.getBodyNode()->getRealType() == NodeType::BLOCK)
         {
+            auto* body = static_cast<BlockRangerNode*>(node.getBodyNode().get());
             for (const auto& expr : body->getBodyExpressions())
             {
                 if (expr->getRealType() == NodeType::VAR)
@@ -821,8 +823,9 @@ namespace ast
         if (argsNode)
         {
             // 参数可能是 BlockRangerNode 或 ParenRangerNode
-            if (const auto* blockRanger = static_cast<BlockRangerNode*>(argsNode.get()))
+            if (argsNode->getRealType() == NodeType::BLOCK)
             {
+                const auto* blockRanger = static_cast<BlockRangerNode*>(argsNode.get());
                 for (const auto& expr : blockRanger->getBodyExpressions())
                 {
                     // 命名参数: end="\n" -> ASSIGNMENT
@@ -845,8 +848,9 @@ namespace ast
                     }
                 }
             }
-            else if (const auto* parenRanger = static_cast<ParenRangerNode*>(argsNode.get()))
+            else if (argsNode->getRealType() == NodeType::PAREN)
             {
+                const auto* parenRanger = static_cast<ParenRangerNode*>(argsNode.get());
                 if (parenRanger->getRangerNode())
                 {
                     if (const auto& ranger = parenRanger->getRangerNode();
@@ -1635,8 +1639,9 @@ namespace ast
 
         if (argsNode)
         {
-            if (auto* parenRanger = static_cast<ParenRangerNode*>(argsNode.get()))
+            if (argsNode->getRealType() == NodeType::PAREN)
             {
+                auto* parenRanger = static_cast<ParenRangerNode*>(argsNode.get());
                 if (parenRanger->getRangerNode())
                 {
                     // 参数可能是 PARALLEL (逗号分隔的标识符列表)
@@ -1675,17 +1680,20 @@ namespace ast
         bool isEncapsulated = false;
         if (node.getBodyNode())
         {
-            if (const auto* bodyBlock = static_cast<BlockRangerNode*>(node.getBodyNode().get());
-                bodyBlock && !bodyBlock->getBodyExpressions().empty())
+            if (node.getBodyNode()->getRealType() == NodeType::BLOCK)
             {
-                if (const auto lastExpr = bodyBlock->getBodyExpressions().back();
-                    lastExpr && (lastExpr->getRealType() == NodeType::ENCAPSULATED
-                                 || dynamic_cast<EncapsulatedExpressionNode*>(lastExpr.get())))
+                const auto* bodyBlock = static_cast<BlockRangerNode*>(node.getBodyNode().get());
+                if (bodyBlock && !bodyBlock->getBodyExpressions().empty())
                 {
-                    isEncapsulated = true;
-                    CurrentFunctionIsEncapsulated = true;
-                    EncapsulatedFunctions.insert(funcName);
-                    LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
+                    if (const auto lastExpr = bodyBlock->getBodyExpressions().back();
+                        lastExpr && (lastExpr->getRealType() == NodeType::ENCAPSULATED
+                                     || dynamic_cast<EncapsulatedExpressionNode*>(lastExpr.get())))
+                    {
+                        isEncapsulated = true;
+                        CurrentFunctionIsEncapsulated = true;
+                        EncapsulatedFunctions.insert(funcName);
+                        LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
+                    }
                 }
             }
         }
@@ -2142,16 +2150,18 @@ namespace ast
                 auto nodeType = expr->getRealType();
 
                 // 处理 BlockRangerNode / ParenRangerNode 包装
-                if (auto* blockRanger = static_cast<BlockRangerNode*>(expr.get()))
+                if (nodeType == NodeType::BLOCK)
                 {
+                    auto* blockRanger = static_cast<BlockRangerNode*>(expr.get());
                     for (const auto& bodyExpr : blockRanger->getBodyExpressions())
                     {
                         collectParams(bodyExpr);
                     }
                     return;
                 }
-                if (auto* parenRanger = static_cast<ParenRangerNode*>(expr.get()))
+                if (nodeType == NodeType::PAREN)
                 {
+                    auto* parenRanger = static_cast<ParenRangerNode*>(expr.get());
                     if (parenRanger->getRangerNode())
                     {
                         collectParams(parenRanger->getRangerNode());
@@ -2296,14 +2306,16 @@ namespace ast
                 auto nodeType = expr->getRealType();
 
                 // 处理 BlockRangerNode / ParenRangerNode 包装
-                if (auto* blockRanger = static_cast<BlockRangerNode*>(expr.get()))
+                if (nodeType == NodeType::BLOCK)
                 {
+                    auto* blockRanger = static_cast<BlockRangerNode*>(expr.get());
                     for (const auto& bodyExpr : blockRanger->getBodyExpressions())
                         collectPairs(bodyExpr);
                     return;
                 }
-                if (auto* parenRanger = static_cast<ParenRangerNode*>(expr.get()))
+                if (nodeType == NodeType::PAREN)
                 {
+                    auto* parenRanger = static_cast<ParenRangerNode*>(expr.get());
                     if (parenRanger->getRangerNode())
                         collectPairs(parenRanger->getRangerNode());
                     return;
@@ -2416,14 +2428,16 @@ namespace ast
                 auto nodeType = expr->getRealType();
 
                 // 处理 BlockRangerNode / ParenRangerNode 包装
-                if (auto* blockRanger = static_cast<BlockRangerNode*>(expr.get()))
+                if (nodeType == NodeType::BLOCK)
                 {
+                    auto* blockRanger = static_cast<BlockRangerNode*>(expr.get());
                     for (const auto& bodyExpr : blockRanger->getBodyExpressions())
                         collectElements(bodyExpr);
                     return;
                 }
-                if (auto* parenRanger = static_cast<ParenRangerNode*>(expr.get()))
+                if (nodeType == NodeType::PAREN)
                 {
+                    auto* parenRanger = static_cast<ParenRangerNode*>(expr.get());
                     if (parenRanger->getRangerNode())
                         collectElements(parenRanger->getRangerNode());
                     return;
