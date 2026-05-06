@@ -263,20 +263,69 @@ sout.bool.merge68:                                ; preds = %sout.false67, %sout
   br label %sout.merge60
 }
 
-define private ptr @__anon_func_0() {
+define private ptr @__anon_func_0(ptr %a, ptr %b) {
 entry:
-  %payload = load ptr, ptr getelementptr inbounds nuw (%RCCValue, ptr null, i32 0, i32 1), align 8
-  %payload1 = load ptr, ptr getelementptr inbounds nuw (%RCCValue, ptr null, i32 0, i32 1), align 8
-  %left.int = ptrtoint ptr %payload to i64
-  %right.int = ptrtoint ptr %payload1 to i64
+  %arith.result = alloca ptr, align 8
+  %b2 = alloca ptr, align 8
+  %a1 = alloca ptr, align 8
+  store ptr %a, ptr %a1, align 8
+  store ptr %b, ptr %b2, align 8
+  %a.load = load ptr, ptr %a1, align 8
+  %b.load = load ptr, ptr %b2, align 8
+  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %a.load, i32 0, i32 0
+  %tag = load i64, ptr %tag.ptr, align 4
+  %tag.ptr3 = getelementptr inbounds nuw %RCCValue, ptr %b.load, i32 0, i32 0
+  %tag4 = load i64, ptr %tag.ptr3, align 4
+  %is_float.left = icmp eq i64 %tag, 2
+  %is_float.right = icmp eq i64 %tag4, 2
+  %is_float = or i1 %is_float.left, %is_float.right
+  store ptr null, ptr %arith.result, align 8
+  br i1 %is_float, label %arith.float, label %arith.int
+
+arith.float:                                      ; preds = %entry
+  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %a.load, i32 0, i32 1
+  %payload = load ptr, ptr %payload.ptr, align 8
+  %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %b.load, i32 0, i32 1
+  %payload6 = load ptr, ptr %payload.ptr5, align 8
+  %left.bits = ptrtoint ptr %payload to i64
+  %right.bits = ptrtoint ptr %payload6 to i64
+  %left.sitofp = sitofp i64 %left.bits to double
+  %left.bitcast = bitcast i64 %left.bits to double
+  %left.double = select i1 %is_float.left, double %left.bitcast, double %left.sitofp
+  %right.sitofp = sitofp i64 %right.bits to double
+  %right.bitcast = bitcast i64 %right.bits to double
+  %right.double = select i1 %is_float.right, double %right.bitcast, double %right.sitofp
+  %fadd = fadd double %left.double, %right.double
+  %result.bits = bitcast double %fadd to i64
+  %result.float.ptr = inttoptr i64 %result.bits to ptr
+  %rcc.val = alloca %RCCValue, align 8
+  %tag.ptr7 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
+  store i64 2, ptr %tag.ptr7, align 4
+  %payload.ptr8 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  store ptr %result.float.ptr, ptr %payload.ptr8, align 8
+  store ptr %rcc.val, ptr %arith.result, align 8
+  br label %arith.merge
+
+arith.int:                                        ; preds = %entry
+  %payload.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %a.load, i32 0, i32 1
+  %payload10 = load ptr, ptr %payload.ptr9, align 8
+  %payload.ptr11 = getelementptr inbounds nuw %RCCValue, ptr %b.load, i32 0, i32 1
+  %payload12 = load ptr, ptr %payload.ptr11, align 8
+  %left.int = ptrtoint ptr %payload10 to i64
+  %right.int = ptrtoint ptr %payload12 to i64
   %add = add i64 %left.int, %right.int
   %int.ptr = inttoptr i64 %add to ptr
-  %rcc.val = alloca %RCCValue, align 8
-  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
-  store i64 1, ptr %tag.ptr, align 4
-  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
-  store ptr %int.ptr, ptr %payload.ptr, align 8
-  ret ptr %rcc.val
+  %rcc.val13 = alloca %RCCValue, align 8
+  %tag.ptr14 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val13, i32 0, i32 0
+  store i64 1, ptr %tag.ptr14, align 4
+  %payload.ptr15 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val13, i32 0, i32 1
+  store ptr %int.ptr, ptr %payload.ptr15, align 8
+  store ptr %rcc.val13, ptr %arith.result, align 8
+  br label %arith.merge
+
+arith.merge:                                      ; preds = %arith.int, %arith.float
+  %arith.result.load = load ptr, ptr %arith.result, align 8
+  ret ptr %arith.result.load
 }
 
 declare i32 @putchar(i32)
@@ -285,26 +334,71 @@ declare i32 @printf(ptr, ...)
 
 declare i32 @strcmp(ptr, ptr)
 
-define private ptr @__anon_func_1() {
+define private ptr @__anon_func_1(ptr %x) {
 entry:
+  %arith.result = alloca ptr, align 8
+  %x1 = alloca ptr, align 8
+  store ptr %x, ptr %x1, align 8
+  %x.load = load ptr, ptr %x1, align 8
   %rcc.val = alloca %RCCValue, align 8
   %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
   store i64 1, ptr %tag.ptr, align 4
   %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
   store ptr inttoptr (i64 2 to ptr), ptr %payload.ptr, align 8
-  %payload = load ptr, ptr getelementptr inbounds nuw (%RCCValue, ptr null, i32 0, i32 1), align 8
-  %payload.ptr1 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
-  %payload2 = load ptr, ptr %payload.ptr1, align 8
-  %left.int = ptrtoint ptr %payload to i64
-  %right.int = ptrtoint ptr %payload2 to i64
+  %tag.ptr2 = getelementptr inbounds nuw %RCCValue, ptr %x.load, i32 0, i32 0
+  %tag = load i64, ptr %tag.ptr2, align 4
+  %tag.ptr3 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
+  %tag4 = load i64, ptr %tag.ptr3, align 4
+  %is_float.left = icmp eq i64 %tag, 2
+  %is_float.right = icmp eq i64 %tag4, 2
+  %is_float = or i1 %is_float.left, %is_float.right
+  store ptr null, ptr %arith.result, align 8
+  br i1 %is_float, label %arith.float, label %arith.int
+
+arith.float:                                      ; preds = %entry
+  %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %x.load, i32 0, i32 1
+  %payload = load ptr, ptr %payload.ptr5, align 8
+  %payload.ptr6 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload7 = load ptr, ptr %payload.ptr6, align 8
+  %left.bits = ptrtoint ptr %payload to i64
+  %right.bits = ptrtoint ptr %payload7 to i64
+  %left.sitofp = sitofp i64 %left.bits to double
+  %left.bitcast = bitcast i64 %left.bits to double
+  %left.double = select i1 %is_float.left, double %left.bitcast, double %left.sitofp
+  %right.sitofp = sitofp i64 %right.bits to double
+  %right.bitcast = bitcast i64 %right.bits to double
+  %right.double = select i1 %is_float.right, double %right.bitcast, double %right.sitofp
+  %fmul = fmul double %left.double, %right.double
+  %result.bits = bitcast double %fmul to i64
+  %result.float.ptr = inttoptr i64 %result.bits to ptr
+  %rcc.val8 = alloca %RCCValue, align 8
+  %tag.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val8, i32 0, i32 0
+  store i64 2, ptr %tag.ptr9, align 4
+  %payload.ptr10 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val8, i32 0, i32 1
+  store ptr %result.float.ptr, ptr %payload.ptr10, align 8
+  store ptr %rcc.val8, ptr %arith.result, align 8
+  br label %arith.merge
+
+arith.int:                                        ; preds = %entry
+  %payload.ptr11 = getelementptr inbounds nuw %RCCValue, ptr %x.load, i32 0, i32 1
+  %payload12 = load ptr, ptr %payload.ptr11, align 8
+  %payload.ptr13 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload14 = load ptr, ptr %payload.ptr13, align 8
+  %left.int = ptrtoint ptr %payload12 to i64
+  %right.int = ptrtoint ptr %payload14 to i64
   %mul = mul i64 %left.int, %right.int
   %int.ptr = inttoptr i64 %mul to ptr
-  %rcc.val3 = alloca %RCCValue, align 8
-  %tag.ptr4 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val3, i32 0, i32 0
-  store i64 1, ptr %tag.ptr4, align 4
-  %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val3, i32 0, i32 1
-  store ptr %int.ptr, ptr %payload.ptr5, align 8
-  ret ptr %rcc.val3
+  %rcc.val15 = alloca %RCCValue, align 8
+  %tag.ptr16 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val15, i32 0, i32 0
+  store i64 1, ptr %tag.ptr16, align 4
+  %payload.ptr17 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val15, i32 0, i32 1
+  store ptr %int.ptr, ptr %payload.ptr17, align 8
+  store ptr %rcc.val15, ptr %arith.result, align 8
+  br label %arith.merge
+
+arith.merge:                                      ; preds = %arith.int, %arith.float
+  %arith.result.load = load ptr, ptr %arith.result, align 8
+  ret ptr %arith.result.load
 }
 
 define private ptr @apply(ptr %f, ptr %x) {
@@ -321,18 +415,65 @@ entry:
   ret ptr %call.indirect.f
 }
 
-define private ptr @__anon_func_2() {
+define private ptr @__anon_func_2(ptr %n) {
 entry:
-  %payload = load ptr, ptr getelementptr inbounds nuw (%RCCValue, ptr null, i32 0, i32 1), align 8
-  %payload1 = load ptr, ptr getelementptr inbounds nuw (%RCCValue, ptr null, i32 0, i32 1), align 8
-  %left.int = ptrtoint ptr %payload to i64
-  %right.int = ptrtoint ptr %payload1 to i64
+  %arith.result = alloca ptr, align 8
+  %n1 = alloca ptr, align 8
+  store ptr %n, ptr %n1, align 8
+  %n.load = load ptr, ptr %n1, align 8
+  %n.load2 = load ptr, ptr %n1, align 8
+  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 0
+  %tag = load i64, ptr %tag.ptr, align 4
+  %tag.ptr3 = getelementptr inbounds nuw %RCCValue, ptr %n.load2, i32 0, i32 0
+  %tag4 = load i64, ptr %tag.ptr3, align 4
+  %is_float.left = icmp eq i64 %tag, 2
+  %is_float.right = icmp eq i64 %tag4, 2
+  %is_float = or i1 %is_float.left, %is_float.right
+  store ptr null, ptr %arith.result, align 8
+  br i1 %is_float, label %arith.float, label %arith.int
+
+arith.float:                                      ; preds = %entry
+  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 1
+  %payload = load ptr, ptr %payload.ptr, align 8
+  %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %n.load2, i32 0, i32 1
+  %payload6 = load ptr, ptr %payload.ptr5, align 8
+  %left.bits = ptrtoint ptr %payload to i64
+  %right.bits = ptrtoint ptr %payload6 to i64
+  %left.sitofp = sitofp i64 %left.bits to double
+  %left.bitcast = bitcast i64 %left.bits to double
+  %left.double = select i1 %is_float.left, double %left.bitcast, double %left.sitofp
+  %right.sitofp = sitofp i64 %right.bits to double
+  %right.bitcast = bitcast i64 %right.bits to double
+  %right.double = select i1 %is_float.right, double %right.bitcast, double %right.sitofp
+  %fmul = fmul double %left.double, %right.double
+  %result.bits = bitcast double %fmul to i64
+  %result.float.ptr = inttoptr i64 %result.bits to ptr
+  %rcc.val = alloca %RCCValue, align 8
+  %tag.ptr7 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
+  store i64 2, ptr %tag.ptr7, align 4
+  %payload.ptr8 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  store ptr %result.float.ptr, ptr %payload.ptr8, align 8
+  store ptr %rcc.val, ptr %arith.result, align 8
+  br label %arith.merge
+
+arith.int:                                        ; preds = %entry
+  %payload.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 1
+  %payload10 = load ptr, ptr %payload.ptr9, align 8
+  %payload.ptr11 = getelementptr inbounds nuw %RCCValue, ptr %n.load2, i32 0, i32 1
+  %payload12 = load ptr, ptr %payload.ptr11, align 8
+  %left.int = ptrtoint ptr %payload10 to i64
+  %right.int = ptrtoint ptr %payload12 to i64
   %mul = mul i64 %left.int, %right.int
   %int.ptr = inttoptr i64 %mul to ptr
-  %rcc.val = alloca %RCCValue, align 8
-  %tag.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
-  store i64 1, ptr %tag.ptr, align 4
-  %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
-  store ptr %int.ptr, ptr %payload.ptr, align 8
-  ret ptr %rcc.val
+  %rcc.val13 = alloca %RCCValue, align 8
+  %tag.ptr14 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val13, i32 0, i32 0
+  store i64 1, ptr %tag.ptr14, align 4
+  %payload.ptr15 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val13, i32 0, i32 1
+  store ptr %int.ptr, ptr %payload.ptr15, align 8
+  store ptr %rcc.val13, ptr %arith.result, align 8
+  br label %arith.merge
+
+arith.merge:                                      ; preds = %arith.int, %arith.float
+  %arith.result.load = load ptr, ptr %arith.result, align 8
+  ret ptr %arith.result.load
 }

@@ -1,4 +1,4 @@
->> run.bat -i "D:\ClionProjects\RCC\scripts\..\tests\test_12_trycatch" --skip-cmake
+>> run.bat -i "D:\ClionProjects\RCC\scripts\..\tests\test_12_trycatch"
 ========================================
 RCC Build Script
 ========================================
@@ -9,10 +9,16 @@ Object file:    "D:\ClionProjects\RCC\scripts\..\tests\test_12_trycatch"\test.ob
 Output exe:     "D:\ClionProjects\RCC\scripts\..\tests\test_12_trycatch"\test.exe
 Actual output:  "D:\ClionProjects\RCC\scripts\..\tests\test_12_trycatch"\actual.txt
 Run after build: true
-Skip CMake build: true
+Skip CMake build: false
 ========================================
 
-[0/5] Skipping CMake build (--skip-cmake specified
+[0/5] Building RCC compiler with CMake...
+Build directory: D:\ClionProjects\RCC\cmake-build-debug
+Target: RCC
+Using 10 parallel jobs
+ninja: no work to do.
+SUCCESS: RCC compiler built successfully
+
 
 [1/5] Generating LLVM IR from "D:\ClionProjects\RCC\scripts\..\tests\test_12_trycatch"\test.rio...
 LLVM IR generation succeeded!

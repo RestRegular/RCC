@@ -45,7 +45,7 @@ for /D %%D in ("%tests_root%\test_*") do (
         echo [RUN]  !test_name!...
 
         REM 运行 run.bat --skip-cmake
-        call "%runner%" -i "!test_dir!" --skip-cmake > "!test_dir!\build.log" 2>&1
+        call "%runner%" -i "!test_dir!" > "!test_dir!\build.log" 2>&1
 
         if errorlevel 1 (
             echo [FAIL] !test_name! - build/run error

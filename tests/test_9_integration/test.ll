@@ -825,6 +825,10 @@ sout.bool.merge262:                               ; preds = %sout.false261, %sou
 
 define private ptr @fib(ptr %n) {
 entry:
+  %arith.result122 = alloca ptr, align 8
+  %arith.result80 = alloca ptr, align 8
+  %arith.result37 = alloca ptr, align 8
+  %arith.result = alloca ptr, align 8
   %n1 = alloca ptr, align 8
   store ptr %n, ptr %n1, align 8
   %n.load = load ptr, ptr %n1, align 8
@@ -833,97 +837,256 @@ entry:
   store i64 1, ptr %tag.ptr, align 4
   %payload.ptr = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
   store ptr inttoptr (i64 1 to ptr), ptr %payload.ptr, align 8
-  %payload.ptr2 = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 1
-  %payload = load ptr, ptr %payload.ptr2, align 8
-  %payload.ptr3 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
-  %payload4 = load ptr, ptr %payload.ptr3, align 8
-  %left.int = ptrtoint ptr %payload to i64
-  %right.int = ptrtoint ptr %payload4 to i64
+  %tag.ptr2 = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 0
+  %tag = load i64, ptr %tag.ptr2, align 4
+  %tag.ptr3 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 0
+  %tag4 = load i64, ptr %tag.ptr3, align 4
+  %is_float.left = icmp eq i64 %tag, 2
+  %is_float.right = icmp eq i64 %tag4, 2
+  %is_float = or i1 %is_float.left, %is_float.right
+  store ptr null, ptr %arith.result, align 8
+  br i1 %is_float, label %arith.float, label %arith.int
+
+cond.merge:                                       ; preds = %cond.next.0
+  %n.load23 = load ptr, ptr %n1, align 8
+  %rcc.val24 = alloca %RCCValue, align 8
+  %tag.ptr25 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 0
+  store i64 1, ptr %tag.ptr25, align 4
+  %payload.ptr26 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 1
+  store ptr inttoptr (i64 1 to ptr), ptr %payload.ptr26, align 8
+  %tag.ptr27 = getelementptr inbounds nuw %RCCValue, ptr %n.load23, i32 0, i32 0
+  %tag28 = load i64, ptr %tag.ptr27, align 4
+  %tag.ptr29 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 0
+  %tag30 = load i64, ptr %tag.ptr29, align 4
+  %is_float.left31 = icmp eq i64 %tag28, 2
+  %is_float.right32 = icmp eq i64 %tag30, 2
+  %is_float33 = or i1 %is_float.left31, %is_float.right32
+  store ptr null, ptr %arith.result37, align 8
+  br i1 %is_float33, label %arith.float34, label %arith.int35
+
+arith.float:                                      ; preds = %entry
+  %payload.ptr5 = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 1
+  %payload = load ptr, ptr %payload.ptr5, align 8
+  %payload.ptr6 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload7 = load ptr, ptr %payload.ptr6, align 8
+  %left.bits = ptrtoint ptr %payload to i64
+  %right.bits = ptrtoint ptr %payload7 to i64
+  %left.sitofp = sitofp i64 %left.bits to double
+  %left.bitcast = bitcast i64 %left.bits to double
+  %left.double = select i1 %is_float.left, double %left.bitcast, double %left.sitofp
+  %right.sitofp = sitofp i64 %right.bits to double
+  %right.bitcast = bitcast i64 %right.bits to double
+  %right.double = select i1 %is_float.right, double %right.bitcast, double %right.sitofp
+  %result.bits = bitcast double %left.double to i64
+  %result.float.ptr = inttoptr i64 %result.bits to ptr
+  %rcc.val8 = alloca %RCCValue, align 8
+  %tag.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val8, i32 0, i32 0
+  store i64 2, ptr %tag.ptr9, align 4
+  %payload.ptr10 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val8, i32 0, i32 1
+  store ptr %result.float.ptr, ptr %payload.ptr10, align 8
+  store ptr %rcc.val8, ptr %arith.result, align 8
+  br label %arith.merge
+
+arith.int:                                        ; preds = %entry
+  %payload.ptr11 = getelementptr inbounds nuw %RCCValue, ptr %n.load, i32 0, i32 1
+  %payload12 = load ptr, ptr %payload.ptr11, align 8
+  %payload.ptr13 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val, i32 0, i32 1
+  %payload14 = load ptr, ptr %payload.ptr13, align 8
+  %left.int = ptrtoint ptr %payload12 to i64
+  %right.int = ptrtoint ptr %payload14 to i64
   %cmp.le = icmp sle i64 %left.int, %right.int
   %cmp.ext = zext i1 %cmp.le to i64
   %int.ptr = inttoptr i64 %cmp.ext to ptr
-  %rcc.val5 = alloca %RCCValue, align 8
-  %tag.ptr6 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val5, i32 0, i32 0
-  store i64 3, ptr %tag.ptr6, align 4
-  %payload.ptr7 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val5, i32 0, i32 1
-  store ptr %int.ptr, ptr %payload.ptr7, align 8
-  %tag.ptr8 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val5, i32 0, i32 0
-  %tag = load i64, ptr %tag.ptr8, align 4
-  %payload.ptr9 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val5, i32 0, i32 1
-  %payload10 = load ptr, ptr %payload.ptr9, align 8
-  %is_null = icmp eq i64 %tag, 0
-  %is_int = icmp eq i64 %tag, 1
-  %is_bool = icmp eq i64 %tag, 3
+  %rcc.val15 = alloca %RCCValue, align 8
+  %tag.ptr16 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val15, i32 0, i32 0
+  store i64 3, ptr %tag.ptr16, align 4
+  %payload.ptr17 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val15, i32 0, i32 1
+  store ptr %int.ptr, ptr %payload.ptr17, align 8
+  store ptr %rcc.val15, ptr %arith.result, align 8
+  br label %arith.merge
+
+arith.merge:                                      ; preds = %arith.int, %arith.float
+  %arith.result.load = load ptr, ptr %arith.result, align 8
+  %tag.ptr18 = getelementptr inbounds nuw %RCCValue, ptr %arith.result.load, i32 0, i32 0
+  %tag19 = load i64, ptr %tag.ptr18, align 4
+  %payload.ptr20 = getelementptr inbounds nuw %RCCValue, ptr %arith.result.load, i32 0, i32 1
+  %payload21 = load ptr, ptr %payload.ptr20, align 8
+  %is_null = icmp eq i64 %tag19, 0
+  %is_int = icmp eq i64 %tag19, 1
+  %is_bool = icmp eq i64 %tag19, 3
   %is_bool_or_int = or i1 %is_bool, %is_int
-  %payload.int = ptrtoint ptr %payload10 to i64
+  %payload.int = ptrtoint ptr %payload21 to i64
   %payload_nz = icmp ne i64 %payload.int, 0
   %not_null = xor i1 %is_null, true
   %bool_int_result = select i1 %is_bool_or_int, i1 %payload_nz, i1 true
   %coerced_bool = select i1 %is_null, i1 false, i1 %bool_int_result
   br i1 %coerced_bool, label %cond.then.0, label %cond.next.0
 
-cond.merge:                                       ; preds = %cond.next.0
-  %n.load12 = load ptr, ptr %n1, align 8
-  %rcc.val13 = alloca %RCCValue, align 8
-  %tag.ptr14 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val13, i32 0, i32 0
-  store i64 1, ptr %tag.ptr14, align 4
-  %payload.ptr15 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val13, i32 0, i32 1
-  store ptr inttoptr (i64 1 to ptr), ptr %payload.ptr15, align 8
-  %payload.ptr16 = getelementptr inbounds nuw %RCCValue, ptr %n.load12, i32 0, i32 1
-  %payload17 = load ptr, ptr %payload.ptr16, align 8
-  %payload.ptr18 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val13, i32 0, i32 1
-  %payload19 = load ptr, ptr %payload.ptr18, align 8
-  %left.int20 = ptrtoint ptr %payload17 to i64
-  %right.int21 = ptrtoint ptr %payload19 to i64
-  %sub = sub i64 %left.int20, %right.int21
-  %int.ptr22 = inttoptr i64 %sub to ptr
-  %rcc.val23 = alloca %RCCValue, align 8
-  %tag.ptr24 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val23, i32 0, i32 0
-  store i64 1, ptr %tag.ptr24, align 4
-  %payload.ptr25 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val23, i32 0, i32 1
-  store ptr %int.ptr22, ptr %payload.ptr25, align 8
-  %call.fib = call ptr @fib(ptr %rcc.val23)
-  %n.load26 = load ptr, ptr %n1, align 8
-  %rcc.val27 = alloca %RCCValue, align 8
-  %tag.ptr28 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val27, i32 0, i32 0
-  store i64 1, ptr %tag.ptr28, align 4
-  %payload.ptr29 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val27, i32 0, i32 1
-  store ptr inttoptr (i64 2 to ptr), ptr %payload.ptr29, align 8
-  %payload.ptr30 = getelementptr inbounds nuw %RCCValue, ptr %n.load26, i32 0, i32 1
-  %payload31 = load ptr, ptr %payload.ptr30, align 8
-  %payload.ptr32 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val27, i32 0, i32 1
-  %payload33 = load ptr, ptr %payload.ptr32, align 8
-  %left.int34 = ptrtoint ptr %payload31 to i64
-  %right.int35 = ptrtoint ptr %payload33 to i64
-  %sub36 = sub i64 %left.int34, %right.int35
-  %int.ptr37 = inttoptr i64 %sub36 to ptr
-  %rcc.val38 = alloca %RCCValue, align 8
-  %tag.ptr39 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val38, i32 0, i32 0
-  store i64 1, ptr %tag.ptr39, align 4
-  %payload.ptr40 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val38, i32 0, i32 1
-  store ptr %int.ptr37, ptr %payload.ptr40, align 8
-  %call.fib41 = call ptr @fib(ptr %rcc.val38)
-  %payload.ptr42 = getelementptr inbounds nuw %RCCValue, ptr %call.fib, i32 0, i32 1
-  %payload43 = load ptr, ptr %payload.ptr42, align 8
-  %payload.ptr44 = getelementptr inbounds nuw %RCCValue, ptr %call.fib41, i32 0, i32 1
-  %payload45 = load ptr, ptr %payload.ptr44, align 8
-  %left.int46 = ptrtoint ptr %payload43 to i64
-  %right.int47 = ptrtoint ptr %payload45 to i64
-  %add = add i64 %left.int46, %right.int47
-  %int.ptr48 = inttoptr i64 %add to ptr
-  %rcc.val49 = alloca %RCCValue, align 8
-  %tag.ptr50 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val49, i32 0, i32 0
-  store i64 1, ptr %tag.ptr50, align 4
-  %payload.ptr51 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val49, i32 0, i32 1
-  store ptr %int.ptr48, ptr %payload.ptr51, align 8
-  ret ptr %rcc.val49
+cond.then.0:                                      ; preds = %arith.merge
+  %n.load22 = load ptr, ptr %n1, align 8
+  ret ptr %n.load22
 
-cond.then.0:                                      ; preds = %entry
-  %n.load11 = load ptr, ptr %n1, align 8
-  ret ptr %n.load11
-
-cond.next.0:                                      ; preds = %entry
+cond.next.0:                                      ; preds = %arith.merge
   br label %cond.merge
+
+arith.float34:                                    ; preds = %cond.merge
+  %payload.ptr38 = getelementptr inbounds nuw %RCCValue, ptr %n.load23, i32 0, i32 1
+  %payload39 = load ptr, ptr %payload.ptr38, align 8
+  %payload.ptr40 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 1
+  %payload41 = load ptr, ptr %payload.ptr40, align 8
+  %left.bits42 = ptrtoint ptr %payload39 to i64
+  %right.bits43 = ptrtoint ptr %payload41 to i64
+  %left.sitofp44 = sitofp i64 %left.bits42 to double
+  %left.bitcast45 = bitcast i64 %left.bits42 to double
+  %left.double46 = select i1 %is_float.left31, double %left.bitcast45, double %left.sitofp44
+  %right.sitofp47 = sitofp i64 %right.bits43 to double
+  %right.bitcast48 = bitcast i64 %right.bits43 to double
+  %right.double49 = select i1 %is_float.right32, double %right.bitcast48, double %right.sitofp47
+  %fsub = fsub double %left.double46, %right.double49
+  %result.bits50 = bitcast double %fsub to i64
+  %result.float.ptr51 = inttoptr i64 %result.bits50 to ptr
+  %rcc.val52 = alloca %RCCValue, align 8
+  %tag.ptr53 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val52, i32 0, i32 0
+  store i64 2, ptr %tag.ptr53, align 4
+  %payload.ptr54 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val52, i32 0, i32 1
+  store ptr %result.float.ptr51, ptr %payload.ptr54, align 8
+  store ptr %rcc.val52, ptr %arith.result37, align 8
+  br label %arith.merge36
+
+arith.int35:                                      ; preds = %cond.merge
+  %payload.ptr55 = getelementptr inbounds nuw %RCCValue, ptr %n.load23, i32 0, i32 1
+  %payload56 = load ptr, ptr %payload.ptr55, align 8
+  %payload.ptr57 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val24, i32 0, i32 1
+  %payload58 = load ptr, ptr %payload.ptr57, align 8
+  %left.int59 = ptrtoint ptr %payload56 to i64
+  %right.int60 = ptrtoint ptr %payload58 to i64
+  %sub = sub i64 %left.int59, %right.int60
+  %int.ptr61 = inttoptr i64 %sub to ptr
+  %rcc.val62 = alloca %RCCValue, align 8
+  %tag.ptr63 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val62, i32 0, i32 0
+  store i64 1, ptr %tag.ptr63, align 4
+  %payload.ptr64 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val62, i32 0, i32 1
+  store ptr %int.ptr61, ptr %payload.ptr64, align 8
+  store ptr %rcc.val62, ptr %arith.result37, align 8
+  br label %arith.merge36
+
+arith.merge36:                                    ; preds = %arith.int35, %arith.float34
+  %arith.result.load65 = load ptr, ptr %arith.result37, align 8
+  %call.fib = call ptr @fib(ptr %arith.result.load65)
+  %n.load66 = load ptr, ptr %n1, align 8
+  %rcc.val67 = alloca %RCCValue, align 8
+  %tag.ptr68 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 0
+  store i64 1, ptr %tag.ptr68, align 4
+  %payload.ptr69 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 1
+  store ptr inttoptr (i64 2 to ptr), ptr %payload.ptr69, align 8
+  %tag.ptr70 = getelementptr inbounds nuw %RCCValue, ptr %n.load66, i32 0, i32 0
+  %tag71 = load i64, ptr %tag.ptr70, align 4
+  %tag.ptr72 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 0
+  %tag73 = load i64, ptr %tag.ptr72, align 4
+  %is_float.left74 = icmp eq i64 %tag71, 2
+  %is_float.right75 = icmp eq i64 %tag73, 2
+  %is_float76 = or i1 %is_float.left74, %is_float.right75
+  store ptr null, ptr %arith.result80, align 8
+  br i1 %is_float76, label %arith.float77, label %arith.int78
+
+arith.float77:                                    ; preds = %arith.merge36
+  %payload.ptr81 = getelementptr inbounds nuw %RCCValue, ptr %n.load66, i32 0, i32 1
+  %payload82 = load ptr, ptr %payload.ptr81, align 8
+  %payload.ptr83 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 1
+  %payload84 = load ptr, ptr %payload.ptr83, align 8
+  %left.bits85 = ptrtoint ptr %payload82 to i64
+  %right.bits86 = ptrtoint ptr %payload84 to i64
+  %left.sitofp87 = sitofp i64 %left.bits85 to double
+  %left.bitcast88 = bitcast i64 %left.bits85 to double
+  %left.double89 = select i1 %is_float.left74, double %left.bitcast88, double %left.sitofp87
+  %right.sitofp90 = sitofp i64 %right.bits86 to double
+  %right.bitcast91 = bitcast i64 %right.bits86 to double
+  %right.double92 = select i1 %is_float.right75, double %right.bitcast91, double %right.sitofp90
+  %fsub93 = fsub double %left.double89, %right.double92
+  %result.bits94 = bitcast double %fsub93 to i64
+  %result.float.ptr95 = inttoptr i64 %result.bits94 to ptr
+  %rcc.val96 = alloca %RCCValue, align 8
+  %tag.ptr97 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val96, i32 0, i32 0
+  store i64 2, ptr %tag.ptr97, align 4
+  %payload.ptr98 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val96, i32 0, i32 1
+  store ptr %result.float.ptr95, ptr %payload.ptr98, align 8
+  store ptr %rcc.val96, ptr %arith.result80, align 8
+  br label %arith.merge79
+
+arith.int78:                                      ; preds = %arith.merge36
+  %payload.ptr99 = getelementptr inbounds nuw %RCCValue, ptr %n.load66, i32 0, i32 1
+  %payload100 = load ptr, ptr %payload.ptr99, align 8
+  %payload.ptr101 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val67, i32 0, i32 1
+  %payload102 = load ptr, ptr %payload.ptr101, align 8
+  %left.int103 = ptrtoint ptr %payload100 to i64
+  %right.int104 = ptrtoint ptr %payload102 to i64
+  %sub105 = sub i64 %left.int103, %right.int104
+  %int.ptr106 = inttoptr i64 %sub105 to ptr
+  %rcc.val107 = alloca %RCCValue, align 8
+  %tag.ptr108 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val107, i32 0, i32 0
+  store i64 1, ptr %tag.ptr108, align 4
+  %payload.ptr109 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val107, i32 0, i32 1
+  store ptr %int.ptr106, ptr %payload.ptr109, align 8
+  store ptr %rcc.val107, ptr %arith.result80, align 8
+  br label %arith.merge79
+
+arith.merge79:                                    ; preds = %arith.int78, %arith.float77
+  %arith.result.load110 = load ptr, ptr %arith.result80, align 8
+  %call.fib111 = call ptr @fib(ptr %arith.result.load110)
+  %tag.ptr112 = getelementptr inbounds nuw %RCCValue, ptr %call.fib, i32 0, i32 0
+  %tag113 = load i64, ptr %tag.ptr112, align 4
+  %tag.ptr114 = getelementptr inbounds nuw %RCCValue, ptr %call.fib111, i32 0, i32 0
+  %tag115 = load i64, ptr %tag.ptr114, align 4
+  %is_float.left116 = icmp eq i64 %tag113, 2
+  %is_float.right117 = icmp eq i64 %tag115, 2
+  %is_float118 = or i1 %is_float.left116, %is_float.right117
+  store ptr null, ptr %arith.result122, align 8
+  br i1 %is_float118, label %arith.float119, label %arith.int120
+
+arith.float119:                                   ; preds = %arith.merge79
+  %payload.ptr123 = getelementptr inbounds nuw %RCCValue, ptr %call.fib, i32 0, i32 1
+  %payload124 = load ptr, ptr %payload.ptr123, align 8
+  %payload.ptr125 = getelementptr inbounds nuw %RCCValue, ptr %call.fib111, i32 0, i32 1
+  %payload126 = load ptr, ptr %payload.ptr125, align 8
+  %left.bits127 = ptrtoint ptr %payload124 to i64
+  %right.bits128 = ptrtoint ptr %payload126 to i64
+  %left.sitofp129 = sitofp i64 %left.bits127 to double
+  %left.bitcast130 = bitcast i64 %left.bits127 to double
+  %left.double131 = select i1 %is_float.left116, double %left.bitcast130, double %left.sitofp129
+  %right.sitofp132 = sitofp i64 %right.bits128 to double
+  %right.bitcast133 = bitcast i64 %right.bits128 to double
+  %right.double134 = select i1 %is_float.right117, double %right.bitcast133, double %right.sitofp132
+  %fadd = fadd double %left.double131, %right.double134
+  %result.bits135 = bitcast double %fadd to i64
+  %result.float.ptr136 = inttoptr i64 %result.bits135 to ptr
+  %rcc.val137 = alloca %RCCValue, align 8
+  %tag.ptr138 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val137, i32 0, i32 0
+  store i64 2, ptr %tag.ptr138, align 4
+  %payload.ptr139 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val137, i32 0, i32 1
+  store ptr %result.float.ptr136, ptr %payload.ptr139, align 8
+  store ptr %rcc.val137, ptr %arith.result122, align 8
+  br label %arith.merge121
+
+arith.int120:                                     ; preds = %arith.merge79
+  %payload.ptr140 = getelementptr inbounds nuw %RCCValue, ptr %call.fib, i32 0, i32 1
+  %payload141 = load ptr, ptr %payload.ptr140, align 8
+  %payload.ptr142 = getelementptr inbounds nuw %RCCValue, ptr %call.fib111, i32 0, i32 1
+  %payload143 = load ptr, ptr %payload.ptr142, align 8
+  %left.int144 = ptrtoint ptr %payload141 to i64
+  %right.int145 = ptrtoint ptr %payload143 to i64
+  %add = add i64 %left.int144, %right.int145
+  %int.ptr146 = inttoptr i64 %add to ptr
+  %rcc.val147 = alloca %RCCValue, align 8
+  %tag.ptr148 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val147, i32 0, i32 0
+  store i64 1, ptr %tag.ptr148, align 4
+  %payload.ptr149 = getelementptr inbounds nuw %RCCValue, ptr %rcc.val147, i32 0, i32 1
+  store ptr %int.ptr146, ptr %payload.ptr149, align 8
+  store ptr %rcc.val147, ptr %arith.result122, align 8
+  br label %arith.merge121
+
+arith.merge121:                                   ; preds = %arith.int120, %arith.float119
+  %arith.result.load150 = load ptr, ptr %arith.result122, align 8
+  ret ptr %arith.result.load150
 }
 
 declare i32 @putchar(i32)
