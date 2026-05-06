@@ -1125,7 +1125,23 @@ namespace ast
     {
         LLVM_DEBUG("=== ProgramNode: start ===");
 
-        // 创建 main 函数作为程序入口
+        // 第一遍：处理所有顶层语句（函数定义、类定义等）
+        // 必须在创建 C main 入口之前完成，否则用户定义的 main 会与 C main 冲突
+        for (const auto& statement : node.getStatements())
+        {
+            statement->acceptVisitor(*this);
+            while (!ValueStack.empty())
+                ValueStack.pop();
+        }
+
+        // 检查用户是否定义了 main 函数
+        llvm::Function* userMainFunc = nullptr;
+        if (auto mainIt = Functions.find("main"); mainIt != Functions.end() && mainIt->second)
+        {
+            userMainFunc = mainIt->second;
+        }
+
+        // 创建 C main 函数作为程序入口
         // int main(int argc, char** argv)
         auto* mainType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext),
                                                  {llvm::Type::getInt32Ty(*TheContext), getValueType()}, false);
@@ -1138,21 +1154,11 @@ namespace ast
 
         // 设置当前函数上下文
         CurrentFunction = mainFunc;
-        Functions["main"] = mainFunc;
 
-        // 遍历所有语句
-        for (const auto& statement : node.getStatements())
+        // 如果用户定义了 main 函数，在入口处调用它
+        if (userMainFunc)
         {
-            statement->acceptVisitor(*this);
-            // 清空值栈，避免语句间值泄漏
-            while (!ValueStack.empty())
-                ValueStack.pop();
-        }
-
-        // 如果用户定义了 main 函数，在程序末尾调用它
-        if (auto mainIt = Functions.find("main"); mainIt != Functions.end() && mainIt->second && mainIt->second != mainFunc)
-        {
-            Builder->CreateCall(mainIt->second, {}, "call.user_main");
+            Builder->CreateCall(userMainFunc, {}, "call.user_main");
         }
 
         // 添加 return 0
