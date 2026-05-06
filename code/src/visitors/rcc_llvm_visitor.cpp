@@ -781,9 +781,10 @@ namespace ast
         if (!labels.empty())
         {
             // 第一个标签通常是父类名，如 class Child: Parent { }
-            if (auto* parentIdent = dynamic_cast<IdentifierNode*>(labels[0]->getLabelNode().get()))
+            const auto& labelPath = labels[0]->getLabelPath();
+            if (!labelPath.empty())
             {
-                std::string parentName = parentIdent->getName();
+                std::string parentName = labelPath[0];
                 ClassParentNames[className] = parentName;
                 LLVM_DEBUG("  inherits from: " << parentName);
             }
