@@ -2013,14 +2013,23 @@ namespace ast
             if (const auto* bodyBlock = dynamic_cast<BlockRangerNode*>(node.getBodyNode().get());
                 bodyBlock && !bodyBlock->getBodyExpressions().empty())
             {
-                if (const auto lastExpr = bodyBlock->getBodyExpressions().back();
-                    lastExpr && (lastExpr->getRealType() == NodeType::ENCAPSULATED
-                                 || dynamic_cast<EncapsulatedExpressionNode*>(lastExpr.get())))
+                const auto lastExpr = bodyBlock->getBodyExpressions().back();
+                if (lastExpr)
                 {
-                    isEncapsulated = true;
-                    CurrentFunctionIsEncapsulated = true;
-                    EncapsulatedFunctions.insert(funcName);
-                    LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
+                    auto lastExprType = lastExpr->getRealType();
+                    bool isEncapsulatedNode = (lastExprType == NodeType::ENCAPSULATED);
+                    bool isEncapsulatedCast = (dynamic_cast<EncapsulatedExpressionNode*>(lastExpr.get()) != nullptr);
+                    
+                    LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " lastExpr type=" << static_cast<int>(lastExprType) 
+                              << " ENCAPSULATED=" << isEncapsulatedNode << " cast=" << isEncapsulatedCast);
+                    
+                    if (isEncapsulatedNode || isEncapsulatedCast)
+                    {
+                        isEncapsulated = true;
+                        CurrentFunctionIsEncapsulated = true;
+                        EncapsulatedFunctions.insert(funcName);
+                        LLVM_DEBUG("FunctionDefinitionNode: " << funcName << " is encapsulated (builtin)");
+                    }
                 }
             }
         }
