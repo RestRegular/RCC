@@ -1,0 +1,5 @@
+Test 1 - Sum of list: 15
+Test 2 - Sum of indices: 3
+Test 3 - Reversed list size: 4
+Test 4 - Dict key count: 3
+Test 5 - Partial sum (first 5): 15

@@ -1,0 +1,7 @@
+Test 1 - a += 5: 15
+Test 2 - b -= 3: 17
+Test 3 - c *= 6: 24
+Test 4 - d /= 3: 7
+Test 5 - e %= 5: 2
+Test 6 - Chained: 27
+Test 7 - x += y: 8
