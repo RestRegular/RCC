@@ -2590,24 +2590,43 @@ namespace ast
                 auto* tagEq = Builder->CreateICmpEQ(curKeyTag, indexTag, "tag.eq");
 
                 auto* curKeyPayload = extractPayload(curKey);
+
                 // 对于字符串类型，使用 strcmp 比较内容；其他类型使用指针比较
-                // [DICT_STRCMP_FIX] 字符串键使用 strcmp 而非指针比较
+                // 用条件分支避免对非字符串调用 strcmp（会导致崩溃）
                 auto* strTagConst = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), TAG_STRING);
                 auto* isString = Builder->CreateICmpEQ(curKeyTag, strTagConst, "is.string");
 
-                // 声明 strcmp
-                auto* strcmpType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType(), getValueType()}, false);
-                auto* strcmpFunc = getOrCreateExternalFunc("strcmp", strcmpType);
+                auto* strCmpBB = llvm::BasicBlock::Create(*TheContext, "cmp.str", func);
+                auto* ptrCmpBB = llvm::BasicBlock::Create(*TheContext, "cmp.ptr", func);
+                auto* cmpMergeBB = llvm::BasicBlock::Create(*TheContext, "cmp.merge", func);
 
-                // 字符串比较：strcmp == 0
-                auto* strcmpResult = Builder->CreateCall(strcmpFunc, {curKeyPayload, indexPayload}, "strcmp.result");
-                auto* strcmpEq = Builder->CreateICmpEQ(strcmpResult, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0), "strcmp.eq");
+                Builder->CreateCondBr(isString, strCmpBB, ptrCmpBB);
 
-                // 非字符串比较：指针相等
-                auto* ptrEq = Builder->CreateICmpEQ(curKeyPayload, indexPayload, "ptr.eq");
+                // 字符串比较分支
+                Builder->SetInsertPoint(strCmpBB);
+                llvm::Value* strCmpEq = nullptr;
+                {
+                    auto* strcmpType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*TheContext), {getValueType(), getValueType()}, false);
+                    auto* strcmpFunc = getOrCreateExternalFunc("strcmp", strcmpType);
+                    auto* strcmpResult = Builder->CreateCall(strcmpFunc, {curKeyPayload, indexPayload}, "strcmp.result");
+                    strCmpEq = Builder->CreateICmpEQ(strcmpResult, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*TheContext), 0), "strcmp.eq");
+                    Builder->CreateBr(cmpMergeBB);
+                }
 
-                // 根据类型选择比较方式
-                auto* payloadEq = Builder->CreateSelect(isString, strcmpEq, ptrEq, "payload.eq");
+                // 指针比较分支
+                Builder->SetInsertPoint(ptrCmpBB);
+                llvm::Value* ptrEq = nullptr;
+                {
+                    ptrEq = Builder->CreateICmpEQ(curKeyPayload, indexPayload, "ptr.eq");
+                    Builder->CreateBr(cmpMergeBB);
+                }
+
+                // 合并
+                Builder->SetInsertPoint(cmpMergeBB);
+                auto* payloadEq = Builder->CreatePHI(llvm::Type::getInt1Ty(*TheContext), 2, "payload.eq");
+                payloadEq->addIncoming(strCmpEq, strCmpBB);
+                payloadEq->addIncoming(ptrEq, ptrCmpBB);
+
                 auto* keyEq = Builder->CreateAnd(tagEq, payloadEq, "key.eq");
 
                 auto* nextI = Builder->CreateAdd(bi, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*TheContext), 1), "next.i");
