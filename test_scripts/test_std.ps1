@@ -55,9 +55,9 @@ $modules = @('ds', 'str', 'math', 'ops', 'io', 'prog')
 
 $expectedFns = [ordered]@{
     ds   = @('concat', 'contains', 'copy', 'dictKeys', 'dictRemove', 'dictValues',
-             'filter', 'forInRange', 'indexOf', 'isEmpty', 'join', 'listAppend',
-             'listRemove', 'map', 'repList', 'repStr', 'repeat', 'reverse',
-             'slice', 'sort', 'sum', 'top')
+             'dumpToStr', 'filter', 'forInRange', 'indexOf', 'isEmpty', 'join',
+             'listAppend', 'listRemove', 'map', 'repList', 'repStr', 'repeat',
+             'reverse', 'slice', 'sort', 'sum', 'toFloat', 'top')
     str  = @('charToInt', 'chunk', 'find', 'floatToStr', 'intToChar', 'intToStr',
              'replace', 'size', 'split', 'subStr', 'toChar', 'toLowerCase',
              'toStr', 'toUpperCase', 'trim')
@@ -76,6 +76,8 @@ $expectedSigs = @{
         'dictRemove(d: dict, key: int): void'
         'dictRemove(d: dict, key: str): void'
         'dictValues(d: dict): list'
+        'dumpToStr[T, K](container: dict): str'
+        'dumpToStr[T](container: list): str'
         'filter[T](xs: list, h: funi): list'
         'forInRange(start: int, end: int, h: funi, sep: int = 1): void'
         'indexOf[T](xs: list, t: T): int'
@@ -93,6 +95,8 @@ $expectedSigs = @{
         'slice[T](xs: list, start: int, end: int): list'
         'sort[T](xs: list, reverse: bool = false): list'
         'sum(xs: list): int'
+        'toFloat(arg: bool): float'
+        'toFloat(arg: int): float'
         'top[T](xs: list): T'
     )
     str  = @(
@@ -116,6 +120,8 @@ $expectedSigs = @{
         'toStr(arg: bool): str'
         'toStr(arg: str): str'
         'toStr(arg: char): str'
+        'toStr[T, K](arg: dict): str'
+        'toStr[T](arg: list): str'
         'toUpperCase(data: str): str'
         'trim(content: str, extraChars: str = " ", onLeft: bool = true, onRight: bool = true): str'
     )
@@ -388,6 +394,12 @@ sout(join(l))
 repeat(2, (i: int) -> { })
 forInRange(0, 2, (i: int) -> { })
 forInRange(0, 4, (i: int) -> { }, 2)
+sout(dumpToStr(l))
+var typedDict: dict[str, int] = {"a": 1}
+sout(dumpToStr(typedDict))
+sout(dumpToStr({"k": 1.5}))
+sout(toFloat(true))
+sout(toFloat(3))
 '@
     str  = @'
 import(sm="str")
@@ -829,6 +841,27 @@ sout("[" + join([], "-") + "]")
 sout(join([42], "-"))
 sout(join(["x"], "-"))
 '@) "1-2-3`nab`n[]`n42`nx" @('ds.join')
+
+    # dumpToStr：容器转字符串表示（list / dict 两个泛型重载）。
+    # 只覆盖**标量元素**：`toStr` 目前没有 list/dict 重载（它只处理
+    # int/float/bool/str/char），所以 `dumpToStr([[1,2]])` 这种嵌套 list
+    # 会因 `toStr(list[int])` 无匹配而编译失败 —— 那是 toStr 的功能缺口，
+    # 不是 dumpToStr 的缺陷。空字面量同理（推不出 T）。
+    Invoke-RioCase 'behavior' 'ds' 'b_ds_dumpToStr' ($allImp + @'
+sout(dumpToStr([1, 2, 3]))
+sout(dumpToStr(["a", "b"]))
+sout(dumpToStr({"1": 2.5}))
+sout(dumpToStr({"k": 1}))
+'@) "[1, 2, 3]`n[a, b]`n{1: 2.5}`n{k: 1}" @('ds.dumpToStr')
+
+    # toFloat：bool / int 两个重载。
+    Invoke-RioCase 'behavior' 'ds' 'b_ds_toFloat' ($allImp + @'
+sout(toFloat(true))
+sout(toFloat(false))
+sout(toFloat(3))
+sout(toFloat(0))
+sout(toFloat(true) + toFloat(2))
+'@) "1.0`n0.0`n3.0`n0.0`n3.0" @('ds.toFloat')
 
     Invoke-RioCase 'behavior' 'ds' 'b_ds_repeat' ($dsImp + @'
 repeat(3, (i: int) -> { sout(i) })

@@ -198,6 +198,45 @@ fun toStr(arg: char): str {
     ret intToStr(b)
 }
 
+fun toStr[T](arg: list[T]): str {
+    var n = size(arg), res = "["
+    for ({var i = 0; i < n; i ++}) {
+        res += toStr(arg[i])
+        if i < n - 1 {
+            res += ", "
+        }
+    }
+    ret res + "]"
+}
+
+fun toStr[T, K](arg: dict[T, K]): str {
+    fun _strDictKeys(d: dict): list[str] {
+        var r: list[str] = []
+        var scratch: ptr = core_alloc(64, 8)
+        var n: int = size(d)
+        var keys: ptr = _dsLoadI64(scratch, d + 24)
+        var i: int = 0
+        while i < n {
+            var kp: ptr = _dsLoadI64(scratch, keys + i * 8)
+            var ks: str = kp
+            r += [ks]
+            i += 1
+        }
+        ret r
+    }
+
+    var dks = _strDictKeys(container),
+        n = size(dks), res = "{"
+    for ({var i = 0; i < n; i ++}) {
+        var key: T = dks[i]
+        res += toStr(key) + ": " + toStr(container[key])
+        if i < n - 1 {
+            res += ", "
+        }
+    }
+    ret res + "}"
+}
+
 // ============================ 字符 ↔ 整数 ============================
 
 // 取首个字节的 ASCII 码。签名从 char 改成 int，理由见文件头。

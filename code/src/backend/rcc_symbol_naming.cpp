@@ -81,6 +81,31 @@ namespace backend
             }
         }
 
+        // 泛型实例名：`_G<len><name><encoded-类型实参>`。
+        //
+        // **2026-11-17 用户批准的 ABI 变更**（P10 §2 原文说「任何编码改动
+        // 都是 ABI 破坏」，故此项须显式批准）。
+        //
+        // 为什么必须与重载的 `_R` 分开：两套编码原本共用同一个形状
+        // `_R<len><name><encoded>`，只是被编码的东西不同 —— 泛型编**类型实参**，
+        // 重载编**形参类型**。撞车实例（实测）：
+        //     fun toStr[T](arg: list[T])   T=list[int]  ->  _R5toStr + "Li"
+        //     fun toStr(arg: int)                        ->  _R5toStr + "i"
+        // 名字拼出来都是 `_R5toStri`，汇编器报
+        //     symbol `_R5toStri' is already defined
+        // 这不是「编码写得不够细」—— 两套语义本来就该分属不同命名空间，
+        // 因为 `T` 的绑定与形参类型毫无关系。
+        //
+        // 换成 `_G` 前缀后：泛型实例 `_G5toStrLi`，重载 `_R5toStri`，互不干扰。
+        // 注意 `_G` 编号码的内容**仍然是类型实参**（语义不变），只是前缀不同。
+        std::string mangleGenericInstance(const std::string& base,
+                                          const std::vector<sema::TypePtr>& typeArgs)
+        {
+            std::string s = "_G" + std::to_string(base.size()) + base;
+            for (const auto& a : typeArgs) s += mangleType(a);
+            return s;
+        }
+
         std::string mangleSignature(const std::string& base,
                                     const std::vector<sema::TypePtr>& args)
         {
@@ -118,7 +143,11 @@ namespace backend
         std::string classInstanceName(const std::string& base,
                                       const std::vector<sema::TypePtr>& args)
         {
-            return mangleSignature(base, args);
+            // 类实例名用 `_N` 前缀，和泛型函数的 `_G`、重载的 `_R` 三者分开
+            // —— 否则 `Box[int]` 也会和某个 `_R3Boxi` 撞车（同一类比缺陷）。
+            std::string s = "_N" + std::to_string(base.size()) + base;
+            for (const auto& a : args) s += mangleType(a);
+            return s;
         }
     }
 }

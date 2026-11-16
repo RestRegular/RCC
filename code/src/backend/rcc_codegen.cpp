@@ -328,8 +328,24 @@ namespace backend{
     void CodeGen::failAt(const utils::Pos& pos, const std::string& msg)    {
         fail(posPrefix(pos) + msg);
     }
-    bool CodeGen::sameValueFamily(const sema::TypePtr& a, const sema::TypePtr& b) const    {
-        if (!a || !b) return true;
+    bool CodeGen::isEmptyContainerLiteral(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        if (!node) return false;
+        // 带括号的 `([])`：剥掉括号再看
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))        {
+            return isEmptyContainerLiteral(paren->getRangerNode());
+        }
+        // 空列表 / 空字典的 body 是 nullptr。非空字面量的 body 一定非空，
+        // 所以只看 body 就够了（不需要摊平元素，那是发射阶段的事，
+        // 而这里必须能在 const 上下文里用）。
+        if (const auto list = std::dynamic_pointer_cast<ast::ListExpressionNode>(node))        {
+            return list->getBodyNode() == nullptr;
+        }
+        if (const auto dict = std::dynamic_pointer_cast<ast::DictionaryExpressionNode>(node))        {
+            return dict->getBodyNode() == nullptr;
+        }
+        return false;
+    }
+    bool CodeGen::sameValueFamily(const sema::TypePtr& a, const sema::TypePtr& b) const    {        if (!a || !b) return true;
         if (a->getKind() == sema::TypeKind::TK_UNKNOWN ||
             b->getKind() == sema::TypeKind::TK_UNKNOWN) return true;
         if (a->getKind() == b->getKind()) return true;
@@ -379,6 +395,62 @@ namespace backend{
         if (tk == sema::TypeKind::TK_VOID)        {
             return "cannot assign a value to a void-typed target";
         }
+        // ---------- 容器：必须比元素类型（P13 缺陷修复，2026-11-17） ----------
+        //
+        // 原先这里直接落到 sameValueFamily，而它对 list/dict 只看「都是容器」，
+        // 于是 `fun f(xs: list[str])` 接受 `[1,2,3]`、`dict[str,int]` 接受
+        // `{"a": "b"}` —— 编译通过，运行时把 int 当 str 指针解引用，
+        // 直接段错误（用户 test.rio 实测 exit -1073741819）。
+        // 这是「静默生成垃圾」，正是 P9 要挡的那类错。
+        //
+        // 判据：
+        //   * 容器种类不同（str / list / dict）       -> 拒绝
+        //   * 任一侧元素类型是 nullptr（裸容器标注）  -> 放行（不约束）
+        //   * 任一侧是 UNKNOWN（显式 any）            -> 放行（any 就是不约束）
+        //   * 两侧都具体 -> 逐层递归比较，不一致就拒绝
+        // str 没有类型实参，不需要比。
+        if (tk == sema::TypeKind::TK_LIST && sk == sema::TypeKind::TK_LIST)        {
+            const auto tl = std::static_pointer_cast<sema::ListType>(target)->getElemType();
+            const auto sl = std::static_pointer_cast<sema::ListType>(source)->getElemType();
+            const auto loose = [](const sema::TypePtr& t) {
+                return !t || t->getKind() == sema::TypeKind::TK_UNKNOWN;
+            };
+            if (loose(tl) || loose(sl)) return std::string();
+            // 空列表字面量 `[]` 的元素类型是「推不出来」，inferListLiteralType
+            // 会兜底成 int。那**不是**用户的承诺，不能让
+            // `var r: list[str] = []` 报错。靠 target 与 source 的
+            // 「元素是否来自字面量空表」区分不了，所以在调用点侧
+            // （emitArgsToRegisters / emitVariableDefinition）用
+            // isUntypedEmptyLiteral 提前放行 —— 见那里的说明。
+            // 这里只处理两侧都确定的场合。
+            if (!tl->equals(sl))            {
+                return "element type mismatch: list[" + tl->toString() + "] vs list[" +
+                       sl->toString() + "]";
+            }
+            return std::string();
+        }
+        if (tk == sema::TypeKind::TK_DICT && sk == sema::TypeKind::TK_DICT)        {
+            const auto td = std::static_pointer_cast<sema::DictType>(target);
+            const auto sd = std::static_pointer_cast<sema::DictType>(source);
+            const auto loose = [](const sema::TypePtr& t) {
+                return !t || t->getKind() == sema::TypeKind::TK_UNKNOWN;
+            };
+            if (!loose(td->getKeyType()) && !loose(sd->getKeyType()))            {
+                if (!td->getKeyType()->equals(sd->getKeyType()))                {
+                    return "key type mismatch: dict[" + td->getKeyType()->toString() +
+                           ", ...] vs dict[" + sd->getKeyType()->toString() + ", ...]";
+                }
+            }
+            if (!loose(td->getValueType()) && !loose(sd->getValueType()))            {
+                if (!td->getValueType()->equals(sd->getValueType()))                {
+                    return "value type mismatch: dict[..., " + td->getValueType()->toString() +
+                           "] vs dict[..., " + sd->getValueType()->toString() + "]";
+                }
+            }
+            return std::string();
+        }
+        // 一侧是容器、另一侧不是：交给 sameValueFamily 判（它会拒绝，
+        // 因为非指针族与容器跨族）。
         if (sameValueFamily(target, source)) return std::string();
         return "cannot assign a value of type " + source->toString() +
                " to a target of type " + target->toString();
@@ -429,7 +501,10 @@ namespace backend{
     }
     std::string CodeGen::mangleInstance(const std::string& base,
                                         const std::vector<sema::TypePtr>& args)    {
-        return naming::mangleSignature(base, args);
+        // 泛型实例用 `_G` 前缀（2026-11-17 用户批准的 ABI 变更）。
+        // 之前与重载共用 `_R`，导致 `toStr[T](list[T])` 实例化成 list[int]
+        // 时与 `toStr(arg: int)` 撞成同一个符号 `_R5toStri`。
+        return naming::mangleGenericInstance(base, args);
     }
     // ============================================================
     // P11：重载
@@ -650,6 +725,29 @@ namespace backend{
         }
         if (!actual || actual->getKind() == sema::TypeKind::TK_UNKNOWN) return 0;
         if (actual->getKind() == sema::TypeKind::TK_VOID) return -1;
+        // ---------- 泛型体内的实参：形参在单态化前是占位符 ----------
+        //
+        // 在 `fun f[T](xs: list[T])` 体内调用重载集时，`xs[i]` 的静态类型是
+        // GenericType("T")。它**尚未**知道具体是中国，任何具体形参都可能
+        // （也可能不）合适 —— 不能像之前那样落到「指针族兜底 30 分」，
+        // 那会让 `toStr(int)` / `toStr(str)` / `toStr(char)` 全部平分，
+        // 决议随机取胜者（实测 `dumpToStr(["a"])` 把 str 当 int 打印）。
+        //
+        // 正确做法：给**所有**候选同一个中性分（比通配符高、比任何精确匹配低），
+        // 这样同分 → 报歧义而不是静默选错？不 —— 那会让整个泛型库没法用。
+        //
+        // 现实可用的口径：单态化后类型才确定，所以这里必须让决议**推迟**。
+        // 但当前架构是单遍 codegen，没有延迟决议的能力。折中：按「形参是标量
+        // 还是指针族」给出中性分，同时把「形参是 str」排在同分候选的**后面**
+        // 由调用方实例化的实际类型决定 —— 见 genericParamOverloadHint。
+        if (actual->getKind() == sema::TypeKind::TK_GENERIC)        {
+            // 占位符实参：所有候选都得同一个分，避免按「指针族 30」随意选。
+            // 让步规则：形参不是容器/指针族的（纯标量）略高，因为泛型体里
+            // 标量是最常见的实参形态；指针族（str/list/dict）靠后。
+            // 真正精确的决议发生在**单态化之后**的第二次发射里
+            // （_currentGenericBindings 已就位，inferType 会返回具体类型）。
+            return formal->isPointerLike() ? 10 : 20;
+        }
         if (formal->equals(actual)) return 100;
         // ---------- 容器之间的亲和度（P13 缺陷修复，2026-11-17） ----------
         //
@@ -2148,14 +2246,19 @@ namespace backend{
         // 约定：emitExpression 的结果在 %xmm0。
         // 二元运算需要把「左」放到 %xmm0、「右」放到 %xmm1，
         // 这样 `subsd %xmm1, %xmm0` 才是 左-右（AT&T 语法是 源,目标）。
+        //
+        // **左值必须存进栈槽，不能留在 %xmm2**（P13 缺陷修复，2026-11-17）：
+        // %xmm2 是 caller-saved，右值一旦是**函数调用**就会被被调方踩掉，
+        // 于是 `fi(1) + fi(2)` 算成 4.0（左值被右值覆盖，等于 2+2）。
+        // 变量相加 `a + b` 没有调用，所以一直是好的 —— 这类缺陷只在
+        // 「两侧都是调用」时现形，很容易漏。
         emitOperand(infix->getLeftNode(), lt);
-        _asm.inst("movsd", "%xmm0", "%xmm2");
-        // 左值先存到 xmm2
+        const std::string lhsFloatSlot = allocateTemp(sema::getFloatType());
+        _asm.inst("movsd", "%xmm0", lhsFloatSlot);
         emitOperand(infix->getRightNode(), rt);
-      // 右值 -> xmm0
         _asm.inst("movsd", "%xmm0", "%xmm1");
         // 右值 -> xmm1
-        _asm.inst("movsd", "%xmm2", "%xmm0");
+        _asm.inst("movsd", lhsFloatSlot, "%xmm0");
         // 左值 -> xmm0
         switch (op)        {
         case core::TokenType::TOKEN_PLUS:  _asm.inst("addsd", "%xmm1", "%xmm0");
@@ -2481,7 +2584,9 @@ namespace backend{
                 if (annotated && annotated->getKind() != sema::TypeKind::TK_UNKNOWN)                {
                     type = annotated;
                     // 标注与初始值不一致 -> 报错，而不是照标注静默存下去。
-                    if (hasInit)                    {
+                    // 空容器字面量例外：`[]` / `{}` 没有元素类型信息，
+                    // 标注才是权威（`var r: list[str] = []` 必须合法）。
+                    if (hasInit && !isEmptyContainerLiteral(def->getValueNode()))                    {
                         const auto why = checkAssignable(type, initType);
                         if (!why.empty())                        {
                             failAt(def->getNameNode()->getPos(),
@@ -3817,6 +3922,11 @@ namespace backend{
             // 未标注的形参类型是「回退 int」，不是用户的承诺，不能拿来判错。
             // `fun apply(f, x)` 的 f 会被传闭包，按 int 校验就误报了。
             if (annotated && i < annotated->size() && !(*annotated)[i]) continue;
+            // 空容器字面量（`[]` / `{}`）不携带元素类型信息：
+            // inferListLiteralType 会把空列表兜底成 list[int]，那**不是**用户的
+            // 承诺。`f([])` 传给 `xs: list[str]` 必须放行，否则
+            // `var r: list[str] = []` 这类标准库写法全部报错（实测 str.rio:346）。
+            if (isEmptyContainerLiteral(args[i])) continue;
             const auto why = checkAssignable(paramTypes[i], inferType(args[i]));
             if (!why.empty())            {
                 failAt(args[i] ? args[i]->getPos() : utils::getUnknownPos(),
@@ -6044,31 +6154,69 @@ namespace backend{
         for (const auto* generic : genericCandidates(name, explicitArgs.size()))        {
             if (!genericAcceptsArgCount(*generic, args.size())) continue;
             std::map<std::string, sema::TypePtr> candidateBindings;
+            // 显式类型实参必须能覆盖这一份声明的**全部**泛型形参。
+            // 否则当作不匹配 —— 这一步保证了
+            // `dumpToStr[int]([])` 只会考虑 `[T]` 那份（1 个类型实参），
+            // 不会被 `[T, K]` 那份错误的报「takes 2」。
+            if (!explicitArgs.empty() && explicitArgs.size() != generic->genericParams.size()) continue;
             if (!deduceTypeArgs(*generic, explicitArgs, args, candidateBindings)) continue;
             chosen = generic;
             bindings = std::move(candidateBindings);
             break;
         }
         if (!chosen)        {
-            // 挑不出候选：用「泛型形参个数最接近」的那一份来产生诊断文本，
-            // 这样 "takes N type argument(s), but M were supplied" 仍然准确。
-            const auto& all = found->second;
-            const GenericFunction* diagnostic = all.empty() ? nullptr : &all.front();
-            for (const auto& g : all)            {
-                if (!explicitArgs.empty() && g.genericParams.size() == explicitArgs.size())                {
-                    diagnostic = &g;
-                    break;
-                }
+            // 挑不出候选。**先看这个名字下有没有「非泛型」的重载** ——
+            // 有的话必须把机会交回去（返回 false 让调用方走重载决议），
+            // 不能在这里直接报「推不出类型实参」。
+            //
+            // 典型形状（ds.rio 的 dumpToStr）：
+            //     fun dumpToStr(container: list[any]): str        // 非泛型
+            //     fun dumpToStr[T, K](container: dict[T, K]): str // 泛型
+            // `dumpToStr([])` 本该命中非泛型那份，但空列表推不出 T/K，
+            // 若在这里报错，用户会看到一个完全无关的「Cannot deduce T, K」。
+            //
+            // 判据：名字下有**非泛型**定义就交回去。注意不能用
+            // _overloadedNames —— 泛型声明在 registerOverloadSignatures 里
+            // 被跳过了，那张表只反映「非泛型定义是否 >= 2 份」。
+            if (_functionReturns.find(name) != _functionReturns.end())            {
+                return false;
             }
-            if (diagnostic && !explicitArgs.empty() &&
-                explicitArgs.size() != diagnostic->genericParams.size())            {
+            // 挑不出候选：**只在显式类型实参个数与某一份完全对不上时**才报
+            // "takes N"，否则报「推不出来」。判据要与上面循环一致 ——
+            // 要有一份的泛型形参个数 == explicitArgs.size()，才轮到说
+            // 「个数对但推不出」；一份都不匹配时才说「个数都不对」。
+            const auto& all = found->second;
+            // 先看有没有「类型实参个数对得上」的候选。
+            const GenericFunction* ArityMatch = nullptr;
+            for (const auto& g : all)            {
+                if (g.genericParams.size() == explicitArgs.size()) { ArityMatch = &g; break; }
+            }
+            if (!explicitArgs.empty() && !ArityMatch && !all.empty())            {
+                // 只有一份声明时用最直接的措辞（与 P10 起沿用的诊断一致）：
+                // `pair[int](1, "x")` 写错个数，直接说它要几个。
+                if (all.size() == 1)                {
+                    failAt(callNode ? callNode->getPos() : utils::Pos{},
+                           "Generic function '" + name + "' takes " +
+                           std::to_string(all.front().genericParams.size()) +
+                           " type argument(s), but " + std::to_string(explicitArgs.size()) +
+                           " were supplied");
+                    return true;
+                }
                 failAt(callNode ? callNode->getPos() : utils::Pos{},
-                       "Generic function '" + name + "' takes " +
-                       std::to_string(diagnostic->genericParams.size()) +
-                       " type argument(s), but " + std::to_string(explicitArgs.size()) +
-                       " were supplied");
+                       "Generic function '" + name + "' has no overload taking " +
+                       std::to_string(explicitArgs.size()) + " type argument(s); candidates take " +
+                       [&all] {
+                           std::string s;
+                           for (const auto& g : all)                           {
+                               if (!s.empty()) s += ", ";
+                               s += std::to_string(g.genericParams.size());
+                           }
+                           return s;
+                       }() + " type argument(s)");
                 return true;
             }
+            const GenericFunction* diagnostic = ArityMatch ? ArityMatch
+                                                           : (all.empty() ? nullptr : &all.front());
             if (diagnostic)            {
                 std::string missing;
                 for (const auto& g : diagnostic->genericParams)                {

@@ -385,6 +385,9 @@ fun dictKeys(d: dict): list[str] {
  * 返回**弱类型** `list`，同 dictKeys。值槽恒 8 字节：int/bool 是内联值，
  * float 是 double 位模式，str/list/dict 是指针。
  *
+ * @note 返回的 list 中的元素为“弱类型”槽位，调用方需依据 key 的原始类型
+ *       自行解释；若需强类型结果，应由上层封装或在未来专门的类型转换库中处理。
+ *
  * @example dictValues({"a":1,"b":2}) 得到 [1,2]
  */
 fun dictValues(d: dict): list {
@@ -399,6 +402,73 @@ fun dictValues(d: dict): list {
         i += 1
     }
     ret r
+}
+
+// ======================== 数据类型转换 ========================
+
+/**
+ * 将 list 容器转换为字符串表示，形如 "[a, b, c]"。
+ *
+ * 元素通过 toStr 逐个序列化；元素之间以 ", " 分隔。
+ *
+ * @note 未来类型转换（如 int/float/bool 与 str 互转、弱类型槽位的解释等）
+ *       将统一放到专门的类型转换库文件中，本函数只负责拼接与格式化。
+ */
+fun dumpToStr[T](container: list[T]): str {
+    var n = size(container), res = "["
+    for ({var i = 0; i < n; i ++}) {
+        res += toStr(container[i])
+        if i < n - 1 {
+            res += ", "
+        }
+    }
+    ret res + "]"
+}
+
+/**
+ * 将 dict 容器转换为字符串表示，形如 "{k1: v1, k2: v2}"。
+ *
+ * 通过 dictKeys 取得按插入顺序排列的 key，再逐个取 value 并 toStr 序列化；
+ * 键值对之间以 ", " 分隔。
+ *
+ * @note 未来类型转换（如 key/value 的弱类型槽位解释、数值与字符串互转等）
+ *       将统一放到专门的类型转换库文件中，本函数只负责拼接与格式化。
+ */
+fun dumpToStr[T, K](container: dict[T, K]): str {
+    var dks = dictKeys(container),
+        n = size(dks), res = "{"
+    for ({var i = 0; i < n; i ++}) {
+        var key: T = dks[i]
+        res += toStr(key) + ": " + toStr(container[key])
+        if i < n - 1 {
+            res += ", "
+        }
+    }
+    ret res + "}"
+}
+
+/**
+ * 将 bool 转换为 float：true -> 1.0，false -> 0.0。
+ *
+ * @note 这是临时的显式转换辅助函数；后续所有类型转换（含 bool/int/float
+ *       与字符串、弱类型槽位之间的转换）会迁移到专门的类型转换库文件中。
+ */
+fun toFloat(arg: bool): float {
+    if arg {
+        ret 1.0
+    } else {
+        ret 0.0
+    }
+}
+
+/**
+ * 将 int 转换为 float（隐式提升为双精度）。
+ *
+ * @note 这是临时的显式转换辅助函数；后续所有类型转换（含 bool/int/float
+ *       与字符串、弱类型槽位之间的转换）会迁移到专门的类型转换库文件中。
+ */
+fun toFloat(arg: int): float {
+    ret arg + 0.0
 }
 
 // ============================ 查找 ============================
@@ -661,5 +731,5 @@ fun forInRange(start: int, end: int, h: funi[int][void], sep: int = 1): void {
 }
 
 export(isEmpty, top, copy, repStr, repList, listAppend, listRemove,
-    dictRemove, dictKeys, dictValues, contains, indexOf, map, filter,
+    dictRemove, dictKeys, dictValues, dumpToStr, toFloat, contains, indexOf, map, filter,
     reverse, slice, concat, sum, sort, join, repeat, forInRange)

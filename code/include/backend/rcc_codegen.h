@@ -290,6 +290,13 @@ namespace backend
                                                   const sema::TypePtr& source) const;
         // P9：两个类型是否「同一族」，用于 ret / 实参等只关心值类别的场合。
         [[nodiscard]] bool sameValueFamily(const sema::TypePtr& a, const sema::TypePtr& b) const;
+        // 表达式是否是**空容器字面量**（`[]` / `{}`，包括带括号的 `([])`）。
+        //
+        // 这类字面量不携带元素类型信息：inferListLiteralType 把空列表兜底成
+        // list[int]，那是「推不出来」而不是用户的承诺。类型校验遇到它必须
+        // 放行，否则 `var r: list[str] = []`、`f([])` 这类合法写法会被误报。
+        [[nodiscard]] static bool isEmptyContainerLiteral(
+            const std::shared_ptr<ast::ExpressionNode>& node);
         // P9：判断标注里是否真的写了类型（`var x` 与 `var x: int` 的区别）。
         // 注解解析不出来时返回 TK_UNKNOWN，由调用方决定是报错还是忽略。
         [[nodiscard]] sema::TypePtr typeFromLabels(const std::vector<std::shared_ptr<ast::LabelNode>>& labels) const;
