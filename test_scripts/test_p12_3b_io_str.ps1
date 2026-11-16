@@ -289,6 +289,19 @@ fun mk(): list[int] {
 sout(mk()[0])
 '@ "7"
 
+# str 必须**自包含**：`toStr(dict)` 曾写成调用嵌套函数 _strDictKeys，
+# 后者内部用了 ds 模块的私有辅助 `_dsLoadI64`。只 `import str` 时 ds 没被
+# 内联，ds 的私有符号不存在，编译报
+#   Argument 1 of '_strDictKeys': cannot assign a value of type int to a
+#   target of type dict[?, ?]
+# 而同时 import ds 时又「碰巧」能用 —— 这类依赖只有单独 import 才暴露。
+# 所以这里刻意**只 import str**，不 import ds。
+Invoke-RioCase 'str_selfcontained_dict_fmt' @'
+import(sm="str")
+sout(toStr({"a": 1}))
+sout(toStr([1, 2]))
+'@ "{a: 1}`n[1, 2]"
+
 Write-Host ''
 Write-Host '=== 9. 已删除模块的依赖确实清干净 ==='
 

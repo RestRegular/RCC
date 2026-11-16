@@ -210,29 +210,41 @@ fun toStr[T](arg: list[T]): str {
 }
 
 fun toStr[T, K](arg: dict[T, K]): str {
-    fun _strDictKeys(d: dict): list[str] {
-        var r: list[str] = []
-        var scratch: ptr = core_alloc(64, 8)
-        var n: int = size(d)
-        var keys: ptr = _dsLoadI64(scratch, d + 24)
-        var i: int = 0
-        while i < n {
-            var kp: ptr = _dsLoadI64(scratch, keys + i * 8)
-            var ks: str = kp
-            r += [ks]
-            i += 1
+    var scratch: ptr = core_alloc(64, 8)
+    var n = size(arg), res = "{"
+    var i = 0
+    while i < n {
+        // keys[i]（先取 keys 基址 @24，再按 8 字节槽取）
+        core_mem_set(scratch, 8, 1)
+        core_mem_copy(scratch + 8, arg + 24, 8)
+        var slot: str = scratch
+        var keys: int = 0
+        var j = 7
+        while j >= 0 {
+            var c: char = slot[j]
+            var b: int = c
+            keys = keys * 256 + b
+            j -= 1
         }
-        ret r
-    }
 
-    var dks = _strDictKeys(container),
-        n = size(dks), res = "{"
-    for ({var i = 0; i < n; i ++}) {
-        var key: T = dks[i]
-        res += toStr(key) + ": " + toStr(container[key])
+        core_mem_set(scratch, 8, 1)
+        core_mem_copy(scratch + 8, keys + i * 8, 8)
+        slot = scratch
+        var kp: int = 0
+        j = 7
+        while j >= 0 {
+            var c2: char = slot[j]
+            var b2: int = c2
+            kp = kp * 256 + b2
+            j -= 1
+        }
+        var kptr: ptr = kp
+        var key: T = kptr
+        res += toStr(key) + ": " + toStr(arg[key])
         if i < n - 1 {
             res += ", "
         }
+        i += 1
     }
     ret res + "}"
 }
