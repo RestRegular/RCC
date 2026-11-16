@@ -73,6 +73,7 @@ $expectedSigs = @{
         'contains[T](xs: list, t: T): bool'
         'copy[T](xs: list): list'
         'dictKeys(d: dict): list'
+        'dictRemove(d: dict, key: int): void'
         'dictRemove(d: dict, key: str): void'
         'dictValues(d: dict): list'
         'filter[T](xs: list, h: funi): list'

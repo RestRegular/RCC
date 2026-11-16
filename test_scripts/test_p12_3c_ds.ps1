@@ -335,6 +335,47 @@ Invoke-Case "b17_join_single" ($imp + @'
 sout(join([42], "-"))
 '@) "42"
 
+# ---- 字典键类型（P13 缺陷回归，2026-11-17）----
+# dict 的键**不限于 str**：int / float / char 都是一等公民。
+# 之前有两处把它写死成 str：_dsKeyIndex 与 dictRemove 的形参。
+# int 键版本（dictRemove 标量重载）
+Invoke-Case "b18_dict_int_key" ($imp + @'
+var d: dict[int, str] = {1: "one", 2: "two"}
+sout(d[1])
+sout(d[2])
+var miss: str = d[9]
+sout(miss == "")
+dictRemove(d, 1)
+sout(core_str_len(d))
+sout(d[2])
+'@) "one/two/true/1/two"
+
+# float 键：字面量键必须能命中（原先只有变量键碰巧能用，
+# 因为变量路径会把位模式同时放进 %rax，字面量路径只写 %xmm0）。
+Invoke-Case "b19_dict_float_key" ($imp + @'
+var d: dict[float, int] = {1.5: 10}
+sout(d[1.5])
+sout(d[9.9])
+var k: float = 1.5
+sout(d[k])
+'@) "10/0/10"
+
+# char 键
+Invoke-Case "b20_dict_char_key" ($imp + @'
+var d: dict[char, int] = {'x': 7}
+sout(d['x'])
+dictRemove(d, 'x')
+sout(core_str_len(d))
+'@) "7/0"
+
+# 裸 dict 变量（标注里没有键类型信息）仍要按内容比较字符串键
+Invoke-Case "b21_bare_dict_str_key" ($imp + @'
+var d: dict = {"aa": 11, "cc": 33}
+dictRemove(d, "aa")
+sout(core_str_len(d))
+sout(d["cc"])
+'@) "1/33"
+
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Cyan
 $total = $script:pass + $script:fail

@@ -74,12 +74,16 @@ namespace backend{
             if (name == "list" || name == "series" || name == "array")            {
                 return std::make_shared<sema::ListType>(nullptr);
             }
-            // dict：**键**保持 str —— Rio 的字典几乎都是字符串键，索引比较
-            // 要靠 `keyIsStr` 走内容比较；键设成 nullptr 会让裸 `dict` 形参里的
-            // `d["k"]` 退化成按整数比较，查不到键（实测）。
-            // **值**用 nullptr 表示「没写」，与显式 `any`（UNKNOWN）区分开。
+            // dict：**键与值都设为 nullptr** = 都没写，什么 dict 都收。
+            //
+            // 键不能钉成 str（P13 修复，2026-11-17）：dict 的键可以是
+            // int / float / char（实测全部可用）。钉成 str 会让
+            // `fun f(d: dict)` 拒绝 `dict[int, str]` 实参 —— 打分时
+            // 「形参键 str ≠ 实参键 int」直接判不合格。
+            // 「字符串键按内容比较」那件事由**索引表达式**按实际 dict 的键类型
+            // 决定（见 emitIndexExpression 的 keyIsStr），与形参标注无关。
             if (name == "dict" || name == "map")            {
-                return std::make_shared<sema::DictType>(sema::getStrType(), nullptr);
+                return std::make_shared<sema::DictType>(nullptr, nullptr);
             }
             // P10：`funi[params][ret]` —— 函数类型标注。
             // 裸名字到这里时元素类型已丢，只能给一个「参数未知」的占位，
@@ -3210,14 +3214,24 @@ namespace backend{
         if (contType->getKind() == sema::TypeKind::TK_DICT)        {
             const auto dictType = std::static_pointer_cast<sema::DictType>(contType);
             const auto keyType = dictType->getKeyType();
-            const bool keyIsStr = keyType && keyType->getKind() == sema::TypeKind::TK_STR;
+            // 同 emitIndexExpression：键的求值类型优先看**键表达式自身**，
+            // 裸 `dict` 的标注里没有键类型信息。
+            const auto keyExprType0 = inferType(key);
+            const bool keyIsStr = (keyExprType0 && keyExprType0->getKind() == sema::TypeKind::TK_STR) ||
+                                  (keyType && keyType->getKind() == sema::TypeKind::TK_STR);
             const std::string contSlot = allocateTemp(contType);
             emitExpression(cont);
             if (hasFailed()) return true;
             _asm.mov("%rax", contSlot);
+            // 同 emitIndexExpression：float 键在 %xmm0，不能直接读 %rax。
+            const auto keyExprType = inferType(key);
+            const bool keyIsFloat = keyExprType && keyExprType->isFloat();
             const std::string keySlot = allocateTemp(keyIsStr ? sema::getStrType() : sema::getIntType());
             emitExpression(key);
             if (hasFailed()) return true;
+            if (keyIsFloat)            {
+                _asm.inst("movq", "%xmm0", "%rax");
+            }
             _asm.mov("%rax", keySlot);
             const std::string iSlot = allocateTemp(sema::getIntType());
             _asm.movImm(0, "%rax");
@@ -3656,11 +3670,29 @@ namespace backend{
         if (targetType && targetType->getKind() == sema::TypeKind::TK_DICT)        {
             const auto dictType = std::static_pointer_cast<sema::DictType>(targetType);
             const auto keyType = dictType->getKeyType();
-            const bool keyIsStr = keyType && keyType->getKind() == sema::TypeKind::TK_STR;
+            // 键的求值类型：**优先看键表达式自身**，而不是 dict 标注的键类型。
+            //
+            // 为什么：裸 `dict` 的键类型是 nullptr（「没写」），如果只看标注，
+            // `var d: dict = {"a": 1}` 的 `d["a"]` 会被当成按指针比较、
+            // 查不到键（实测 d["a"] 返回 0）。而键表达式是字符串字面量，
+            // 它自己的类型是 str，这就够判断「该按内容比」了。
+            // 标注了键类型时两者一致；标注更宽时以表达式为准才是对的。
+            const auto keyExprType = inferType(key);
+            const bool keyIsStr = (keyExprType && keyExprType->getKind() == sema::TypeKind::TK_STR) ||
+                                  (keyType && keyType->getKind() == sema::TypeKind::TK_STR);
+            // 键的类型决定怎么求值：float 键在 %xmm0，其余在 %rax。
+            // 原先无条件读 %rax，于是 `d[1.5]` 这种 float **字面量**键
+            // 拿到的是 %rax 里的垃圾（实测命中失败、返回 0），
+            // 而 `d[k]`（k 是 float 变量）碰巧能用 —— 变量路径会把位模式
+            // 同时放进 %rax，字面量路径只写 %xmm0。
+            const bool keyIsFloat = keyExprType && keyExprType->isFloat();
             const std::string keySlot = allocateTemp(keyIsStr ? sema::getStrType() : sema::getIntType());
             const std::string iSlot = allocateTemp(sema::getIntType());
             emitExpression(key);
             if (hasFailed()) return;
+            if (keyIsFloat)            {
+                _asm.inst("movq", "%xmm0", "%rax");
+            }
             _asm.mov("%rax", keySlot);
             _asm.movImm(0, "%rax");
             _asm.mov("%rax", iSlot);
@@ -4781,11 +4813,18 @@ namespace backend{
             return std::make_shared<sema::ListType>(elem ? elem : sema::getUnknownType());
         }
         if (base == "dict" || base == "map")        {
-            const auto key = args.size() > 0 ? args[0] : sema::getStrType();
-            const auto val = args.size() > 1 ? args[1] : sema::getUnknownType();
-            return std::make_shared<sema::DictType>(
-                key ? key : sema::getStrType(),
-                val ? val : sema::getUnknownType());
+            // 裸 `dict`：**键与值都不约束**（都用 nullptr 表示「没写」）。
+            //
+            // 键不能钉成 str（P13 修复，2026-11-17）：dict 的键可以是
+            // int / float / char（实测全部可用），把裸 `dict` 的键当成 str
+            // 会让 `fun f(d: dict)` 拒绝 `dict[int, str]` 实参
+            // —— 打分时「形参键 str ≠ 实参键 int」直接判不合格。
+            // 至于「字符串键要按内容比较」那件事，由**索引表达式**那边
+            // 按实际 dict 的键类型决定（见 emitIndexExpression 的 keyIsStr），
+            // 与形参标注无关。
+            const auto key = args.size() > 0 ? args[0] : nullptr;
+            const auto val = args.size() > 1 ? args[1] : nullptr;
+            return std::make_shared<sema::DictType>(key, val);
         }
         // `Box[int]`：泛型类按需单态化，类型指向 mangled 实例名。
         if (_genericClasses.find(base) != _genericClasses.end())        {

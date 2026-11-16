@@ -95,16 +95,45 @@ fun _dsScratch(): ptr {
 }
 
 // 在 dict 的键数组里线性查找 key，返回下标；找不到返回 -1。
-// 键按内容比较（G9 的 emitStrEq），不是按指针比。
-fun _dsKeyIndex(d: dict, key: str): int {
+//
+// 键类型是泛型 `[T]`：dict 的键**不限于 str**（dict[int, …] / dict[float, …]
+// / dict[char, …] 都是一等公民，2026-11-17 实测全部可用）。
+//
+// **不能用「重载 + 泛型」派发键比较**（实测踩过）：在泛型体内部，`T` 还是
+// 占位符，重载决议会选中泛型版 `_dsKeyMatch[T]`（T 与 T 精确匹配），
+// str 特化版永远选不到 —— 结果 str 键退化成比指针，查不到。
+//
+// 正确写法：**不让泛型体碰键比较**，把「取槽值」与「比键」分成两个入口，
+// 由调用方（已知具体键类型）挑。这里给两个顶层函数：
+//   * `_dsKeyIndexRaw(d, slot)`     —— str 键：槽里是 str 指针，按内容比
+//   * `_dsKeyIndexScalar(d, val)`   —— 标量键：槽里就是值，按值比
+// 两者都是**非泛型**的，内部比较指令在发射时就定死了。
+fun _dsKeyIndexOfStr(d: dict, key: str): int {
     var scratch: ptr = _dsScratch()
     var n: int = core_str_len(d)
     var keys: ptr = _dsLoadI64(scratch, d + 24)
     var i: int = 0
     while i < n {
-        var kp: ptr = _dsLoadI64(scratch, keys + i * 8)
-        var ks: str = kp
+        var kp: int = _dsLoadI64(scratch, keys + i * 8)
+        // 槽里存的是 str 指针的位模式：经 ptr 中转还原成 str（直接
+        // `var ks: str = kp` 会被标注校验拦下 —— 那不是转换而是位复用）
+        var kptr: ptr = kp
+        var ks: str = kptr
         if ks == key {
+            ret i
+        }
+        i += 1
+    }
+    ret -1
+}
+
+fun _dsKeyIndexOfScalar(d: dict, key: int): int {
+    var scratch: ptr = _dsScratch()
+    var n: int = core_str_len(d)
+    var keys: ptr = _dsLoadI64(scratch, d + 24)
+    var i: int = 0
+    while i < n {
+        if _dsLoadI64(scratch, keys + i * 8) == key {
             ret i
         }
         i += 1
@@ -292,13 +321,26 @@ fun listRemove[T](xs: list[T], index: int): void {
 /**
  * 按键删除字典条目，**原地修改**。键不存在时不做任何事。
  *
+ * 键类型覆盖 str 与标量：dict 的键不限于 str（int / float / char 都可，
+ * 2026-11-17 实测）。两个重载都是**非泛型**的，内部比较方式在发射时
+ * 就定死 —— 泛型版在泛型体内选不到 str 特化（见 _dsKeyIndexOfStr 的注释）。
+ *
  * 键数组与值数组是两个独立的线性数组，各左移一格后长度减 1。
  * 不释放被删键值占用的堆数据（同上）。
  *
  * @example dictRemove({"a":1,"b":2}, "a") 之后只剩 {"b":2}
  */
 fun dictRemove(d: dict, key: str): void {
-    var idx: int = _dsKeyIndex(d, key)
+    _dsDictRemoveAt(d, _dsKeyIndexOfStr(d, key))
+}
+
+/** 标量键版本（int / float / char / bool）。@example dictRemove({1:"x"}, 1) */
+fun dictRemove(d: dict, key: int): void {
+    _dsDictRemoveAt(d, _dsKeyIndexOfScalar(d, key))
+}
+
+// 按下标删除键值对（两个 dictRemove 的公共尾巴）。
+fun _dsDictRemoveAt(d: dict, idx: int): void {
     if idx < 0 {
         ret
     }
