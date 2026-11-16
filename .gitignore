@@ -35,3 +35,5 @@
 /release/Lib/builtin/io.rio
 /release/Lib/builtin/ds.rio
 /release/Lib/builtin/.stamp
+# 本地 git 凭据 helper（从 devcred 注入的 GITHUB_TOKEN 读取，不入库）
+/.git-credential.ps1
