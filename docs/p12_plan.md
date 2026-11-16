@@ -905,9 +905,9 @@ fun size(arg): int {
 
 | 模块 | 原仓库真实 API（基线） | 处置 |
 |---|---|---|
-| `io` | `sout(*args, end="\n")`、`print(*args, end="\n", sep=" ")`、`sin(arg="")`、`input(prompt="")` | 全部实现（`sout` 走编译器特化） |
+| `io` | `sout(*args, end="\n")`、`print(*args, end="\n", sep=" ")`、`sin(arg="")`、`input(prompt="")` | **2 个实现**（`sin`/`input`）+ 2 个不属模块层：`sout` 是**编译器特化**（`emitCall` 按字符串拦截，旧版函数体是 `encapsulated`，内联后是空函数体、调用只会链接失败），`print` 依赖变长参数（P13）。详见 §10.3 |
 | `ds` | `size`、`copy`、`unpack`、`isEmpty`、`top`、`repStr`、`repList`、`repeat`、`join`、`joins`、`listAppend`、`listRemove`、`dictRemove`、`iterRemove`、`dictKeys`、`dictValues`、`iterContains`、`sort`、`forInRange`、`iter` | 17 个实现 + 3 个删（`unpack`/`iterContains`/`iterRemove`，见 S4） |
-| `str` | `toStr`、`toChar`、`subStr`、`find`、`split`、`chunk`、`replace`、`toLowerCase`、`toUpperCase`、`charToInt`、`intToChar`、`trim` | 12 个全部实现 |
+| `str` | `toStr`、`toChar`、`subStr`、`find`、`split`、`chunk`、`replace`、`toLowerCase`、`toUpperCase`、`charToInt`、`intToChar`、`trim` | 12 个全部实现，但 **4 个签名/语义有变更**（`toChar`/`intToChar` 返回 int；`toLowerCase`/`toUpperCase` 只接受 str）——旧版靠 `dt.setType` 改写类型标签，新架构无此能力。详见 §10.3 |
 | `math` | `pi`、`e`（顶层 `var`，依赖 G1a）、`pow`、`max`、`min`、`opp`、`abs` | 7 个全部实现 |
 | `prog` | `entry`、`breakpoint` | 2 个都实现；`entry` 的 argv 部分**P12 不动**（§4.2.3 已裁决登记待设计） |
 | `ops` | `ternary`、`ternaryLazy`、`orVal`、`orLazy` | 4 个全部实现 |
@@ -1289,8 +1289,73 @@ RCC.exe -v                                             # 1.22.0
 | `test_14_iter` / `test_15_forinrange` | ⚠️ 已知失败 | 依赖 G6 的回调写回契约 | G6 | **`expected.txt` 与 `test.rio` 原样保留不动**，只标注「G6 延期导致」。禁止改成「不写回」的结果来制造通过 |
 | **内存模型 Rio 映射** | ⏳ **待设计** | `memory-model-spec-full.md` 是脱离 Rio 设计的伪代码；`Ref<T>`/`Mut<T>`/`Take<T>` 能力类型、`in local`/`in result` 出生地、`Pool`/`Link` 均需按 Rio 语法重新设计 | 用户逐条审批 | P13 主体工作。P12 只做**文档层**的架构计划修订（§8.1 改指规范、`rc` 标注废弃） |
 | **变长参数 `*args`/`**kwargs`** | ✅ **设计已批准，P13 实施** | 用户 2026-11-16 裁决：Q1 同质打包、Q2 强制标注不豁免、Q8 排 P13。当前语法能过编译但函数体里 `args` 未定义（形参名未登记），调用点也不打包 | 无（设计已定） | 见 `docs/p12_varargs_proposal.md` §8.1 的 9 项清单 |
-| **`sout` 实现散落在 codegen** | ⚠️ 架构债，P12-3-B 收编 | `sout` 既不是纯内置（无符号表条目、不可内省）也不属任何模块，只是 `emitCall` 里的字符串比较。仓库里 4 处 `fun sout(...)` 声明永远不会被调用 | P12-3-B 设计 `io` 模块 | 见 `docs/p12_varargs_proposal.md` §4.4 |
+| **`sout` 实现散落在 codegen** | ✅ **P12-3-B 已定性并收尾** | `sout` 既不是纯内置（无符号表条目、不可内省）也不属任何模块，只是 `emitCall` 里的字符串比较。仓库里 4 处 `fun sout(...)` 声明永远不会被调用 | 无 | 见 `docs/p12_varargs_proposal.md` §4.4；**P12-3-B 结论**：`io` 模块**不再定义 `sout`**（旧版函数体是 `encapsulated`，内联后是空函数体，调用只会链接失败），`sout` 保持为语言级内建。详见 §10.3 |
 | **调用未定义函数不报错** | ⏳ **待设计**（用户要求暂不处理） | `inferType` 末尾的保守回退把未知函数当返回 `int`，错误推迟到链接期且信息无指向性。需先决定「未声明函数是错误还是隐式外部符号」，属语言设计 | 用户裁决 | 见 `docs/p12_varargs_proposal.md` §4.5 |
+
+### 10.3 P12-3-B 落地记录（io / str 迁入 lib/std）
+
+**结论**：`lib/std/io.rio`（2 个函数）+ `lib/std/str.rio`（15 个导出名）已落地，
+`test_scripts/test_p12_3b_io_str.ps1` 22 项全通过，全量回归无新增失败。
+
+#### 10.3.1 `str`：4 个函数的签名/语义变更（语言能力决定，非实现不完整）
+
+旧版靠 `dt.setType` 在**运行时改写值的类型标签**（本质是欺骗类型系统）。
+新架构是静态的、值内联的，没有类型标签可改，因此：
+
+| 函数 | 旧签名/语义 | 新签名/语义 | 原因 |
+|---|---|---|---|
+| `toChar` | 返回 `char` | 返回 **`int`**（首字节 ASCII 码） | `char` 不能转 `str`、不能与 `str` 互操作，返回 `char` 等于返回一个用户无法使用的值 |
+| `intToChar` | 返回 `char` | 返回 **`int`** | 同上，与 `toChar` 一致 |
+| `toLowerCase` / `toUpperCase` | 接受 `char`/`int`/`str`，三种重载 | **只接受 `str`** | 旧版对 char/int 做 ASCII 运算后返回 char，但结果类型在新架构里无处安放 |
+| `toStr` | 「把值的类型标签改成 str」 | **真正做转换**，用重载分派 int/float/bool/str/char | 旧版不是转换；新版是真转换 |
+
+`charToInt` 语义不变，但放宽为接受 `int` 或 `str`。
+
+> 若将来引入 `char ↔ str` 转换或指针解引用运算符，可恢复旧签名。
+
+**`toStr` 为什么用重载而不是泛型**：泛型 `[T]` 是单态化，`T` 在函数体内是
+**单一具体类型**，无法在函数体里按类型分支；`any` 形参在新后端按 int 传递，
+`toStr(2.5)` 会被截断成 `2`。重载按静态类型在**调用点**分派，是唯一正确手段。
+
+#### 10.3.2 `io`：只保留 `sin` / `input`，不定义 `sout` / `print`
+
+- **`sout` 不属模块层**。它是编译器特化：`emitCall` 里按字符串比较
+  `if (n == "sout") { emitSoutCall(node); return; }`，按每个实参的**静态类型**
+  选 `rt_print_*`。旧版 `io.rio` 的函数体写的是 `encapsulated`（指向 P12-1 已
+  删除的内置函数注册表），内联进调用者后是**空函数体** —— 调用它只会链接失败。
+  因此新版 `io` 模块**不定义** `sout`，它保持为语言级内建。
+- **`print` 依赖变长参数**（`*args` 拼接 + `ds.join`）。变长参数已批准但排在
+  P13（`docs/p12_varargs_proposal.md`），且当前 `args` 在函数体内不可引用
+  （提案 F6）。P13 落地后在此补上。
+
+#### 10.3.3 模块私有辅助函数必须带模块前缀（新发现）
+
+模块是**编译期内联**的：被 import 的模块语句原地展开到导入者的同一命名空间
+（`rcc_module_loader.cpp` 的 `expandProgram`）。所以 `str.rio` 的 `_setLen`
+和 `io.rio` 的 `_setLen` 在同一程序里会撞名，报
+`Duplicate definition of overloaded function '_setLen' with the same parameter types`。
+
+**约定**：模块私有辅助函数一律加 `_<模块名>` 前缀（`_strSetLen` / `_ioSetLen`）。
+已验证菱形导入本身**能正确去重**（`a` 和 `b` 都 import `shared`，`shared` 只内联一次）。
+
+#### 10.3.4 顺带修掉的编译器缺陷：返回值直接索引
+
+**现象**：`fun mk(): list[str] { ret ["ab"] }` + `sout(mk()[0])` 输出
+`140701564424200`（指针当整数打印）。`list[float]` 同样坏；
+`list[int]`/`list[bool]`/`dict`/`str` 正常。先赋给变量再索引也正常。
+
+**根因**：`returnTypeOf()`（匿名命名空间）只调 `parseTypeName()`，而它**只看裸
+名字**、拿不到 `LabelNode` 的 `[...]` —— `list[str]` 退化成「元素按 int 解释」
+的 `list`。于是 `_functionReturns` 里登记的类型丢了元素类型，`mk()[0]` 的静态
+类型变成 `int`，`sout` 按 `int` 打印指针。
+
+**修法**：新增成员函数 `CodeGen::returnTypeFromNode()`，走 `typeFromLabelNode()`
+（P9/P10 同一套路径，能从 `LabelNode::getLabelDesNodes()` 读 `[...]`）。
+`collectSignature` 与 `emitFunctionDefinition` 两处调用点都改用它；
+`returnTypeOf()` 成为死代码，已删除（避免将来误用）。
+
+**回归**：`test_p12_3b_io_str.ps1` §8 的 4 个用例（`list[str]` / `list[float]` /
+`dict[str,str]` / `list[int]`）覆盖此缺陷。
 
 ## 11. 总体执行原则（本计划的总纲，任何小节冲突时以本节为准）
 

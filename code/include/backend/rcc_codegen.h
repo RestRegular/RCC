@@ -498,6 +498,16 @@ namespace backend
         // 类型位置上的表达式转成类型：`float`、`Box[int]`、`list[int]`。
         sema::TypePtr typeFromTypeArgNode(const std::shared_ptr<ast::ExpressionNode>& node,
                                           const std::vector<std::string>& genericParams) const;
+        // 函数定义节点上的返回类型标注 -> 类型。
+        //
+        // 为什么不用匿名命名空间里的 returnTypeOf()：它只调 parseTypeName，
+        // 而 parseTypeName 只看裸名字、拿不到 `[...]`（`list[str]` 会退化成
+        // 「元素按 int 解释」的 list）。后果是 `fun mk(): list[str]` 登记进
+        // _functionReturns 的类型丢了元素类型，于是 `mk()[0]` 的静态类型
+        // 变成 int —— sout 按 int 打印指针，输出一串数字。
+        // 走 LabelNode 才能保留元素类型（P9/P10 同一套理由）。
+        sema::TypePtr returnTypeFromNode(const std::shared_ptr<ast::FunctionDefinitionNode>& node,
+                                         const std::vector<std::string>& genericParams = {}) const;
         // 把逗号分隔的类型实参表达式摊平（`funi[int, str][bool]` 的第一段）。
         static void flattenTypeArgs(const std::shared_ptr<ast::ExpressionNode>& node,
                                     std::vector<std::shared_ptr<ast::ExpressionNode>>& out);

@@ -1,0 +1,419 @@
+/*
+ * str.rio —— 字符串操作模块
+ *
+ * ============================ 实现约束（重要） ============================
+ * 新架构是静态的、值内联的：没有装箱、没有运行期类型标签、没有指针解引用
+ * 运算符。这决定了本模块的实现手段，也决定了少数旧 API 的语义必须调整。
+ *
+ *  1) 没有解引用运算符 `*p`，但**指针算术 + core_mem_copy/core_mem_set 可用**。
+ *     所以「从 str 切一段出来」= 分配缓冲区 + 拷字节 + 写长度头。
+ *     这是本模块的主力手段，比旧版「逐字符 setType 再拼接」高效且正确
+ *     （旧版遇到 UTF-8 多字节字符会切坏，新版按字节切，天然安全）。
+ *  2) str 布局 = {i64 len} + bytes。len 在 +0（8 字节小端），内容在 +8。
+ *     core_mem_set 只写低 8 位，所以长度头必须**逐字节写**（见 _strSetLen）。
+ *  3) `s[i]` 读出的是**字节值（int）**，不是 char 也不是 str。
+ *     char 与 int 之间没有隐式转换，char 也不能拼接到 str。
+ *  4) 不依赖 datatype 模块（已按 S3 整模块删除）。
+ *  5) `str + str` 是拼接（G3），`==` 按内容比较（G9），`s[i]` 可读（G10）。
+ *
+ * ============================ 与旧版的语义差异 ============================
+ * 旧 str.rio 靠 `dt.setType` 在运行时改写值的类型标签，新架构没有这个能力。
+ * 以下函数的**语义被重新定义**，这是语言能力决定的，不是实现不完整：
+ *
+ *  - `toChar(arg)`：返回**首个字节的 ASCII 码（int）**。
+ *    旧版返回 char，但 char 在新架构里无法转成 str、无法与 str 互操作，
+ *    返回 char 等于返回一个用户无法使用的值。返回 int 才可用。
+ *    **签名变更：char → int**。
+ *  - `toLowerCase` / `toUpperCase(data: str)`：只接受 str，返回 str。
+ *    旧版还接受 char/int 做 ASCII 运算，但结果类型无处安放（见上），
+ *    那两个重载无法表达，已移除。
+ *  - `charToInt(c)`：接受 int 或 str，返回 int。语义不变，只是更宽容。
+ *  - `intToChar(i)`：返回 int（与 toChar 一致）。旧版返回 char。
+ *  - `toStr(arg)`：**真正做转换**，用重载按类型分派（int/float/bool/str）。
+ *    旧版是「把值的类型标签改成 str」（本质是欺骗类型系统），不是转换。
+ *
+ * 若将来引入 char↔str 转换或解引用运算符，可恢复旧签名。
+ * ==========================================================================
+ */
+
+// ============================ 内部工具 ============================
+//
+// 命名约定：模块私有的辅助函数一律带 `_<模块名>` 前缀。
+// 原因：模块是**编译期内联**的，被 import 的模块语句会原地展开到导入者
+// 的同一命名空间里（rcc_module_loader 的 expandProgram）。所以
+// `str.rio` 的 `_setLen` 和 `io.rio` 的 `_setLen` 在同一程序里会撞名，
+// 报 `Duplicate definition of overloaded function '_setLen' with the same
+// parameter types`。加上模块前缀才能让多个模块共存。
+
+// 逐字节写 8 字节小端长度头。
+// core_mem_set(p, n, 1) 只写 n 的低 8 位 —— 长度 > 255 时会截断成
+// n % 256，实测 mkStr(300) 得到 len=44。必须逐字节写。
+fun _strSetLen(p: ptr, n: int) {
+    var i: int = 0
+    while i < 8 {
+        core_mem_set(p + i, (n / _strPow256(i)) % 256, 1)
+        i += 1
+    }
+}
+
+fun _strPow256(k: int): int {
+    var r: int = 1
+    var i: int = 0
+    while i < k {
+        r = r * 256
+        i += 1
+    }
+    ret r
+}
+
+// 分配长度为 n 的 str 缓冲区（内容未初始化），长度头已写对。
+// 多分配 32 字节：8 字节长度头 + 内容 + 末尾留 0（C 字符串兼容）。
+fun _strNew(n: int): ptr {
+    var p: ptr = core_alloc(n + 32, 8)
+    _strSetLen(p, n)
+    core_mem_set(p + 8 + n, 0, 1)
+    ret p
+}
+
+// 取 src 从 i 开始的 n 个字节，构造新 str。
+// 这是「没有解引用运算符」时构造字符串的通用手段。
+fun _strSlice(src: str, i: int, n: int): str {
+    var p: ptr = _strNew(n)
+    core_mem_copy(p + 8, src + 8 + i, n)
+    var r: str = p
+    ret r
+}
+
+// ============================ 长度 ============================
+
+// 字节长度。str/list/dict 的长度字段都在偏移 0，所以对三者通用。
+// 与 ds.size 同一个手段；str 模块自带一份以避免模块间循环依赖。
+//
+// 形参必须标 `any`：不标注会被当成 int，传 str 时在调用点就报
+// "cannot assign a value of type str to a target of type int"。
+// `any` 在这里是「接受任意指针族值」的意思（str/list/dict 都是 8 字节指针），
+// 不是运行期类型标签 —— 长度字段都在 +0，所以对三者都成立。
+fun size(arg: any): int {
+    ret core_str_len(arg)
+}
+
+// ============================ 数值 → 字符串 ============================
+
+// 逐位取模，用查表把数字变成 str，再反转拼接。
+// 不用 10 个 elif 分支，是因为分支会让 8 行代码膨胀成 40 行且容易漏。
+fun _strDigits(x: int): str {
+    var tbl: str = "0123456789"
+    var acc: str = ""
+    var v: int = x
+    while v > 0 {
+        var d: int = v % 10
+        // 从 tbl 里取第 d 个字符：拷 1 字节到新缓冲区再当 str 用。
+        var one: str = _strSlice(tbl, d, 1)
+        acc = one + acc
+        v = v / 10
+    }
+    ret acc
+}
+
+fun intToStr(v: int): str {
+    if v == 0 {
+        ret "0"
+    }
+    if v < 0 {
+        ret "-" + _strDigits(0 - v)
+    }
+    ret _strDigits(v)
+}
+
+fun floatToStr(v: float): str {
+    var ip: int = v
+    var head: str = intToStr(ip)
+    var frac: float = v - ip
+    if frac < 0.0 {
+        frac = 0.0 - frac
+    }
+    if frac <= 0.0 {
+        // 整数形态的 float 也要带 ".0"：否则 toStr(1.0) 和 toStr(1)
+        // 输出一模一样，浮点类型信息就丢了。
+        ret head + ".0"
+    }
+    // 最多 6 位小数，去掉尾部 0（3.14 应输出 "3.14" 而不是 "3.140000"）。
+    var fracStr: str = ""
+    var n: int = 0
+    var f: float = frac
+    while n < 6 {
+        f = f * 10.0
+        var d: int = f
+        var tbl: str = "0123456789"
+        fracStr += _strSlice(tbl, d, 1)
+        f = f - d
+        n += 1
+        if f <= 0.0 {
+            break
+        }
+    }
+    // 去掉尾部 0
+    var len: int = core_str_len(fracStr)
+    while len > 0 {
+        if fracStr[len - 1] == 48 {
+            len -= 1
+        } else {
+            break
+        }
+    }
+    if len == 0 {
+        ret head + ".0"
+    }
+    ret head + "." + _strSlice(fracStr, 0, len)
+}
+
+// 任意标量 → str。用重载按静态类型分派 —— 泛型做不到类型分派
+// （T 是单一类型，无法在函数体里区分 int/float），any 会截断 float。
+fun toStr(arg: int): str {
+    ret intToStr(arg)
+}
+
+fun toStr(arg: float): str {
+    ret floatToStr(arg)
+}
+
+fun toStr(arg: bool): str {
+    if arg {
+        ret "true"
+    }
+    ret "false"
+}
+
+fun toStr(arg: str): str {
+    ret arg
+}
+
+fun toStr(arg: char): str {
+    // char 无法直接转 str（无转换机制），按字节值走 int 分支。
+    var b: int = arg
+    ret intToStr(b)
+}
+
+// ============================ 字符 ↔ 整数 ============================
+
+// 取首个字节的 ASCII 码。签名从 char 改成 int，理由见文件头。
+fun toChar(arg: str): int {
+    if core_str_len(arg) == 0 {
+        ret 0
+    }
+    ret arg[0]
+}
+
+fun toChar(arg: int): int {
+    ret arg
+}
+
+fun charToInt(c: int): int {
+    ret c
+}
+
+fun charToInt(c: str): int {
+    ret toChar(c)
+}
+
+fun intToChar(i: int): int {
+    ret i
+}
+
+// ============================ 子串与查找 ============================
+
+fun subStr(content: str, startIndex: int = 0, length: int = -1): str {
+    var contentLen: int = core_str_len(content)
+    if startIndex < 0 {
+        startIndex = 0
+    }
+    if startIndex >= contentLen {
+        ret ""
+    }
+    var n: int = contentLen - startIndex
+    if length >= 0 && length < n {
+        n = length
+    }
+    if n <= 0 {
+        ret ""
+    }
+    ret _strSlice(content, startIndex, n)
+}
+
+fun find(content: str, part: str, startIndex: int = 0): int {
+    var contentLen: int = core_str_len(content)
+    var partLen: int = core_str_len(part)
+    if partLen == 0 {
+        ret startIndex
+    }
+    var i: int = startIndex
+    if i < 0 {
+        i = 0
+    }
+    while i + partLen <= contentLen {
+        var ok: bool = true
+        var j: int = 0
+        while j < partLen {
+            if content[i + j] != part[j] {
+                ok = false
+                break
+            }
+            j += 1
+        }
+        if ok {
+            ret i
+        }
+        i += 1
+    }
+    ret -1
+}
+
+// ============================ 大小写 ============================
+
+// 只处理 ASCII。UTF-8 多字节字符原样保留（按字节拷贝，不会切坏）。
+fun toLowerCase(data: str): str {
+    var n: int = core_str_len(data)
+    var p: ptr = _strNew(n)
+    var i: int = 0
+    while i < n {
+        var b: int = data[i]
+        if b >= 65 && b <= 90 {
+            b = b + 32
+        }
+        core_mem_set(p + 8 + i, b, 1)
+        i += 1
+    }
+    var r: str = p
+    ret r
+}
+
+fun toUpperCase(data: str): str {
+    var n: int = core_str_len(data)
+    var p: ptr = _strNew(n)
+    var i: int = 0
+    while i < n {
+        var b: int = data[i]
+        if b >= 97 && b <= 122 {
+            b = b - 32
+        }
+        core_mem_set(p + 8 + i, b, 1)
+        i += 1
+    }
+    var r: str = p
+    ret r
+}
+
+// ============================ 替换 ============================
+
+fun replace(content: str, old: str, new: str, once: bool = false): str {
+    if core_str_len(old) == 0 {
+        ret content
+    }
+    var res: str = ""
+    var rest: str = content
+    var idx: int = find(rest, old)
+    while idx >= 0 {
+        res += subStr(rest, 0, idx)
+        res += new
+        rest = subStr(rest, idx + core_str_len(old))
+        if once {
+            break
+        }
+        idx = find(rest, old)
+    }
+    ret res + rest
+}
+
+// ============================ 切分 ============================
+
+fun split(content: str, del: str, keepDel: bool = false, keepEmpty: bool = false): list[str] {
+    var result: list[str] = []
+    // 空分隔符：按字符切开（每个字节一个元素）。
+    if core_str_len(del) == 0 {
+        var i: int = 0
+        var n: int = core_str_len(content)
+        while i < n {
+            result += [_strSlice(content, i, 1)]
+            i += 1
+        }
+        return result
+    }
+    var rest: str = content
+    var delLen: int = core_str_len(del)
+    while true {
+        var idx: int = find(rest, del)
+        if idx < 0 {
+            break
+        }
+        var front: str = subStr(rest, 0, idx)
+        if core_str_len(front) > 0 || keepEmpty {
+            result += [front]
+        }
+        if keepDel {
+            result += [del]
+        }
+        rest = subStr(rest, idx + delLen)
+    }
+    if core_str_len(rest) > 0 || keepEmpty {
+        result += [rest]
+    }
+    ret result
+}
+
+fun chunk(content: str, num: int): list[str] {
+    var res: list[str] = []
+    if num <= 0 {
+        return res
+    }
+    var index: int = 0
+    var contentSize: int = core_str_len(content)
+    while index + num <= contentSize {
+        res += [_strSlice(content, index, num)]
+        index += num
+    }
+    if index < contentSize {
+        res += [_strSlice(content, index, contentSize - index)]
+    }
+    ret res
+}
+
+// ============================ 修剪 ============================
+
+// 判断字节 b 是否在 extraChars 里。
+fun _strHasByte(s: str, b: int): bool {
+    var n: int = core_str_len(s)
+    var i: int = 0
+    while i < n {
+        if s[i] == b {
+            ret true
+        }
+        i += 1
+    }
+    ret false
+}
+
+fun trim(content: str, extraChars: str = " ", onLeft: bool = true, onRight: bool = true): str {
+    var n: int = core_str_len(content)
+    if n == 0 {
+        ret ""
+    }
+    var startIndex: int = 0
+    var endIndex: int = n - 1
+    if onLeft {
+        while startIndex < n && _strHasByte(extraChars, content[startIndex]) {
+            startIndex += 1
+        }
+    }
+    if onRight {
+        while endIndex >= startIndex && _strHasByte(extraChars, content[endIndex]) {
+            endIndex -= 1
+        }
+    }
+    if endIndex < startIndex {
+        ret ""
+    }
+    ret _strSlice(content, startIndex, endIndex - startIndex + 1)
+}
+
+export(size, toStr, toChar, charToInt, intToChar, intToStr, floatToStr,
+    subStr, find, toLowerCase, toUpperCase, replace, split, chunk, trim)

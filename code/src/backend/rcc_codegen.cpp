@@ -79,15 +79,6 @@ namespace backend{
             return sema::getUnknownType();
         }
         // 从函数定义的 labelNodes 里取返回类型（`fun f(): int` 的 `int`）
-        sema::TypePtr returnTypeOf(const std::shared_ptr<ast::FunctionDefinitionNode>& node)        {
-            if (!node) return sema::getUnknownType();
-            for (const auto& label : node->getLabelNodes())            {
-                if (!label) continue;
-                const auto t = parseTypeName(label->getFullLabel());
-                if (t->getKind() != sema::TypeKind::TK_UNKNOWN) return t;
-            }
-            return sema::getUnknownType();
-        }
         // 从形参 IdentifierNode 的 labels 里取类型（`a: int` 的 `int`）
         sema::TypePtr paramTypeOf(const std::shared_ptr<ast::ExpressionNode>& paramNode)        {
             if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(paramNode))            {
@@ -515,7 +506,7 @@ namespace backend{
         }
         // 返回类型：与 emitFunctionDefinition 同一套顺序
         // （声明标注 -> 类名再解析一次 -> 从函数体推断）。
-        sig.retType = returnTypeOf(node);
+        sig.retType = returnTypeFromNode(node);
         sig.retAnnotated = sig.retType && sig.retType->getKind() != sema::TypeKind::TK_UNKNOWN;
         if (!sig.retAnnotated)        {
             for (const auto& label : node->getLabelNodes())            {
@@ -4443,9 +4434,18 @@ namespace backend{
         }
         return sema::getUnknownType();
     }
+    sema::TypePtr CodeGen::returnTypeFromNode(const std::shared_ptr<ast::FunctionDefinitionNode>& node,
+                                              const std::vector<std::string>& genericParams) const    {
+        if (!node) return sema::getUnknownType();
+        for (const auto& label : node->getLabelNodes())        {
+            if (!label) continue;
+            const auto t = typeFromLabelNode(label, genericParams);
+            if (t && t->getKind() != sema::TypeKind::TK_UNKNOWN) return t;
+        }
+        return sema::getUnknownType();
+    }
     sema::TypePtr CodeGen::typeFromLabelNode(const std::shared_ptr<ast::LabelNode>& label,
-                                             const std::vector<std::string>& genericParams) const    {
-        if (!label) return sema::getUnknownType();
+                                             const std::vector<std::string>& genericParams) const    {        if (!label) return sema::getUnknownType();
         const std::string base = label->getFullLabel();
         // 泛型形参：声明阶段 T 是合法的「洞」，不是未知类型。
         // 实例化发射阶段则必须解析成**具体**类型 —— 槽位大小、走整型还是
@@ -5873,7 +5873,7 @@ namespace backend{
         // 必须推断而不是一律当 int：`fun make() { ret [1, 2] }` 的调用结果
         // 得是 list 类型，`make()[0]` 才知道按列表下标取值。
         // 位置在形参类型收齐之后：推断要在影子作用域里放形参槽。
-        auto retType = returnTypeOf(node);
+        auto retType = returnTypeFromNode(node);
         // P9：标注了返回类型就记为「权威」，后面 ret 要按它校验。
         bool retAnnotated = retType && retType->getKind() != sema::TypeKind::TK_UNKNOWN;
         // 声明的返回类型认不出来时（多半是类名，parseTypeName 只认内建类型），

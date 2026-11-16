@@ -1,0 +1,78 @@
+/*
+ * io.rio —— 标准输入输出模块
+ *
+ * ============================ 本模块为什么这么小 ============================
+ * 旧版 io.rio 有四个函数：sout / print / sin / input。新版只剩两个，原因
+ * 是前两个**不属于模块层**：
+ *
+ *  - `sout(*args, end="\n")`：这是**编译器特化**，不是普通函数。
+ *    rcc_codegen.cpp 的 emitCall 里按字符串比较拦截：
+ *      if (n == "sout") { emitSoutCall(node); return; }
+ *    它按每个实参的**静态类型**选 rt_print_*，变长参数只是语法糖。
+ *    所以它既不需要模块定义，也不能被模块定义 —— 旧版函数体写的是
+ *    `encapsulated`（指向已删除的内置函数注册表），内联进调用者后是
+ *    空函数体，调用它只会链接失败。
+ *    结论：`sout` 保留为**语言级内建**，本模块不定义它。
+ *
+ *  - `print(*args, end="\n", sep=" ")`：依赖变长参数拼接 + ds.join。
+ *    变长参数尚未实现（P13，见 docs/p12_varargs_proposal.md），
+ *    且 `args` 在函数体内不可引用（collectParamNames 不展开
+ *    UnaryExpressionNode，见提案 F6）。P13 落地后在此补上。
+ *
+ * 保留的两个函数都用 core 层符号直接实现，不依赖任何已删除模块。
+ * ==========================================================================
+ */
+
+// 把 n 写进 p 指向的 8 字节小端长度头。
+// core_mem_set(p, n, 1) 只写低 8 位，n > 255 会截断，必须逐字节写。
+//
+// 函数名带 `_io` 前缀：模块是编译期内联的，多个模块的私有辅助函数共享
+// 同一命名空间，同名会报 duplicate definition（详见 str.rio 的说明）。
+fun _ioSetLen(p: ptr, n: int) {
+    var i: int = 0
+    while i < 8 {
+        core_mem_set(p + i, (n / _ioPow256(i)) % 256, 1)
+        i += 1
+    }
+}
+
+fun _ioPow256(k: int): int {
+    var r: int = 1
+    var i: int = 0
+    while i < k {
+        r = r * 256
+        i += 1
+    }
+    ret r
+}
+
+// 读一行标准输入。
+//
+// core_io_read(fd, buf, n) 的 fd 参数在 asm 实现里被忽略（固定用
+// STD_INPUT_HANDLE），返回实际读到的字节数；失败返回 -1。
+// 读到的内容是**原始字节**，不做换行符裁剪 —— 与旧版 sin 一致
+// （旧版也只是把缓冲区包成 str 返回）。
+fun sin(): str {
+    var p: ptr = core_alloc(2080, 8)
+    _ioSetLen(p, 0)
+    var n: int = core_io_read(0, p + 8, 2048)
+    if n <= 0 {
+        ret ""
+    }
+    _ioSetLen(p, n)
+    var r: str = p
+    ret r
+}
+
+// 打印提示（若有）后读一行。
+//
+// 旧版签名是 `input(prompt="")`，prompt 默认空串 —— 空串时不打印提示，
+// 这里保持一致。注意 `sout` 是编译器内建，在模块内同样可用。
+fun input(prompt: str = ""): str {
+    if core_str_len(prompt) > 0 {
+        sout(prompt)
+    }
+    ret sin()
+}
+
+export(sin, input)

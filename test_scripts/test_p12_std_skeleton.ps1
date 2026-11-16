@@ -72,7 +72,7 @@ foreach ($m in $modules) {
 Write-Host ''
 Write-Host '=== 3. 构建产物未被 git 跟踪 ==='
 
-foreach ($name in @('math.rio', 'ops.rio', 'prog.rio')) {
+foreach ($name in @('math.rio', 'ops.rio', 'prog.rio', 'str.rio', 'io.rio')) {
     Push-Location $repo
     $tracked = (& git ls-files "release/Lib/builtin/$name" 2>&1 | Out-String).Trim()
     Pop-Location
