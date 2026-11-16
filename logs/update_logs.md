@@ -59,12 +59,64 @@
 |       **`v1.19.0`**       | 2025-11-24 |                            完善标签系统                            |                **[Feature]**                 | RestRegular |
 | **`v1.20.0`** | 2025-11-24 | 调整了标签描述比较逻辑，新增匿名函数简写形式 | **[Optimize] [Feature]** | RestRegular |
 | **`v1.21.0`** | 2025-11-28 | 适配Linux平台并修复部分符号错误 | **[Feature] [BugFix]** | RestRegular |
+| **`v1.22.0`** | 2026-11-17 | 删除旧 RA 后端路径，标准库整体重写为 `lib/std/*.rio`，补齐 11 项语言能力缺口 | **[Feature] [Refactor] [Breaking]** | RestRegular |
 <!-- Add Version Overview -->
 
 ---
 ## 详细日志
 
 <!-- Add Version Details -->
+
+---
+### 版本号 `v1.22.0` (2026-11-17)
+- **类型**：**[Feature] [Refactor] [Breaking]**
+- **作者**：RestRegular
+- **更新时间**：2026/11/17 01:50
+- **更新内容**：
+  - **[Breaking]** 删除旧 RA 后端全部路径。RA 虚拟机、RA 指令发射、内置函数注册表
+    （`rcc_builtin_*_functions.cpp`）、DLL 扩展机制（`IRCCSymbolInterface` /
+    `bindDllExt` / `unbindDllExt`）一并移除。新后端直接发射 x86-64 GAS 汇编。
+  - **[Breaking]** 删除 `-ir` / `--ir-o` 选项。LLVM 中间码不再是产物，
+    编译一步到位：`RCC -build --path in.rio --output out`。
+  - **[Breaking]** 标准库整体重写为 `lib/std/*.rio` 六个模块（唯一真相，
+    构建时拷贝到 `release/Lib/builtin/`）：
+    - `ds`（22 个）：保留 15、新增 `map`/`filter`/`contains`/`indexOf`/`reverse`/
+      `slice`/`concat`/`sum`，删除 `unpack`/`iterContains`/`iterRemove`/`joins`/`iter`
+    - `str`（15 个函数 / 22 个重载入口）：`toChar`/`intToChar` 返回值类型变更，
+      `toLowerCase`/`toUpperCase` 只接受 `str`
+    - `math`（7 个）：`abs`/`max`/`min`/`opp`/`pow` + 常量 `pi`/`e`
+    - `ops`（4 个）：`ternary`/`ternaryLazy`/`orVal`/`orLazy`
+    - `io`（2 个）：`input`/`sin`
+    - `prog`（2 个）：`entry`/`breakpoint`
+  - **[Breaking]** 删除 `datatype` 模块（整模块）；`lowlevel` 模块整体裁掉
+    （`id`/`rasm`/`ri`/`bindDllExt`/`unbindDllExt` 全部不提供）。
+  - **[Feature]** 补齐 11 项语言能力缺口：G1a 顶层 `var` 全局槽、G2 索引赋值
+    （`a[i]=v` / `d[k]=v` / `a[i]+=v` / `a+=[v]`）、G3 `str + str`、G4 列表拼接、
+    G5 方法重载、G7 `ret` 字段访问、G9 `str` 比较、G10 `s[i]` 读取、
+    G11 方法链、G12 `ptr` 同族放宽、G13 `ptr`↔`int` 互转。
+  - **[Feature]** `-s` 符号表导出器重写，支持六种格式
+    （`text` / `json` / `html` / `ctags` / `dot` / `markdown`），新增 `-exp`
+    只列导出符号。
+  - **[Feature]** 新增 `-emit-lib` 库模式（不发射 `main`，用于编译标准库）。
+  - **[Refactor]** `scripts/run.bat` 从 LLVM 五步流水线改为一步编译，
+    路径从脚本自身位置推导，不再写死 `D:\ClionProjects\...`。
+  - **[Refactor]** `scripts/test.bat` 退化为薄壳，判定逻辑统一收敛到
+    `test_scripts/test_all.ps1`（旧版用 `fc /W` 比对，会吞掉空白差异，
+    与 `test_legacy_all.ps1` 的逐字节比对语义冲突）。
+  - **[BugFix]** 修复浮点字面量被截断到 6 位有效数字：`doubleToString` 改用
+    `std::to_chars` 最短往返表示。修前 `3.141593` 存成 `3.14159`、
+    `sout(pi)` 打印 `3.141589`；修后正确。
+  - **[BugFix]** 修复 `str` 为 `null` 时字符串运算段错误：
+    `emitStrConcat`/`emitStrEq`/`emitStrOrder` 直接读长度头未判空，
+    `"" + null` / `null == ""` / `null < "a"` 全部崩溃（exit `-1073741819`）。
+    新增 `emitContainerLenTo()` 统一按「`null` 长度 0」处理。
+  - **[BugFix]** 修复 `ds.top([])` 对 `str` 返回野指针：空列表分支的
+    `var zero: T = xs[0]` 读了未初始化的堆内存，改为 `var zero: T`。
+  - **[BugFix]** 修复 `ds.join` 单独 `import ds` 时无法编译：`join` 依赖
+    `str.toStr` 但 `ds.rio` 未 import `str`，已补上。
+  - **[Docs]** `docs/p12_plan.md` 补 §10.6（P12-3-D 三层验收落地记录）与
+    §10.7（P12-4 脚本重写记录），§5.6 覆盖度数字按实际导出表更正，
+    §7.1 Breaking Changes 六项全部填实。
 
 ---
 ### 版本号 `v1.21.0` (2025-11-28)

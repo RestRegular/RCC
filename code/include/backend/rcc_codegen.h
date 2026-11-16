@@ -199,6 +199,14 @@ namespace backend
         // 两个参数是栈槽地址串，结果放 %rax。
         void emitStrConcat(const std::string& lhsSlot, const std::string& rhsSlot);
         void emitListConcat(const std::string& lhsSlot, const std::string& rhsSlot);
+        // 读取容器（str / list / dict）长度头到临时槽，**null 视为长度 0**。
+        //
+        // 为什么不能直接 `movq (%rax), %rax`：Rio 里 `var s: str` 未初始化、
+        // 以及 `ds.top([])` 的空列表分支拿到的都是 null 指针。str/list 的长度头
+        // 就在偏移 0，裸解引用 null 直接段错误（P12-3-D 实测：`"" + null`、
+        // `null == ""`、`null < "a"` 全部 exit -1073741819）。core_str_len 早就
+        // 把 null 定义成空串（返回 0），codegen 内联的这几个运算符必须一致。
+        void emitContainerLenTo(const std::string& containerSlot, const std::string& dstSlot);
         // P12/G9：`str == str` 的内容比较（emitBinary 分派过来）。结果放 %rax（0/1）。
         void emitStrEq(const std::string& lhsSlot, const std::string& rhsSlot);
         // `str < str` / `<=` / `>` / `>=` 的字典序比较（emitBinary 分派过来）。

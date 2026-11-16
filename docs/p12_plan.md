@@ -918,10 +918,17 @@ fun size(arg): int {
 > - `funi[any, int, int, .*][any]` —— 函数类型**内部**的 `any` **能正常解析**
 >   （探针 `chk_funi1`/`chk_funi2`/`chk_funi3` 全部通过）。`ds.iter`/`ds.sort`/`ds.repeat`
 >   的签名照原样抄即可，**不依赖 G13**。
-> - 裸的形参/返回值标注 `fun copy(arg: any): any` —— **不认**（G13）。
->   改用省略标注 `fun copy(arg) { ret arg }` 即可，语义等价（探针 `g13a`/`r1`）。
+> - 裸的形参/返回值标注 `fun copy(arg: any): any` —— **P12-2 修复前不认**（G13）。
+>   当时改用省略标注 `fun copy(arg) { ret arg }` 即可，语义等价（探针 `g13a`/`r1`）。
 >
 > 结论：**G13 不是 P12-3 的硬前置**，只是让签名能逐字照抄的便利项。
+>
+> **后续状态（P12-3-D 实测）**：G13 已在 P12-2 完成，`any` 标注现在可用
+> （`fun f(x: any): any` 正常解析，`-s` 也如实报 `x: any`）。但它的语义是
+> **「指针族值」**（`str`/`list`/`dict`/`ptr`），不是「任何值」：传 `int` 进去
+> 再当指针用会段错误（`fun f(x: any): int { ret core_str_len(x) }` 传 `5`
+> 崩溃 exit `-1073741819`），传 `str`/`list`/`dict` 都正常。已写入
+> `docs/rio_doc.md` §8.7。
 
 #### 5.4.1 逐条 API 建议（等你逐条审批；未批一律按基线实现）
 
@@ -1013,10 +1020,11 @@ fun size(arg): int {
 `lowlevel.ri` 的 `(i: str, *args)`、`io.print` 的 `(*args, end, sep)`、
 `prog` 的 `(*args, **kwargs)` —— 这些复杂签名都能过编译（探针 `r3`–`r6`、`kk1`–`kk5`）。
 
-> **注意**：`any` 作为**形参/返回值类型标注**目前不认（`Unknown type 'any'`），
-> 但**省略标注**（`fun copy(arg) { ret arg }`）可以正常工作（探针 `r1`）。
-> 原仓库大量函数正是省略标注的写法，所以这条不影响重写。
-> 若确实需要显式 `any`，那是 §1.2 之外的另一个缺口（G13），需单独决定。
+> **注意**：`any` 作为**形参/返回值类型标注**在 P12-2 修复前不认
+> （`Unknown type 'any'`）；G13 完成后已可用（`fun f(x: any): any` 正常解析，
+> 见 §5.4 的后续状态说明）。**省略标注**（`fun copy(arg) { ret arg }`）始终
+> 可以工作（探针 `r1`），但省略的语义是 `int`，与 `any` **不等价** ——
+> 需要接受指针族值时必须显式写 `any`。
 
 ### 5.6 验收：三层分层验收（编译 / API / 行为）
 
@@ -1061,21 +1069,38 @@ fun size(arg): int {
 | 非法输入 | 越界、类型错配、`null` 参与运算 —— 记录「panic」或「返回什么」的实际行为 |
 | 内存相关 | `ds.copy` 是深拷还是浅拷、`listAppend` 后原 `list` 是否仍可用、重复 `alloc` 是否泄漏 |
 
-**覆盖度硬要求**：`ds`（20 个）、`str`（12 个）、`math`（7 个）、`ops`（4 个）、
-`io`（4 个）、`prog`（2 个）、`lowlevel`（1 个，`ri`）—— **每个函数至少 1 个行为用例**，
-不能只挑 `size` / `join` / `subStr` 几个代表性函数通过就宣布模块完成。
+**覆盖度硬要求**：`ds`（22 个）、`str`（15 个函数 / 22 个重载入口）、
+`math`（7 个，含 `pi` / `e` 两个常量）、`ops`（4 个）、`io`（2 个）、
+`prog`（2 个）—— **每个公开函数至少 1 个行为用例**，不能只挑
+`size` / `join` / `subStr` 几个代表性函数通过就宣布模块完成。
+
+> **数字修正（P12-3-D 实测）**：本表原写「`ds` 20 / `str` 12 / `io` 4 /
+> `lowlevel` 1」，与实际导出不符，已按 `-s -exp` 的真实导出表更正：
+>
+> - `ds` 是 **22** 个（原 20 个漏了 `contains` / `indexOf`；`size` 按 §5.5-A
+>   已删、不在导出表里）。
+> - `str` 是 **15 个函数名 / 22 个重载入口**（`toStr` 5 个重载、`charToInt` 3 个、
+>   `toChar` 2 个）。原写 12 个是按函数名数的，但验收要求「每个公开函数有调用
+>   点」，重载必须**逐个入口**都调到，所以计数口径取 22。
+> - `io` 是 **2** 个（`input` / `sin`）。原写 4 个来自旧版 `io` 的
+>   `sout` / `sin` / `input` / `print` 印象，新版 `sout` 是编译器特化桩（不在
+>   `lib/std/io.rio` 里），`print` 依赖变长参数拼接、未实现（见 §10.3）。
+> - **`lowlevel` 整个模块已裁掉**（用户裁定不实现 `lowlevel.ri`），故不计入。
+>
+> 验收脚本 `test_std.ps1` 里以硬编码基线表为准，改签名必须同步改表 ——
+> 刻意的：签名变更属 API 变更，应当被人看见，而不是被测试自动跟随。
 
 #### 汇总
 
 `test_std.ps1` 输出三层各自的结果表，并给出一张总表：
 
 ```
-模块   编译   API    行为        结论
-ds     PASS   18/20  17/20       ✗ 未完成（2 个 API 缺失，3 个行为失败）
-str    PASS   12/12  12/12       ✓ 完成
+模块   编译   API      行为      结论
+ds     PASS   31/31    50/50     ✓ 完成
+str    PASS   17/17    29/29     ✓ 完成
 ```
 
-任一模块任一层非全绿，`exit 1`。
+任一模块任一层非全绿，`exit 1`。实际落地结果见 §10.6（213/213 全绿）。
 
 ## 6. P12-4：脚本重写
 
@@ -1157,12 +1182,97 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\test_scripts\test_a
 
 | 检查项 | 必须记录的内容 | 填写状态 |
 |---|---|---|
-| **语言语法** | 是否有变化？逐条列（P12 预期：**无语法变化**，G7 是修 bug 不是改语法） | ⬜ 待填 |
-| **编译器 CLI** | 是否有变化？逐条列（P12 预期：`-ir` 删除、`-s` 实现替换但输出不变、`-build` 不变） | ⬜ 待填 |
-| **标准库 API** | 新增 / 删除 / 修改，逐函数列（依据 §5.4.1 的最终审批结果） | ⬜ 待填 |
-| **ABI** | 是否有变化？（P12 预期：`core_*` 冻结不动；`rt_*` 新增 `rt_str_concat`/`rt_list_concat`/`rt_str_eq`，属**新增符号**不改既有 ABI） | ⬜ 待填 |
-| **旧项目迁移** | 是否需要改源码？给迁移对照表（如 `ds.unpack` → 直接用 list） | ⬜ 待填 |
-| **legacy 移除** | 明确列出删掉的 18 个源文件、`-ir` 路径、DLL 扩展机制、`datatype` 模块等 | ⬜ 待填 |
+| **语言语法** | 是否有变化？逐条列（P12 预期：**无语法变化**，G7 是修 bug 不是改语法） | ✅ 已填（见下） |
+| **编译器 CLI** | 是否有变化？逐条列（P12 预期：`-ir` 删除、`-s` 实现替换但输出不变、`-build` 不变） | ✅ 已填（见下） |
+| **标准库 API** | 新增 / 删除 / 修改，逐函数列（依据 §5.4.1 的最终审批结果） | ✅ 已填（见下） |
+| **ABI** | 是否有变化？（P12 预期：`core_*` 冻结不动；`rt_*` 新增 `rt_str_concat`/`rt_list_concat`/`rt_str_eq`，属**新增符号**不改既有 ABI） | ✅ 已填（见下） |
+| **旧项目迁移** | 是否需要改源码？给迁移对照表（如 `ds.unpack` → 直接用 list） | ✅ 已填（见下） |
+| **legacy 移除** | 明确列出删掉的 18 个源文件、`-ir` 路径、DLL 扩展机制、`datatype` 模块等 | ✅ 已填（见下） |
+
+#### 7.1.1 语言语法 —— **无变化**
+
+P12 全程未新增或修改任何语法。逐条核对：
+
+| 项 | 结论 |
+|---|---|
+| 新增关键字 / 语法 | 无 |
+| G2 索引赋值 `a[i]=v` / `d[k]=v` / `a[i]+=v` / `a+=[v]` | **恢复原仓库已有能力**，不是新增（2026-11-16 用 v1.21.2 实测确认） |
+| G10 `s[i]` 读取 | 同上，原仓库已有 |
+| `s[i] = c` 写入 | **编译期报错**（原仓库是静默失效的 bug，不复制） |
+| G7 `ret` 字段访问、G11 方法链 | 修 bug，语法未变 |
+| `any` 作为形参/返回值类型标注 | **G13 已修复**，现在可用。语义是「指针族值」（`str`/`list`/`dict`/`ptr`），不是「任何值」——传 `int` 再当指针用会段错误。已写入 `docs/rio_doc.md` §8.7 |
+
+#### 7.1.2 编译器 CLI —— 有变化
+
+| 变化 | 说明 |
+|---|---|
+| **删除** `-ir` / `--ir-o` | LLVM IR 时代产物，后端改为直发 x86-64 汇编后无意义 |
+| `-s` **实现整体替换** | 输出形态重新设计（六格式 text/json/html/ctags/dot/markdown），`[Breaking]`：依赖旧文本格式的脚本需改 |
+| `-build` | **不变** |
+| `-emit-lib` | 新增（库模式，不发射 `main`） |
+| `-exp` / `-export` | 新增（只列导出符号） |
+| `--path` 与 `--extension` | 互斥（同时给会报错） |
+
+#### 7.1.3 标准库 API —— 大改（`lib/std/*.rio` 全量重写）
+
+**模块层面**：`datatype` 整模块删除；`lowlevel` 整模块裁掉（用户裁定不实现）；
+`stdio` 并入 `io`；新增 `math` / `ops` / `prog` 三个模块。最终 **6 个模块**：
+`ds`(22) / `str`(15 函数 / 22 重载入口) / `math`(7) / `ops`(4) / `io`(2) / `prog`(2)。
+
+**`ds`**：保留 15 + 新增 8 + 删除 4，`size` 最终不导出（与 `str.size` 撞名）。
+
+| 类别 | API |
+|---|---|
+| 保留 | `isEmpty` `top` `copy` `repStr` `repList` `listAppend` `listRemove` `dictRemove` `dictKeys` `dictValues` `sort` `join` `repeat` `forInRange` |
+| 新增 | `map` `filter` `contains` `indexOf` `reverse` `slice` `concat` `sum` |
+| 删除 | `unpack` `iterContains` `iterRemove` `joins`（`iter` 一并去掉） |
+
+**`str`**：12 个函数全部实现，其中 4 个签名/语义变更（详见 §10.3）：
+
+| 函数 | 变更 |
+|---|---|
+| `toChar` / `intToChar` | 返回 `int` / `char`，不再靠类型标签改写 |
+| `toLowerCase` / `toUpperCase` | **只接受 `str`**（旧版能接受任意类型，靠 `dt.setType` 改写标签） |
+
+**`lowlevel`**：整模块裁掉。`id` / `rasm` / `bindDllExt` / `unbindDllExt` / `ri`
+全部不实现（RA 已删除，这些原理上无法实现）。
+
+#### 7.1.4 ABI —— 既有 `core_*` 不变，`rt_*` 只增不改
+
+| 项 | 结论 |
+|---|---|
+| `core_*`（`core_str_len` / `core_mem_copy` / `core_mem_eq` / `core_alloc` / `core_free` …） | **冻结不动**。`core_str_len` 的「`null` 视为长度 0」语义保持不变 |
+| `rt_*` 新增符号 | `rt_str_concat` / `rt_list_concat` / `rt_str_eq` / `rt_str_order`（内联发射，不破坏既有 ABI） |
+| 既有 `rt_*` 签名 | 不变 |
+| 结构体布局 | `ListHeader{len,cap,rc,elem_size}` / `DictHeader{len,cap,rc,keys,vals}` 未变 |
+
+#### 7.1.5 旧项目迁移对照表
+
+| 旧写法 | 新写法 |
+|---|---|
+| `import stdio` | `import(io="io")` |
+| `ds.unpack(x)` | 直接用 `x` |
+| `ds.iterContains(x, v)` | `ds.contains(x, v)` |
+| `ds.iterRemove(x, v)` | 用 `ds.filter` 返回新列表 |
+| `ds.joins(a, b)` | `ds.join([a, b], sep)` |
+| `ds.iter(xs, cb)` | `ds.map` / `ds.filter` / `ds.forInRange` |
+| `ds.size(x)` | `str.size(x)` |
+| `lowlevel.ri(x)` | 不提供（用 `str.toStr`） |
+| `lowlevel.id(x)` / `rasm` / `bindDllExt` | 不提供，需重新设计 |
+| `import(datatype="datatype")` | 不提供（整个模块删除） |
+| `RCC -ir --p in.rio --ir-o out.ll` | `RCC -build --path in.rio --output out` |
+| `io.print(...)` | 不提供（依赖变长参数拼接，未实现） |
+
+#### 7.1.6 legacy 移除清单
+
+| 类别 | 内容 |
+|---|---|
+| RA 后端 | 整个 `code/src/backend/ra_*` 与 RA 指令发射路径 |
+| 内置函数注册表 | `builtin/functions/rcc_builtin_{ds,datatype,export,io,lowlevel,prog,super}_functions.cpp` |
+| 旧库文件 | `release/Lib/builtin/` 下的 `datatype.rio` / `stdio.rio` / `_pure_builtin.rio` 等 |
+| DLL 扩展机制 | `IRCCSymbolInterface` C ABI、`bindDllExt` / `unbindDllExt` |
+| LLVM 流水线 | `-ir` 输出、`llc` 调用、`scripts/run.bat` 的五步流水线 |
+| `datatype` 模块 | 整模块（`dt.setType` 等类型标签改写能力随新架构消失） |
 
 **填写纪律**：
 
@@ -1228,7 +1338,7 @@ RCC.exe -v                                             # 1.22.0
 | # | 条件 |
 |---|---|
 | 1 | 构建零错误；`test_p0`–`test_p11` 全绿 |
-| 2 | 标准库**三层**全绿，且 `ds`/`str`/`math`/`ops`/`io`/`prog`/`lowlevel` 每个公开函数都有行为用例 |
+| 2 | 标准库**三层**全绿，且 `ds`/`str`/`math`/`ops`/`io`/`prog` 每个公开函数都有行为用例（`lowlevel` 整模块已裁掉，不计入；见 §5.6 数字修正） |
 | 3 | `-s` 六种格式全部输出正常且结构校验通过 |
 | 4 | §3.2 的七步依赖审计全部有结论，无无法解释的残留 |
 | 5 | §7.1 的 Breaking 记录表六项**全部填实**，且未把延期项写成已完成 |
@@ -1244,11 +1354,11 @@ RCC.exe -v                                             # 1.22.0
 | 1 | P12-1 删旧 RA 路径（含 `-s` 六格式重写）。收益最大、风险最低，且**不涉及任何语言设计** | ✅ 已完成（`3ce00a6`） |
 | 2 | P12-2 实现缺口：G1a / G2 / G3 / G4 / G7 / G9 / G10 / G11 / G12 / G13，每条配回归 | ✅ 已完成 |
 | 3 | P12-2 收尾：G5 方法重载（**G6 不做**，见 §10.2） | ✅ 已完成（会话 2+3 合并提交 `bd8082e`） |
-| 4 | P12-3-A 标准库骨架：`lib/std/` 目录、CMake 复制到 `release/Lib/builtin/`、`.gitignore`、删旧库文件；先落 `math`/`ops`/`prog`/`lowlevel` 四个小模块 | ✅ 已完成（`259581b`） |
+| 4 | P12-3-A 标准库骨架：`lib/std/` 目录、CMake 复制到 `release/Lib/builtin/`、`.gitignore`、删旧库文件；先落 `math`/`ops`/`prog` 三个小模块（`lowlevel` 后经用户裁定整模块裁掉，不实现） | ✅ 已完成（`259581b`） |
 | 5 | P12-3-B 标准库主体：`io` / `str` 两个模块（依赖 G3/G9/G10，均已就绪） | ✅ 已完成（`164a0fa`） |
-| 6 | P12-3-C 标准库主体：`ds` 模块（**23 个 API**，含 `iter`/`forInRange` 的 G6 限制说明） | ✅ 已完成（`30b4914`） |
-| 7 | P12-3-D 标准库验收：`test_std.ps1` 三层（compile / api / behavior）全绿 + `api_report.txt` | ⬜ 待做 |
-| 8 | P12-4 脚本重写：`run.bat` / `test.bat` / `test_all.ps1` 去 LLVM | ⬜ 待做 |
+| 6 | P12-3-C 标准库主体：`ds` 模块（**22 个导出**，含 `iter`/`forInRange` 的 G6 限制说明） | ✅ 已完成（`30b4914`） |
+| 7 | P12-3-D 标准库验收：`test_std.ps1` 三层（compile / api / behavior）全绿 + `api_report.txt` | ✅ 已完成（213/213，见 §10.6） |
+| 8 | P12-4 脚本重写：`run.bat` / `test.bat` / `test_all.ps1` 去 LLVM | ✅ 已完成（见 §10.7） |
 | 9 | P12-5 文档与发版：`rio_doc.md` 重写、版本号 1.22.0、更新日志、§7.1 Breaking 表填实 | ⬜ 待做 |
 | 10 | 最终全量回归 + 仓库干净度检查（§9 的 7 项） | ⬜ 待做 |
 | — | **G1b（argv→回调）与 G6（闭包写回）不在 P12 排期内**，见 §10.2 | ⏳ 延期 |
@@ -1438,16 +1548,21 @@ i64 两端、四则运算、比较、形参/列表/负号词法三条传递路�
 
 ### 10.5 P12-3-C 落地记录（ds 模块重写，提交 `30b4914`）
 
-**结论**：`lib/std/ds.rio` 全新实现（579 行），`test_scripts/test_p12_3c_ds.ps1`
+**结论**：`lib/std/ds.rio` 全新实现（580 行），`test_scripts/test_p12_3c_ds.ps1`
 三层 40 项全通过，全量回归 22 套件 439 项全绿。
 
-#### 10.5.1 API 面（23 个）
+> **后续修正（P12-3-D）**：本节记录的 `size` 委托给 `str` 的做法在验收时被推翻
+> —— `ds` 不导出 `size`（会与 `str.size` 撞名），改为内部 `_dsLen`。同时
+> `ds.rio` 补上了对 `str` 的 import（`join` 依赖 `toStr`）。详见 §10.6。
 
-按用户批准的口径：**保留 15 + 新增 8 + 删除 4**。
+#### 10.5.1 API 面（实际导出 22 个）
+
+按用户批准的口径：**保留 15 + 新增 8 + 删除 4**，其中 `size` 最终不导出
+（见 §10.5.2），故实际导出 15 + 8 - 1 = **22 个**。
 
 | 类别 | API |
 |---|---|
-| 保留（15） | `isEmpty` `top` `copy` `repStr` `repList` `listAppend` `listRemove` `dictRemove` `dictKeys` `dictValues` `sort` `join` `repeat` `forInRange`（+ `size` 委托给 `str`） |
+| 保留（15） | `isEmpty` `top` `copy` `repStr` `repList` `listAppend` `listRemove` `dictRemove` `dictKeys` `dictValues` `sort` `join` `repeat` `forInRange`（`size` 原计划委托给 `str`，**P12-3-D 验收时改为不导出**，内部用 `_dsLen`） |
 | 新增（8） | `map` `filter` `contains` `indexOf` `reverse` `slice` `concat` `sum` |
 | 删除（4） | `unpack` `iterContains` `iterRemove` `joins`（`iter` 一并去掉，由 `map`/`filter`/`forInRange` 覆盖） |
 
@@ -1513,6 +1628,124 @@ import 的源文件验证模块内联，语义比原来更准确。
 
 整体改造归 **P13**，P12 只做文档。已在规范新增 `§11A` 记录对应关系与当前
 实现差距（`listAppend` 返回新列表、`copy` 浅拷贝、从不调 `core_free` 等）。
+
+### 10.6 P12-3-D 落地记录（标准库三层验收）
+
+**结果**：`test_scripts/test_std.ps1` 三层全绿，**213 项通过 / 0 失败**。
+
+| 模块 | compile | api | behavior | 结论 |
+|---|---|---|---|---|
+| ds | 6/6 | 31/31 | 50/50 | 完成 |
+| str | 6/6 | 17/17 | 29/29 | 完成 |
+| math | 6/6 | 9/9 | 11/11 | 完成 |
+| ops | 6/6 | 6/6 | 6/6 | 完成 |
+| io | 6/6 | 4/4 | 4/4 | 完成 |
+| prog | 7/7 | 6/6 | 3/3 | 完成 |
+
+脚本支持 `-Layer compile|api|behavior|all`，默认 `all`。API 层产出
+`build/std_check/api_report.txt`（逐函数列出签名是否一致）。
+
+**本层暴露并修复的 3 个真实缺陷**（都不是测试写法问题）：
+
+1. **`str` 为 `null` 时内联字符串运算段错误**（编译器缺陷）。
+   `var s: str` 未初始化、以及空 `list[str]` 取元素都得到 `null`；
+   `core_str_len` 早就把 `null` 定义成空串（返回 0），但 codegen 的
+   `emitStrConcat` / `emitStrEq` / `emitStrOrder` 直接 `movq (%rax)` 读长度头，
+   没有判空 —— `"" + null`、`null == ""`、`null < "a"` 全部 exit `-1073741819`。
+   修法：新增 `emitContainerLenTo()`，`null` 按长度 0 处理，三处统一走它。
+   `emitListConcat` 同样修（空列表拼接）。
+
+2. **浮点字面量被截断到 6 位有效数字**（编译器缺陷）。
+   `FloatLiteralNode::literalString()` 走 `utils::doubleToString()`，原实现是
+   `oss << value`（ostream 默认精度 6），`3.141593` → `"3.14159"`；codegen 的
+   `emitFloatLiteral` 再 `std::stod` 回读，精度永久丢失（实测 `sout(pi)` 打印
+   `3.141589`）。修法：`doubleToString` 改用 `std::to_chars`（最短往返表示），
+   失败时退回 `max_digits10`。修后 `sout(pi)` = `3.141593`、`sout(e)` = `2.718281`。
+
+3. **`ds.join` 单独 `import ds` 时无法编译**（标准库缺陷）。
+   `join` 内部用 `toStr`（str 模块），但 `ds.rio` 自己没有 `import str`；
+   模块是编译期内联的，用户只 import ds 时 `toStr` 不可见，报
+   `Assignment to 'r': cannot assign a value of type int to a target of type str`。
+   之前的 `test_p12_3c_ds.ps1` 一直同时 import `ds` + `str`，掩盖了这个缺陷
+   —— **这正是三层验收要求「每个模块独立可用」的价值**。修法：`ds.rio` 顶部
+   `import(sm="str")`（同名同签名重复内联是允许的，不会冲突）。
+
+**验收口径的两处澄清**（写进脚本注释，避免后人误判）：
+
+- **`ds.size` 删除项的验证方式**：因为 `ds` 现在依赖 `str`，嵌套 import 会把
+  `str` 的符号平铺进同一命名空间，`import ds` 之后 `size` 又能调到了。所以
+  「调用失败」不再是有效判据，改为**验导出表**（`-s -exp` 输出里不得出现）。
+  这符合语义：模块 export 了什么才是它的公开 API。
+- **未声明函数的失败形态**：RCC 对 `noSuchFunction(1)` 不报前端错误，而是生成
+  外部符号引用，链接期炸 `undefined reference to 'xxx'`。这是**当前实际行为**，
+  登记为已知（理想情况应在前端报错），测试按实际形态断言。
+
+**回归**：全量 24 套件，`test_std.ps1` 213/213、其余 22 套件全绿、
+legacy 15/17（`test_14_iter` / `test_15_forinrange` 为 G6 已知延期）。
+
+**写文档时发现的旧结论过时项**：`any` 作为形参/返回值标注，§5.5 与本文档
+原先都写「不支持（G13）」。实测 G13 已在 P12-2 完成，`fun f(x: any): any`
+正常解析、`-s` 也如实报 `x: any`。但语义是**「指针族值」**而非「任何值」：
+
+| 调用 | 结果 |
+|---|---|
+| `f("abc")` / `f([1,2])` / `f({"k":1})` | 正常（长度 3 / 2 / 1） |
+| `f(5)` 且函数体读指针 | **段错误** exit `-1073741819` |
+| `var s: str = f(7)` | 编译期类型错误 |
+| `f([1,2])[0]` | 编译期错误（返回值是 `any`，不能下标） |
+
+已据此重写 `docs/rio_doc.md` §8.7，并回改 §5.4 / §5.5 的过时表述。
+
+### 10.7 P12-4 落地记录（脚本重写）
+
+#### 10.7.1 `scripts/run.bat`
+
+旧版是 LLVM 时代的五步流水线，其中两个硬编码绝对路径**早已失效**：
+`LLC_EXE=D:\repositories\llvm-project\build\bin\llc.exe`（不存在）、
+`CMAKE_BUILD_DIR=D:\ClionProjects\RCC\cmake-build-debug`（指向别的仓库）。
+
+新版：
+
+| 旧步骤 | 新做法 |
+|---|---|
+| `RCC -ir --p in.rio --ir-o out.ll` | `RCC -build --path in.rio --output out`（一步到位） |
+| `llc -filetype=obj out.ll -o out.obj` | 删除（`as` 由 RCC 自己调） |
+| `g++ out.obj -o out.exe` | 删除（链接由 RCC 自己调） |
+| `cmake --build D:\ClionProjects\...` | `mingw32-make -C build -j 10`，路径从 `%~dp0..` 推导 |
+
+保留 CLI：`-i <test_dir>`、`--no-run`、`--skip-cmake`、`-h`。
+
+**踩坑**：`.bat` 必须用 **CRLF** 行尾。用 LF 写入时 `cmd.exe` 会把每行按
+`set "REPO=%~dp0.."` 的尾部字节吃掉，报一堆 `'ift' is not recognized`、
+`'P_CMAKE"=="false" (' is not recognized` —— 表现完全不像行尾问题，
+很容易误判成语法错误。
+
+#### 10.7.2 `scripts/test.bat` + `test_scripts/test_all.ps1`
+
+旧 `test.bat` 用 `fc /W` 比对 `expected.txt`，而 `test_legacy_all.ps1` 是
+**逐字节**比对 —— 同一份输出可能在一个脚本里过、另一个里挂，两套判定逻辑
+必然漂移。新版 `test.bat` 退化成三行薄壳：
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" %*
+```
+
+逻辑全在 `test_all.ps1`，**只有一套判定逻辑**。功能：
+
+| 参数 | 作用 |
+|---|---|
+| （无） | 跑全部 24 套件 |
+| `-Quick` | 跳过 `test_std` 与 `test_legacy_all` 两个慢套件（22 套） |
+| `-Filter <regex>` | 只跑名字匹配的套件 |
+| `-StopOnFail` | 首个失败即中止 |
+| `-KeepLog` | 每个套件的完整日志落到 `build\test_logs\` |
+
+套件顺序刻意安排成「先编译器自身正确 → 再标准库 → 最后 legacy」，
+这样最先失败的那个通常就是根因。汇总表解析各脚本尾部的「通过 N，失败 M」，
+legacy 额外标注 `G6 延期：test_14_iter, test_15_forinrange`。
+
+**实测**：`-Quick` 22 套件 439 项全绿；全量 24 套件 **667 通过 / 2 失败**
+（2 项即 G6 延期，不计入验收门槛）。
 
 ## 11. 总体执行原则（本计划的总纲，任何小节冲突时以本节为准）
 

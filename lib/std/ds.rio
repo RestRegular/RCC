@@ -36,6 +36,13 @@
  * ==========================================================================
  */
 
+// `join` 要把任意元素转成 str，只能靠 str 模块的 `toStr` 重载（泛型做不到
+// 类型分派，见文件头第 5 条）。模块是编译期内联的，这里不 import 的话，
+// 用户只 `import ds` 时 `toStr` 不可见 —— `join` 会编译失败（P12-3-D 实测：
+// `Assignment to 'r': cannot assign a value of type int to a target of type str`）。
+// 用户同时 import ds 和 str 时符号重复内联是允许的（同名同签名合并），不会冲突。
+import(sm="str")
+
 // ============================ 内部工具 ============================
 //
 // 模块私有辅助函数一律带 `_ds` 前缀：模块是编译期内联的，被 import 的
@@ -150,7 +157,12 @@ fun isEmpty(arg: any): bool {
 fun top[T](xs: list[T]): T {
     var n: int = _dsLen(xs)
     if n == 0 {
-        var zero: T = xs[0]
+        // 不能写 `var zero: T = xs[0]`：空列表的元素区没有有效数据，
+        // 读到的是堆上的未初始化字节。对 T=str 就是一个野指针，
+        // 后续参与拼接/比较直接段错误（P12-3-D 实测 exit -1073741819）。
+        // 未初始化的 `var zero: T` 才是元素类型的零值（int 0 / float 0.0 /
+        // bool false / str null，而 null 按空串处理），与文档口径一致。
+        var zero: T
         ret zero
     }
     ret xs[n - 1]

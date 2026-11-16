@@ -1,95 +1,36 @@
 @echo off
-cls
-echo ========================================
-echo RCC Test Runner
-echo ========================================
+REM ============================================================================
+REM  test.bat —— 一条命令跑完全部测试
+REM
+REM  P12-4 重写：旧版是 bat 里遍历 tests\test_* 目录、逐个 call run.bat、
+REM  用 `fc /W` 比对 expected.txt。问题：
+REM    1. `fc /W` 会**吞掉空白差异**，与 test_legacy_all.ps1 的逐字节比对
+REM       语义不一致 —— 同一份输出在两个脚本里判定结果可能不同。
+REM    2. bat 处理中文路径、引号、CRLF 都很脆，失败时信息也不足。
+REM
+REM  新版：本文件退化成薄壳，逻辑全在 test_scripts\test_all.ps1，只有一套
+REM  判定逻辑。这样 run.bat / test.bat 只负责「找到工具」，不负责判定。
+REM
+REM  用法：
+REM    scripts\test.bat              跑全部（含 legacy）
+REM    scripts\test.bat -Quick       跳过 legacy 与慢套件
+REM    scripts\test.bat -Filter std  只跑名字含 std 的套件
+REM ============================================================================
+setlocal
 
-setlocal enabledelayedexpansion
+set "HERE=%~dp0"
+set "PS1=%HERE%..\test_scripts\test_all.ps1"
 
-REM 获取脚本所在目录
-set "script_dir=%~dp0"
-set "runner=%script_dir%run.bat"
-
-if not exist "%runner%" (
-    echo ERROR: runner not found: %runner%
+if not exist "%PS1%" (
+    echo ERROR: test runner not found: %PS1%
     exit /b 1
 )
 
-REM 设置测试根目录
-set "tests_root=%script_dir%..\tests"
-
-REM 初始化计数器
-set PASS_COUNT=0
-set FAIL_COUNT=0
-set TOTAL_COUNT=0
-
-echo Tests root: %tests_root%
-echo Runner:     %runner%
-echo ========================================
-echo.
-
-REM 遍历所有 test_* 目录
-for /D %%D in ("%tests_root%\test_*") do (
-    set "test_dir=%%D"
-    set "test_name=%%~nxD"
-    set "expected=%%D\expected.txt"
-    set "actual=%%D\actual.txt"
-
-    REM 检查 expected.txt 是否存在
-    if not exist "!expected!" (
-        echo [SKIP] !test_name! - expected.txt not found
-        echo.
-    ) else (
-        set /a TOTAL_COUNT+=1
-
-        echo [RUN]  !test_name!...
-
-        REM 运行 run.bat --skip-cmake
-        call "%runner%" -i "!test_dir!" > "!test_dir!\build.log" 2>&1
-
-        if errorlevel 1 (
-            echo [FAIL] !test_name! - build/run error
-            type "!test_dir!\build.log"
-            set /a FAIL_COUNT+=1
-        ) else (
-            REM 检查 actual.txt 是否生成
-            if not exist "!actual!" (
-                echo [FAIL] !test_name! - actual.txt not generated
-                set /a FAIL_COUNT+=1
-            ) else (
-                REM 比较 actual.txt 和 expected.txt
-                fc /W "!expected!" "!actual!" > nul 2>&1
-                if errorlevel 1 (
-                    echo [FAIL] !test_name! - output mismatch
-                    echo --- Expected ---
-                    type "!expected!"
-                    echo --- Actual ---
-                    type "!actual!"
-                    echo ----------------
-                    set /a FAIL_COUNT+=1
-                ) else (
-                    echo [PASS] !test_name!
-                    set /a PASS_COUNT+=1
-                )
-            )
-        )
-        echo.
-    )
-)
-
-REM 输出汇总
-echo ========================================
-echo Test Summary
-echo ========================================
-echo Total: %TOTAL_COUNT%
-echo Pass:  %PASS_COUNT%
-echo Fail:  %FAIL_COUNT%
-echo ========================================
-
-if %FAIL_COUNT% gtr 0 (
-    echo RESULT: FAILED
+where powershell >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: powershell not found in PATH
     exit /b 1
-) else (
-    echo RESULT: ALL PASSED
-    exit /b 0
 )
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" %*
+exit /b %errorlevel%

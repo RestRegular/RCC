@@ -5,6 +5,9 @@
 #define  NOMINMAX
 #include <iostream>
 #include <limits>
+#include <charconv>
+#include <iomanip>
+#include <sstream>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -436,10 +439,24 @@ namespace utils
     }
 
     // 将double转换为字符串
+    //
+    // 必须输出**最短往返表示**（shortest round-trip），不能依赖 ostream 的默认
+    // 6 位有效数字：FloatLiteralNode 把字面量文本存成字符串，codegen 的
+    // emitFloatLiteral 再 std::stod 回读成 double。默认精度下 `3.141593` 会先被
+    // 截成 "3.14159"，回读得到 3.14159，精度永久丢失（P12-3-D 实测 sout(pi)
+    // 打印 3.141589）。std::to_chars 的默认重载给出的就是「能唯一还原该 double
+    // 的最短十进制」，既不丢精度也不会拖出无意义的长尾。
     std::string doubleToString(const double value)
     {
+        char buf[64];
+        const auto res = std::to_chars(buf, buf + sizeof(buf), value);
+        if (res.ec == std::errc())
+        {
+            return std::string(buf, res.ptr);
+        }
+        // 极端情况（不该发生）退回 max_digits10 的定点输出
         std::ostringstream oss;
-        oss << value;
+        oss << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
         return oss.str();
     }
 

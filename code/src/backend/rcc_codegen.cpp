@@ -3237,19 +3237,28 @@ namespace backend{
     // 这里直接内联生成，不调 rt.rio 的辅助函数：core 只提供 mem_copy /
     // mem_set / mem_eq / alloc，没有「读 8 字节」这种入口，用 Rio 写不出来；
     // 为此改 core 的 ABI 不值得（core.rio 是三层之间的冻结契约）。
+    // 读容器长度头到 dstSlot，null 视为 0。
+    // 见头文件注释：null 指针裸解引用偏移 0 会段错误。
+    void CodeGen::emitContainerLenTo(const std::string& containerSlot,
+                                     const std::string& dstSlot)    {
+        const std::string nullLabel = _asm.newLabel("len_null");
+        _asm.mov(containerSlot, "%rax");
+        _asm.movImm(0, "%rcx");
+        _asm.cmp("%rcx", "%rax");
+        _asm.je(nullLabel);
+        _asm.inst("movq", "(%rax)", "%rcx");
+        _asm.label(nullLabel);
+        _asm.mov("%rcx", dstSlot);
+    }
     void CodeGen::emitStrConcat(const std::string& lhsSlot, const std::string& rhsSlot)    {
         // 结果：新 str = { len_a+len_b, 字节A, 字节B }
         // 长度头在偏移 0，真实字节从 +8 起（与 rt_write_str 的约定一致）。
+        // 两侧都可能是 null（空串），长度按 0 算；null+8 参与 mem_copy 时
+        // n=0，core_mem_copy 直接返回，不会解引用。
         const std::string laSlot = allocateTemp(sema::getIntType());
         const std::string lbSlot = allocateTemp(sema::getIntType());
-        _asm.mov(lhsSlot, "%rax");
-        _asm.inst("movq", "(%rax)", "%rax");
-        // la
-        _asm.mov("%rax", laSlot);
-        _asm.mov(rhsSlot, "%rax");
-        _asm.inst("movq", "(%rax)", "%rax");
-        // lb
-        _asm.mov("%rax", lbSlot);
+        emitContainerLenTo(lhsSlot, laSlot);
+        emitContainerLenTo(rhsSlot, lbSlot);
         const std::string bufSlot = allocateTemp(sema::getStrType());
         _asm.mov(laSlot, "%rcx");
         _asm.mov(lbSlot, "%rax");
@@ -3292,14 +3301,11 @@ namespace backend{
     void CodeGen::emitListConcat(const std::string& lhsSlot, const std::string& rhsSlot)    {
         // ListHeader { i64 len, cap, rc, elem_size; u8 data[] }，data 从 +32 起，
         // 元素槽恒 8 字节（见本文件 P5 段）。
+        // 两侧都可能是 null（空列表），长度按 0 算，见 emitContainerLenTo。
         const std::string laSlot = allocateTemp(sema::getIntType());
         const std::string lbSlot = allocateTemp(sema::getIntType());
-        _asm.mov(lhsSlot, "%rax");
-        _asm.inst("movq", "(%rax)", "%rax");
-        _asm.mov("%rax", laSlot);
-        _asm.mov(rhsSlot, "%rax");
-        _asm.inst("movq", "(%rax)", "%rax");
-        _asm.mov("%rax", lbSlot);
+        emitContainerLenTo(lhsSlot, laSlot);
+        emitContainerLenTo(rhsSlot, lbSlot);
         const std::string bufSlot = allocateTemp(sema::getPtrType());
         _asm.mov(laSlot, "%rcx");
         _asm.mov(lbSlot, "%rax");
@@ -3354,12 +3360,8 @@ namespace backend{
         // core_mem_eq 对 n=0 直接返回 true，长度不等时提前退出即可。
         const std::string laSlot = allocateTemp(sema::getIntType());
         const std::string lbSlot = allocateTemp(sema::getIntType());
-        _asm.mov(lhsSlot, "%rax");
-        _asm.inst("movq", "(%rax)", "%rax");
-        _asm.mov("%rax", laSlot);
-        _asm.mov(rhsSlot, "%rax");
-        _asm.inst("movq", "(%rax)", "%rax");
-        _asm.mov("%rax", lbSlot);
+        emitContainerLenTo(lhsSlot, laSlot);
+        emitContainerLenTo(rhsSlot, lbSlot);
         const std::string neLabel = _asm.newLabel("streq_ne");
         const std::string doneLabel = _asm.newLabel("streq_done");
         _asm.mov(laSlot, "%rcx");
@@ -3396,12 +3398,8 @@ namespace backend{
         // 长度头在 +0，内容从 +8 起
         const std::string laSlot = allocateTemp(sema::getIntType());
         const std::string lbSlot = allocateTemp(sema::getIntType());
-        _asm.mov(lhsSlot, "%rax");
-        _asm.inst("movq", "(%rax)", "%rax");
-        _asm.mov("%rax", laSlot);
-        _asm.mov(rhsSlot, "%rax");
-        _asm.inst("movq", "(%rax)", "%rax");
-        _asm.mov("%rax", lbSlot);
+        emitContainerLenTo(lhsSlot, laSlot);
+        emitContainerLenTo(rhsSlot, lbSlot);
         // 取共同前缀长度 min(la, lb)
         const std::string minSlot = allocateTemp(sema::getIntType());
         _asm.mov(laSlot, "%rax");

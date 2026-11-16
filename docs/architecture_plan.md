@@ -540,11 +540,12 @@ compiler ──解析──► lib/core/core.rio        （必须，ABI 契约�
 **P0–P8 = 追平现有能力；P9–P11 = 语言升级。**
 顺序上先做端到端竖切（P0 就出 exe），避免陷在语义层里看不见进展。
 
-进度（2026-11-16）：P0 ✅、P1 ✅、P2 ✅、P3 ✅、P4 ✅、P5 ✅、P6 ✅、P7 ✅、P8 ✅、P9 ✅、P10 ✅、**P11 ✅**、P12 待做。
+进度（2026-11-17）：P0 ✅、P1 ✅、P2 ✅、P3 ✅、P4 ✅、P5 ✅、P6 ✅、P7 ✅、P8 ✅、P9 ✅、P10 ✅、P11 ✅、**P12 ✅**。
 P1/P2/P3 的内容（值表示、表达式、控制流）已在 P1 一次做齐，
 阶段记录见 `docs/p1_plan.md`；P4 见 `docs/p2_plan.md`；P5 见 `docs/p5_plan.md`；
-P6 见 `docs/p6_plan.md`；P7 见 `docs/p7_plan.md`；P8 见 `docs/p8_plan.md`；P9 见 `docs/p9_plan.md`；P10 见 `docs/p10_plan.md`；P11 见 `docs/p11_plan.md`。
+P6 见 `docs/p6_plan.md`；P7 见 `docs/p7_plan.md`；P8 见 `docs/p8_plan.md`；P9 见 `docs/p9_plan.md`；P10 见 `docs/p10_plan.md`；P11 见 `docs/p11_plan.md`；P12 见 `docs/p12_plan.md`。
 当前 legacy 17 个测试通过 15 个（test_1–13、16、17）。
+`test_14_iter` / `test_15_forinrange` 是 G6（闭包写回）延期的已知失败，非回归。
 test_14_iter / test_15_forinrange 仍然不通过，但**不再是 P8 的门槛**：
 它们依赖旧 LLVM 时代的 `release/Lib/builtin/ds.rio`（`encapsulated` + RA 指令），
 属于 P12「重写标准库」的范围。P8 的门槛改为 `test_scripts/test_p8_modules.ps1`（13 个用例）。
