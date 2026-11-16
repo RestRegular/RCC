@@ -129,6 +129,34 @@ if(WIN32)
     else()
         message(WARNING "Runtime layer source not found: ${RCC_RT_SRC}")
     endif()
+
+    # ==================== std 层（stdlib 源码即发行物） ====================
+    #
+    # lib/std/*.rio 是**唯一真相**，release/Lib/builtin/ 只是构建产物。
+    # 这样做的理由：stdlib 是纯 Rio 源码，被 import 时由模块加载器在编译期
+    # 读走，没有任何"编译"步骤。旧架构把它当成随包发行的静态资源直接签进
+    # 仓库，结果是"源码改了但没重新拷"这类漂移无法被构建发现。
+    #
+    # 现在改成构建时拷贝：仓库里只有 lib/std/ 一份，release/Lib/builtin/
+    # 进 .gitignore。改了源码必然经过这次拷贝，不会再漂。
+    file(GLOB RCC_STD_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/lib/std/*.rio")
+    set(RCC_STD_OUT_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Lib/builtin")
+
+    if(RCC_STD_SOURCES)
+        add_custom_command(
+                OUTPUT "${RCC_STD_OUT_DIR}/.stamp"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${RCC_STD_OUT_DIR}"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${RCC_STD_SOURCES} "${RCC_STD_OUT_DIR}"
+                COMMAND ${CMAKE_COMMAND} -E touch "${RCC_STD_OUT_DIR}/.stamp"
+                DEPENDS ${RCC_STD_SOURCES}
+                COMMENT "Copying std layer: lib/std/*.rio -> release/Lib/builtin/"
+                VERBATIM)
+
+        add_custom_target(rcc_std ALL DEPENDS "${RCC_STD_OUT_DIR}/.stamp")
+        add_dependencies(RCC rcc_std)
+    else()
+        message(WARNING "Standard library sources not found: ${CMAKE_CURRENT_SOURCE_DIR}/lib/std/*.rio")
+    endif()
 endif()
 
 # ==================== 打印配置摘要 ====================

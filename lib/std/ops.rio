@@ -1,0 +1,67 @@
+/*
+ * ops —— 表达式级小工具（三元、短路取值）
+ *
+ * 原仓库 API 面（Lib/builtin/ops.rio）：
+ *   ternary、ternaryLazy、orVal、orLazy
+ *
+ * 与旧实现的差异：
+ *   * `ternary` / `orVal` 旧版形参与返回都不写标注（等价于 `any`）。新后端是
+ *     静态的，不写标注就按 int 推断 —— 传 float 会把 double 位模式当整数解释。
+ *     这里改成泛型 `[T]`，两个分支同类型时结果类型正确。
+ *   * `orLazy` 旧版实现是 `elif back == true { ret back() }`，把一个**函数值**
+ *     和 `true` 比，实际永远走不到；于是 `orLazy(5, ...)` 返回 `false`。
+ *     这是旧实现的缺陷，这里按名字表达的本意实现：`front` 为真就返回
+ *     `front`，否则返回 `back()`。
+ *   * `orVal` 的形参名 `default` 在部分语法位置有歧义，这里改名 `fallback`。
+ *     形参名不属于公开 API 面（调用按位置传参），改名不影响调用方。
+ */
+
+/**
+ * 三元取值：condition 为真取 trueValue，否则取 falseValue。
+ *
+ * 注意 `ternary` 会**先求值两个分支**；需要惰性求值请用 `ternaryLazy`。
+ *
+ * @example ternary(true, "a", "b") == "a"，ternary(false, 1, 2) == 2
+ */
+fun ternary[T](condition: bool, trueValue: T, falseValue: T): T {
+    if condition {
+        ret trueValue
+    }
+    ret falseValue
+}
+
+/**
+ * 惰性三元：只求值被选中的那一个分支。
+ *
+ * @example ternaryLazy(x != null, () -> { ret x.name }, () -> { ret "?" })
+ */
+fun ternaryLazy[T](condition: bool, trueFuni: funi[][T], falseFuni: funi[][T]): T {
+    if condition {
+        ret trueFuni()
+    }
+    ret falseFuni()
+}
+
+/**
+ * 空值兜底：`fallback` 为 `null` 或 `false` 时返回 `spare`，否则返回
+ * `fallback` 本身。用来写「配置项没给就用默认值」。
+ *
+ * @example orVal(null, 10) == 10，orVal(7, 10) == 7
+ */
+fun orVal[T](fallback: T, spare: T): T {
+    ret ternary(fallback == null || fallback == false, spare, fallback)
+}
+
+/**
+ * 惰性空值兜底：`front` 为真就直接返回，否则调用 `back()` 求备用值。
+ *
+ * @example orLazy(getConfig("x"), () -> { ret 10 })
+ */
+fun orLazy[T](front: T, back: funi[][T]): T {
+    if front == null || front == false {
+        ret back()
+    }
+    ret front
+}
+
+export(ternary, ternaryLazy, orVal, orLazy)

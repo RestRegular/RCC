@@ -253,6 +253,43 @@ namespace backend{
             }
             out.push_back(node);
         }
+        // 扫描形参表里有没有变长形参 `*args` / `**kwargs`。
+        // 它们在 AST 里是 UnaryExpressionNode(TOKEN_STAR / TOKEN_DOUBLE_STAR)，
+        // collectParamNames 不解包（`*args` 里的 args 不是普通形参），
+        // 所以这里单独走一遍，只记「有没有」，不碰名字。
+        void collectVariadicFlags(const std::shared_ptr<ast::ExpressionNode>& node,
+                                  bool& hasPositional,
+                                  bool& hasKeyword)        {
+            if (!node) return;
+            if (const auto unary = std::dynamic_pointer_cast<ast::UnaryExpressionNode>(node))            {
+                const auto t = unary->getOpToken().getType();
+                if (t == core::TokenType::TOKEN_DOUBLE_STAR) hasKeyword = true;
+                else if (t == core::TokenType::TOKEN_STAR) hasPositional = true;
+                return;
+            }
+            if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))            {
+                collectVariadicFlags(infix->getLeftNode(), hasPositional, hasKeyword);
+                collectVariadicFlags(infix->getRightNode(), hasPositional, hasKeyword);
+                return;
+            }
+            if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))            {
+                for (const auto& e : block->getBodyExpressions())
+                    collectVariadicFlags(e, hasPositional, hasKeyword);
+                return;
+            }
+            if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))            {
+                collectVariadicFlags(paren->getRangerNode(), hasPositional, hasKeyword);
+                return;
+            }
+            if (const auto list = std::dynamic_pointer_cast<ast::ListExpressionNode>(node))            {
+                if (const auto body = std::dynamic_pointer_cast<ast::ExpressionNode>(list->getBodyNode()))
+                    collectVariadicFlags(body, hasPositional, hasKeyword);
+                return;
+            }
+            if (const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(node))            {
+                collectVariadicFlags(assign->getAssignPair().first, hasPositional, hasKeyword);
+            }
+        }
         bool contains(const std::vector<std::string>& v, const std::string& s)        {
             for (const auto& e : v)            {
                 if (e == s) return true;
@@ -834,6 +871,10 @@ namespace backend{
                         {
                             if (findClass(mid->getName()))
                                 return std::make_shared<sema::ClassType>(mid->getName());
+                            // P12/G14：`mod.gen(...)` 的返回类型必须按泛型决议算，
+                            // 否则 `sout(math.max(2.5, 1.5))` 会按 int 解释 double
+                            // 的位模式（打印出 4612811918334230528）。
+                            if (const auto t = inferGenericCallType(mid->getName(), member, node))                                return t;
                             if (const auto found = _functionReturns.find(mid->getName());
                                 found != _functionReturns.end())
                                 return found->second;
@@ -3912,6 +3953,10 @@ namespace backend{
         }
         // P8：命名实参与缺省实参在这里统一摊平。必须在取 paramTypes 之前做，
         // 否则实参个数和位置都对不上形参签名。
+        // 个数校验必须排在摊平**之前**：摊平会把缺省实参补进来，
+        // 之后就再也看不出「用户到底少传了几个」。
+        checkCallArity(fname, args, node->getPos(), fname);
+        if (hasFailed()) return;
         const auto callArgs = normalizeCallArgs(args, fname);
         // 用户自定义的 main 在 codegen 里发射为 __rio_user_main
         const std::string emitName = (fname == "main") ? "__rio_user_main" : fname;
@@ -4022,6 +4067,77 @@ namespace backend{
         }
         return slots;
     }
+    void CodeGen::checkCallArity(const std::string& fname,
+                                 const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                 const utils::Pos& pos,
+                                 const std::string& displayName)    {
+        const auto sigIt = _functionParams.find(fname);
+        if (sigIt == _functionParams.end()) return;   // 不认识的名字：交给别的路径
+        const size_t declared = sigIt->second.size();
+        // 变长形参不占 paramTypes 的位置，多余实参算被它吃掉。
+        const auto varIt = _functionVariadic.find(fname);
+        const bool hasPositional = varIt != _functionVariadic.end() && varIt->second.positional;
+        const bool hasKeyword = varIt != _functionVariadic.end() && varIt->second.keyword;
+        // 命名实参 `name=value` 不算位置实参，个数校验只数位置实参。
+        size_t positional = 0;
+        for (const auto& a : args)        {
+            const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(a);
+            if (assign && std::dynamic_pointer_cast<ast::IdentifierNode>(assign->getAssignPair().first))
+                continue;
+            ++positional;
+        }
+        // 上界：`*args` 能吃掉任意多个；`**kwargs` 只吃命名实参，不吃位置实参。
+        if (!hasPositional && positional > declared)        {
+            failAt(pos, "Function '" + displayName + "' takes " + std::to_string(declared) +
+                        " argument(s) but " + std::to_string(positional) + " were given");
+            return;
+        }
+        // 下界：缺省实参补上之后还少，就是实打实少传。
+        // 有 `*args` 也只能兜住 0 个，不能兜住「少传了必填形参」。
+        const auto defaultsIt = _functionDefaults.find(fname);
+        size_t required = declared;
+        if (defaultsIt != _functionDefaults.end())        {
+            const auto namesIt = _functionParamNames.find(fname);
+            if (namesIt != _functionParamNames.end())            {
+                required = 0;
+                for (size_t i = 0; i < declared; ++i)                {
+                    const bool hasDefault =
+                        i < namesIt->second.size() &&
+                        defaultsIt->second.find(namesIt->second[i]) != defaultsIt->second.end();
+                    if (!hasDefault) ++required;
+                }
+            }
+        }
+        // 命名实参可能已经把某些必填形参填上了，只统计「一个都没填」的必填位。
+        if (required > positional)        {
+            size_t filledByName = 0;
+            const auto namesIt = _functionParamNames.find(fname);
+            if (namesIt != _functionParamNames.end())            {
+                for (const auto& a : args)                {
+                    const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(a);
+                    if (!assign) continue;
+                    const auto target = std::dynamic_pointer_cast<ast::IdentifierNode>(assign->getAssignPair().first);
+                    if (!target) continue;
+                    const auto& names = namesIt->second;
+                    for (size_t i = 0; i < names.size(); ++i)                    {
+                        if (names[i] != target->getName()) continue;
+                        const bool hasDefault =
+                            defaultsIt != _functionDefaults.end() &&
+                            defaultsIt->second.find(names[i]) != defaultsIt->second.end();
+                        if (!hasDefault) ++filledByName;
+                        break;
+                    }
+                }
+            }
+            if (required > positional + filledByName)            {
+                failAt(pos, "Function '" + displayName + "' requires at least " +
+                            std::to_string(required) + " argument(s) but " +
+                            std::to_string(positional + filledByName) + " were given");
+                return;
+            }
+        }
+        (void)hasKeyword;
+    }
     void CodeGen::emitModuleFunctionCall(const std::string& fname,
                                          const std::shared_ptr<ast::ExpressionNode>& callNode,
                                          const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)    {
@@ -4032,6 +4148,14 @@ namespace backend{
         if (lookupVar(fname) == nullptr && findClass(fname) != nullptr)        {
             emitConstructorCall(fname, callNode, args);
             return;
+        }
+        // P12/G14：模块里的泛型函数 —— `math.max(1, 2)` 的符号在调用点
+        // 才单态化出来，直接发裸名 `max` 会链接失败（定义处根本没发射这个名字）。
+        // 必须和裸名调用走同一条决议路径。
+        if (_genericFunctions.find(fname) != _genericFunctions.end())        {
+            // callee 传 nullptr：`mod.fn(...)` 的限定名不携带显式类型实参
+            // （`mod.fn[int](...)` 是另一种 AST 形态，另行处理）。
+            if (tryEmitGenericCall(fname, nullptr, callNode, args)) return;
         }
         // P11：模块里被内联进来的函数同样可能是重载集 —— `mod.f(1.5)`
         // 必须和 `f(1.5)` 决议到同一个符号，否则会调到「最后一个定义」上去。
@@ -5358,6 +5482,12 @@ namespace backend{
         for (size_t i = 0; i < generic.paramTypes.size() && i < args.size(); ++i)        {
             const auto& formal = generic.paramTypes[i];
             if (!formal) continue;
+            // P12/G14：`null` 字面量不能用来决定泛型形参。
+            // inferType 把 `null` 当 ptr，于是 `orVal(null, 10)` 的 T 会绑成
+            // ptr，返回值按指针打印成 `0x000000000000000a`。null 本来就可以
+            // 赋给任何指针族类型，让它参与推导只会污染结果 —— 跳过，
+            // 由同一调用里其它实参（或显式类型实参）决定 T。
+            if (std::dynamic_pointer_cast<ast::NullLiteralNode>(args[i])) continue;
             auto actual = inferType(args[i]);
             // 实参是具名函数（`map2(addOne, 41)`）：inferType 对标识符只会
             // 返回变量槽类型，取不到函数签名。这里按已登记的签名补出来，
@@ -5701,6 +5831,29 @@ namespace backend{
             }
         }
         _functionParams[fname] = paramTypes;
+        // 变长形参的存在性：`*args` 允许调用点传任意多个位置实参，
+        // `**kwargs` 允许任意多个命名实参。它们不占 paramTypes 的位置，
+        // 所以「收不收多余实参」只能单独登记。
+        {
+            bool hasPositional = false, hasKeyword = false;
+            if (const auto callInfix =
+                    std::dynamic_pointer_cast<ast::InfixExpressionNode>(node->getCallNode()))            {
+                if (const auto paren =
+                        std::dynamic_pointer_cast<ast::ParenRangerNode>(callInfix->getRightNode()))
+                    collectVariadicFlags(paren->getRangerNode(), hasPositional, hasKeyword);
+                else
+                    collectVariadicFlags(callInfix->getRightNode(), hasPositional, hasKeyword);
+            }
+            else            {
+                collectVariadicFlags(node->getCallNode(), hasPositional, hasKeyword);
+            }
+            VariadicInfo info;
+            info.fixedCount = paramNames.size();
+            info.positional = hasPositional;
+            info.keyword = hasKeyword;
+            if (hasPositional || hasKeyword) _functionVariadic[fname] = info;
+            else _functionVariadic.erase(fname);
+        }
         // P8：登记形参名与默认值，供调用点处理命名实参 / 缺省实参。
         _functionParamNames[fname] = paramNames;
         {

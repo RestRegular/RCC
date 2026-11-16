@@ -24,3 +24,11 @@
 /tests/*.exe
 /tests/*.o
 /tests/*.s
+# std 层：唯一真相是 lib/std/*.rio，release/Lib/builtin/ 下对应的文件由 CMake
+# 拷贝生成。签进仓库会让"改了源码但忘了重新拷"这类漂移无法被构建发现。
+# 逐文件列出而不是整目录忽略：io / str / ds / datatype 仍是旧架构遗留源码，
+# 要到 P12-3-B / P12-3-C 才搬进 lib/std，在那之前必须继续跟踪。
+/release/Lib/builtin/math.rio
+/release/Lib/builtin/ops.rio
+/release/Lib/builtin/prog.rio
+/release/Lib/builtin/.stamp

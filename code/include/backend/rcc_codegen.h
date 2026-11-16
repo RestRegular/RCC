@@ -341,6 +341,23 @@ namespace backend
         [[nodiscard]] std::vector<std::shared_ptr<ast::ExpressionNode>>
         normalizeCallArgs(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
                           const std::string& fname) const;
+        // 变长形参（`*args` / `**kwargs`）的存在性。
+        // 它们不进入 paramNames / paramTypes，所以「这个函数收不收多余实参」
+        // 必须单独登记，否则实参个数校验无从判断。
+        struct VariadicInfo
+        {
+            size_t fixedCount = 0;      // 非变长形参的个数
+            bool positional = false;    // 有 `*args`
+            bool keyword = false;       // 有 `**kwargs`
+        };
+        std::map<std::string, VariadicInfo> _functionVariadic;
+        // 调用点实参个数校验。只对已登记签名的函数生效；不认识的名字直接放过。
+        // 变长形参只是「接受多余实参」，**不等于**实现了收集语义 —— 收集
+        // 仍是待设计项（见 docs/p12_plan.md G1b）。
+        void checkCallArity(const std::string& fname,
+                            const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                            const utils::Pos& pos,
+                            const std::string& displayName);
         // 已登记但实现为 encapsulated 的函数（不发射函数体）
         std::map<std::string, bool> _encapsulatedFunctions;
         // 用户是否自己写了 fun main()（发射为 __rio_user_main）

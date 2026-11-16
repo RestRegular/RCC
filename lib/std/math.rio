@@ -1,0 +1,101 @@
+/*
+ * math —— 数学常量与基础数值运算
+ *
+ * 原仓库 API 面（Lib/builtin/math.rio）：
+ *   pi、e、pow、max、min、opp、abs
+ *
+ * 与旧实现的差异（都是「原实现依赖 RA 内置函数注册表」导致的）：
+ *   * 旧 `pow` / `max` / `min` / `opp` / `abs` 的形参不写标注，返回 `any`。
+ *     新后端是静态的：不写标注就按 int 推断，传 float 会按整数位模式解释
+ *     （实测 `max(2.5, 1.5)` 打出 4612811918334230528）。这里改成泛型
+ *     `[T]`，调用点按实参类型单态化，int / float / str 都得到正确结果。
+ *   * 旧 `abs` 用 `dt.type` 做运行时类型分派，`datatype` 模块已整模块删除
+ *     （P12 §5.4.1 S3），改为泛型 + 比较。
+ *   * 旧 `pow` 用 `ds.repeat` + 闭包写回外部变量，那是 G6（已延期到 P13）。
+ *     这里改成直接循环，不依赖闭包捕获写回。
+ *   * 旧模块顶层 `prog.entry((*args, **kwargs) -> { ... })` 是自测代码，
+ *     新架构里 `prog.entry` 的 argv 通道尚未设计（§4.2.3 登记待设计），删掉。
+ *
+ * 常量 `pi` / `e` 是模块级 `var`。模块在加载期被内联，所以引用方式是
+ * **裸名** `pi` / `e`（`import(math="math")` 之后），不能写 `math.pi` ——
+ * 限定名读模块级状态在加载期内联的模型下不成立（codegen 有明确诊断）。
+ */
+
+// 圆周率 π，约 3.141593
+var pi: float const = 3.141593
+
+// 自然常数 e，约 2.718282
+var e: float const = 2.718282
+
+/**
+ * 计算 a 的 times 次幂。
+ *
+ * 支持任意数值类型（int / float），由泛型在调用点单态化。
+ * 负指数原仓库就不支持（会打印一条提示），这里保持同样语义 ——
+ * 静默返回 1 会让调用方误以为算对了。
+ *
+ * @param a      底数
+ * @param times  指数
+ * @return       a^times；times < 0 时返回 1 并打印提示
+ * @example      pow(2, 10) == 1024，pow(1.5, 3) == 3.375
+ */
+fun pow[T](a: T, times: int): T {
+    if times < 0 {
+        sout("math.pow: negative exponents are not supported yet, returning 1")
+        ret 1
+    }
+    var result: T = 1
+    var i: int = 0
+    while i < times {
+        result = result * a
+        i += 1
+    }
+    ret result
+}
+
+/**
+ * 返回两个值中较大的一个。要求两侧同类型（`T` 只出现一次）。
+ *
+ * @example max(5, 3) == 5，max(1.5, 2.5) == 2.5，max("a", "b") == "b"
+ */
+fun max[T](a: T, b: T): T {
+    if a >= b {
+        ret a
+    }
+    ret b
+}
+
+/**
+ * 返回两个值中较小的一个。
+ *
+ * @example min(5, 3) == 3
+ */
+fun min[T](a: T, b: T): T {
+    if a <= b {
+        ret a
+    }
+    ret b
+}
+
+/**
+ * 返回相反数（加法逆元）。
+ *
+ * @example opp(5) == -5，opp(-2.5) == 2.5
+ */
+fun opp[T](arg: T): T {
+    ret 0 - arg
+}
+
+/**
+ * 返回绝对值。
+ *
+ * @example abs(-5) == 5，abs(-2.5) == 2.5
+ */
+fun abs[T](arg: T): T {
+    if arg < 0 {
+        ret opp(arg)
+    }
+    ret arg
+}
+
+export(pi, e, pow, max, min, opp, abs)
