@@ -264,7 +264,14 @@ Write-Host "==== 10. 内置库导出（模块内联）====" -ForegroundColor Cya
 
 $builtin = & $rcc -s -b --ext ds --fmt text 2>&1 | Out-String
 Check '内置库导出非空' ($builtin -match 'Symbol table')
-Check '内置库报出模块名' ($builtin -match 'Modules:')
+# 模块名只在**真的 import 过**时才报（table.moduleNames 由 module_loader 填充）。
+# 内置库自己现在都不 import 任何东西（P12 起标准库自包含），所以 `--ext ds`
+# 不会有 Modules 行 —— 这里改用一个真的 import 了内置库的源文件来验证内联。
+$modSrc = Join-Path $work 'mod_inline.rio'
+$null = New-Item -ItemType Directory -Force -Path $work
+[System.IO.File]::WriteAllText($modSrc, "import(ds=`"ds`")`nvar xs: list[int] = [3, 1, 2]`nsout(top(xs))`n")
+$modOut = & $rcc -s --path $modSrc --fmt text 2>&1 | Out-String
+Check '导入内置库报出模块名' ($modOut -match 'Modules:.*ds')
 
 Write-Host ""
 Write-Host "==== 11. --output 写文件 ====" -ForegroundColor Cyan

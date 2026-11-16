@@ -1917,6 +1917,25 @@ namespace backend{
             }
             return;
         }
+        // `str < str` / `<=` / `>` / `>=` 必须按**字典序**比较。
+        // 没有这个分支时它们落到下面的 cmpq，比的是两个指针 —— 结果取决于
+        // 字面量在堆上的相对地址。泛型单态化成 str 后尤其明显：
+        // `lt("bb","aa")` 返回 true。
+        if ((op == core::TokenType::TOKEN_LESS || op == core::TokenType::TOKEN_LESS_EQUAL ||
+             op == core::TokenType::TOKEN_GREATER || op == core::TokenType::TOKEN_GREATER_EQUAL) &&
+            lt && rt && lt->getKind() == sema::TypeKind::TK_STR &&
+            rt->getKind() == sema::TypeKind::TK_STR)        {
+            const std::string lhsSlot = allocateTemp(lt);
+            emitExpression(infix->getLeftNode());
+            if (hasFailed()) return;
+            _asm.mov("%rax", lhsSlot);
+            const std::string rhsSlot = allocateTemp(rt);
+            emitExpression(infix->getRightNode());
+            if (hasFailed()) return;
+            _asm.mov("%rax", rhsSlot);
+            emitStrOrder(lhsSlot, rhsSlot, static_cast<int>(op));
+            return;
+        }
         // 左值求值 -> 暂存槽（不能用 push：右值求值里可能有调用，
         // push 造成的 8 字节偏移会让那个调用的 %rsp 失去 16 字节对齐）
         emitExpression(infix->getLeftNode());
@@ -3331,8 +3350,7 @@ namespace backend{
         _asm.addRsp(32);
         _asm.mov(bufSlot, "%rax");
     }
-    void CodeGen::emitStrEq(const std::string& lhsSlot, const std::string& rhsSlot)    {
-        // 先比长度头，再比内容字节。两段都可能为 null（空串/未初始化），
+    void CodeGen::emitStrEq(const std::string& lhsSlot, const std::string& rhsSlot)    {        // 先比长度头，再比内容字节。两段都可能为 null（空串/未初始化），
         // core_mem_eq 对 n=0 直接返回 true，长度不等时提前退出即可。
         const std::string laSlot = allocateTemp(sema::getIntType());
         const std::string lbSlot = allocateTemp(sema::getIntType());
@@ -3361,6 +3379,95 @@ namespace backend{
         _asm.jmp(doneLabel);
         _asm.label(neLabel);
         _asm.movImm(0, "%rax");
+        _asm.label(doneLabel);
+    }
+    // str 的**大小**比较（< <= > >=），按字典序。
+    //
+    // 之前这四个运算符没有 str 特例，直接落到 cmpq 比两个指针 —— 结果取决于
+    // 字面量在堆上的相对地址，与内容无关。表现是泛型 `fun lt[T](a: T, b: T)`
+    // 单态化成 str 之后 `lt("bb","aa")` 返回 true（N2/N7/N8 实测）。
+    // `==` / `!=` 早在 G9 就按内容比了（emitStrEq），但顺序比较一直漏着。
+    //
+    // 语义：逐字节比共同前缀（按**无符号**字节，与 ASCII/UTF-8 一致），
+    // 首个不同字节决定大小；前缀全同则短的小（"ab" < "abc"）。
+    // 结果按 op 写入 %rax（0/1）。
+    void CodeGen::emitStrOrder(const std::string& lhsSlot, const std::string& rhsSlot,
+                               int op)    {
+        // 长度头在 +0，内容从 +8 起
+        const std::string laSlot = allocateTemp(sema::getIntType());
+        const std::string lbSlot = allocateTemp(sema::getIntType());
+        _asm.mov(lhsSlot, "%rax");
+        _asm.inst("movq", "(%rax)", "%rax");
+        _asm.mov("%rax", laSlot);
+        _asm.mov(rhsSlot, "%rax");
+        _asm.inst("movq", "(%rax)", "%rax");
+        _asm.mov("%rax", lbSlot);
+        // 取共同前缀长度 min(la, lb)
+        const std::string minSlot = allocateTemp(sema::getIntType());
+        _asm.mov(laSlot, "%rax");
+        _asm.mov(lbSlot, "%rcx");
+        _asm.cmp("%rcx", "%rax");
+        const std::string useA = _asm.newLabel("strord_use_a");
+        const std::string minDone = _asm.newLabel("strord_min_done");
+        _asm.inst("jle", useA);
+        _asm.mov("%rcx", "%rax");
+        _asm.label(useA);
+        _asm.mov("%rax", minSlot);
+        _asm.label(minDone);
+        // 逐字节比较：%r8 = 循环计数，%r9 = lhs 内容基址，%r10 = rhs 内容基址
+        const std::string loopLabel = _asm.newLabel("strord_loop");
+        const std::string diffLabel = _asm.newLabel("strord_diff");
+        const std::string prefixEq = _asm.newLabel("strord_prefix_eq");
+        _asm.mov(lhsSlot, "%r9");
+        _asm.inst("addq", "$8", "%r9");
+        _asm.mov(rhsSlot, "%r10");
+        _asm.inst("addq", "$8", "%r10");
+        _asm.movImm(0, "%r8");
+        _asm.label(loopLabel);
+        _asm.mov(minSlot, "%rax");
+        _asm.cmp("%rax", "%r8");
+        _asm.inst("jge", prefixEq);
+        // 取两个字节（无符号）
+        _asm.inst("movzbq", "(%r9,%r8,1)", "%rax");
+        _asm.inst("movzbq", "(%r10,%r8,1)", "%rcx");
+        _asm.cmp("%rcx", "%rax");
+        _asm.jne(diffLabel);
+        _asm.inst("addq", "$1", "%r8");
+        _asm.jmp(loopLabel);
+        _asm.label(diffLabel);
+        // %rax = lhs 字节，%rcx = rhs 字节，两者不等
+        // 用 setb / seta 直接由标志位得出「lhs < rhs」/「lhs > rhs」
+        {
+            const char* cc = "b";   // 默认「lhs < rhs」
+            switch (static_cast<core::TokenType>(op))            {
+            case core::TokenType::TOKEN_LESS:          cc = "b";  break;
+            case core::TokenType::TOKEN_LESS_EQUAL:    cc = "be"; break;
+            case core::TokenType::TOKEN_GREATER:       cc = "a";  break;
+            case core::TokenType::TOKEN_GREATER_EQUAL: cc = "ae"; break;
+            default: break;
+            }
+            _asm.inst(std::string("set") + cc, "%al");
+            _asm.inst("movzbq", "%al", "%rax");
+        }
+        const std::string doneLabel = _asm.newLabel("strord_done");
+        _asm.jmp(doneLabel);
+        // 共同前缀全同：按长度定大小
+        _asm.label(prefixEq);
+        _asm.mov(laSlot, "%rcx");
+        _asm.mov(lbSlot, "%rax");
+        _asm.cmp("%rax", "%rcx");   // 比较 la ? lb
+        {
+            const char* cc = "l";
+            switch (static_cast<core::TokenType>(op))            {
+            case core::TokenType::TOKEN_LESS:          cc = "l";  break;
+            case core::TokenType::TOKEN_LESS_EQUAL:    cc = "le"; break;
+            case core::TokenType::TOKEN_GREATER:       cc = "g";  break;
+            case core::TokenType::TOKEN_GREATER_EQUAL: cc = "ge"; break;
+            default: break;
+            }
+            _asm.inst(std::string("set") + cc, "%al");
+            _asm.inst("movzbq", "%al", "%rax");
+        }
         _asm.label(doneLabel);
     }
     void CodeGen::emitIndexExpression(const std::shared_ptr<ast::ExpressionNode>& node)    {        const auto index = std::dynamic_pointer_cast<ast::IndexExpressionNode>(node);
@@ -5639,6 +5746,10 @@ namespace backend{
         _functionParams[mangled] = paramTypes;
         _functionParamNames[mangled] = generic.paramNames;
         _functionReturns[mangled] = retType;
+        // 缺省实参表也要按 mangled 名登记一份：调用点拿 mangled 名去查
+        // _functionDefaults 补空位（见 normalizeCallArgs）。漏了这一步，
+        // 泛型调用少传的实参补不上，寄存器里留着上一个调用的残值。
+        if (!generic.defaults.empty()) _functionDefaults[mangled] = generic.defaults;
         {
             std::vector<bool> mask(paramTypes.size(), true);
             _functionParamAnnotated[mangled] = mask;
@@ -5786,10 +5897,12 @@ namespace backend{
                 if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(paramsNode))                {
                     collectParamNames(paren->getRangerNode(), generic.paramNames);
                     collectParamTypesT(paren->getRangerNode(), generic.paramTypes);
+                    collectParamDefaults(paren->getRangerNode(), generic.defaults);
                 }
                 else if (paramsNode)                {
                     collectParamNames(paramsNode, generic.paramNames);
                     collectParamTypesT(paramsNode, generic.paramTypes);
+                    collectParamDefaults(paramsNode, generic.defaults);
                 }
             }
             generic.retType = typeFromLabelList(node->getLabelNodes(), genericParams);

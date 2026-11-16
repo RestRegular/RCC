@@ -200,7 +200,13 @@ namespace backend
         void emitStrConcat(const std::string& lhsSlot, const std::string& rhsSlot);
         void emitListConcat(const std::string& lhsSlot, const std::string& rhsSlot);
         // P12/G9：`str == str` 的内容比较（emitBinary 分派过来）。结果放 %rax（0/1）。
-        void emitStrEq(const std::string& lhsSlot, const std::string& rhsSlot);        void emitIndexExpression(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitStrEq(const std::string& lhsSlot, const std::string& rhsSlot);
+        // `str < str` / `<=` / `>` / `>=` 的字典序比较（emitBinary 分派过来）。
+        // 之前这四个运算符直接 cmpq 比指针，结果与内容无关。
+        // 第三个参数是 core::TokenType 的整数值（不在此处引入 rcc_core.h，
+        // 保持后端头文件对前端 token 定义的解耦）。
+        void emitStrOrder(const std::string& lhsSlot, const std::string& rhsSlot, int op);
+        void emitIndexExpression(const std::shared_ptr<ast::ExpressionNode>& node);
 
         // 把容器字面量的体拆成元素列表。
         // 体是逗号连接的中缀链（PARALLEL），空字面量的体是 nullptr。
@@ -536,6 +542,10 @@ namespace backend
             std::vector<sema::TypePtr> paramTypes;
             sema::TypePtr retType;
             std::vector<std::string> paramNames;
+            // 形参默认值：名字 -> 默认值表达式。
+            // 必须在声明阶段就收下来：泛型声明本身不发射，形参表只在这里出现一次，
+            // 实例化时拿不到 AST 就补不出缺省实参（曾因此让 f(1) 读到栈垃圾）。
+            std::map<std::string, std::shared_ptr<ast::ExpressionNode>> defaults;
         };
         std::map<std::string, GenericFunction> _genericFunctions;
         // 已实例化的签名：mangled 名 -> true（避免重复单态化）。

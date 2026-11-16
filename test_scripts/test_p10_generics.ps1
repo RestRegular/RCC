@@ -131,6 +131,48 @@ $positive = [ordered]@{
         Body   = "fun identity[T](x: T): T { ret x }`nfun main(): void {`n    sout(1)`n}`nmain()`n"
         Expect = '1'
     }
+    # 泛型函数的默认参数（回归：曾经完全失效，被调方读到栈垃圾）。
+    # 根因是泛型声明分支提前 return，既没把默认值收进 GenericFunction，
+    # 也没按 mangled 名登记 _functionDefaults，调用点补不出缺省实参。
+    'pos_generic_default_int' = @{
+        Body   = "fun pad[T](x: T, n: int = 42): int { ret n }`nfun main(): void {`n    sout(pad(1))`n    sout(pad(2, 7))`n}`nmain()`n"
+        Expect = "42`n7"
+    }
+    # 默认值是 str：曾经会把整段内存（含环境变量）打出来。
+    'pos_generic_default_str' = @{
+        Body   = "fun tag[T](x: T, s: str = `"DEF`"): str { ret s }`nfun main(): void {`n    sout(tag(1))`n    sout(tag(2, `"X`"))`n}`nmain()`n"
+        Expect = "DEF`nX"
+    }
+    # 默认值是 bool：曾经碰巧返回 true，掩盖了缺陷。
+    'pos_generic_default_bool' = @{
+        Body   = "fun flag[T](x: T, b: bool = false): bool { ret b }`nfun main(): void {`n    sout(flag(1))`n    sout(flag(2, true))`n}`nmain()`n"
+        Expect = "false`ntrue"
+    }
+    # 多个默认参数 + 部分传参：位置必须对得上。
+    'pos_generic_default_multi' = @{
+        Body   = "fun mix[T](x: T, a: int = 1, b: int = 2): int { ret a * 10 + b }`nfun main(): void {`n    sout(mix(0))`n    sout(mix(0, 7))`n    sout(mix(0, 7, 8))`n}`nmain()`n"
+        Expect = "12`n72`n78"
+    }
+    # 默认值是类型形参本身。
+    'pos_generic_default_typeparam' = @{
+        Body   = "fun pick[T](x: T, y: T = 0): T { ret y }`nfun main(): void {`n    sout(pick(5))`n    sout(pick(5, 9))`n}`nmain()`n"
+        Expect = "0`n9"
+    }
+    # 显式类型实参 + 默认参数。
+    'pos_generic_default_explicit' = @{
+        Body   = "fun pad[T](x: T, n: int = 42): int { ret n }`nfun main(): void {`n    sout(pad[int](1))`n}`nmain()`n"
+        Expect = '42'
+    }
+    # 命名实参跳过默认位（补默认值时必须按名字定位）。
+    'pos_generic_default_named' = @{
+        Body   = "fun mix[T](x: T, a: int = 1, b: int = 2): int { ret a * 10 + b }`nfun main(): void {`n    sout(mix(0, b = 9))`n}`nmain()`n"
+        Expect = '19'
+    }
+    # 不同单态化实例各自的默认值都要正确（不能共用一份表）。
+    'pos_generic_default_two_inst' = @{
+        Body   = "fun pad[T](x: T, n: int = 42): int { ret n }`nfun main(): void {`n    sout(pad(1))`n    sout(pad(`"s`"))`n    sout(pad(2.5))`n}`nmain()`n"
+        Expect = "42`n42`n42"
+    }
 }
 
 # ---------------------------------------------------------------------------

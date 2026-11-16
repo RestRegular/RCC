@@ -1,942 +1,580 @@
 /*
- * DATA STRUCTURES EXTENSION
- * 
- * This extension provides functions for working with and manipulating
- * data structures and collections. It includes utilities for
- * measuring, inspecting, and transforming structured data.
- * 
- * The functions in this extension handle operations on iterables,
- * series, and other composite data types.
- * 
- * @author: @RestRegular
- * @version: 1.0.0
- * @extension: ds
+ * ds —— 容器（list / dict）操作模块
+ *
+ * ============================ 实现约束（重要） ============================
+ * 新架构是静态的、值内联的，没有装箱、没有运行期类型标签、没有解引用运算符。
+ * 这决定了本模块的实现手段：
+ *
+ *  1) **core 层没有「读内存」原语**。只有 mem_copy / mem_move / mem_set / mem_eq
+ *     和 alloc / free。要读某个地址的 8 字节整数，只能「伪造一个 str 头」：
+ *     把临时缓冲区的长度头写成 8，mem_copy 把目标地址的 8 字节搬到缓冲区
+ *     +8 处，再把缓冲区当 str，用 s[i] 逐字节读（char → int 是无符号的）。
+ *     见 _dsLoadI64。这是遍历 dict 内部数组的唯一手段。
+ *
+ *  2) **list 原地追加不可行**。`emitIndexAssignValue` 在写元素前有越界检查
+ *     （cmp (%rcx),%rax / jae skip），所以手工把长度头改大之后 `xs[n] = v`
+ *     仍会被跳过。因此 listAppend 返回新 list；等 P13 的容器机制补全后改回
+ *     原地追加。**原地删除可行**（左移覆盖 + 缩短长度头），listRemove 用它。
+ *
+ *  3) **没有 for-in**。`for x in xs` / `for k in d` 都是语法错误，
+ *     一律用 while + 下标。
+ *
+ *  4) **闭包不能写回外层变量**（G6 延期到 P13）。所以 iter / forInRange
+ *     不能靠回调累加，本模块不提供 iter（由 map / filter / forInRange 覆盖），
+ *     forInRange 的回调只做副作用。
+ *
+ *  5) `list[int]` 与 `list[str]` 不能重载分派（元素类型在 mangling 里被擦除，
+ *     报「重复定义」），所以凡是按元素类型区分的函数一律用泛型 `[T]`。
+ *
+ * ============================ 布局常量 ============================
+ *   ListHeader { i64 len, cap, rc, elem_size; u8 data[] }
+ *      len +0, cap +8, rc +16, elem_size +24, data +32，元素槽恒 8 字节
+ *   DictHeader { i64 len, cap, rc; ptr keys; ptr vals }
+ *      len +0, cap +8, rc +16, keys +24, vals +32
+ *   两者长度都在 +0，所以 _dsLen(arg: any) 对 str/list/dict 通用。
+ *   dict 的键值数组都是 8 字节槽的**线性数组**，遍历顺序 = 插入顺序。
+ * ==========================================================================
  */
-import(dt="datatype", ops="ops")
 
-fun size(arg): int {
-    /*
-     * Returns the size/length of an iterable data structure.
-     * 
-     * This function works with various iterable types including
-     * arrays, lists, series, maps, and other collections to
-     * determine their element count or length.
-     * 
-     * @param arg: The iterable data structure to measure
-     * @return: Integer representing the number of elements
-     * @throws: TypeError if argument is not iterable
-     */
-    encapsulated
-}
+// ============================ 内部工具 ============================
+//
+// 模块私有辅助函数一律带 `_ds` 前缀：模块是编译期内联的，被 import 的
+// 模块语句会原地展开到导入者的同一命名空间里，不加前缀会与其它模块撞名。
 
-fun copy(arg): any {
-    /*
-     * Creates a shallow copy of the input data structure.
-     *
-     * Returns a new data structure containing the same elements
-     * as the original. For nested structures, only the top-level
-     * elements are copied; nested references remain shared.
-     *
-     * @param arg: The data structure to copy
-     * @return: A new copy of the input data structure
-     * @throws: TypeError if argument cannot be copied
-     */
-    encapsulated
-}
-
-fun unpack(arg): series {
-    /*
-     * Unpacks a data structure into a series format.
-     *
-     * Converts the input argument into a series type, which is
-     * a sequential data structure suitable for iteration and
-     * sequential processing. This is particularly useful for
-     * working with variable argument structures or converting
-     * between different collection types.
-     *
-     * @param arg: The data structure to unpack into a series
-     * @return: Series representation of the input data
-     */
-    dt.setType(arg, "series")
-    ret arg
-}
-
-fun isEmpty(arg): bool {
-    /*
-     * Checks if a data structure is empty.
-     *
-     * Determines whether the given iterable contains no elements.
-     * This is equivalent to checking if size(arg) == 0.
-     *
-     * @param arg: The data structure to check
-     * @return: True if the structure has no elements, false otherwise
-     * @throws: TypeError if argument is not iterable
-     */
-    ret size(arg) == 0
-}
-
-fun top(arg): any {
-    /*
-     * Returns the last element of a data structure.
-     *
-     * For sequential data structures (arrays, lists, series, etc.),
-     * returns the element at the highest index. If the structure
-     * is empty, returns null.
-     *
-     * @param arg: The data structure to get the last element from
-     * @return: The last element or null if empty
-     * @throws: TypeError if argument is not iterable
-     */
-    if (isEmpty(arg)) {
-        ret null
+// 逐字节写 8 字节小端长度头。
+// core_mem_set(p, n, 1) 只写 n 的低 8 位，长度 > 255 会截断，必须逐字节写。
+fun _dsSetLen(p: ptr, n: int): void {
+    var i: int = 0
+    while i < 8 {
+        core_mem_set(p + i, (n / _dsPow256(i)) % 256, 1)
+        i += 1
     }
-    ret arg[size(arg) - 1]
 }
 
-fun repStr(arg, times: int): str {
-    /*
-     * Repeats a string multiple times and concatenates the results.
-     *
-     * Creates a new string by repeating the input string the specified
-     * number of times. If times is 0 or negative, returns an empty string.
-     *
-     * @param arg: The string to repeat
-     * @param times: The number of times to repeat the string
-     * @return: Concatenated string result of the repetition
-     */
-    var result: str = ""
-    for ({var i: int = 0; i < times; i++}) {
-        result += arg
+fun _dsPow256(k: int): int {
+    var r: int = 1
+    var i: int = 0
+    while i < k {
+        r = r * 256
+        i += 1
     }
-    ret result
+    ret r
 }
 
-fun repList(arg, times: int): list {
-    /*
-     * Creates a list by repeating an element multiple times.
-     *
-     * Generates a new list containing the specified element repeated
-     * the given number of times. The resulting list will have 'times'
-     * elements, all equal to the input argument.
-     *
-     * @param arg: The element to repeat in the list
-     * @param times: The number of times to repeat the element
-     * @return: List containing the repeated elements
-     */
-    var result: list = []
-    for ({var i: int = 0; i < times; i++}) {
-        result += [arg]
+// 读 addr 处 8 字节小端整数。
+//
+// 没有解引用运算符，core 层也没有读内存的原语，所以这里伪造一个 str 头：
+// scratch 的前 8 字节写成「长度 8」，接着 mem_copy 搬 8 字节进来，然后把
+// scratch 当 str 用 s[i] 逐字节读。scratch 由调用方分配并复用（每次调用
+// 都 alloc 会泄漏，本模块不调用 core_free）。
+fun _dsLoadI64(scratch: ptr, addr: ptr): int {
+    _dsSetLen(scratch, 8)
+    core_mem_copy(scratch + 8, addr, 8)
+    var s: str = scratch
+    var r: int = 0
+    var i: int = 7
+    while i >= 0 {
+        var c: char = s[i]
+        var b: int = c
+        r = r * 256 + b
+        i -= 1
     }
-    ret result
+    ret r
 }
 
-fun repeat(times: int, handler: funi[int][any]): void {
-    /*
-     * Executes a handler function repeatedly for a specified number of times.
-     *
-     * The handler function receives one parameter:
-     * - current iteration index
-     *
-     * @param times: The number of times to execute the handler
-     * @param handler: Callback function with signature (index: int): any
-     */
-    encapsulated
+// 分配一块可复用的 64 字节读缓冲（8 字节头 + 8 字节数据，留余量）。
+fun _dsScratch(): ptr {
+    ret core_alloc(64, 8)
 }
 
-fun forInRange(start: int, end: int, handler: funi[int, bool, bool][any],
-               sep: int = 1): void {
-    /*
-     * Iterates over a numeric range with a specified step size.
-     *
-     * Executes the handler function for each value in the range [start, end)
-     * with the specified step increment. The handler receives:
-     * - current value
-     * - boolean indicating if this is the first iteration
-     * - boolean indicating if this is the last iteration
-     *
-     * @param start: Starting value of the range (inclusive)
-     * @param end: Ending value of the range (exclusive)
-     * @param handler: Callback function with signature (value: int, isFirst: bool,
-     *                 isLast: bool): any
-     * @param sep: Step size between iterations (cannot be 0)
-     * @throws: ValueError if step size is zero
-     */
-    if sep == 0 {
-        fun sout(*args, end="\n"): void {
-            encapsulated
+// 在 dict 的键数组里线性查找 key，返回下标；找不到返回 -1。
+// 键按内容比较（G9 的 emitStrEq），不是按指针比。
+fun _dsKeyIndex(d: dict, key: str): int {
+    var scratch: ptr = _dsScratch()
+    var n: int = core_str_len(d)
+    var keys: ptr = _dsLoadI64(scratch, d + 24)
+    var i: int = 0
+    while i < n {
+        var kp: ptr = _dsLoadI64(scratch, keys + i * 8)
+        var ks: str = kp
+        if ks == key {
+            ret i
         }
-        sout("The sep cannot be 0")
+        i += 1
+    }
+    ret -1
+}
+
+// 8 字节槽的线性数组里，把 [idx+1, n) 左移一格覆盖 idx，共 tail 个元素。
+fun _dsShiftLeft(base: ptr, idx: int, tail: int): void {
+    if tail <= 0 {
         ret
     }
-    var isIncreasing: bool = sep > 0
-    var next: int = 0
-    for ({var i: int = start; i < end; i += sep}) {
-        next = i + sep
-        var isEnd = false
-        if (isIncreasing && next > end) || (isIncreasing == false && \
-            next < end) {
-            isEnd = true
-        }
-        if handler(i, i == start, isEnd) == false {
-            break
-        }
-    }
+    core_mem_move(base + idx * 8, base + (idx + 1) * 8, tail * 8)
 }
 
-fun iter(iterData, handler: funi[any, int, int, .*][any],
-         reverse: bool = false): bool {
-    /*
-     * Iterates through iterable data and applies handler to each item.
-     *
-     * Processes each element in the iterable data structure by calling
-     * the handler function with the current element, its index, and
-     * the total length of the iterable. The handler also receives named
-     * parameters isStart and isEnd.
-     *
-     * @param iterData: The iterable data structure to process
-     * @param handler: Callback function with signature (item: any, index: int,
-     *                 length: int, ...): any. Return false to stop iteration.
-     * @param reverse: If true, iterates in reverse order. Default: false (forward iteration)
-     * @return: True if iteration completed, false if stopped early
-     * @throws: TypeError if iterData is not iterable
-     */
-    var res = true, iterLength: int
-    if dt.isIter(iterData) {
-        iterLength = size(iterData)
-        if (reverse) {
-            for ({var i = iterLength - 1; i >= 0; i--}) {
-                if handler(iterData[i], i, iterLength, isStart=i == iterLength - 1,
-                    isEnd=i == 0) == false {
-                    res = false
-                    break
-                }
+// ============================ 长度与判空 ============================
+
+// 字节长度。str / list / dict 的长度字段都在偏移 0，所以对三者通用。
+//
+// 形参必须标 `any`：不标注会被当成 int，传 str 时在调用点就报
+// "cannot assign a value of type str to a target of type int"。
+//
+// **带 `_ds` 前缀且不导出**：`str.rio` 已经导出了同名同签名的 `size`。
+// 两个模块同时被 import 时，模块是编译期内联的，两份 `size` 会进同一命名
+// 空间被当成重载，而 `any` 形参在重载决议里会退化成 int，导致
+// `_dsLen(list[int])` 报 "cannot assign list[int] to int"。实测确认。
+fun _dsLen(arg: any): int {
+    ret core_str_len(arg)
+}
+
+/**
+ * 容器是否为空。
+ *
+ * 注意：长度函数请用 `str` 模块导出的 `size`（str/list/dict 通用），
+ * 本模块不重复导出 `size`，否则两个模块同时 import 时内联会撞名。
+ *
+ * @example isEmpty([]) == true，isEmpty([1]) == false
+ */
+fun isEmpty(arg: any): bool {
+    ret _dsLen(arg) == 0
+}
+
+// ============================ 取元素 ============================
+
+/**
+ * 取列表末元素。空列表返回元素类型的默认值（int/float 是 0，str 是 ""）。
+ *
+ * @example top([1,2,3]) == 3
+ */
+fun top[T](xs: list[T]): T {
+    var n: int = _dsLen(xs)
+    if n == 0 {
+        var zero: T = xs[0]
+        ret zero
+    }
+    ret xs[n - 1]
+}
+
+// ============================ 拷贝 ============================
+
+/**
+ * 浅拷贝：新列表共享元素的堆数据（str 仍指向同一块内存）。
+ *
+ * 与内存模型的 `clone()` 不同：规范里的 clone 是**深拷贝**，那需要元素类型
+ * 的销毁/复制规则，属 P13。这里的 copy 只复制 8 字节槽。
+ *
+ * @example copy([1,2,3]) 得到等值的新列表
+ */
+fun copy[T](xs: list[T]): list[T] {
+    var r: list[T] = []
+    var i: int = 0
+    while i < _dsLen(xs) {
+        r += [xs[i]]
+        i += 1
+    }
+    ret r
+}
+
+// ============================ 重复构造 ============================
+
+/**
+ * 重复字符串 times 次。times <= 0 返回 ""。
+ *
+ * @example repStr("ab", 3) == "ababab"
+ */
+fun repStr(s: str, times: int): str {
+    var r: str = ""
+    var i: int = 0
+    while i < times {
+        r = r + s
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 用同一个元素重复构造列表。times <= 0 返回空列表。
+ *
+ * @example repList(7, 3) == [7,7,7]
+ */
+fun repList[T](x: T, times: int): list[T] {
+    var r: list[T] = []
+    var i: int = 0
+    while i < times {
+        r += [x]
+        i += 1
+    }
+    ret r
+}
+
+// ============================ 增删 ============================
+
+/**
+ * 追加元素，**返回新列表**。
+ *
+ * 旧版是 `void` 原地追加（靠 RA 指令直接改容器）。新架构里索引写有越界检查，
+ * 手工改大长度头之后 `xs[n] = v` 仍会被跳过，所以无法原地追加。
+ * P13 容器机制补全后改回原地语义。
+ *
+ * @example listAppend([1,2], 3) 得到 [1,2,3]，原列表不变
+ */
+fun listAppend[T](xs: list[T], item: T): list[T] {
+    var r: list[T] = xs
+    r += [item]
+    ret r
+}
+
+/**
+ * 按下标删除元素，**原地修改**列表并缩短长度。
+ *
+ * 实现是「后续元素左移一格覆盖 + 长度减 1」。不释放被删元素占用的堆数据
+ * （`core_free` 尚未接通，见文档 §6）。下标越界时不做任何事。
+ *
+ * 这符合内存模型的「销毁点在调用处、位置静态已知」——被删元素的销毁点
+ * 就是这一行。
+ *
+ * @example listRemove([1,2,3], 1) 之后列表变成 [1,3]
+ */
+fun listRemove[T](xs: list[T], index: int): void {
+    var n: int = _dsLen(xs)
+    if index < 0 || index >= n {
+        ret
+    }
+    var base: ptr = xs + 32
+    _dsShiftLeft(base, index, n - index - 1)
+    _dsSetLen(xs, n - 1)
+}
+
+/**
+ * 按键删除字典条目，**原地修改**。键不存在时不做任何事。
+ *
+ * 键数组与值数组是两个独立的线性数组，各左移一格后长度减 1。
+ * 不释放被删键值占用的堆数据（同上）。
+ *
+ * @example dictRemove({"a":1,"b":2}, "a") 之后只剩 {"b":2}
+ */
+fun dictRemove(d: dict, key: str): void {
+    var idx: int = _dsKeyIndex(d, key)
+    if idx < 0 {
+        ret
+    }
+    var scratch: ptr = _dsScratch()
+    var n: int = core_str_len(d)
+    var keys: ptr = _dsLoadI64(scratch, d + 24)
+    var vals: ptr = _dsLoadI64(scratch, d + 32)
+    var tail: int = n - idx - 1
+    _dsShiftLeft(keys, idx, tail)
+    _dsShiftLeft(vals, idx, tail)
+    _dsSetLen(d, n - 1)
+}
+
+// ============================ 字典视图 ============================
+
+/**
+ * 取字典的全部键，顺序与插入顺序一致。
+ *
+ * 返回 `list[str]`：键在运行期就是 str（长度头在 +0，内容在 +8），
+ * 所以元素类型可以如实标注，调用方拿到的是真正的 str，可直接比较/拼接。
+ *
+ * @example dictKeys({"a":1,"b":2}) 得到 ["a","b"]
+ */
+fun dictKeys(d: dict): list[str] {
+    var r: list[str] = []
+    var scratch: ptr = _dsScratch()
+    var n: int = core_str_len(d)
+    var keys: ptr = _dsLoadI64(scratch, d + 24)
+    var i: int = 0
+    while i < n {
+        var kp: ptr = _dsLoadI64(scratch, keys + i * 8)
+        var ks: str = kp
+        r += [ks]
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 取字典的全部值，顺序与插入顺序一致。
+ *
+ * 返回**弱类型** `list`，同 dictKeys。值槽恒 8 字节：int/bool 是内联值，
+ * float 是 double 位模式，str/list/dict 是指针。
+ *
+ * @example dictValues({"a":1,"b":2}) 得到 [1,2]
+ */
+fun dictValues(d: dict): list {
+    var r: list = []
+    var scratch: ptr = _dsScratch()
+    var n: int = core_str_len(d)
+    var vals: ptr = _dsLoadI64(scratch, d + 32)
+    var i: int = 0
+    while i < n {
+        var v: int = _dsLoadI64(scratch, vals + i * 8)
+        r += [v]
+        i += 1
+    }
+    ret r
+}
+
+// ============================ 查找 ============================
+
+/**
+ * 列表是否包含某元素（按 `==` 比较，str 按内容比）。
+ *
+ * @example contains([1,2,3], 2) == true
+ */
+fun contains[T](xs: list[T], t: T): bool {
+    var i: int = 0
+    while i < _dsLen(xs) {
+        if xs[i] == t {
+            ret true
+        }
+        i += 1
+    }
+    ret false
+}
+
+/**
+ * 查找元素下标，找不到返回 -1。
+ *
+ * @example indexOf([1,2,3], 3) == 2，indexOf([1], 9) == -1
+ */
+fun indexOf[T](xs: list[T], t: T): int {
+    var i: int = 0
+    while i < _dsLen(xs) {
+        if xs[i] == t {
+            ret i
+        }
+        i += 1
+    }
+    ret -1
+}
+
+// ============================ 变换 ============================
+
+/**
+ * 逐元素变换，返回新列表。
+ *
+ * 回调必须是纯函数（不能写回外层变量，G6 延期）。
+ *
+ * @example map([1,2,3], (v: int) -> { ret v * 2 }) 得到 [2,4,6]
+ */
+fun map[T](xs: list[T], h: funi[T][T]): list[T] {
+    var r: list[T] = []
+    var i: int = 0
+    while i < _dsLen(xs) {
+        r += [h(xs[i])]
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 逐元素筛选，返回新列表。
+ *
+ * @example filter([1,2,3,4], (v: int) -> { ret v % 2 == 0 }) 得到 [2,4]
+ */
+fun filter[T](xs: list[T], h: funi[T][bool]): list[T] {
+    var r: list[T] = []
+    var i: int = 0
+    while i < _dsLen(xs) {
+        if h(xs[i]) {
+            r += [xs[i]]
+        }
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 逆序，返回新列表。
+ *
+ * @example reverse([1,2,3]) 得到 [3,2,1]
+ */
+fun reverse[T](xs: list[T]): list[T] {
+    var r: list[T] = []
+    var i: int = _dsLen(xs) - 1
+    while i >= 0 {
+        r += [xs[i]]
+        i -= 1
+    }
+    ret r
+}
+
+/**
+ * 切片，左闭右开 `[start, end)`。自动夹到合法范围，start >= end 返回空列表。
+ *
+ * @example slice([1,2,3,4], 1, 3) 得到 [2,3]
+ */
+fun slice[T](xs: list[T], start: int, end: int): list[T] {
+    var r: list[T] = []
+    var n: int = _dsLen(xs)
+    var lo: int = start
+    var hi: int = end
+    if lo < 0 {
+        lo = 0
+    }
+    if hi > n {
+        hi = n
+    }
+    var i: int = lo
+    while i < hi {
+        r += [xs[i]]
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 拼接两个列表，返回新列表。
+ *
+ * @example concat([1,2], [3]) 得到 [1,2,3]
+ */
+fun concat[T](a: list[T], b: list[T]): list[T] {
+    var r: list[T] = a
+    var i: int = 0
+    while i < _dsLen(b) {
+        r += [b[i]]
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 整数列表求和。空列表返回 0。
+ *
+ * @example sum([1,2,3]) == 6
+ */
+fun sum(xs: list[int]): int {
+    var r: int = 0
+    var i: int = 0
+    while i < _dsLen(xs) {
+        r = r + xs[i]
+        i += 1
+    }
+    ret r
+}
+
+// ============================ 排序 ============================
+
+/**
+ * 排序，返回新列表。默认升序，`reverse = true` 时降序。
+ *
+ * 插入排序 + 泛型单态化：`[T]` 在调用点按实参类型实例化，int/str/float
+ * 各自生成一份比较代码。不能用 `list[int]` / `list[str]` 重载分派
+ * （元素类型在 mangling 里被擦除，会报重复定义）。
+ *
+ * 稳定性：插入排序是稳定的，相等元素的相对顺序保持不变。
+ *
+ * @example sort([3,1,2]) 得到 [1,2,3]；sort([3,1,2], true) 得到 [3,2,1]
+ */
+fun sort[T](xs: list[T], reverse: bool = false): list[T] {
+    var r: list[T] = xs
+    var n: int = _dsLen(r)
+    var i: int = 1
+    while i < n {
+        var key: T = r[i]
+        var j: int = i - 1
+        var go: bool = false
+        if reverse {
+            if r[j] < key {
+                go = true
             }
         } else {
-            for ({var i = 0; i < iterLength; i++}) {
-                if handler(iterData[i], i, iterLength, isStart=i == 0,
-                    isEnd=i == iterLength - 1) == false {
-                    res = false
-                    break
-                }
+            if r[j] > key {
+                go = true
             }
         }
-    }
-    ret res
-}
-
-fun join(iterData, sep: str = ""): str {
-    /*
-     * Joins elements of an iterable into a single string.
-     *
-     * Concatenates all elements of the iterable data structure into
-     * a string, with the specified separator between each element.
-     *
-     * @param iterData: The iterable containing elements to join
-     * @param sep: The separator string to place between elements. Default: ""
-     * @return: String containing all joined elements
-     * @throws: TypeError if iterData is not iterable
-     */
-    var result: str = ""
-    iter(iterData, (item, index, length, _) -> {
-        result += item
-        if index < length - 1 {
-            result += sep
-        }
-    })
-    ret result
-}
-
-fun joins(*args, sep: str = ""): str {
-    /*
-     * Joins multiple arguments into a single string.
-     *
-     * Concatenates all provided arguments into a string, with the
-     * specified separator between each argument. This function
-     * accepts variable arguments rather than a single iterable.
-     *
-     * @param args: Variable number of arguments to join
-     * @param sep: The separator string to place between arguments. Default: ""
-     * @return: String containing all joined arguments
-     */
-    ret join(args, sep)
-}
-
-fun listAppend(listData, item): void {
-    /*
-     * Appends an item to the end of a list.
-     *
-     * Modifies the original list by adding the specified item to the end.
-     *
-     * @param listData: The list to modify
-     * @param item: The item to append to the list
-     * @throws: TypeError if listData is not a list
-     */
-    encapsulated
-}
-
-fun listRemove(listData, index: int): void {
-    /*
-     * Removes an element from a list by its index.
-     *
-     * Modifies the original list by removing the element at the
-     * specified index. The list will be re-indexed after removal,
-     * so subsequent elements will shift left.
-     *
-     * @param listData: The list to modify
-     * @param index: The position of the element to remove (0-based)
-     * @throws: TypeError if listData is not a list
-     * @throws: IndexError if index is out of bounds
-     */
-    encapsulated
-}
-
-fun dictRemove(dictData: dict, key): void {
-    /*
-     * Removes a key-value pair from a dictionary by its key.
-     *
-     * Modifies the original dictionary by removing the entry associated
-     * with the specified key. No error is thrown if the key does not exist
-     * in the dictionary.
-     *
-     * @param dictData: The dictionary to modify
-     * @param key: The key of the entry to remove
-     * @throws: TypeError if dictData is not a dictionary
-     */
-    encapsulated
-}
-
-fun iterRemove(iterData, index): void {
-    /*
-     * Removes an element from an iterable data structure based on its type.
-     *
-     * Dispatches to the appropriate removal function based on the type of
-     * iterable:
-     * - Uses listRemove() for lists and strings
-     * - Uses dictRemove() for dictionaries (where index acts as the key)
-     *
-     * Prints an error message if the iterable type is unsupported.
-     *
-     * @param iterData: The iterable to modify (list, string, or dictionary)
-     * @param index: For lists/strings: 0-based index of element to remove;
-     *               For dictionaries: key of entry to remove
-     */
-    var iterType = dt.type(iterData)
-    if dt.isIter(iterData) {
-        if iterType == dt.DT.TP_LIST || iterType == dt.DT.TP_STR {
-            listRemove(iterData, index)
-            ret
-        } elif iterType == dt.DT.TP_DICT {
-            dictRemove(iterData, index)
-            ret
-        }
-    }
-    fun sout(*args, end="\n"): void {
-        encapsulated
-    }
-    sout("Invalid iterable data type: ", iterType)
-}
-
-fun dictKeys(dictData: dict): list {
-    /*
-     * Retrieves a list of all keys from a dictionary.
-     *
-     * Extracts and returns a list containing all keys from the input
-     * dictionary. The order of keys in the list matches their internal
-     * storage order in the dictionary.
-     *
-     * @param dictData: The dictionary to extract keys from
-     * @return: A list containing all keys of the dictionary
-     * @throws: TypeError if the input is not a dictionary type
-     */
-    encapsulated
-}
-
-fun dictValues(dictData: dict): list {
-    /*
-     * Retrieves a list of all values from a dictionary.
-     *
-     * Extracts and returns a list containing all values from the input
-     * dictionary. The order of values in the list matches the storage
-     * order of their corresponding keys in the dictionary.
-     *
-     * @param dictData: The dictionary to extract values from
-     * @return: A list containing all values of the dictionary
-     * @throws: TypeError if the input is not a dictionary type
-     */
-    encapsulated
-}
-
-fun iterContains(iterData, checkItem): bool {
-    /*
-     * Checks if an iterable data structure contains a specified item.
-     *
-     * Iterates through the iterable data structure to determine if the target
-     * item exists. For dictionaries, it checks for the existence of the item
-     * as a key; for other iterables (lists, arrays, strings, etc.),
-     * it checks for the existence of the item as an element.
-     *
-     * @param iterData: The iterable data structure to check
-     * @param checkItem: The target item to search for
-     * @return: True if the target item exists, false otherwise
-     * @throws: TypeError if the input is not an iterable type
-     */
-    var result: bool = false
-    iter(iterData, (item, _, _, _) -> {
-        if item == checkItem {
-            result = true
-        }
-    })
-    ret result
-}
-
-fun sort(numList: list, reverse: bool = false): list {
-    /*
-     * Sorts a list using quicksort algorithm.
-     *
-     * Creates a new sorted list from the input list. By default, sorts in
-     * ascending order. If reverse is true, sorts in descending order.
-     *
-     * @param numList: The list to sort
-     * @param reverse: If true, sorts in descending order. Default: false (ascending)
-     * @return: A new sorted list
-     */
-    var quickSort: funi[list, bool][list] = (arr: list, reverse: bool): list -> {
-        if size(arr) <= 1 {
-            ret arr
-        }
-        var pivot = arr[0],
-            less: list = [],
-            greater: list = [],
-            i = 1
-        while i < size(arr) {
-            if (arr[i] <= pivot && !reverse) || (arr[i] > pivot && reverse) {
-                less += arr[i]
-            } else {
-                greater += arr[i]
-            }
-            i ++
-        }
-        ret quickSort(less, reverse) + [pivot] + quickSort(greater, reverse)
-    }
-    ret quickSort(numList, reverse)
-}
-
-class Iterable {
-    /*
-     * Abstract base class for iterable data structures.
-     *
-     * Provides a common interface for different types of iterable
-     * data structures. Defines virtual methods that must be implemented
-     * by subclasses.
-     */
-    ctor () {
-        /*
-         * Constructor for the Iterable class.
-         * Initializes the base iterable object.
-         */
-        pass
-    }
-
-    fun size(): int public virtual {
-        /*
-         * Virtual method to get the size of the iterable.
-         *
-         * Must be implemented by subclasses.
-         *
-         * @return: The number of elements in the iterable
-         */
-        ret null
-    }
-
-    fun get(): any public virtual {
-        /*
-         * Virtual method to get the underlying data.
-         *
-         * Must be implemented by subclasses.
-         *
-         * @return: The underlying data structure
-         */
-        ret null
-    }
-
-    fun toStr(): str public virtual {
-        /*
-         * Virtual method to convert the iterable to a string representation.
-         *
-         * Must be implemented by subclasses.
-         *
-         * @return: String representation of the iterable
-         */
-        ret null
-    }
-
-    fun empty(): bool public {
-        /*
-         * Checks if the iterable is empty.
-         *
-         * @return: True if the iterable has no elements, false otherwise
-         */
-        ret this.size() == 0
-    }
-}
-
-class List: Iterable {
-    /*
-     * Enhanced list class that extends the Iterable base class.
-     *
-     * Provides additional functionality for working with lists,
-     * including sorting, mapping, filtering, reducing, and various utility methods.
-     */
-    var data: list private,
-        length: int private,
-        compareHandler: funi[any, any][int] private = null,
-        plusHandler: funi[any, any][any] private = null
-
-    ctor () {
-        /*
-         * Default constructor for the List class.
-         * Creates an empty list with initial length 0.
-         */
-        super()
-        this.data = []
-        this.length = 0
-    }
-
-    ctor (data: list) {
-        /*
-         * Constructor for the List class with initial data.
-         *
-         * @param data: Initial list data to populate the List object
-         */
-        super()
-        this.data = data
-        this.length = size(data)
-    }
-
-    fun get(): list public overwrite {
-        /*
-         * Gets the underlying list data.
-         *
-         * @return: The underlying list data structure
-         */
-        ret this.data
-    }
-
-    fun sort(sortHandler: funi[any, any][int] = null, reverse: bool = false): List public {
-        /*
-         * Sorts the list in place using either a custom sort handler or default comparison.
-         *
-         * @param sortHandler: Optional custom comparison function with signature (a: any, b: any): int
-         *                     Returns negative if a < b, 0 if a == b, positive if a > b
-         * @param reverse: If true, sorts in descending order. Default: false (ascending)
-         * @return: The modified List object
-         */
-        sortHandler = ops.orVal(sortHandler, this.compareHandler)
-        if sortHandler == null {
-            this.data = sort(this.data, reverse)
-        } else {
-            var quickSort: funi[list, bool][list] = \
-                (arr: list, reverse: bool): list -> {
-                    if size(arr) <= 1 {
-                        ret arr
+        while j >= 0 && go {
+            r[j + 1] = r[j]
+            j -= 1
+            if j >= 0 {
+                go = false
+                if reverse {
+                    if r[j] < key {
+                        go = true
                     }
-                    var pivot = arr[0]
-                    var less: list
-                    var greater: list
-                    var i = 1
-                    while i < size(arr) {
-                        var compareResult = sortHandler(arr[i], pivot)
-                        if (compareResult <= 0 && !reverse) || (compareResult > 0 && reverse) {
-                            less += arr[i]
-                        } else {
-                            greater += arr[i]
-                        }
-                        i ++
+                } else {
+                    if r[j] > key {
+                        go = true
                     }
-                    ret quickSort(less, reverse) + [pivot] + quickSort(greater, reverse)
                 }
-            this.data = quickSort(this.data, reverse)
-        }
-        ret this
-    }
-
-    fun append(item): List {
-        /*
-         * Appends an item to the end of the list.
-         *
-         * Modifies the list in place and returns the modified List object
-         * for method chaining.
-         *
-         * @param item: The item to append
-         * @return: The modified List object
-         */
-        listAppend(this.data, item)
-        this.length += 1
-        ret this
-    }
-
-    fun remove(index: int): List {
-        /*
-         * Removes an element from the list by its index.
-         *
-         * Modifies the list in place and returns the modified List object
-         * for method chaining.
-         *
-         * @param index: The 0-based index of the element to remove
-         * @return: The modified List object
-         */
-        iterRemove(this.data, index)
-        this.length -= 1
-        ret this
-    }
-
-    fun size(): int public overwrite {
-        /*
-         * Gets the size of the list.
-         *
-         * @return: The number of elements in the list
-         */
-        ret this.length
-    }
-
-    fun toStr(): str public overwrite {
-        /*
-         * Gets the string representation of the list.
-         *
-         * @return: String representation of the list
-         */
-        ret "" + this.data
-    }
-
-    fun mapper(handler: funi[any][any]): List {
-        /*
-         * Creates a new List by applying a transformation function to each element.
-         *
-         * @param handler: Transformation function with signature (item: any): any
-         * @return: A new List containing the transformed elements
-         */
-        var newList: List = List()
-        iter(this.data, (item, _, _, _) -> {
-            newList.append(handler(copy(item)))
-        })
-        ret newList
-    }
-
-    fun filter(handler: funi[any][bool]): List {
-        /*
-         * Filters the list based on a handler function.
-         *
-         * @param handler: A function that takes an element and returns true or false
-         * @return: A new List containing elements for which the handler returns true
-         */
-        var newList: List = List()
-        iter(this.data, (item, _, _, _) -> {
-            var copiedItem = copy(item)
-            if handler(copiedItem) {
-                newList.append(copiedItem)
             }
-        })
-        ret newList
-    }
-
-    fun toFmtStr(transHandler: funi[any][any]): str {
-        /*
-         * Creates a formatted string representation by applying a transformation
-         * function to each element before converting to string.
-         *
-         * @param transHandler: Transformation function with signature (item: any): any
-         * @return: Formatted string representation of the list
-         */
-        ret this.mapper(transHandler).toStr()
-    }
-
-    fun contains(item): bool public {
-        /*
-         * Checks if the list contains a specific item.
-         *
-         * @param item: The item to check for
-         * @return: True if the item exists in the list, false otherwise
-         */
-        ret iterContains(this.data, item)
-    }
-
-    fun setCompareHandler(handler: funi[any, any][int]): List {
-        /*
-         * Sets a custom comparison handler for sorting operations.
-         *
-         * @param handler: Comparison function with signature (a: any, b: any): int
-         * @return: The List object for method chaining
-         */
-        this.compareHandler = handler
-        ret this
-    }
-
-    fun setPlusHandler(handler: funi[any, any][any]): List {
-        /*
-         * Sets a custom addition handler for sum operations.
-         *
-         * @param handler: Addition function with signature (a: any, b: any): any
-         * @return: The List object for method chaining
-         */
-        this.plusHandler = handler
-        ret this
-    }
-
-    fun max(compareHandler: funi[any, any][int] = null): any public {
-        /*
-         * Finds the maximum element in the list.
-         *
-         * @param compareHandler: Optional custom comparison function with signature (a: any, b: any): int
-         *                        If not provided, uses default comparison
-         * @return: The maximum element in the list, or null if the list is empty
-         */
-        if this.empty() {
-            ret null
         }
-        var max = copy((this.data)[0])
-        compareHandler = ops.orVal(compareHandler, this.compareHandler)
-        if compareHandler {
-            iter(this.data, (item, _, _, _) -> {
-                if compareHandler(item, max) > 0 {
-                    max = item
-                }
-            })
-        } else {
-            iter(this.data, (item, _, _, _) -> {
-                if item > max {
-                    max = item
-                }
-            })
+        r[j + 1] = key
+        i += 1
+    }
+    ret r
+}
+
+// ============================ 拼接成字符串 ============================
+
+/**
+ * 把列表元素用分隔符拼成一个字符串。空列表返回 ""。
+ *
+ * 元素用 `toStr` 转换，所以 int/float/bool/str/char 都能拼。
+ *
+ * @example join([1,2,3], "-") == "1-2-3"
+ */
+fun join[T](xs: list[T], sep: str = ""): str {
+    var r: str = ""
+    var n: int = _dsLen(xs)
+    var i: int = 0
+    while i < n {
+        r = r + toStr(xs[i])
+        if i < n - 1 {
+            r = r + sep
         }
-        ret max
+        i += 1
     }
+    ret r
+}
 
-    fun min(compareHandler: funi[any, any][int] = null): any public {
-        /*
-         * Finds the minimum element in the list.
-         *
-         * @param compareHandler: Optional custom comparison function with signature (a: any, b: any): int
-         *                        If not provided, uses default comparison
-         * @return: The minimum element in the list, or null if the list is empty
-         */
-        if this.empty() {
-            ret null
-        }
-        var min = copy((this.data)[0])
-        compareHandler = ops.orVal(compareHandler, this.compareHandler)
-        if compareHandler {
-            iter(this.data, (item, _, _, _) -> {
-                if compareHandler(item, min) < 0 {
-                    min = item
-                }
-            })
-        } else {
-            iter(this.data, (item, _, _, _) -> {
-                if item < min {
-                    min = item
-                }
-            })
-        }
-        ret min
-    }
+// ============================ 遍历（副作用） ============================
 
-    fun sum(plusHandler: funi[any, any][any] = null): any public {
-        /*
-         * Calculates the sum of all elements in the list using reduce.
-         *
-         * @param plusHandler: Optional custom addition function with signature (a: any, b: any): any
-         *                     If not provided, uses default addition operator
-         * @return: The sum of all elements in the list, or null if the list is empty
-         */
-        if this.empty() {
-            ret null
-        }
-        plusHandler = ops.orVal(plusHandler, this.plusHandler)
-        plusHandler = ops.orVal(plusHandler, (front, back) -> { ret front + back })
-        ret this.reduce(plusHandler)
-    }
-
-    fun reduce(reducer: funi[any, any][any], initialValue: any = null): any {
-        /*
-         * Reduces the list to a single value by applying a reducer function cumulatively.
-         *
-         * @param reducer: A function that takes two arguments (accumulator and current item)
-         *                 and returns a new accumulator value.
-         * @param initialValue: Optional initial value for the accumulator. If not provided,
-         *                      the first element of the list is used as the initial value.
-         * @return: The final reduced value
-         */
-        var result = initialValue
-        var hasInitialValue = initialValue != null
-        iter(this.data, (item, _, _, _) -> {
-            if !hasInitialValue {
-                result = item
-                hasInitialValue = true
-            } else {
-                result = reducer(result, item)
-            }
-        })
-        ret result
-    }
-
-    fun splice(other): List public {
-        /*
-         * Concatenates this list with another list or List object.
-         *
-         * Creates a new List containing elements from both lists.
-         *
-         * @param other: Another list or List object to concatenate with this list
-         * @return: A new List containing concatenated elements
-         */
-        if dt.type(other) == dt.DT.TP_LIST {
-            ret this.spliceBuiltinList(other)
-        } else {
-            ret this.spliceBuiltinList(other)
-        }
-    }
-
-    fun spliceNR(other): void public {
-        /*
-         * Concatenates this list with another list or List object in place.
-         *
-         * Modifies the current list object by appending elements from the other list.
-         *
-         * @param other: Another list or List object to concatenate with this list
-         */
-        var result = this.splice(other)
-        this.data = result.get()
-        this.length = result.size()
-    }
-
-    fun spliceList(other: List): List {
-        /*
-         * Concatenates this list with another List object.
-         *
-         * Creates a new List containing elements from both lists.
-         *
-         * @param other: Another List object to concatenate with this list
-         * @return: A new List containing concatenated elements
-         */
-        ret List(this.data + other.get())
-    }
-
-    fun spliceBuiltinList(other: list): List {
-        /*
-         * Concatenates this list with a built-in list.
-         *
-         * Creates a new List containing elements from both lists.
-         *
-         * @param other: A built-in list to concatenate with this list
-         * @return: A new List containing concatenated elements
-         */
-        ret List(this.data + other)
-    }
-
-    fun find(predicate: funi[any, int, .*][bool]): any {
-        /*
-         * Finds the first element in the list that satisfies the predicate.
-         *
-         * @param predicate: A function that takes an element, its index and other infos,
-         *                   it returns true or false
-         * @return: The first matching element, or null if no match is found
-         */
-        var result
-        iter(this.data, (item, index, _, kwargs) -> {
-            var copiedItem = copy(item)
-            if predicate(copiedItem, index, unpack(kwargs)) {
-                result = copiedItem
-                ret false
-            }
-        })
-        ret result
-    }
-
-    fun at(index: int): any public {
-        /*
-         * Accesses an element in the list by its index.
-         *
-         * Supports negative indexing, where -1 refers to the last element,
-         * -2 to the second-to-last, and so on.
-         *
-         * @param index: The 0-based index of the element to access
-         * @return: The element at the specified index, or null if index is out of bounds
-         */
-        if index < 1 - this.length || index >= this.length {
-            ret null
-        }
-        if index < 0 {
-            index += this.length
-        }
-        ret (this.data)[index]
-    }
-
-    fun unique(): List public {
-        /*
-         * Removes duplicate elements from the list.
-         *
-         * @return: A new List with unique elements
-         */
-        var uniqueList: List = List()
-        iter(this.data, (item, _, _, _) -> {
-            if !uniqueList.contains(item) {
-                uniqueList.append(item)
-            }
-        })
-        ret uniqueList
-    }
-
-    fun slice(start: int, end: int, sep: int = 1): List public {
-        /*
-         * Returns a new List containing elements from the start index to the end index (exclusive).
-         *
-         * @param start: Start index (inclusive)
-         * @param end: End index (exclusive)
-         * @param sep: Step size between elements (default: 1)
-         * @return: A new List containing the sliced elements
-         */
-        var res: List = List()
-        if end < start {
-            ret res
-        }
-        forInRange(start, end, (index, _, _) -> {
-            res.append(copy(this.at(index)))
-        }, sep)
-        ret res
-    }
-
-    fun reversed(): List public {
-        /*
-         * Returns a new List with elements in reverse order.
-         *
-         * @return: A new List with reversed elements
-         */
-        var res: List = List()
-        iter(this.data, (item, _, _, _) -> {
-            res.append(copy(item))
-        }, true)
-        ret res
-    }
-
-    fun reverse(): List public {
-        /*
-         * Reverse element orders and return self
-         *
-         * @return: List
-         */
-        var res: List = List()
-        iter(this.data, (item, _, _, _) -> {
-            res.append(item)
-        }, true)
-        this.data = res.data
-        ret this
+/**
+ * 重复调用回调 times 次，回调收到当前下标。
+ *
+ * **回调不能写回外层变量**（G6 延期到 P13）。需要累加时用 `sum` /
+ * `map` / `filter`，它们返回新值而不是靠回调改外层。
+ *
+ * @example repeat(3, (i: int) -> { sout(i) }) 打印 0 1 2
+ */
+fun repeat(times: int, h: funi[int][void]): void {
+    var i: int = 0
+    while i < times {
+        h(i)
+        i += 1
     }
 }
 
-export(
-    size, copy, unpack, isEmpty, top, repStr, repList,
-    repeat, forInRange, join, joins, iter, listAppend,
-    listRemove, dictRemove, iterRemove, dictKeys, sort,
-    dictValues, iterContains,
+/**
+ * 从 start 到 end（左闭右开）按步长 sep 遍历，回调收到当前值。
+ *
+ * 旧版回调签名是 `(value, isFirst, isLast)`，但那依赖闭包写回与运行期
+ * 首尾判断。新版简化为 `h(i)`：需要首尾判断时自己按下标算。
+ * 步长为 0 时直接返回，避免死循环；步长为负时要求 start > end。
+ *
+ * @example forInRange(0, 3, (i: int) -> { sout(i) }) 打印 0 1 2
+ */
+fun forInRange(start: int, end: int, h: funi[int][void], sep: int = 1): void {
+    if sep == 0 {
+        ret
+    }
+    var i: int = start
+    if sep > 0 {
+        while i < end {
+            h(i)
+            i += sep
+        }
+    } else {
+        while i > end {
+            h(i)
+            i += sep
+        }
+    }
+}
 
-    Iterable, List
-)
+export(isEmpty, top, copy, repStr, repList, listAppend, listRemove,
+    dictRemove, dictKeys, dictValues, contains, indexOf, map, filter,
+    reverse, slice, concat, sum, sort, join, repeat, forInRange)
