@@ -40,16 +40,9 @@ namespace utils
 
     Object::~Object() {}
 
-    IRCCObjectInterface::~IRCCObjectInterface() {}
-
     std::string Object::toString() const
     {
         return "[Object: " + std::to_string(id) + "]";
-    }
-
-    const char* Object::ToString() const
-    {
-        return toString().c_str();
     }
 
     std::string Object::briefString() const
@@ -57,19 +50,9 @@ namespace utils
         return toString();
     }
 
-    const char* Object::BriefString() const
-    {
-        return briefString().c_str();
-    }
-
     std::string Object::professionalString() const
     {
         return "Object{id=" + std::to_string(id) + "}";
-    }
-
-    const char* Object::ProfessionalString() const
-    {
-        return professionalString().c_str();
     }
 
     std::string Object::formatString(size_t indent, size_t level) const
@@ -77,19 +60,9 @@ namespace utils
         return {};
     }
 
-    const char* Object::FormatString(const size_t &indent, const size_t &level) const
-    {
-        return formatString(indent, level).c_str();
-    }
-
     std::string Object::toJsonString() const
     {
         return "\"" + StringManager::escape(toString()) + "\"";
-    }
-
-    const char* Object::ToJsonString() const
-    {
-        return toJsonString().c_str();
     }
 
     std::string Object::hashCode()
@@ -102,11 +75,6 @@ namespace utils
         return _hasCode;
     }
 
-    const char* Object::HasCode()
-    {
-        return hashCode().c_str();
-    }
-
     std::string Object::uniqueId()
     {
         if (_uniqueId.empty())
@@ -117,24 +85,9 @@ namespace utils
         return _uniqueId;
     }
 
-    const char* Object::UniqueId()
-    {
-        return uniqueId().c_str();
-    }
-
     std::shared_ptr<Object> Object::copySelf() const
     {
         return std::make_shared<Object>();
-    }
-
-    const IRCCObjectInterface* Object::CopySelf()
-    {
-        return copySelf().get();
-    }
-
-    const Object* Object::Transform() const
-    {
-        return this;
     }
 
     size_t Object::getId() const
@@ -1143,14 +1096,14 @@ namespace utils
     {
     }
 
+    std::ostream& operator<<(std::ostream& out, const Pos& pos)
+    {
+        return out << "line: " << pos.getLine() << ", column: " << pos.getColumn();
+    }
+
     size_t Pos::getLine() const
     {
         return line;
-    }
-
-    size_t Pos::GetLine() const
-    {
-        return getLine();
     }
 
     size_t Pos::getColumn() const
@@ -1158,24 +1111,35 @@ namespace utils
         return column;
     }
 
-    size_t Pos::GetColumn() const
-    {
-        return getColumn();
-    }
-
     size_t Pos::getOffset() const
     {
         return offset;
     }
 
-    size_t Pos::GetOffset() const
+    void Pos::setLine(size_t line_)
     {
-        return getOffset();
+        this->line = line_;
     }
 
-    std::ostream& operator<<(std::ostream& out, const Pos& pos)
+    void Pos::setColumn(size_t column_)
     {
-        return out << "line: " << pos.getLine() << ", column: " << pos.getColumn();
+        this->column = column_;
+    }
+
+    void Pos::setOffset(size_t offset_)
+    {
+        this->offset = offset_;
+    }
+
+    void Pos::setFilepath(const std::string& filepath_)
+    {
+        this->filepath = filepath_;
+    }
+
+    bool Pos::compare(const Pos& other) const
+    {
+        return other.line == line && other.column == column &&
+            other.offset == offset && other.filepath == filepath;
     }
 
     std::string Pos::toString() const
@@ -1189,29 +1153,14 @@ namespace utils
         return filepath;
     }
 
-    const char* Pos::GetFilepath() const
-    {
-        return getFilepath().c_str();
-    }
-
     std::string Pos::getFileField() const
     {
         return getFileNameFromPath(filepath);
     }
 
-    const char* Pos::GetFileField() const
-    {
-        return getFileField().c_str();
-    }
-
     std::string Pos::getFilePosStr() const
     {
         return "\"" + StringManager::escape(this->getFilepath()) + ":1:1\", line 1";
-    }
-
-    const char* Pos::GetFilePosStr() const
-    {
-        return getFilePosStr().c_str();
     }
 
     void Pos::serialize(std::ostream& out, const SerializationProfile& profile) const
@@ -1259,80 +1208,11 @@ namespace utils
         }
     }
 
-    void Pos::setLine(size_t line_)
-    {
-        this->line = line_;
-    }
-
-    void Pos::SetLine(const size_t& line_)
-    {
-        setLine(line_);
-    }
-
-    void Pos::setColumn(size_t column_)
-    {
-        this->column = column_;
-    }
-
-    void Pos::SetColumn(const size_t& column_)
-    {
-        setColumn(column_);
-    }
-
-    void Pos::setOffset(size_t offset_)
-    {
-        this->offset = offset_;
-    }
-
-    void Pos::SetOffSet(const size_t& offset_)
-    {
-        setOffset(offset_);
-    }
-
-    void Pos::setFilepath(const std::string& filepath_)
-    {
-        this->filepath = filepath_;
-    }
-
-    void Pos::SetFilepath(const char* filepath_)
-    {
-        filepath = std::string(filepath_);
-    }
-
-    bool Pos::compare(const Pos& other) const
-    {
-        return other.line == line && other.column == column &&
-            other.offset == offset && other.filepath == filepath;
-    }
-
-    bool Pos::Compare(const IRCCPosInterface* other)
-    {
-        return line == other->GetLine() && column == other->GetColumn() &&
-            offset == other->GetOffset() && filepath == other->GetFilepath();
-    }
-
-    const Pos* Pos::TransformToPI() const
-    {
-        return this;
-    }
-
     Pos::~Pos() {}
-
-    IRCCPosInterface::~IRCCPosInterface() {}
 
     std::string Pos::briefString() const
     {
         return getFileFromPath(filepath) + ":" + std::to_string(line) + ":" + std::to_string(column);
-    }
-
-    const char* Pos::ToString() const
-    {
-        return toString().c_str();
-    }
-
-    const char* Pos::BriefString() const
-    {
-        return briefString().c_str();
     }
 
     std::string Pos::professionalString() const
@@ -1349,36 +1229,6 @@ namespace utils
             spaceString(indent * (level + 1)) + "offset=" + std::to_string(offset) + ",\n" +
             spaceString(indent * (level + 1)) + "file=" + getFileFromPath(filepath) + "\n" +
             spaceString(indent * level) + "}";
-    }
-
-    const char* Pos::ProfessionalString() const
-    {
-        return professionalString().c_str();
-    }
-
-    const char* Pos::FormatString(const size_t& indent, const size_t& level) const
-    {
-        return formatString(indent, level).c_str();
-    }
-
-    const char* Pos::ToJsonString() const
-    {
-        return Object::ToJsonString();
-    }
-
-    const char* Pos::HasCode()
-    {
-        return Object::HasCode();
-    }
-
-    const char* Pos::UniqueId()
-    {
-        return Object::UniqueId();
-    }
-
-    const IRCCObjectInterface* Pos::CopySelf()
-    {
-        return copySelf().get();
     }
 
     ArgType getArgType(const std::string& str)

@@ -37,6 +37,9 @@ namespace analyzer
         std::shared_ptr<ast::ProgramNode> program;
         // 被导入的模块名（去重、按首次出现顺序）—— codegen 用它识别 `mod.fn` 限定调用
         std::vector<std::string> moduleNames;
+        // `import(u="utilx")` 里声明的别名（u）。codegen 同样靠它识别
+        // `u.twice(21)` 这种限定调用，但别名不是模块名，不该混进 moduleNames。
+        std::vector<std::string> moduleAliases;
         // 实际参与内联的文件绝对路径（第一个是主文件）
         std::vector<std::string> files;
     };

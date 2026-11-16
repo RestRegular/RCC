@@ -66,10 +66,6 @@ namespace ast {
         return token.getPos();
     }
 
-    void LiteralNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitLiteralNode(*this);
-    }
-
     std::string LiteralNode::professionalString() const {
         return "LiteralNode{literalValue=\"" + utils::StringManager::escape(literalString()) + "\", " + getPos().professionalString() + "}";
     }
@@ -110,10 +106,6 @@ namespace ast {
             : Node(), nameToken(std::move(nameToken)), colonToken(std::move(colonToken)),
               labelTokens(std::move(labelTokens)), defaultValue(std::move(defaultValue)){}
 
-    void ParameterNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitParameterNode(*this);
-    }
-
     Pos ParameterNode::getPos() const {
         return nameToken.getPos();
     }
@@ -140,10 +132,6 @@ namespace ast {
 
     Pos FunctionDeclarationNode::getPos() const {
         return getMainToken().getPos();
-    }
-
-    void FunctionDeclarationNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitFunctionDeclarationNode(*this);
     }
 
     FunctionDefinitionNode::FunctionDefinitionNode(const Token &mainToken_,
@@ -192,14 +180,6 @@ namespace ast {
         return colonToken;
     }
 
-    void AnonFunctionDefinitionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitAnonFunctionDefinitionNode(*this);
-    }
-
-    void FunctionDefinitionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitFunctionDefinitionNode(*this);
-    }
-
     std::shared_ptr<ExpressionNode> FunctionDefinitionNode::getCallNode() const {
         return callNode;
     }
@@ -219,20 +199,12 @@ namespace ast {
         return argNode->getPos();
     }
 
-    void ArgumentNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitArgumentNode(*this);
-    }
-
     FunctionCallNode::FunctionCallNode(const Token &mainToken_, const std::shared_ptr<ExpressionNode> &calledFuncNode,
         const std::shared_ptr<ExpressionNode> &argsNode)
             : InfixExpressionNode(calledFuncNode->getMainToken(), NodeType::CALL, mainToken_, calledFuncNode, argsNode){}
 
     Pos FunctionCallNode::getPos() const {
         return InfixExpressionNode::getPos();
-    }
-
-    void FunctionCallNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitFunctionCallNode(*this);
     }
 
     ReturnExpressionNode::ReturnExpressionNode(const Token &mainToken_,
@@ -244,23 +216,11 @@ namespace ast {
         return returnNode;
     }
 
-    void ReturnExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitReturnExpressionNode(*this);
-    }
-
     BreakExpressionNode::BreakExpressionNode(const Token &mainToken_)
         : ExpressionNode(mainToken_, NodeType::PREFIX) {}
 
-    void BreakExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitBreakExpressionNode(*this);
-    }
-
     ContinueExpressionNode::ContinueExpressionNode(const Token &mainToken_)
         : ExpressionNode(mainToken_, NodeType::PREFIX) {}
-
-    void ContinueExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitContinueExpressionNode(*this);
-    }
 
     BranchNode::BranchNode(const Token &branchOpToken, const std::shared_ptr<ExpressionNode> &conditionNode,
                            const std::shared_ptr<ExpressionNode> &bodyNode)
@@ -275,19 +235,11 @@ namespace ast {
         return bodyNode;
     }
 
-    void BranchNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitBranchNode(*this);
-    }
-
     ConditionNode::ConditionNode(const std::vector<std::shared_ptr<ExpressionNode>> &branchNodes)
         : ExpressionNode(branchNodes[0]->getMainToken(), NodeType::CONDITION), branchNodes(branchNodes) {}
 
     std::vector<std::shared_ptr<ExpressionNode>> ConditionNode::getBranchNodes() const {
         return branchNodes;
-    }
-
-    void ConditionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitConditionNode(*this);
     }
 
     static std::unordered_map<std::string, LoopType> loopTypeMap = {
@@ -319,10 +271,6 @@ namespace ast {
         return bodyNode;
     }
 
-    void LoopNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitLoopNode(*this);
-    }
-
     LoopType LoopNode::getLoopType() const
     {
         return loopType;
@@ -350,23 +298,11 @@ namespace ast {
         return updateNode;
     }
 
-    void ForLoopNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitForLoopNode(*this);
-    }
-
     PassExpressionNode::PassExpressionNode(const Token &passToken)
         : ExpressionNode(passToken, NodeType::PASS){}
 
-    void PassExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitPassExpressionNode(*this);
-    }
-
     EncapsulatedExpressionNode::EncapsulatedExpressionNode(const Token &mainToken_)
         : ExpressionNode(mainToken_, NodeType::PREFIX){}
-
-    void EncapsulatedExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitEncapsulatedExpressionNode(*this);
-    }
 
     ConstructorDefinitionNode::ConstructorDefinitionNode(const Token &ctorToken,
         const std::shared_ptr<ExpressionNode> &paramNode,
@@ -376,10 +312,6 @@ namespace ast {
             : ExpressionNode(ctorToken, NodeType::PREFIX),
     paramNode(paramNode), colonToken(colonToken), labelNodes(labelNodes),
     bodyNode(bodyNode){}
-
-    void ConstructorDefinitionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitConstructorDefinitionNode(*this);
-    }
 
     std::shared_ptr<Token> ConstructorDefinitionNode::getColonToken() const {
         return colonToken;
@@ -406,10 +338,6 @@ namespace ast {
         return nameNode;
     }
 
-    void ClassDeclarationNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitClassDeclarationNode(*this);
-    }
-
 
     ClassDefinitionNode::ClassDefinitionNode(const Token &classToken,
                                              const std::shared_ptr<ExpressionNode> &nameNode_,
@@ -433,16 +361,8 @@ namespace ast {
         return getMainToken().getPos();
     }
 
-    void ClassDefinitionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitClassDefinitionNode(*this);
-    }
-
     ProgramNode::ProgramNode(const Token &mainToken, std::vector<std::shared_ptr<StatementNode>> statements)
             : StatementNode(mainToken, NodeType::PROGRAM), statements(std::move(statements)){}
-
-    void ProgramNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitProgramNode(*this);
-    }
 
     Pos ProgramNode::getPos() const {
         if (statements.empty()) {
@@ -466,11 +386,6 @@ namespace ast {
             const std::shared_ptr<BlockRangerNode> &finallyBody)
             : ExpressionNode(mainToken, NodeType::TRY),
     tryBody(tryBody), catchBodies(catchBodies), finallyBody(finallyBody) {}
-
-    void TryNode::acceptVisitor(Visitor& visitor)
-    {
-        visitor.visitTryNode(*this);
-    }
 
     NodeType TryNode::getRealType() const
     {
@@ -501,21 +416,12 @@ namespace ast {
         return throwExpression;
     }
 
-    void ThrowNode::acceptVisitor(Visitor& visitor)
-    {
-        visitor.visitThrowNode(*this);
-    }
-
     StringLiteralNode::StringLiteralNode(const Token& token)
     : LiteralNode(token, NodeType::STRING),
     value(StringManager::unescape(token.getValue())) {}
 
     Pos StringLiteralNode::getPos() const {
         return LiteralNode::getPos();
-    }
-
-    void StringLiteralNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitStringLiteralNode(*this);
     }
 
     std::string StringLiteralNode::literalString() const {
@@ -534,20 +440,12 @@ namespace ast {
         return LiteralNode::getPos();
     }
 
-    void NumberLiteralNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitNumberLiteralNode(*this);
-    }
-
     IntegerLiteralNode::IntegerLiteralNode(const core::Token& token)
     : NumberLiteralNode(token, NodeType::INTEGER),
     value(stringToInt(LiteralNode::token.getValue())) {}
 
     Pos IntegerLiteralNode::getPos() const {
         return NumberLiteralNode::getPos();
-    }
-
-    void IntegerLiteralNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitIntegerLiteralNode(*this);
     }
 
     std::string IntegerLiteralNode::literalString() const {
@@ -562,10 +460,6 @@ namespace ast {
         return NumberLiteralNode::getPos();
     }
 
-    void FloatLiteralNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitFloatLiteralNode(*this);
-    }
-
     std::string FloatLiteralNode::literalString() const {
         return doubleToString(value);
     }
@@ -576,10 +470,6 @@ namespace ast {
 
     Pos BooleanLiteralNode::getPos() const {
         return LiteralNode::getPos();
-    }
-
-    void BooleanLiteralNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitBooleanLiteralNode(*this);
     }
 
     std::string BooleanLiteralNode::literalString() const {
@@ -594,10 +484,6 @@ namespace ast {
         return LiteralNode::getPos();
     }
 
-    void CharacterLiteralNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitCharacterLiteralNode(*this);
-    }
-
     std::string CharacterLiteralNode::literalString() const {
         return std::string{value};
     }
@@ -607,10 +493,6 @@ namespace ast {
 
     Pos NullLiteralNode::getPos() const {
         return LiteralNode::getPos();
-    }
-
-    void NullLiteralNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitNullLiteralNode(*this);
     }
 
     std::string NullLiteralNode::literalString() const {
@@ -625,10 +507,6 @@ namespace ast {
                                    const std::vector<std::shared_ptr<LabelNode>> &labels_)
         : ExpressionNode(token, NodeType::IDENTIFIER), name(token.getValue()),
     colonToken(std::make_shared<Token>(colonToken_)), labels(labels_){}
-
-    void IdentifierNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitIdentifierNode(*this);
-    }
 
     Pos IdentifierNode::getPos() const {
         return ExpressionNode::getPos();
@@ -662,10 +540,6 @@ namespace ast {
     void LabelNode::appendLabelDesNode(const std::shared_ptr<ListExpressionNode>& labelDesNode)
     {
         labelDesNodes.push_back(labelDesNode);
-    }
-
-    void LabelNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitLabelNode(*this);
     }
 
     std::string LabelNode::getFullLabel() const {
@@ -712,17 +586,9 @@ namespace ast {
         return rangerType;
     }
 
-    void RangerNode::acceptVisitor(Visitor &visitor) {
-
-    }
-
     ParenRangerNode::ParenRangerNode(const Token &lParenToken, const Token &rParenToken,
                                      const std::shared_ptr<ExpressionNode> &node)
             : RangerNode(NodeType::PAREN, lParenToken, rParenToken), rangerNode(node){}
-
-    void ParenRangerNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitParenRangerNode(*this);
-    }
 
     std::shared_ptr<ExpressionNode> ParenRangerNode::getRangerNode() const {
         return rangerNode;
@@ -731,10 +597,6 @@ namespace ast {
     BlockRangerNode::BlockRangerNode(const Token &lParenToken, const Token &rParenToken,
         const std::vector<std::shared_ptr<ExpressionNode>> &bodyExpressions)
             : RangerNode(NodeType::BLOCK, lParenToken, rParenToken), bodyExpressions(bodyExpressions){}
-
-    void BlockRangerNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitBlockRangerNode(*this);
-    }
 
     std::vector<std::shared_ptr<ExpressionNode>> BlockRangerNode::getBodyExpressions() const {
         return bodyExpressions;
@@ -755,10 +617,6 @@ namespace ast {
         return bodyNode;
     }
 
-    void BracketExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitBracketExpressionNode(*this);
-    }
-
     Pos BracketExpressionNode::getPos() const
     {
         return getRangerStartToken().getPos();
@@ -775,10 +633,6 @@ namespace ast {
         return indexNode;
     }
 
-    void IndexExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitIndexExpressionNode(*this);
-    }
-
     std::shared_ptr<ExpressionNode> IndexExpressionNode::getLeftNode() const {
         return getNode();
     }
@@ -792,10 +646,6 @@ namespace ast {
                                            Token colonToken, const std::shared_ptr<ExpressionNode> &rightNode)
             : ExpressionNode(mainToken_, NodeType::PAIR), leftNode(leftNode), colonToken(std::move(colonToken)),
      rightNode(rightNode){}
-
-    void PairExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitPairExpressionNode(*this);
-    }
 
     std::shared_ptr<ExpressionNode> PairExpressionNode::getLeftNode() const {
         return leftNode;
@@ -818,20 +668,12 @@ namespace ast {
         return bodyNode;
     }
 
-    void DictionaryExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitDictionaryExpressionNode(*this);
-    }
-
     ListExpressionNode::ListExpressionNode(const Token &lToken, const Token &rToken,
         const std::shared_ptr<ExpressionNode> &bodyNode)
             : RangerNode(NodeType::BLOCK, lToken, rToken), bodyNode(bodyNode){}
 
     std::shared_ptr<ExpressionNode> ListExpressionNode::getBodyNode() const {
         return bodyNode;
-    }
-
-    void ListExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitListExpressionNode(*this);
     }
 
     AssignmentNode::AssignmentNode(const Token &opToken,
@@ -841,10 +683,6 @@ namespace ast {
     std::pair<std::shared_ptr<ExpressionNode>, std::shared_ptr<ExpressionNode>> AssignmentNode::
     getAssignPair() const {
         return assignPair;
-    }
-
-    void AssignmentNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitAssignmentNode(*this);
     }
 
     VariableDefinitionNode::VarDefData::VarDefData(const std::shared_ptr<IdentifierNode> &nameNode,
@@ -880,10 +718,6 @@ namespace ast {
 
     std::vector<std::shared_ptr<VariableDefinitionNode::VarDefData>> VariableDefinitionNode::getVarDefs() const {
         return varDefs;
-    }
-
-    void VariableDefinitionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitVariableDefinitionNode(*this);
     }
 
     const Token &InfixExpressionNode::getOpToken() const {
@@ -947,10 +781,6 @@ namespace ast {
         return node;
     }
 
-    void PostfixExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitPostfixNode(*this);
-    }
-
     NodeType PostfixExpressionNode::getPostfixType() const
     {
         return postfixType;
@@ -964,10 +794,6 @@ namespace ast {
         rightNode = right_node;
     }
 
-    void UnaryExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitUnaryExpressionNode(*this);
-    }
-
     UnaryExpressionNode::UnaryExpressionNode(const Token &mainToken, Token opSign,
         const std::shared_ptr<ExpressionNode> &rightNode)
             : ExpressionNode(mainToken, NodeType::UNARY),
@@ -979,10 +805,6 @@ namespace ast {
 
     PrefixExpressionNode::PrefixExpressionNode(const Token &token, const NodeType nodeType, const std::shared_ptr<ExpressionNode> &node_)
         : ExpressionNode(token, NodeType::PREFIX), prefixType(nodeType), node(node_){}
-
-    void PrefixExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitPrefixExpressionNode(*this);
-    }
 
     std::shared_ptr<ExpressionNode> PrefixExpressionNode::getNode() const {
         return node;
@@ -1002,10 +824,6 @@ namespace ast {
 
     Pos InfixExpressionNode::getPos() const {
         return getMainToken().getPos();
-    }
-
-    void InfixExpressionNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitInfixNode(*this);
     }
 
     std::string InfixExpressionNode::toString() const {
@@ -1043,10 +861,6 @@ namespace ast {
     : StatementNode(token, NodeType::EXPRESSION_STATEMENT), expression(expression) {}
 
     ExpressionStatementNode::ExpressionStatementNode(): StatementNode(NodeType::EXPRESSION_STATEMENT){}
-
-    void ExpressionStatementNode::acceptVisitor(Visitor &visitor) {
-        visitor.visitExpressionStatementNode(*this);
-    }
 
     std::shared_ptr<ExpressionNode> ExpressionStatementNode::getExpression() const {
         return expression;

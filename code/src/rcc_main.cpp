@@ -9,14 +9,14 @@
 #include <iostream>
 #include <string>
 
-#include "../declarations/builtin/functions/rcc_builtin_export_dec.h"
 #include "../include/rcc_base.h"
+#include "../include/analyzer/rcc_lexer.h"
 #include "../include/analyzer/rcc_module_loader.h"
 #include "../include/analyzer/rcc_parser.h"
 #include "../include/analyzer/rcc_ast_dump.h"
+#include "../include/analyzer/rcc_symbol_export.h"
 #include "../include/backend/rcc_codegen.h"
 #include "../include/backend/rcc_toolchain.h"
-#include "../include/visitors/rcc_visitors.h"
 #include "../include/lib/RJson/RJson_error.h"
 #include "../include/lib/rcc_utils.h"
 
@@ -45,6 +45,12 @@ bool __help_option__ = false;
 bool __version_option__ = false;
 bool __time_info__ = false;
 bool __symbol_flag_builtin__ = false;
+// `-s`：导出符号表
+bool __symbol_flag__ = false;
+// `-s -exp`：只导出 export(...) 列出的符号
+bool __symbol_flag_export__ = false;
+// `-s --format`：导出格式名（text/json/html/ctags/dot/markdown）
+std::string __symbol_option_format__ = "text";
 bool __build_flag__ = false;
 // 库模式：--build 时只产出 .o，不链接可执行文件、不发射 main 入口
 bool __emit_lib_flag__ = false;
@@ -71,8 +77,8 @@ void initializeArgumentParser() {
                                                      {"ho"});
 
     // Symbol flag
-    argParser.addFlag("symbol", &ast::CompileVisitor::__symbol_flag__, false, true,
-                      "Parse the file at the specified path and output all exported symbol declarations.",
+    argParser.addFlag("symbol", &__symbol_flag__, false, true,
+                      "Parse the file at the specified path and export its symbol table.",
                       {"s"})
     .addOption<std::string>("path", &__general_option_path__,
                                      "",
@@ -80,16 +86,17 @@ void initializeArgumentParser() {
                                      {"p"})
     .addOption<std::string>("extension", &__symbol_option_extension__,
         "", "", {"e", "ext"})
-    .addOption<OutputFormat>("format", &ast::CompileVisitor::__symbol_option_format__,
-                                    OutputFormat::TXT,
-                                    "Specify the output mode for the analyzed content. The default mode is 'txt',"
-                                    " and the supported modes include: 'json', 'txt'.",
+    .addOption<std::string>("format", &__symbol_option_format__,
+                                    "text",
+                                    "Export format for the symbol table. "
+                                    "One of: text, json, html, ctags, dot, markdown. Default 'text'.",
                                     {"fmt"})
-    .addFlag("export", &ast::CompileVisitor::__symbol_flag_export__, false,
-             true, "Only display exported symbols (all symbols are displayed by default)",
+    .addFlag("export", &__symbol_flag_export__, false,
+             true, "Only display symbols listed in export(...) "
+             "(all symbols are displayed by default)",
              {"exp"})
     .addOption<std::string>("output", &__general_option_output__, "console",
-        "Output results to a specified file (print to the console by default)",
+        "Write the result to this file instead of the console",
         {"o"})
     .addOption<std::string>("spec-symbol", &__symbol_option_spec_symbol__, "",
         "This option is used to specify the specific symbol name to be viewed for the symbol command and display a detailed description."
@@ -99,25 +106,12 @@ void initializeArgumentParser() {
              "This flag is used to specify the target of analysis as a built-in extension.",
              {"b"})
     .addDependent(StringVector{"only-export", "specify-symbol"}, "symbol", ProgArgParser::CheckDir::UniDir)
-    .addDependent("format", "output", ProgArgParser::CheckDir::UniDir)
-    .addMutuallyExclusive("spec-symbol", "fmt", ProgArgParser::CheckDir::BiDir)
+    // 注：`--format` 不再强制要求 `--output`。那是旧实现的限制 ——
+    // 旧的 json 走的是「先算完再拆字段」的路径，只能落文件；新导出器
+    // 所有格式都能直接打到终端，管道里用 `-s --fmt json | jq` 很自然。
     .addMutuallyExclusive("path", "extension", ProgArgParser::CheckDir::BiDir)
     .addDependent("builtin", "extension", ProgArgParser::CheckDir::UniDir)
     .addDependent("export", "symbol", ProgArgParser::CheckDir::UniDir);
-
-    // 单独添加 compile flag 及相关配置
-    argParser.addFlag("compile", &ast::CompileVisitor::__compile_flag__, false, true,
-                      "Compile the target file or directory specified by path",
-                      {"c"})
-    .addOption<int>("compile-level", &ast::CompileVisitor::__compile_option_compile_level__, 0,
-        "This option is used to specify the compile level for RCC."
-        "0 -> Debug, 1 -> Testing, 2 -> Release, 3 -> Minified",
-        {"cl"})
-    .addDependent("compile", "output", ProgArgParser::CheckDir::UniDir)
-    .addMutuallyExclusive("compile",
-        std::vector<std::string>{"extension", "export", "format", "builtin", "spec-symbol", "symbol"},
-        ProgArgParser::CheckDir::BiDir)
-    .addDependent("compile-level", "compile", ProgArgParser::CheckDir::UniDir);
 
     // 原生编译 flag：Rio -> x86-64 汇编 -> .o -> .exe
     argParser.addFlag("build", &__build_flag__, false, true,
@@ -125,7 +119,7 @@ void initializeArgumentParser() {
                       {"build"})
     .addDependent("build", "path", ProgArgParser::CheckDir::UniDir)
     .addMutuallyExclusive("build",
-        std::vector<std::string>{"compile", "symbol"},
+        std::vector<std::string>{"symbol"},
         ProgArgParser::CheckDir::BiDir);
 
     // 库模式：产出 .o 而不是 .exe，供 lib/rt、lib/std 这类要链接进用户程序的目标使用
@@ -158,11 +152,7 @@ void initializeArgumentParser() {
 
 void handleSymbolFlag()
 {
-    if (!__symbol_option_spec_symbol__.empty())
-    {
-        ast::CompileVisitor::__symbol_option_format__ = OutputFormat::JSON;
-    }
-
+    // 目标文件解析：--path 直接给文件；--extension 从库目录里找。
     std::string targetPath;
     if (!__general_option_path__.empty())
     {
@@ -177,66 +167,107 @@ void handleSymbolFlag()
             __symbol_flag_builtin__ ? RCC_BUILTIN_LIB_DIR : RCC_LIB_DIR);
     } else
     {
-        throw std::runtime_error("Missing option: --file or --extension.");
+        throw std::runtime_error("Missing option: --path or --extension.");
+    }
+    if (!fileExists(targetPath))
+    {
+        throw std::runtime_error("Failed to read file: " + targetPath);
     }
 
-    std::string outputPath = __general_option_output__.empty() ? "console" : __general_option_output__;
-    if (outputPath != "console")
+    // 格式
+    analyzer::SymbolFormat format = analyzer::SymbolFormat::TEXT;
+    std::string formatError;
+    if (!analyzer::parseSymbolFormat(__symbol_option_format__, format, formatError))
     {
-        outputPath = getAbsolutePath(outputPath, __working_directory__);
+        throw std::runtime_error(formatError);
     }
 
-    if (ast::CompileVisitor visitor(targetPath, targetPath,
-        outputPath, false);
-        visitor.compile())
+    // 前端：词法 -> 语法 -> AST。与 --build 走同一条前端，
+    // 但**不进入后端** —— 导出器只读 AST，源码编译不过时也能导出。
+    lexer::Lexer lexer(targetPath);
+    auto tokens = lexer.tokenize();
+    parser::Parser parser(std::move(tokens));
+    const auto [hasParseError, program] = parser.parse();
+    if (hasParseError || !program)
     {
-        const auto& result = visitor.getAnalyzeBuilder().buildAll();
-        if (__symbol_option_spec_symbol__.empty())
+        std::string errors;
+        for (const auto& msg : parser.getErrorMsgs()) errors += msg;
+        throw std::runtime_error("Compilation failed: syntax errors.\n" + errors);
+    }
+
+    // `export(...)` 只存在于**合并前**的 AST 里 —— 模块内联会把它删掉，
+    // 所以必须在 loadProgramWithModules 之前扫一遍。
+    const auto exportNames = analyzer::collectExportNames(program);
+
+    // 模块内联：import 的源码要一起进符号表，否则编辑器跳不到被导入的定义。
+    analyzer::ModuleLoadResult merged;
+    try
+    {
+        merged = analyzer::loadProgramWithModules(targetPath, program);
+    }
+    catch (const std::exception& e)
+    {
+        throw std::runtime_error(std::string("Module loading failed: ") + e.what());
+    }
+
+    auto table = analyzer::collectSymbols(merged.program, targetPath,
+                                          merged.files, merged.moduleNames);
+    analyzer::markExported(table, exportNames);
+
+    // --export：只要 export(...) 列出的
+    if (__symbol_flag_export__)
+    {
+        analyzer::filterExportedOnly(table);
+    }
+
+    // --spec-symbol：只要指定名字的
+    if (!__symbol_option_spec_symbol__.empty())
+    {
+        const auto names = StringManager::split(__symbol_option_spec_symbol__, ' ');
+        std::vector<std::string> missing;
+        analyzer::filterByName(table, names, missing);
+        if (!missing.empty())
         {
-            if (outputPath == "console")
+            std::string list;
+            for (const auto& name : missing)
             {
-                std::cout << result;
-            } else if (writeFile(outputPath, result))
-            {
-                std::cout << "Analyze succeeded!\nOutput is saved to: " << outputPath << std::endl;
+                if (!list.empty()) list += ", ";
+                list += name;
             }
-        } else
-        {
-            const auto& specifiedNames = StringManager::split(__symbol_option_spec_symbol__, ' ');
-            rjson::rj::RJsonParser parser (result);
-            rjson::rj::RJsonBuilder builder (rjson::RJType::RJ_OBJECT);
-            parser.parse();
-            std::string errorName;
-            try {
-                for (const auto& name: specifiedNames)
-                {
-                    errorName = name;
-                    builder.insertRJValue(name, *parser.getAtKey(name));
-                }
-                if (__general_option_output__ == "console")
-                {
-                    std::cout << builder.formatString(4);
-                } else if (writeFile(outputPath, result))
-                {
-                    std::cout << "Analyze succeeded!\nOutput is saved to: " << outputPath << std::endl;
-                }
-            } catch (const error::RJsonError& e)
-            {
-                throw std::runtime_error(e.toString() + "\nNot find the specified symbol name: " + errorName);
-            }
+            throw std::runtime_error("Symbol not found: " + list);
         }
     }
-}
 
-void handleCompileFlag()
-{
-    const auto& targetPath = getAbsolutePath(__general_option_path__, __working_directory__);
-    const auto& outputPath = getAbsolutePath(__general_option_output__, __working_directory__);
-    if (ast::CompileVisitor visitor (targetPath, targetPath, outputPath);
-        visitor.compile())
+    const std::string result = analyzer::renderSymbols(table, format);
+
+    // 输出
+    if (__general_option_output__.empty() || __general_option_output__ == "console")
     {
-        std::cout << "Compilation succeeded!\nOutput is saved to: " << outputPath << std::endl;
+        std::cout << result;
+        return;
     }
+
+    std::string outputPath =
+        getAbsolutePath(__general_option_output__, __working_directory__);
+    // 给的是目录（或没后缀）时，按格式补默认文件名。
+    std::error_code ec;
+    if (std::filesystem::is_directory(outputPath, ec) ||
+        !std::filesystem::path(outputPath).has_extension())
+    {
+        std::filesystem::create_directories(outputPath, ec);
+        std::string stem = targetPath;
+        const auto slash = stem.find_last_of("/\\");
+        if (slash != std::string::npos) stem = stem.substr(slash + 1);
+        const auto dot = stem.find_last_of('.');
+        if (dot != std::string::npos) stem = stem.substr(0, dot);
+        outputPath = (std::filesystem::path(outputPath) /
+                      (stem + analyzer::symbolFormatExtension(format))).string();
+    }
+    if (!writeFile(outputPath, result))
+    {
+        throw std::runtime_error("Failed to write output file: " + outputPath);
+    }
+    std::cout << "Analyze succeeded!\nOutput is saved to: " << outputPath << std::endl;
 }
 
 void handleDumpAstFlag()
@@ -266,11 +297,6 @@ void handleDumpAstFlag()
     }
 
     std::cout << ast::dumpAstTree(program);
-}
-
-void handleLlvmFlag()
-{
-    throw std::runtime_error("The LLVM backend has been removed. Use --build to compile to a native executable.");
 }
 
 void handleBuildFlag()
@@ -321,7 +347,8 @@ void handleBuildFlag()
     backend::Win64AbiInfo abi;
     backend::CodeGen codeGen(abi);
     codeGen.setLibraryMode(__emit_lib_flag__);
-    codeGen.setModuleNames(merged.moduleNames);
+    // 模块名 + 别名都要交给 codegen：isModuleName 用它识别 `mod.fn` / `u.fn`。
+    codeGen.setModuleNames(merged.moduleNames, merged.moduleAliases);
     std::string codegenError;
     const std::string assembly = codeGen.generate(merged.program, codegenError);
     if (assembly.empty())
@@ -427,14 +454,9 @@ int main(const int argc, char *argv[]) {
         }
 
         // 检查导出符号信息
-        if (ast::CompileVisitor::__symbol_flag__)
+        if (__symbol_flag__)
         {
             handleSymbolFlag();
-        }
-
-        if (ast::CompileVisitor::__compile_flag__)
-        {
-            handleCompileFlag();
         }
 
         if (__dump_ast_flag__)

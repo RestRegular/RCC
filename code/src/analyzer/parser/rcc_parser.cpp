@@ -11,7 +11,8 @@ namespace parser {
         {
             const auto &result = buildProgram();
             // 注意语义：返回值的 first 表示"是否出错"（true = 有错误）。
-            // 这是历史约定，CompileVisitor 依赖它；新代码请用 !first。
+            // 这是历史约定（P12 起旧的 CompileVisitor 已删除，但返回类型保持不变
+            // 以免影响既有调用点）；新代码请用 !first。
             return {hasError(), result};
         } catch (const std::exception &)
         {

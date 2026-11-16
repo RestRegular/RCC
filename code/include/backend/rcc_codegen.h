@@ -48,7 +48,14 @@ namespace backend
 
         // P8：告诉后端哪些名字是「模块名」。模块在加载期已经被内联成
         // 普通全局函数，所以 `ds.size(x)` 这种限定调用要退化成 `size(x)`。
-        void setModuleNames(const std::vector<std::string>& names) { _moduleNames = names; }
+        void setModuleNames(const std::vector<std::string>& names,
+                            const std::vector<std::string>& aliases = {})
+        {
+            _moduleNames = names;
+            // 别名与模块名同等对待：`import(u="utilx")` 之后 `u.twice(21)`
+            // 里的 u 也要被 isModuleName 认出来。
+            _moduleNames.insert(_moduleNames.end(), aliases.begin(), aliases.end());
+        }
 
         // 生成完整汇编文本。失败时 errorMsg 非空。
         std::string generate(const std::shared_ptr<ast::ProgramNode>& program, std::string& errorMsg);

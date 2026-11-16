@@ -11,6 +11,7 @@
 //   因此所有 call 前 rsp 保持 16 对齐
 //
 #include "../../include/backend/rcc_codegen.h"
+#include "../../include/backend/rcc_symbol_naming.h"
 #include "../../include/rcc_base.h"
 #include "../../include/analyzer/rcc_ast_components.h"
 #include <cctype>
@@ -356,40 +357,10 @@ namespace backend{
             return t;
         }
     }
-    // §4.3 冻结的类型编码表。
+    // §4.3 冻结的类型编码表。实现在 backend::naming（rcc_symbol_naming.cpp），
+    // 这里只做转发：符号规则必须只有一份，`-s` 的导出器要复用同一套。
     std::string CodeGen::mangleType(const sema::TypePtr& t)    {
-        if (!t) return "v";
-        switch (t->getKind())        {
-        case sema::TypeKind::TK_VOID:  return "v";
-        case sema::TypeKind::TK_BOOL:  return "b";
-        case sema::TypeKind::TK_CHAR:  return "c";
-        case sema::TypeKind::TK_INT:   return "i";
-        case sema::TypeKind::TK_FLOAT: return "f";
-        case sema::TypeKind::TK_STR:   return "K";
-        case sema::TypeKind::TK_PTR:   return "P";
-        case sema::TypeKind::TK_LIST:
-            return "L" + mangleType(std::static_pointer_cast<sema::ListType>(t)->getElemType());
-        case sema::TypeKind::TK_DICT:            {
-            const auto d = std::static_pointer_cast<sema::DictType>(t);
-            return "D" + mangleType(d->getKeyType()) + mangleType(d->getValueType());
-        }
-        case sema::TypeKind::TK_FUNC:            {
-            const auto f = std::static_pointer_cast<sema::FunctionType>(t);
-            std::string s = "F";
-            for (const auto& p : f->getParams()) s += mangleType(p);
-            s += "_";
-            s += mangleType(f->getReturnType());
-            return s;
-        }
-        case sema::TypeKind::TK_CLASS:            {
-            const auto name = std::static_pointer_cast<sema::ClassType>(t)->getName();
-            return "N" + std::to_string(name.size()) + name;
-        }
-        case sema::TypeKind::TK_GENERIC:
-            return "T0";
-        default:
-            return "v";
-        }
+        return naming::mangleType(t);
     }
     std::string CodeGen::nodeText(const std::shared_ptr<ast::ExpressionNode>& node)    {
         if (!node) return "<null>";
@@ -397,9 +368,7 @@ namespace backend{
     }
     std::string CodeGen::mangleInstance(const std::string& base,
                                         const std::vector<sema::TypePtr>& args)    {
-        std::string s = "_R" + std::to_string(base.size()) + base;
-        for (const auto& a : args) s += mangleType(a);
-        return s;
+        return naming::mangleSignature(base, args);
     }
     // ============================================================
     // P11：重载
@@ -416,9 +385,7 @@ namespace backend{
     // 独立的 sema pass，发射 call 指令的那一刻就必须定下符号。
     std::string CodeGen::mangleOverload(const std::string& base,
                                         const std::vector<sema::TypePtr>& paramTypes)    {
-        std::string s = "_R" + std::to_string(base.size()) + base;
-        for (const auto& t : paramTypes) s += mangleType(t);
-        return s;
+        return naming::mangleSignature(base, paramTypes);
     }
     CodeGen::FunctionSignature CodeGen::collectSignature(
         const std::shared_ptr<ast::FunctionDefinitionNode>& node)    {

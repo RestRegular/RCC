@@ -5,6 +5,8 @@
 #ifndef RCC_RCC_AST_H
 #define RCC_RCC_AST_H
 
+#include <string>
+
 namespace ast {
     enum class NodeType {
         AND, // 逻辑与操作节点
@@ -85,6 +87,10 @@ namespace ast {
         TRY, // try 语句
         THROW, // throw 语句
     };
+
+    // NodeType 的文本名（调试输出 / 符号导出用）。
+    std::string getNodeTypeName(NodeType nodeType);
+    std::string getNodeTypeFormatName(NodeType nodeType);
 
 } // analyzer
 

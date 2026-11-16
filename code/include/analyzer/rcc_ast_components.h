@@ -8,13 +8,17 @@
 #include <utility>
 #include "./rcc_ast.h"
 #include "../rcc_base.h"
-#include "../visitors/rcc_base_visitor.h"
 #include "../../include/rcc_core.h"
 
 namespace ast {
     using namespace utils;
     using namespace base;
     using namespace core;
+
+    // IdentifierNode / LabelNode 互相引用，且都早于对方定义出现，
+    // 这里需要前置声明（以前是 visitor 头文件顺手带进来的）。
+    class LabelNode;
+    class ListExpressionNode;
 
     // 类定义
     class Node : public Object {
@@ -33,7 +37,6 @@ namespace ast {
 
         [[nodiscard]] std::string getPosStr() const;
 
-        virtual void acceptVisitor(Visitor &visitor) = 0;
 
         [[nodiscard]] std::string toString() const override;
 
@@ -74,7 +77,6 @@ namespace ast {
     public:
         ExpressionStatementNode();
         ExpressionStatementNode(const Token &token, const std::shared_ptr<ExpressionNode> &expression);
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getExpression() const;
         [[nodiscard]] NodeType getRealType() const override;
     };
@@ -87,7 +89,6 @@ namespace ast {
     public:
         PrefixExpressionNode() = default;
         explicit PrefixExpressionNode(const Token &token, NodeType nodeType, const std::shared_ptr<ExpressionNode> &node_);
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getNode() const;
         [[nodiscard]] NodeType getPrefixType() const;
     };
@@ -107,7 +108,6 @@ namespace ast {
                             Token opToken, const std::shared_ptr<ExpressionNode> &left,
                             const std::shared_ptr<ExpressionNode> &right);
         [[nodiscard]] Pos getPos() const override;
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::string toString() const override;
         [[nodiscard]] std::string briefString() const override;
         [[nodiscard]] std::string professionalString() const override;
@@ -127,7 +127,6 @@ namespace ast {
             NodeType postfixType,
             const std::shared_ptr<ExpressionNode> &leftNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getNode() const;
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] NodeType getPostfixType() const;
     };
 
@@ -138,7 +137,6 @@ namespace ast {
         void setOpToken(const Token &op_token);
         void setRightNode(const std::shared_ptr<ExpressionNode> &right_node);
     public:
-        void acceptVisitor(Visitor &visitor) override;
         UnaryExpressionNode() = default;
         UnaryExpressionNode(const Token &mainToken, Token opSign,
             const std::shared_ptr<ExpressionNode> &rightNode);
@@ -158,7 +156,6 @@ namespace ast {
 
         [[nodiscard]] Pos getPos() const override;
 
-        void acceptVisitor(Visitor &visitor) override;
 
         [[nodiscard]] virtual std::string literalString() const = 0;
 
@@ -174,7 +171,6 @@ namespace ast {
 
         [[nodiscard]] Pos getPos() const override;
 
-        void acceptVisitor(Visitor &visitor) override;
 
         [[nodiscard]] std::string literalString() const override;
 
@@ -187,7 +183,6 @@ namespace ast {
 
         [[nodiscard]] Pos getPos() const override;
 
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class IntegerLiteralNode final : public NumberLiteralNode {
@@ -197,7 +192,6 @@ namespace ast {
 
         [[nodiscard]] Pos getPos() const override;
 
-        void acceptVisitor(Visitor &visitor) override;
 
         [[nodiscard]] std::string literalString() const override;
     };
@@ -209,7 +203,6 @@ namespace ast {
 
         [[nodiscard]] Pos getPos() const override;
 
-        void acceptVisitor(Visitor &visitor) override;
 
         [[nodiscard]] std::string literalString() const override;
     };
@@ -221,7 +214,6 @@ namespace ast {
 
         [[nodiscard]] utils::Pos getPos() const override;
 
-        void acceptVisitor(Visitor &visitor) override;
 
         [[nodiscard]] std::string literalString() const override;
     };
@@ -233,7 +225,6 @@ namespace ast {
 
         [[nodiscard]] utils::Pos getPos() const override;
 
-        void acceptVisitor(Visitor &visitor) override;
 
         [[nodiscard]] std::string literalString() const override;
     };
@@ -242,7 +233,6 @@ namespace ast {
     public:
         explicit NullLiteralNode(const Token& token);
         [[nodiscard]] Pos getPos() const override;
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::string literalString() const override;
     };
 
@@ -254,7 +244,6 @@ namespace ast {
         explicit IdentifierNode(const Token& token);
         explicit IdentifierNode(const Token& token, const Token &colonToken_,
             const std::vector<std::shared_ptr<LabelNode>> &labels_);
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] Pos getPos() const override;
         [[nodiscard]] std::string getName() const;
         [[nodiscard]] Token getColonToken() const;
@@ -268,7 +257,6 @@ namespace ast {
     public:
         explicit LabelNode(const std::vector<Token> &labelPathToken);
         void appendLabelDesNode(const std::shared_ptr<ListExpressionNode> &labelDesNode);
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::string getFullLabel() const;
         [[nodiscard]] std::vector<std::string> getLabelPath() const;
         [[nodiscard]] std::vector<std::shared_ptr<ListExpressionNode>> getLabelDesNodes() const;
@@ -284,7 +272,6 @@ namespace ast {
         [[nodiscard]] Token getRangerStartToken() const;
         [[nodiscard]] Token getRangerEndToken() const;
         [[nodiscard]] NodeType getRangerType() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class ParenRangerNode final : public RangerNode {
@@ -292,7 +279,6 @@ namespace ast {
     public:
         ParenRangerNode(const Token &lParenToken, const Token &rParenToken,
             const std::shared_ptr<ExpressionNode> &node);
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getRangerNode() const;
     };
 
@@ -301,7 +287,6 @@ namespace ast {
     public:
         BlockRangerNode(const Token &lParenToken, const Token &rParenToken,
             const std::vector<std::shared_ptr<ExpressionNode>> &bodyExpressions);
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::vector<std::shared_ptr<ExpressionNode>> getBodyExpressions() const;
         [[nodiscard]] Pos getPos() const override;
     };
@@ -314,7 +299,6 @@ namespace ast {
             const Token &rRangerToken,
             const std::shared_ptr<ExpressionNode> &bodyNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] Pos getPos() const override;
     };
 
@@ -326,7 +310,6 @@ namespace ast {
             const std::shared_ptr<ExpressionNode> &leftNode,
             const std::shared_ptr<ExpressionNode> &indexNode_);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getIndexNode() const;
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getLeftNode() const;
         NodeType getRealType() const override;
     };
@@ -340,7 +323,6 @@ namespace ast {
             const std::shared_ptr<ExpressionNode> &leftNode,
             Token colonToken,
             const std::shared_ptr<ExpressionNode> &rightNode);
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getLeftNode() const;
         [[nodiscard]] Token getColonToken() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getRightNode() const;
@@ -354,7 +336,6 @@ namespace ast {
             const Token &rToken,
             const std::shared_ptr<ExpressionNode> &bodyNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class ListExpressionNode : public RangerNode {
@@ -365,7 +346,6 @@ namespace ast {
         const Token &rToken,
         const std::shared_ptr<ExpressionNode> &bodyNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class AssignmentNode: public ExpressionNode {
@@ -375,7 +355,6 @@ namespace ast {
             const Token &opToken,
             const std::pair<std::shared_ptr<ExpressionNode>, std::shared_ptr<ExpressionNode>> &assignPair);
         [[nodiscard]] std::pair<std::shared_ptr<ExpressionNode>, std::shared_ptr<ExpressionNode>> getAssignPair() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class VariableDefinitionNode: public ExpressionNode {
@@ -403,7 +382,6 @@ namespace ast {
             const Token &varToken,
             const std::vector<std::shared_ptr<VarDefData>> &varDefs);
         [[nodiscard]] std::vector<std::shared_ptr<VarDefData>> getVarDefs() const;
-        void acceptVisitor(Visitor &visitor) override;
     private:
         std::vector<std::shared_ptr<VarDefData>> varDefs;
     };
@@ -419,7 +397,6 @@ namespace ast {
                                std::vector<std::shared_ptr<Token>> labelTokens,
                                std::shared_ptr<Token> defaultValue);
 
-        void acceptVisitor(Visitor &visitor) override;
 
         [[nodiscard]] Pos getPos() const override;
     };
@@ -434,7 +411,6 @@ namespace ast {
             const std::shared_ptr<Token> &colonToken_,
             const std::vector<std::shared_ptr<LabelNode>> &labelNodes_);
         [[nodiscard]] Pos getPos() const override;
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getCallNode() const;
         [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabelNodes() const;
         [[nodiscard]] Token getColonToken() const;
@@ -453,7 +429,6 @@ namespace ast {
             const std::vector<std::shared_ptr<LabelNode>> &labelNodes_,
             const std::shared_ptr<Token> &indicatorToken_,
             const std::shared_ptr<ExpressionNode> &bodyNode);
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getCallNode() const;
         [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabelNodes() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
@@ -479,7 +454,6 @@ namespace ast {
         [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabelNodes() const;
         [[nodiscard]] Token getIndicatorToken() const;
         [[nodiscard]] std::shared_ptr<Token> getColonToken() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class ArgumentNode : public Node {
@@ -489,7 +463,6 @@ namespace ast {
 
         [[nodiscard]] utils::Pos getPos() const override;
 
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class FunctionCallNode : public InfixExpressionNode {
@@ -500,7 +473,6 @@ namespace ast {
 
         [[nodiscard]] Pos getPos() const override;
 
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class ReturnExpressionNode : public ExpressionNode {
@@ -509,19 +481,16 @@ namespace ast {
         ReturnExpressionNode(const Token &mainToken_,
             const std::shared_ptr<ExpressionNode> &returnNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getReturnNode() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class BreakExpressionNode : public ExpressionNode {
     public:
         explicit BreakExpressionNode(const Token &mainToken_);
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class ContinueExpressionNode : public ExpressionNode {
     public:
         explicit ContinueExpressionNode(const Token &mainToken_);
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class BranchNode : public ExpressionNode {
@@ -534,7 +503,6 @@ namespace ast {
             const std::shared_ptr<ExpressionNode> &bodyNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getConditionNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class ConditionNode final : public ExpressionNode {
@@ -542,7 +510,6 @@ namespace ast {
     public:
         explicit ConditionNode(const std::vector<std::shared_ptr<ExpressionNode>> &branchNodes);
         [[nodiscard]] std::vector<std::shared_ptr<ExpressionNode>> getBranchNodes() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class LoopNode : public ExpressionNode {
@@ -555,7 +522,6 @@ namespace ast {
             const std::shared_ptr<ExpressionNode> &bodyNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getConditionNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] LoopType getLoopType() const;
     };
 
@@ -584,19 +550,16 @@ namespace ast {
             const std::shared_ptr<ExpressionNode> &bodyNode);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getInitNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getUpdateNode() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class PassExpressionNode final : public ExpressionNode {
     public:
         explicit PassExpressionNode(const Token &passToken);
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class EncapsulatedExpressionNode final : public ExpressionNode {
     public:
         explicit EncapsulatedExpressionNode(const Token &mainToken_);
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class ConstructorDefinitionNode : public ExpressionNode {
@@ -610,7 +573,6 @@ namespace ast {
             const std::shared_ptr<Token> &colonToken,
             const std::vector<std::shared_ptr<LabelNode>> &labelNodes,
             const std::shared_ptr<ExpressionNode> &bodyNode);
-        void acceptVisitor(Visitor &visitor) override;
         [[nodiscard]] std::shared_ptr<Token> getColonToken() const;
         [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabelNodes() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getParamNode() const;
@@ -624,7 +586,6 @@ namespace ast {
             const Token &classToken,
             const std::shared_ptr<ExpressionNode> &nameNode_);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getNameNode() const;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class ClassDefinitionNode : public ExpressionNode {
@@ -639,7 +600,6 @@ namespace ast {
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getNameNode() const;
         [[nodiscard]] Pos getPos() const override;
-        void acceptVisitor(Visitor &visitor) override;
     };
 
     class ProgramNode final : public StatementNode {
@@ -647,7 +607,6 @@ namespace ast {
     public:
         explicit ProgramNode(const Token &mainToken, std::vector<std::shared_ptr<StatementNode>> statements);
 
-        void acceptVisitor(Visitor &visitor) override;
 
         [[nodiscard]] Pos getPos() const override;
 
@@ -669,7 +628,6 @@ namespace ast {
             const std::vector<std::pair<std::shared_ptr<IdentifierNode>,
             std::shared_ptr<BlockRangerNode>>> &catchBodies,
             const std::shared_ptr<BlockRangerNode> &finallyBody);
-        void acceptVisitor(Visitor& visitor) override;
         [[nodiscard]] NodeType getRealType() const override;
         [[nodiscard]] std::shared_ptr<BlockRangerNode> getTryBody() const;
         [[nodiscard]] std::vector<std::pair<std::shared_ptr<IdentifierNode>,
@@ -685,7 +643,6 @@ namespace ast {
             const std::shared_ptr<ExpressionNode>& throwExpression);
 
         [[nodiscard]] std::shared_ptr<ExpressionNode> getThrowExpression() const;
-        void acceptVisitor(Visitor& visitor) override;
     };
 }
 

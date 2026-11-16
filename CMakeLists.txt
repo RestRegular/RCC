@@ -28,32 +28,16 @@ set(RCC_FRONTEND_SOURCES
         code/src/analyzer/parser/builder/rcc_postfix_builder.cpp
         code/src/analyzer/parser/rcc_parser_error.cpp
         code/src/analyzer/rcc_module_loader.cpp
+        code/src/analyzer/rcc_symbol_export.cpp
 )
 
 set(RCC_LEGACY_SOURCES
-        code/src/visitors/rcc_compile_visitor.cpp
-        code/src/visitors/rcc_collect_symbol_visitor.cpp
-        code/src/visitors/rcc_print_visitor.cpp
-        code/src/visitors/rcc_json_visitor.cpp
-        code/src/visitors/tools/rcc_function_call_compiler.cpp
-        code/src/components/symbol/rcc_symbol.cpp
-        code/src/components/ri/rcc_ri.cpp
-        code/src/builtin/rcc_builtin.cpp
-        code/src/builtin/rcc_builtin_core.cpp
-        code/src/builtin/functions/rcc_builtin_import.cpp
-        code/src/builtin/functions/rcc_builtin_export.cpp
-        code/src/builtin/functions/rcc_builtin_io_functions.cpp
-        code/src/builtin/functions/rcc_builtin_ds_functions.cpp
-        code/src/builtin/functions/rcc_builtin_prog_functions.cpp
-        code/src/builtin/functions/rcc_builtin_datatype_functions.cpp
-        code/src/builtin/functions/rcc_builtin_lowlevel_functions.cpp
-        code/src/builtin/functions/rcc_builtin_super.cpp
-        code/src/builtin/dll_extension_manager/rcc_dll_extension_manager.cpp
 )
 
 set(RCC_BACKEND_SOURCES
         code/src/backend/rcc_toolchain.cpp
         code/src/backend/rcc_codegen.cpp
+        code/src/backend/rcc_symbol_naming.cpp
 )
 
 set(RCC_SUPPORT_SOURCES

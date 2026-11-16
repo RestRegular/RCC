@@ -348,7 +348,11 @@ namespace analyzer
 
                 // 记下模块名（含别名），供 codegen 识别 `mod.fn(...)` 限定调用
                 rememberName(ref.moduleName);
-                if (!ref.alias.empty()) rememberName(ref.alias);
+                // 别名（`import(u="utilx")` 里的 u）也是「模块名」的一种：
+                // codegen 的 isModuleName 要靠它识别 `u.twice(21)` 这种限定调用。
+                // 但它不该出现在用户看到的模块清单里（那会显示成导入了一个
+                // 叫 u 的模块）。所以两边分开记。
+                if (!ref.alias.empty()) rememberAlias(ref.alias);
 
                 // 已内联过：不再重复插入语句（同一模块只展开一次）。
                 // 注意顺序：**先**查环、再查去重。否则 A->B->A 这种真环会
@@ -393,11 +397,28 @@ namespace analyzer
                 {
                     bare = bare.substr(0, bare.size() - 4);
                 }
+                // import(io="io") 的模块名带引号，与裸名 `io` 是同一个模块；
+                // 不剥引号会让 moduleNames 里出现 "io" 和 io 两份。
+                if (bare.size() >= 2 && bare.front() == '"' && bare.back() == '"')
+                {
+                    bare = bare.substr(1, bare.size() - 2);
+                }
                 for (const auto& n : _result.moduleNames)
                 {
                     if (n == bare) return;
                 }
                 _result.moduleNames.push_back(bare);
+            }
+
+            // 别名只进 codegen 用的名字集合，不进用户可见的模块清单。
+            void rememberAlias(const std::string& name)
+            {
+                if (name.empty()) return;
+                for (const auto& n : _result.moduleAliases)
+                {
+                    if (n == name) return;
+                }
+                _result.moduleAliases.push_back(name);
             }
 
             static std::string posOf(const StatementPtr& stmt)

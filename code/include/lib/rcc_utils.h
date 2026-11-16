@@ -13,14 +13,15 @@
 #include <list>
 #include <memory>
 
-#include "../interfaces/rcc_object_interface.h"
-#include "../interfaces/rcc_pos_interface.h"
-
 namespace utils {
 
     // === 基础类型定义 ===
-    class Object:
-    virtual public IRCCObjectInterface
+    //
+    // P12 起 `Object` 不再实现那套 C ABI 接口（IRCCObjectInterface）：
+    // 那是给旧 DLL 扩展（lowlevel.bindDllExt）传对象用的，扩展机制已随
+    // S1 删除，`const char* ToString()` 这类返回裸指针的重载**零调用点**，
+    // 且它们返回的是临时 std::string 的 c_str()，本身就是悬垂指针。
+    class Object
     {
         static size_t _id;
         size_t id;
@@ -28,24 +29,15 @@ namespace utils {
         std::string _uniqueId;
     public:
         Object();
-        ~Object() override;
+        virtual ~Object();
         [[nodiscard]] virtual std::string toString() const;
-        const char* ToString() const override;
         [[nodiscard]] virtual std::string briefString() const;
-        const char* BriefString() const override;
         [[nodiscard]] virtual std::string professionalString() const;
-        const char* ProfessionalString() const override;
         [[nodiscard]] virtual std::string formatString(size_t indent, size_t level) const;
-        const char* FormatString(const size_t &indent, const size_t &level) const override;
         [[nodiscard]] virtual std::string toJsonString() const;
-        const char* ToJsonString() const override;
         [[nodiscard]] virtual std::string hashCode();
-        const char* HasCode() override;
         [[nodiscard]] virtual std::string uniqueId();
-        const char* UniqueId() override;
         [[nodiscard]] virtual std::shared_ptr<Object> copySelf() const;
-        const IRCCObjectInterface* CopySelf() override;
-        const Object* Transform() const override;
         [[nodiscard]] virtual size_t getId() const;
     };
 
@@ -196,51 +188,29 @@ namespace utils {
     std::string getLineFromFile(const std::string& filePath, size_t lineNum);
 
     // === 位置信息 ===
-    class Pos:
-    public Object,
-    public IRCCPosInterface {
+    class Pos: public Object {
     public:
         Pos() = default;
         ~Pos() override;
         Pos(size_t line, size_t column, size_t offset, std::string filepath);
         [[nodiscard]] size_t getLine() const;
-        size_t GetLine() const override;
         [[nodiscard]] size_t getColumn() const;
-        size_t GetColumn() const override;
         [[nodiscard]] size_t getOffset() const;
-        size_t GetOffset() const override;
         [[nodiscard]] std::string getFilepath() const;
-        const char* GetFilepath() const override;
         [[nodiscard]] std::string getFileField() const;
-        const char* GetFileField() const override;
         [[nodiscard]] std::string getFilePosStr() const;
-        const char* GetFilePosStr() const override;
         friend std::ostream& operator<<(std::ostream& out, const Pos& pos);
         [[nodiscard]] std::string toString() const override; // 获取位置信息详细字符串
         [[nodiscard]] std::string briefString() const override; // 获取位置信息简略字符串
-        const char* ToString() const override;
-        const char* BriefString() const override;
         [[nodiscard]] std::string professionalString() const override; // 获取位置信息详细字符串
         [[nodiscard]] std::string formatString(size_t indent, size_t level) const override;
-        const char* ProfessionalString() const override;
-        const char* FormatString(const size_t& indent, const size_t& level) const override;
-        const char* ToJsonString() const override;
-        const char* HasCode() override;
-        const char* UniqueId() override;
-        const IRCCObjectInterface* CopySelf() override;
         void serialize(std::ostream& out, const SerializationProfile &profile) const;
         void deserialize(std::istream& in, const SerializationProfile &profile);
         void setLine(size_t line_);
-        void SetLine(const size_t& line_) override;
         void setColumn(size_t column_);
-        void SetColumn(const size_t& column_) override;
         void setOffset(size_t offset_);
-        void SetOffSet(const size_t& offset_) override;
         void setFilepath(const std::string &filepath_);
-        void SetFilepath(const char* filepath_) override;
         bool compare(const Pos &other) const;
-        bool Compare(const IRCCPosInterface* other) override;
-        const Pos* TransformToPI() const override;
     protected:
         size_t line{0};
         size_t column{0};
