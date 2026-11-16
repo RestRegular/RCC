@@ -11,8 +11,11 @@
  *     （旧版遇到 UTF-8 多字节字符会切坏，新版按字节切，天然安全）。
  *  2) str 布局 = {i64 len} + bytes。len 在 +0（8 字节小端），内容在 +8。
  *     core_mem_set 只写低 8 位，所以长度头必须**逐字节写**（见 _strSetLen）。
- *  3) `s[i]` 读出的是**字节值（int）**，不是 char 也不是 str。
- *     char 与 int 之间没有隐式转换，char 也不能拼接到 str。
+ *  3) `s[i]` 读出的是 **char**（单个字节的字符值），不是 int 也不是 str。
+ *     char 是完整可用的一等类型：`sout(char)` 走 rt_print_char 打印字符，
+ *     `toStr(char)` 可转 str，`var i: int = c` 可隐式拓宽成 int。
+ *     但 char **不能**直接传给 `str` 形参（跨族报错），`str + char` 拼接
+ *     目前也有缺陷（输出垃圾值，与 char 无关，是 str 拼接数值的既有 bug）。
  *  4) 不依赖 datatype 模块（已按 S3 整模块删除）。
  *  5) `str + str` 是拼接（G3），`==` 按内容比较（G9），`s[i]` 可读（G10）。
  *
@@ -21,18 +24,19 @@
  * 以下函数的**语义被重新定义**，这是语言能力决定的，不是实现不完整：
  *
  *  - `toChar(arg)`：返回**首个字节的 ASCII 码（int）**。
- *    旧版返回 char，但 char 在新架构里无法转成 str、无法与 str 互操作，
- *    返回 char 等于返回一个用户无法使用的值。返回 int 才可用。
- *    **签名变更：char → int**。
+ *    旧版返回 char，且对长度≠1 的输入返回 `0`（`toChar("\000")`）；
+ *    新版改为「直接取首字节」，所以必须返回 int 才能表达越界情形。
+ *  - `intToChar(i)`：返回 **char**（与原仓库一致）。
+ *    （曾一度改成返回 int，理由是「char 无法使用」——该理由经实测证伪，
+ *      char 是完整可用的一等类型，故已恢复。）
+ *  - `charToInt(c)`：接受 int / char / str，返回 int。
+ *    str 重载要求**长度恰为 1**，否则抛错 —— 旧实现 `charToInt("true")`
+ *    会静默返回首字节 116，是错误行为。
  *  - `toLowerCase` / `toUpperCase(data: str)`：只接受 str，返回 str。
  *    旧版还接受 char/int 做 ASCII 运算，但结果类型无处安放（见上），
  *    那两个重载无法表达，已移除。
- *  - `charToInt(c)`：接受 int 或 str，返回 int。语义不变，只是更宽容。
- *  - `intToChar(i)`：返回 int（与 toChar 一致）。旧版返回 char。
- *  - `toStr(arg)`：**真正做转换**，用重载按类型分派（int/float/bool/str）。
+ *  - `toStr(arg)`：**真正做转换**，用重载按类型分派（int/float/bool/str/char）。
  *    旧版是「把值的类型标签改成 str」（本质是欺骗类型系统），不是转换。
- *
- * 若将来引入 char↔str 转换或解引用运算符，可恢复旧签名。
  * ==========================================================================
  */
 
@@ -212,11 +216,18 @@ fun charToInt(c: int): int {
     ret c
 }
 
-fun charToInt(c: str): int {
-    ret toChar(c)
+fun charToInt(c: char): int {
+    ret c
 }
 
-fun intToChar(i: int): int {
+fun charToInt(s: str): int {
+    if size(s) != 1 {
+        throw "charToInt: expected exactly one character"
+    }
+    ret charToInt(s[0])
+}
+
+fun intToChar(i: int): char {
     ret i
 }
 

@@ -593,9 +593,49 @@ namespace backend{
         if (actual->getKind() == sema::TypeKind::TK_VOID) return -1;
         if (formal->equals(actual)) return 100;
         if (!sameValueFamily(formal, actual)) return -1;
-        // 数值族内部互通，但同族优先（`f(int)` 比 `f(float)` 更适合传 int）。
-        if (formal->isNumeric() && actual->isNumeric())        {
-            return (formal->getKind() == actual->getKind()) ? 90 : 50;
+        // 数值族内部互通，按亲和度梯度打分。
+        //
+        // 原实现是「int/float 用 90/50，其余落到指针族兜底 30」，而 isNumeric()
+        // 只认 int/float，于是 bool/char 实参面对 int/char 两个候选时**各得 30
+        // 分判平局** → `charToInt(true)` 报 Ambiguous。数值族需要按「拓宽无损 /
+        // 收窄有损 / 兄弟无语义依据」区分，不能让它们同分。
+        //
+        // 分档依据（用户 2026-11-16 批准）：
+        //   精确             100  （上面已返回）
+        //   同族拓宽/无损     90   bool/char → int、int → float
+        //   收窄（有损）      40   int → bool/char、float → int
+        //   兄弟（无语义依据） 20   bool ↔ char
+        // 非数值族之间仍是 30（指针族互通），刻意低于数值族的任何一档：
+        // 数值类型之间至少有可定义的转换语义，指针族互通只是「都是 8 字节」。
+        const auto numericKind = [](const sema::TypePtr& t) {
+            const auto k = t->getKind();
+            return k == sema::TypeKind::TK_INT || k == sema::TypeKind::TK_FLOAT ||
+                   k == sema::TypeKind::TK_CHAR || k == sema::TypeKind::TK_BOOL;
+        };
+        if (numericKind(formal) && numericKind(actual))        {
+            const auto f = formal->getKind();
+            const auto a = actual->getKind();
+            // 同族（int→int 已在 equals 命中，这里覆盖 float→float 等）
+            if (f == a) return 90;
+            // 拓宽到 int：bool/char 底层的值域完全落在 int 内，无损。
+            if (f == sema::TypeKind::TK_INT &&
+                (a == sema::TypeKind::TK_BOOL || a == sema::TypeKind::TK_CHAR)) return 90;
+            // int → float：数值转换，保持 P11 既有口径。
+            if (f == sema::TypeKind::TK_FLOAT && a == sema::TypeKind::TK_INT) return 50;
+            // float → int：截断丢小数，有损。
+            if (f == sema::TypeKind::TK_INT && a == sema::TypeKind::TK_FLOAT) return 40;
+            // int → bool/char：收窄，值域可能装不下（65 不是合法 char 语义上的
+            // 字符、2 不是合法 bool）。
+            if ((f == sema::TypeKind::TK_BOOL || f == sema::TypeKind::TK_CHAR) &&
+                a == sema::TypeKind::TK_INT) return 40;
+            // float → bool/char：既收窄又跨族。
+            if ((f == sema::TypeKind::TK_BOOL || f == sema::TypeKind::TK_CHAR) &&
+                a == sema::TypeKind::TK_FLOAT) return 20;
+            // bool ↔ char：两者互不相干，没有任何语义依据可依。
+            if ((f == sema::TypeKind::TK_BOOL && a == sema::TypeKind::TK_CHAR) ||
+                (f == sema::TypeKind::TK_CHAR && a == sema::TypeKind::TK_BOOL)) return 20;
+            // 兜底：数值族内未列举的组合按收窄处理。
+            return 40;
         }
         // 指针族之间（str/list/dict/class/ptr/func）只是「一个 8 字节指针」，
         // 允许互通但优先级很低，避免抢走精确匹配。

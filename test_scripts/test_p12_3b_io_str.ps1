@@ -149,15 +149,46 @@ sout("[" + trim("  hi  ", " ", false, true) + "]")
 '@ "[hi]`n[hi]`n[hi  ]`n[  hi]"
 
 Write-Host ''
-Write-Host '=== 3. str：字符 <-> 整数（语义已变更：char -> int） ==='
+Write-Host '=== 3. str：字符 <-> 整数 ==='
 
+# 语义：`intToChar` 返回 char（`sout` 按字符打印），`charToInt` 接受 int/char/str。
+# 2026-11-16 用户裁决：intToChar 恢复原仓库的 `char` 返回类型；charToInt 保留
+# str 重载但要求长度恰为 1（否则运行时抛错），不再静默返回首字节。
 Invoke-RioCase 'str_char_int' @'
 import(strings="str")
 sout(toChar("A"))
 sout(charToInt("A"))
 sout(intToChar(66))
 sout(toChar(""))
-'@ "65`n65`n66`n0"
+'@ "65`n65`nB`n0"
+
+# charToInt 的三种入参形式必须等价，且 char 与 int 分派正确。
+Invoke-RioCase 'str_charToInt_overloads' @'
+import(strings="str")
+var c: char = 'A'
+sout(charToInt(65))
+sout(charToInt(c))
+sout(charToInt("A"))
+sout(charToInt(true))
+'@ "65`n65`n65`n1"
+
+# 多字符字符串必须报错（原实现静默返回首字节，是错的）。
+$multiFile = Join-Path $work 'str_charToInt_multichar.rio'
+$multiExe = Join-Path $work 'str_charToInt_multichar.exe'
+[System.IO.File]::WriteAllText($multiFile, @'
+import(strings="str")
+sout(charToInt("true"))
+'@, $utf8NoBom)
+if (Test-Path $multiExe) { Remove-Item $multiExe -Force }
+$multiLog = & $rcc -build --path $multiFile --output $multiExe 2>&1 | Out-String
+if ($LASTEXITCODE -eq 0 -and (Test-Path $multiExe)) {
+    # 编译通过（当前设计：长度检查在运行时）—— 要求运行时非零退出。
+    & $multiExe 2>&1 | Out-Null
+    Check 'str_charToInt_multichar' ($LASTEXITCODE -ne 0) "expected runtime failure, exit=$LASTEXITCODE"
+} else {
+    # 将来若改成编译期检查，这里仍然算通过。
+    Check 'str_charToInt_multichar' $true "compile-time rejection"
+}
 
 Write-Host ''
 Write-Host '=== 4. str：size 对 str / list / dict 通用 ==='
