@@ -1315,8 +1315,8 @@ foreach ($p in 0,1,2,5,6,7,8,9,10,11) {
 # 3) 标准库 —— 三层都要全绿（§5.6）
 powershell -File test_scripts/test_std.ps1 -Layer compile
 powershell -File test_scripts/test_std.ps1 -Layer api       # 每个公开函数都有调用用例
-powershell -File test_scripts/test_std.ps1 -Layer behavior  # ds 20 / str 12 / math 7 ...
-powershell -File test_scripts/test_std.ps1                  # 三层汇总表，任一非全绿 exit 1
+powershell -File test_scripts/test_std.ps1 -Layer behavior  # ds 50 / str 29 / math 11 / ops 6 / io 4 / prog 3
+powershell -File test_scripts/test_std.ps1                  # 三层汇总表 213/213，任一非全绿 exit 1
 
 # 4) -s 六种格式校验（§3.3）
 powershell -File test_scripts/test_symbol_export.ps1        # 六种格式结构校验
@@ -1332,6 +1332,22 @@ git grep -il "llvm" -- ":!docs/*" ":!logs/*"           # 无输出
 git grep -n "llc\|-ir \|\.obj" -- "scripts/*"          # 无输出
 RCC.exe -v                                             # 1.22.0
 ```
+
+> **实测结果（2026-11-17，v1.22.0）**：
+>
+> | # | 命令 | 结果 |
+> |---|---|---|
+> | 1 | `mingw32-make -C build -j 10` | ✅ 零错误 |
+> | 2 | `test_all.ps1 -Quick` | ✅ 22 套件 / 439 项全绿 |
+> | 3 | `test_std.ps1` 三层 | ✅ 213/213（compile 37 / api 73 / behavior 103） |
+> | 4 | `test_symbol_export.ps1` | ✅ 59/59，六格式全部输出正常 |
+> | 5 | `test_legacy_all.ps1` | ✅ 15/17（`test_14_iter` / `test_15_forinrange` 为 G6 延期） |
+> | 6 | `scripts\test.bat` | ✅ 24 套件 / 667 项通过、2 项延期 |
+> | 7 | `RCC.exe -v` | ✅ `RCC(Rio Compiler Collection) v1.22.0` |
+>
+> `git grep -il "llvm"` 在 `code/` 与 `scripts/` 下**无输出**；
+> `git grep -n "llc\|-ir \|\.obj" -- scripts/*` **无输出**；
+> `git status --short` 干净（无未跟踪产物）。
 
 **P12 完成的判定（全部满足）**：
 

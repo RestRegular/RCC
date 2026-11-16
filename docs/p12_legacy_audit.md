@@ -199,6 +199,26 @@ git grep -il "llvm" -- ":!docs/*" ":!logs/*"
 `tests/test_*/build.log` 是历史日志，属仓库卫生问题而非功能依赖；
 在 P12-5 更新 `logs/update_logs.md` 时一并处理（重新生成或从索引中移除）。
 
+**P12-5 处置结果（2026-11-17）**：12 个 `build.log` 已全部 `git rm`。理由：
+内容全是 `D:\ClionProjects\RCC` 的 LLVM 时代产物路径（`.ll` / `.obj`），
+既无任何脚本或 CMake 引用，也不再能由新版 `run.bat` 重新生成（新版不写日志）。
+同时删掉 `.idea/customTargets.xml` 里名为 `llvm` 的失效外部构建目标
+（指向已不存在的 `llc` 工具链）。
+
+**剩余 llvm 字样全部是正当保留**，逐条核对：
+
+| 位置 | 保留理由 |
+|---|---|
+| `.clang-format` `BasedOnStyle: LLVM` | 格式化器风格名，与后端无关 |
+| `CMakeLists.txt` `Backend: x86-64 GAS assembly (no LLVM)` | 主动声明无 LLVM 依赖 |
+| `code/include/rcc_version.h` | 版本注释里说明「脚本改为直发汇编」，已避开该词 |
+| `scripts/run.bat:6-7` | 说明旧流水线为何被删的历史注释 |
+| `test_scripts/test_p0.ps1` / `test_p8_modules.ps1` | 测试注释里的历史背景说明 |
+| `tests/test_13/14/15/test.rio` 首行注释 | **冻结的测试输入**，用户明确要求保持不动 |
+
+最终 `git grep -il "llvm"` 仍有输出，但**不存在任何功能性依赖**——
+没有任何构建/运行路径调用 `llc.exe` 或生成/读取 `.ll` / `.obj`。
+
 ---
 
 ## 汇总
