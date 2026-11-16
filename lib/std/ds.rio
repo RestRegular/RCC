@@ -136,15 +136,46 @@ fun _dsLen(arg: any): int {
 }
 
 /**
- * 容器是否为空。
+ * 判断容器是否为空。
  *
- * 注意：长度函数请用 `str` 模块导出的 `size`（str/list/dict 通用），
- * 本模块不重复导出 `size`，否则两个模块同时 import 时内联会撞名。
+ * 内部统一实现：对 list / dict / str 三种容器均通过 `_dsLen` 获取长度，
+ * 长度为 0 即视为空。
  *
- * @example isEmpty([]) == true，isEmpty([1]) == false
+ * 注意：
+ * 1. 这里本可以用泛型来消除重复的三个重载，但当前泛型不支持类型约束
+ *    （无法约束为“仅 list / dict / str”），若用无约束泛型，
+ *    类型检查会退化得和 `any` 一样宽，等于没有约束。
+ *    因此暂时选择用重载显式枚举 list / dict / str，
+ *    在调用侧保留精确的类型检查，代价是少量模板代码。
+ *    TODO: 待语言支持泛型约束后，此处应改为带约束的泛型实现，合并三个重载，去掉重复的模板代码。
+ *
+ * 2. 不直接暴露接收 `any` 的接口，同样是为了避免 `any` 过度放宽类型检查。
+ * 3. 本模块不导出 `size`，长度计算统一使用 `str` 模块导出的 `size`
+ *    （str/list/dict 通用），避免两个模块同时被 import 时内联产生命名冲突。
+ *
+ * @example
+ * isEmpty([]) == true
+ * isEmpty([1]) == false
+ * isEmpty({}) == true
+ * isEmpty("") == true
  */
-fun isEmpty(arg: any): bool {
+fun _dsIsEmpty(arg: any): bool {
     ret _dsLen(arg) == 0
+}
+
+/** 判断 str 是否为空。@example isEmpty("") == true */
+fun isEmpty(arg: str): bool {
+    ret _dsIsEmpty(arg)
+}
+
+/** 判断 list 是否为空。@example isEmpty([]) == true */
+fun isEmpty(arg: list): bool {
+    ret _dsIsEmpty(arg)
+}
+
+/** 判断 dict 是否为空。@example isEmpty({}) == true */
+fun isEmpty(arg: dict): bool {
+    ret _dsIsEmpty(arg)
 }
 
 // ============================ 取元素 ============================

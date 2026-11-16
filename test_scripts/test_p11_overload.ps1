@@ -188,6 +188,52 @@ $negative = [ordered]@{
 }
 
 # ---------------------------------------------------------------------------
+# 容器重载用例（P13 缺陷回归，2026-11-17）
+#
+# 用户实测发现的三个缺陷，全部在这里固化成回归：
+#   D1  str / list / dict 三份重载接任一容器实参时**全部报歧义** ——
+#       原因是它们被当成「指针族互通 30 分」打平。三者语义互不相同
+#       （字符串内容比较 / 元素槽 / 键值数组），不能互相顶替。
+#   D2  `list[str]` 与 `list[int]` 拼出同一个符号 `_R1fLi` —— 原因是
+#       签名预登记只拿 `getFullLabel()` 的文本走 resolveTypeName，
+#       方括号里的类型实参在第一步就丢了。
+#   D3  `list[any]` 与 `list[int]`、`dict[any,any]` 与 `dict[str,int]`
+#       拼出同一个符号 —— 原因是 `any` 被兜底成 int / 与「没写」共用编码。
+# ---------------------------------------------------------------------------
+$containers = [ordered]@{
+    # D1：裸 str / list / dict 三份重载，各自选对。
+    'con_bare_three' = @{
+        Body   = "fun test(arg: str): int { ret 1 }`nfun test(arg: list): int { ret 2 }`nfun test(arg: dict): int { ret 3 }`nfun main(): void {`n    sout(test(`"`"))`n    sout(test([1]))`n    sout(test({`"k`": 1}))`n}`nmain()`n"
+        Expect = "1`n2`n3"
+    }
+    # D2：元素类型不同必须能共存，且各选各的。
+    'con_element_types' = @{
+        Body   = "fun test(arg: list[str]): int { ret 3 }`nfun test(arg: list[int]): int { ret 4 }`nfun main(): void {`n    sout(test([`"a`"]))`n    sout(test([1]))`n}`nmain()`n"
+        Expect = "3`n4"
+    }
+    # D3：显式 any 与具体类型必须能共存。
+    'con_any_vs_concrete' = @{
+        Body   = "fun test(arg: list[any]): int { ret 2 }`nfun test(arg: list[str]): int { ret 3 }`nfun main(): void {`n    sout(test([`"a`"]))`n    sout(test([1]))`n}`nmain()`n"
+        Expect = "3`n2"
+    }
+    # 裸 list 与具体 list 共存：实参是具体类型时，具体形参优先。
+    'con_bare_vs_typed' = @{
+        Body   = "fun test(arg: list): int { ret 2 }`nfun test(arg: list[str]): int { ret 3 }`nfun main(): void {`n    sout(test([`"a`"]))`n    sout(test([1]))`n}`nmain()`n"
+        Expect = "3`n2"
+    }
+    # dict 的值类型要能区分；键类型相同、值不同不该撞车。
+    'con_dict_values' = @{
+        Body   = "fun test(arg: dict[str, int]): int { ret 6 }`nfun test(arg: dict[str, str]): int { ret 7 }`nfun main(): void {`n    sout(test({`"k`": 1}))`n    sout(test({`"1`": `"2`"}))`n}`nmain()`n"
+        Expect = "6`n7"
+    }
+    # 嵌套容器：`list[list[int]]` 与 `list[list[str]]` 是不同符号。
+    'con_nested' = @{
+        Body   = "fun test(arg: list[list[int]]): int { ret 8 }`nfun test(arg: list[list[str]]): int { ret 9 }`nfun main(): void {`n    sout(test([[1]]))`n    sout(test([[`"a`"]]))`n}`nmain()`n"
+        Expect = "8`n9"
+    }
+}
+
+# ---------------------------------------------------------------------------
 # 执行
 # ---------------------------------------------------------------------------
 function Invoke-Suite {
@@ -239,6 +285,7 @@ function Invoke-Suite {
 
 Invoke-Suite -Title '正向用例（按形参类型决议）' -Cases $positive -ExpectFailure $false
 Invoke-Suite -Title '决议用例（隐式转换 / 默认值 / 命名实参）' -Cases $resolution -ExpectFailure $false
+Invoke-Suite -Title '容器重载用例（P13 缺陷回归）' -Cases $containers -ExpectFailure $false
 Invoke-Suite -Title '反向用例（必须报错）' -Cases $negative -ExpectFailure $true
 
 Write-Host ""

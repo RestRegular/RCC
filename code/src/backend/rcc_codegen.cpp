@@ -59,15 +59,27 @@ namespace backend{
             // 映射成 unknown = 「不标注」，语义正好等价（checkAssignable /
             // sameValueFamily 对 unknown 一律放行）。
             if (name == "any")   return sema::getUnknownType();
-            // P8：容器形参标注。没有元素类型信息时给一个「元素按 int 解释」的
-            // 保守容器类型 —— 关键是让 `xs[i]` 知道左边是 list 而不是 int，
+            // P8：容器形参标注。没有元素类型信息时给一个「元素未知」的容器
+            // 类型 —— 关键是让 `xs[i]` 知道左边是 list 而不是 int，
             // 否则会落到「Index access on a non-container value」。
+            //
+            // 元素用 **nullptr** 表示「标注里根本没写元素类型」（裸 `list`），
+            // 显式写 `any` 才是 UNKNOWN。两者在重载符号里必须分开：
+            //   list        -> ListType(nullptr)      -> `Lv`
+            //   list[any]   -> ListType(UNKNOWN)      -> `LA`
+            //   list[int]   -> ListType(int)          -> `Li`
+            // 混用会让 `fun f(x: list)` 与 `fun f(x: list[int])` 拼出同一符号，
+            // 直接报 "Duplicate definition"（2026-11-17 实测）。
+            // 索引结果的静态类型仍按 int 兜底（见 inferIndexResultType）。
             if (name == "list" || name == "series" || name == "array")            {
-                return std::make_shared<sema::ListType>(sema::getIntType());
+                return std::make_shared<sema::ListType>(nullptr);
             }
+            // dict：**键**保持 str —— Rio 的字典几乎都是字符串键，索引比较
+            // 要靠 `keyIsStr` 走内容比较；键设成 nullptr 会让裸 `dict` 形参里的
+            // `d["k"]` 退化成按整数比较，查不到键（实测）。
+            // **值**用 nullptr 表示「没写」，与显式 `any`（UNKNOWN）区分开。
             if (name == "dict" || name == "map")            {
-                // Rio 的字典键以字符串为主，按 str 键构造（比较时按内容比）。
-                return std::make_shared<sema::DictType>(sema::getStrType(), sema::getIntType());
+                return std::make_shared<sema::DictType>(sema::getStrType(), nullptr);
             }
             // P10：`funi[params][ret]` —— 函数类型标注。
             // 裸名字到这里时元素类型已丢，只能给一个「参数未知」的占位，
@@ -498,10 +510,53 @@ namespace backend{
         // mangling 要靠它把 `fun f(x)` 与 `fun f(x: int)` 编成不同的符号。
         // 标注了但解析不出来（拼错类型名）也留 TK_UNKNOWN：真正的报错由
         // emitFunctionDefinition 的标注校验负责，这里只是不参与精确匹配。
+        //
+        // P13 缺陷修复（2026-11-17 实测）：形参类型必须与
+        // emitFunctionDefinition **走同一条解析路径**。原先这里只拿标注文本
+        // 调 resolveTypeName，而它收的是裸名字 —— `getFullLabel()` 把 `[...]`
+        // 整个丢掉，`list[str]` 到这里只剩 "list"，于是
+        // `fun f(x: list[str])` 与 `fun f(x: list[int])` 拼出同一个符号
+        // `_R1fLi`，直接报 "Duplicate definition"。
+        // collectParamTypesT 是发射函数体时用的那一套（走 LabelNode /
+        // IndexExpressionNode，方括号里的类型实参拿得全），复用它才能保证
+        // 「预登记的签名」与「发射时算出的符号」是同一个。
         sig.annotationTexts = annotations;
+        {
+            const auto savedGenerics = _currentGenericParams;
+            _currentGenericParams = sig.genericParams;
+            std::vector<sema::TypePtr> resolved;
+            if (const auto callInfix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node->getCallNode()))            {
+                if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(callInfix->getRightNode()))                {
+                    collectParamTypesT(paren->getRangerNode(), resolved);
+                }
+  else                {
+                    collectParamTypesT(callInfix->getRightNode(), resolved);
+                }
+            }
+  else if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node->getCallNode()))            {
+                const auto paramsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode());
+                if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(paramsNode))                {
+                    collectParamTypesT(paren->getRangerNode(), resolved);
+                }
+  else if (paramsNode)                {
+                    collectParamTypesT(paramsNode, resolved);
+                }
+            }
+  else            {
+                collectParamTypesT(node->getCallNode(), resolved);
+            }
+            _currentGenericParams = savedGenerics;
+            sig.paramTypes = std::move(resolved);
+        }
+        // 位置对齐：三张表（名字 / 标注 / 类型）长度必须一致。
+        while (sig.paramTypes.size() < sig.paramNames.size())        {
+            sig.paramTypes.push_back(sema::getUnknownType());
+        }
+        if (sig.paramTypes.size() > sig.paramNames.size())        {
+            sig.paramTypes.resize(sig.paramNames.size());
+        }
         for (size_t i = 0; i < sig.paramNames.size(); ++i)        {
             const std::string text = (i < annotations.size()) ? annotations[i] : std::string();
-            sig.paramTypes.push_back(text.empty() ? sema::getUnknownType() : resolveTypeName(text));
             sig.annotated.push_back(!text.empty());
         }
         // 返回类型：与 emitFunctionDefinition 同一套顺序
@@ -592,6 +647,75 @@ namespace backend{
         if (!actual || actual->getKind() == sema::TypeKind::TK_UNKNOWN) return 0;
         if (actual->getKind() == sema::TypeKind::TK_VOID) return -1;
         if (formal->equals(actual)) return 100;
+        // ---------- 容器之间的亲和度（P13 缺陷修复，2026-11-17） ----------
+        //
+        // 只看「都是 8 字节指针」会让 str / list / dict 彼此顶替：
+        //   fun test(arg: str) / test(arg: list) / test(arg: dict)
+        //   test([1,2]) 三者各得 30 分 → 直接报 Ambiguous（用户实测的第一个症状）。
+        // 但这份代码**根本不该**接受 str 或 dict 实参，它们之间没有转换语义。
+        // 所以：容器族之间一律 -1（不合格），只有同族才继续比元素类型。
+        //
+        // 同族内部按「元素类型写得多具体」分档 —— 越具体的写法越贴合：
+        //   list[int] 接 list[int]  -> 100（上面的 equals 已命中）
+        //   list[int] 接 list       -> 60（裸形参接具体实参，能用但不够贴）
+        //   list      接 list[int]  -> 70（裸形参什么 list 都收）
+        //   list[any] 接任何 list   -> 70（any 也是「不约束」，与裸形参同级）
+        // 裸容器的元素是 nullptr、显式 any 是 UNKNOWN，两者都当「不约束」。
+        const auto isContainer = [](const sema::TypePtr& t) {
+            const auto k = t->getKind();
+            return k == sema::TypeKind::TK_STR || k == sema::TypeKind::TK_LIST ||
+                   k == sema::TypeKind::TK_DICT;
+        };
+        // 只有**两侧都是容器**时才进这个分支：容器之间互不兼容。
+        // 容器与 class / ptr / func 之间仍按 P11 §3.3 的「指针族互通 30」
+        // 处理（那条规则原样保留，下面照旧 return 30）。
+        if (isContainer(formal) && isContainer(actual))        {
+            if (formal->getKind() != actual->getKind()) return -1;
+            // str 没有类型实参，走到这里说明两者都是 str 但内容不等 —— 不可能，
+            // 保守按同族处理。
+            if (formal->getKind() == sema::TypeKind::TK_STR) return 90;
+            if (formal->getKind() == sema::TypeKind::TK_LIST)            {
+                const auto feat = std::static_pointer_cast<sema::ListType>(formal)->getElemType();
+                const auto aeat = std::static_pointer_cast<sema::ListType>(actual)->getElemType();
+                const bool formalGeneric = !feat || feat->getKind() == sema::TypeKind::TK_UNKNOWN;
+                const bool actualGeneric = !aeat || aeat->getKind() == sema::TypeKind::TK_UNKNOWN;
+                // 形参不约束：什么 list 都收，但不如精确匹配贴。
+                if (formalGeneric) return 70;
+                // 形参具体、实参不约束：实参这边没给出信息，按「能装下」处理。
+                if (actualGeneric) return 60;
+                // 两侧都具体但元素不等：不做元素间的数值提升，
+                // 保守判不合格 —— 需要转换请显式写一个更宽的形参。
+                return -1;
+            }
+            if (formal->getKind() == sema::TypeKind::TK_DICT)            {
+                const auto fd = std::static_pointer_cast<sema::DictType>(formal);
+                const auto ad = std::static_pointer_cast<sema::DictType>(actual);
+                const auto generic = [](const sema::TypePtr& t) {
+                    return !t || t->getKind() == sema::TypeKind::TK_UNKNOWN;
+                };
+                const bool fkGeneric = generic(fd->getKeyType());
+                const bool fvGeneric = generic(fd->getValueType());
+                const bool akGeneric = generic(ad->getKeyType());
+                const bool avGeneric = generic(ad->getValueType());
+                // 形参两侧都不约束（裸 `dict` / `dict[any, any]`）：什么都收。
+                if (fkGeneric && fvGeneric) return 70;
+                // 实参两侧都不约束：实参没给出信息，按「能装下」处理。
+                if (akGeneric && avGeneric) return 60;
+                // 逐侧比较：形参那一侧不约束就跳过，约束了就必须精确相等。
+                // 键尤其不能猜 —— 键参与查找语义（str 键按内容比、int 键按值比）。
+                if (!fkGeneric)                {
+                    if (akGeneric) return 60;
+                    if (!fd->getKeyType()->equals(ad->getKeyType())) return -1;
+                }
+                if (!fvGeneric)                {
+                    if (avGeneric) return 60;
+                    if (!fd->getValueType()->equals(ad->getValueType())) return -1;
+                }
+                // 形参比实参更宽松（至少有一侧不约束，且没有不匹配）：
+                // 比精确匹配低一档，但确实能用。
+                return 90;
+            }
+        }
         if (!sameValueFamily(formal, actual)) return -1;
         // 数值族内部互通，按亲和度梯度打分。
         //
@@ -639,6 +763,10 @@ namespace backend{
         }
         // 指针族之间（str/list/dict/class/ptr/func）只是「一个 8 字节指针」，
         // 允许互通但优先级很低，避免抢走精确匹配。
+        //
+        // 注意（P13）：容器与容器之间**不走**这条兜底 —— 上面已单独处理
+        // （str/list/dict 语义互不相同，按「指针」互换会选中错误的函数体）。
+        // 这条留给「容器 vs class/ptr/func」以及其余指针族组合。
         return 30;
     }
     bool CodeGen::normalizeArgsFor(
@@ -4644,16 +4772,20 @@ namespace backend{
             for (const auto& a : argNodes) args.push_back(typeFromTypeArgNode(a, genericParams));
         }
         if (base == "list" || base == "series" || base == "array")        {
-            const auto elem = args.empty() ? sema::getIntType() : args[0];
-            return std::make_shared<sema::ListType>(
-                (elem && elem->getKind() != sema::TypeKind::TK_UNKNOWN) ? elem : sema::getIntType());
+            // 元素类型**如实**保留：写 `list[any]` 就是「元素是 any」，
+            // 不能兜底成 int —— 否则 `list[any]` 与 `list[int]` 会拼出同一个
+            // 重载符号 `_R1tLi`，报 "Duplicate definition"（2026-11-17 实测）。
+            // 只有真的没写元素类型（`list` 裸名）才是 nullptr，
+            // 那条路径走 resolveTypeName，不会到这里。
+            const auto elem = args.empty() ? sema::getUnknownType() : args[0];
+            return std::make_shared<sema::ListType>(elem ? elem : sema::getUnknownType());
         }
         if (base == "dict" || base == "map")        {
             const auto key = args.size() > 0 ? args[0] : sema::getStrType();
-            const auto val = args.size() > 1 ? args[1] : sema::getIntType();
+            const auto val = args.size() > 1 ? args[1] : sema::getUnknownType();
             return std::make_shared<sema::DictType>(
-                (key && key->getKind() != sema::TypeKind::TK_UNKNOWN) ? key : sema::getStrType(),
-                (val && val->getKind() != sema::TypeKind::TK_UNKNOWN) ? val : sema::getIntType());
+                key ? key : sema::getStrType(),
+                val ? val : sema::getUnknownType());
         }
         // `Box[int]`：泛型类按需单态化，类型指向 mangled 实例名。
         if (_genericClasses.find(base) != _genericClasses.end())        {

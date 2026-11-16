@@ -13,6 +13,22 @@ namespace backend
     namespace naming
     {
         // §4.3 冻结的类型编码表。
+        //
+        // 2026-11-17（P13 缺陷修复）：**新增一个编码 `A`，只用于
+        // 「显式写了 `any` 的类型位置」**，其余编码一个字都没动。
+        //
+        // 原因：`any` 在语言里等价于「不约束」，sema 层把它解析成
+        // TK_UNKNOWN；而 TK_UNKNOWN 在编码表里是 `v`，与「没写标注」
+        // 共用同一个字母。于是重载集里
+        //     fun f(x: dict[any, any])
+        //     fun f(x: dict[str, int])
+        // 会拼出同一个符号 `_R1fDKv`（实测报 "Duplicate definition"）——
+        // 这两份定义语义上确实不同（前者接受任意字典，后者只收 str→int），
+        // 必须能共存。裸 `list` / 裸 `dict` 仍编成 `v`：那才是「没写元素类型」。
+        //
+        // 怎么区分二者：DictType / ListType 的类型实参为 nullptr 表示「裸容器
+        // 标注」，为 TK_UNKNOWN 表示「显式写了 any」。这里据此分流，
+        // 编码表其余部分保持不变（P10/P11 的冻结面不受影响）。
         std::string mangleType(const sema::TypePtr& type)
         {
             if (!type) return "v";
@@ -26,11 +42,23 @@ namespace backend
             case sema::TypeKind::TK_STR:   return "K";
             case sema::TypeKind::TK_PTR:   return "P";
             case sema::TypeKind::TK_LIST:
-                return "L" + mangleType(std::static_pointer_cast<sema::ListType>(type)->getElemType());
+            {
+                const auto& elem = std::static_pointer_cast<sema::ListType>(type)->getElemType();
+                // 显式 `any` -> `A`（与「裸 list」的 `v` 区分开）
+                if (elem && elem->getKind() == sema::TypeKind::TK_UNKNOWN) return "LA";
+                return "L" + mangleType(elem);
+            }
             case sema::TypeKind::TK_DICT:
             {
                 const auto d = std::static_pointer_cast<sema::DictType>(type);
-                return "D" + mangleType(d->getKeyType()) + mangleType(d->getValueType());
+                const auto& k = d->getKeyType();
+                const auto& v = d->getValueType();
+                // 显式 `any` -> `A`；裸 `dict`（两侧都为空）保持旧编码 `Dvv`
+                const std::string ks = (k && k->getKind() == sema::TypeKind::TK_UNKNOWN)
+                                           ? std::string("A") : mangleType(k);
+                const std::string vs = (v && v->getKind() == sema::TypeKind::TK_UNKNOWN)
+                                           ? std::string("A") : mangleType(v);
+                return "D" + ks + vs;
             }
             case sema::TypeKind::TK_FUNC:
             {
