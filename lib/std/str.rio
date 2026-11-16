@@ -220,6 +220,11 @@ fun charToInt(c: char): int {
     ret c
 }
 
+// 长度检查只能在运行时做：`size()` 包装的是 core_str_len（外部符号），
+// 且编译器目前没有常量折叠，字面量长度也拿不到。
+// 将来常量折叠落地（已登记为「优化开发阶段」的待办）后，这个检查可自然
+// 提前到编译期 —— 届时**不要**改成在 codegen 里特化 charToInt，那会破坏
+// 「stdlib 是纯 Rio 源码」的分层（用户 2026-11-16 明确否决该方案）。
 fun charToInt(s: str): int {
     if size(s) != 1 {
         throw "charToInt: expected exactly one character"
