@@ -241,6 +241,21 @@ $genericOverloads = [ordered]@{
         Body   = "fun pad[T](x: T, n: int = 42): int { ret n }`nfun main(): void {`n    sout(pad(1))`n    sout(pad(2, 7))`n}`nmain()`n"
         Expect = "42`n7"
     }
+    # 同名多份泛型 + 显式类型实参：必须按**形参形状**选，不能只按个数。
+    # 个数 1 的那份收 list，传 dict 就该落到个数 2 的那份（靠推导），
+    # 而不是硬套 list 版（那会静默编译通过、运行时把 dict 当 list 解引用）。
+    'gen_shape_picks_correct' = @{
+        Body   = @'
+fun pick[T](c: list[T]): str { ret "list" }
+fun pick[T, K](c: dict[T, K]): str { ret "dict" }
+fun main(): void {
+    sout(pick[int]([1]))
+    sout(pick({"a": 1}))
+}
+main()
+'@
+        Expect = "list`ndict"
+    }
 }
 
 # ---------------------------------------------------------------------------

@@ -45,8 +45,24 @@ sout(dic["age"])
         Expect = "Rio`n18"
     }
 
-    'dict_multi_key' = @{
-        # 三个键共用一个长度，最容易暴露「按头指针比较」的 bug
+    # 重复键：后写的覆盖先写的（P13 缺陷回归，2026-11-17）。
+    # 原先两条都会进 keys/vals 数组，长度变 2，且查找命中**先出现**的旧值。
+    # 字典语义要求 `{"a":1,"a":2}` 等价于 `{"a":2}`。
+    'dict_dup_key_overwrites' = @{
+        Src = @"
+$soutStub
+var d = {"a": 1, "a": 2}
+sout(core_str_len(d))
+sout(d["a"])
+var e = {"x": 1, "y": 2, "x": 3}
+sout(core_str_len(e))
+sout(e["x"])
+sout(e["y"])
+"@
+        Expect = "1`n2`n2`n3`n2"
+    }
+
+    'dict_multi_key' = @{        # 三个键共用一个长度，最容易暴露「按头指针比较」的 bug
         Src = @"
 $soutStub
 var d = {"a": 1, "b": 2, "c": 3}

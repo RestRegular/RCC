@@ -224,6 +224,19 @@ namespace backend
         void flattenDictPairs(const std::shared_ptr<ast::ExpressionNode>& body,
                               std::vector<std::pair<std::shared_ptr<ast::ExpressionNode>,
                                                     std::shared_ptr<ast::ExpressionNode>>>& out) const;
+        // 字典**字面量键**的编译期比较键（空串 = 判不出来，调用方应保留原样）。
+        //
+        // 用于 `{"a":1, "a":2}` 的去重：返回能唯一刻画这个键的字符串，
+        // 使得「内容相同的两个 str 字面量」得到同一个值（运行时查找按内容比，
+        // 但两个同内容字面量在常量池里是不同指针，不能比指针）。
+        //   字符串字面量 -> "s:" + 内容
+        //   整数字面量   -> "i:" + 十进制
+        //   字符字面量   -> "c:" + 字节值
+        //   布尔字面量   -> "b:" + 0/1
+        // null          -> "n:"
+        // 其余（变量、调用、复杂表达式）返回空串 —— 无法静态去重。
+        [[nodiscard]] static std::string dictLiteralKeyText(
+            const std::shared_ptr<ast::ExpressionNode>& keyNode);
         // 索引表达式里的键：IndexExpressionNode 的 indexNode 是 BracketExpressionNode，
         // 真正的键在它的 body 里，需要剥掉这层壳。
         [[nodiscard]] static std::shared_ptr<ast::ExpressionNode>
@@ -582,6 +595,13 @@ namespace backend
             const std::string& name, size_t explicitCount) const;
         // 这份泛型声明能否接受 argc 个实参（必填 <= argc <= 全部）。
         [[nodiscard]] bool genericAcceptsArgCount(const GenericFunction& g, size_t argc) const;
+        // 这份泛型声明的形参类型与实参是否「形状相容」（容器种类一层）。
+        // 用于挡住 `dumpToStr[str](dict)` 这种「类型实参个数恰好对上、
+        // 但实参根本不是那个容器」的候选 —— 否则会静默选中错的重载并在
+        // 运行时段错误。元素级差异留给 emitArgsToRegisters 的 checkAssignable。
+        [[nodiscard]] bool genericArgsShapeMatch(
+            const GenericFunction& g,
+            const std::vector<std::shared_ptr<ast::ExpressionNode>>& args) const;
         // 已实例化的签名：mangled 名 -> true（避免重复单态化）。
         std::map<std::string, bool> _genericInstances;
         // 待发射的实例化函数体。

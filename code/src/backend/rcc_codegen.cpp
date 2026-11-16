@@ -3136,6 +3136,30 @@ namespace backend{
         }
         return indexNode;
     }
+    std::string CodeGen::dictLiteralKeyText(const std::shared_ptr<ast::ExpressionNode>& keyNode)    {
+        if (!keyNode) return std::string();
+        // 剥掉括号：`{"a": 1, ("a"): 2}` 是同一个键
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(keyNode))        {
+            return dictLiteralKeyText(paren->getRangerNode());
+        }
+        if (const auto lit = std::dynamic_pointer_cast<ast::StringLiteralNode>(keyNode))        {
+            // 按**内容**判等，不是按节点的 toString（那样引号/转义形态会干扰）
+            return "s:" + lit->unescapedString();
+        }
+        if (const auto lit = std::dynamic_pointer_cast<ast::IntegerLiteralNode>(keyNode))        {
+            return "i:" + lit->literalString();
+        }
+        if (const auto lit = std::dynamic_pointer_cast<ast::CharacterLiteralNode>(keyNode))        {
+            return "c:" + lit->literalString();
+        }
+        if (const auto lit = std::dynamic_pointer_cast<ast::BooleanLiteralNode>(keyNode))        {
+            return "b:" + lit->literalString();
+        }
+        if (std::dynamic_pointer_cast<ast::NullLiteralNode>(keyNode))        {
+            return "n:";
+        }
+        return std::string();
+    }
     void CodeGen::emitListExpression(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto list = std::dynamic_pointer_cast<ast::ListExpressionNode>(node);
         if (!list)        {
@@ -3188,6 +3212,40 @@ namespace backend{
         std::vector<std::pair<std::shared_ptr<ast::ExpressionNode>,
                               std::shared_ptr<ast::ExpressionNode>>> pairs;
         flattenDictPairs(dict->getBodyNode(), pairs);
+        // ---------- 字面量重复键去重（P13 缺陷修复，2026-11-17） ----------
+        //
+        // `{"a": 1, "a": 2}` 原先会把两条都写进 keys/vals 数组，得到
+        // 长度 2、并且 `d["a"]` 命中**先出现**的 1。字典语义要求
+        // 「后写的覆盖先写的」，结果应是长度 1、值 2（Python/JS/C++/Java 一致）。
+        //
+        // 只对**编译期可判定的字面量键**去重（str / int / char / bool / null）：
+        //   * str 键按内容比（与运行时查找一致，字面量相同内容指向不同常量池项）
+        //   * 标量键按值比
+        // 键是变量或表达式时保持原样 —— 那种情况要看运行期，属于 P13 之后的
+        // 「字典插入语义」范畴，不是字面量构造能解决的。
+        //
+        // 保留**后出现**的那条（覆盖），并保持首次出现的位置，这样
+        // len 与遍历顺序都符合直觉。
+        {
+            std::vector<std::pair<std::shared_ptr<ast::ExpressionNode>,
+                                  std::shared_ptr<ast::ExpressionNode>>> unique;
+            for (const auto& kv : pairs)            {
+                const std::string key = dictLiteralKeyText(kv.first);
+                bool replaced = false;
+                if (!key.empty())                {
+                    for (auto& u : unique)                    {
+                        if (dictLiteralKeyText(u.first) == key)                        {
+                            // 后出现的覆盖值，位置不变
+                            u.second = kv.second;
+                            replaced = true;
+                            break;
+                        }
+                    }
+                }
+                if (!replaced) unique.push_back(kv);
+            }
+            pairs.swap(unique);
+        }
         const size_t n = pairs.size();
         const std::string headerSlot = allocateTemp(inferDictLiteralType(node));
         emitAlloc(40);
@@ -6098,8 +6156,7 @@ namespace backend{
         }
         return out;
     }
-    bool CodeGen::genericAcceptsArgCount(const GenericFunction& g, const size_t argc) const    {
-        // 实参个数必须落在「必填形参个数 .. 全部形参个数」之间。
+    bool CodeGen::genericAcceptsArgCount(const GenericFunction& g, const size_t argc) const    {        // 实参个数必须落在「必填形参个数 .. 全部形参个数」之间。
         // 有默认值的形参可以不传 —— 这一点原先漏了，导致
         // `fun pad[T](x: T, n: int = 42)` 的 `pad(1)` 被当成「个数不符」
         // 而报 Cannot deduce（P13 回归，2026-11-17）。
@@ -6113,6 +6170,42 @@ namespace backend{
             }
         }
         return argc >= required && argc <= total;
+    }
+    // 这份泛型声明的形参类型与实参是否相容（只看「容器种类」这一层）。
+    //
+    // 为什么必须有这一步（P13 缺陷修复，2026-11-17）：候选选择原先只按
+    // 「显式类型实参个数 + 实参个数 + 能否推导」过滤，完全不管实参类型。
+    // 于是 `dumpToStr[str](d)`（d 是 dict）会选中 list 版的
+    // `fun dumpToStr[T](c: list[T])` —— 类型实参个数 1 恰好对上，
+    // 推导也「成功」（把 str 绑给 T），编译通过，运行时把 dict 当 list
+    // 解引用，直接段错误（实测 exit -1073741819）。
+    //
+    // 判据只认「根本不可转换」的情形：容器 vs 非容器、容器种类不同。
+    // 元素类型留给实例化后的 emitArgsToRegisters 去校验（那里有完整的
+    // checkAssignable），这里判太细会把合法调用也挡掉。
+    bool CodeGen::genericArgsShapeMatch(const GenericFunction& g,
+                                        const std::vector<std::shared_ptr<ast::ExpressionNode>>& args) const    {
+        const size_t n = args.size() < g.paramTypes.size() ? args.size() : g.paramTypes.size();
+        for (size_t i = 0; i < n; ++i)        {
+            const auto& formal = g.paramTypes[i];
+            if (!formal) continue;
+            // 形参本身是泛型占位符或未知：什么实参都收
+            const auto fk = formal->getKind();
+            if (fk == sema::TypeKind::TK_GENERIC || fk == sema::TypeKind::TK_UNKNOWN) continue;
+            auto actual = inferType(args[i]);
+            if (!actual) continue;
+            const auto ak = actual->getKind();
+            if (ak == sema::TypeKind::TK_UNKNOWN) continue;
+            const auto isContainerKind = [](const sema::TypeKind k) {
+                return k == sema::TypeKind::TK_STR || k == sema::TypeKind::TK_LIST ||
+                       k == sema::TypeKind::TK_DICT;
+            };
+            if (isContainerKind(fk) || isContainerKind(ak))            {
+                // 容器与非容器之间、或不同种类的容器之间：不可转换
+                if (fk != ak) return false;
+            }
+        }
+        return true;
     }
     sema::TypePtr CodeGen::inferGenericCallType(const std::string& name,
                                                 const std::shared_ptr<ast::ExpressionNode>& callee,
@@ -6130,6 +6223,7 @@ namespace backend{
         // 约束按「显式类型实参个数」先过滤，再从实参推导。
         for (const auto* generic : genericCandidates(name, explicitArgs.size()))        {
             if (!genericAcceptsArgCount(*generic, args.size())) continue;
+            if (!genericArgsShapeMatch(*generic, args)) continue;
             std::map<std::string, sema::TypePtr> bindings;
             if (!deduceTypeArgs(*generic, explicitArgs, args, bindings)) continue;
             auto ret = substituteGenerics(generic->retType, bindings);
@@ -6153,6 +6247,7 @@ namespace backend{
         std::map<std::string, sema::TypePtr> bindings;
         for (const auto* generic : genericCandidates(name, explicitArgs.size()))        {
             if (!genericAcceptsArgCount(*generic, args.size())) continue;
+            if (!genericArgsShapeMatch(*generic, args)) continue;
             std::map<std::string, sema::TypePtr> candidateBindings;
             // 显式类型实参必须能覆盖这一份声明的**全部**泛型形参。
             // 否则当作不匹配 —— 这一步保证了
@@ -6190,6 +6285,31 @@ namespace backend{
             const GenericFunction* ArityMatch = nullptr;
             for (const auto& g : all)            {
                 if (g.genericParams.size() == explicitArgs.size()) { ArityMatch = &g; break; }
+            }
+            // 类型实参个数对得上、但**形参形状不符**（例如
+            // `dumpToStr[str](d)` 里 d 是 dict，而个数 1 的那份形参是 list）：
+            // 报「形参类型不匹配」比「推不出 T」准确得多 —— 后者会让用户
+            // 以为自己忘了写类型实参（2026-11-17 实测）。
+            if (ArityMatch && !genericArgsShapeMatch(*ArityMatch, args))            {
+                std::string expected;
+                for (size_t i = 0; i < ArityMatch->paramTypes.size(); ++i)                {
+                    if (ArityMatch->paramTypes[i])                    {
+                        if (!expected.empty()) expected += ", ";
+                        expected += ArityMatch->paramTypes[i]->toString();
+                    }
+                }
+                std::string actual;
+                for (const auto& a : args)                {
+                    const auto t = inferType(a);
+                    if (!actual.empty()) actual += ", ";
+                    actual += (t ? t->toString() : std::string("?"));
+                }
+                failAt(callNode ? callNode->getPos() : utils::Pos{},
+                       "No matching generic overload for '" + name + "' with arguments (" +
+                       actual + "); the candidate taking " +
+                       std::to_string(ArityMatch->genericParams.size()) +
+                       " type argument(s) expects (" + expected + ")");
+                return true;
             }
             if (!explicitArgs.empty() && !ArityMatch && !all.empty())            {
                 // 只有一份声明时用最直接的措辞（与 P10 起沿用的诊断一致）：
