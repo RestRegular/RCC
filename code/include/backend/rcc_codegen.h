@@ -16,7 +16,9 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "rcc_asm_emitter.h"
@@ -32,6 +34,7 @@ namespace ast
     class FunctionDefinitionNode;
     class ClassDefinitionNode;
     class InfixExpressionNode;
+    class IndexExpressionNode;
     class BlockRangerNode;
 }
 
@@ -184,7 +187,12 @@ namespace backend
         // 字典字面量 `{k: v, ...}`
         void emitDictionaryExpression(const std::shared_ptr<ast::ExpressionNode>& node);
         // 索引访问 `x[i]` / `d[k]`
-        void emitIndexExpression(const std::shared_ptr<ast::ExpressionNode>& node);
+        // P12/G3 + G4：`str + str` / `list + list` 的拼接（emitBinary 分派过来）。
+        // 两个参数是栈槽地址串，结果放 %rax。
+        void emitStrConcat(const std::string& lhsSlot, const std::string& rhsSlot);
+        void emitListConcat(const std::string& lhsSlot, const std::string& rhsSlot);
+        // P12/G9：`str == str` 的内容比较（emitBinary 分派过来）。结果放 %rax（0/1）。
+        void emitStrEq(const std::string& lhsSlot, const std::string& rhsSlot);        void emitIndexExpression(const std::shared_ptr<ast::ExpressionNode>& node);
 
         // 把容器字面量的体拆成元素列表。
         // 体是逗号连接的中缀链（PARALLEL），空字面量的体是 nullptr。
@@ -217,12 +225,20 @@ namespace backend
         {
             sema::TypePtr type;
             long long stackOffset = 0;   // 相对 %rbp 的偏移（负值）
+            // P12/G1a：顶层 `var` 不再占栈槽，而是放进 .bss 的全局槽。
+            // 非空时 stackOffset 无意义，取地址一律走 addrOf()。
+            std::string globalLabel;
+            [[nodiscard]] bool isGlobal() const { return !globalLabel.empty(); }
         };
 
         void pushScope();
         void popScope();
         [[nodiscard]] VarSlot* lookupVar(const std::string& name);
         long long allocateSlot(const std::string& name, const sema::TypePtr& type, size_t size);
+        // P12/G1a：全局槽。返回 .bss 标签名。
+        std::string allocateGlobal(const std::string& name, const sema::TypePtr& type, size_t size);
+        // 把一个槽变成可直接嵌进指令的操作数地址（`-8(%rbp)` 或 `_g_x(%rip)`）。
+        [[nodiscard]] static std::string addrOf(const VarSlot& slot);
 
         // ---------- 辅助 ----------
         [[nodiscard]] sema::TypePtr inferType(const std::shared_ptr<ast::ExpressionNode>& node) const;
@@ -274,6 +290,20 @@ namespace backend
         std::vector<std::map<std::string, VarSlot>> _scopes;
         // 当前帧已分配的局部变量字节数
         size_t _frameSize = 0;
+        // P12/G1a：顶层 `var` 的全局槽。name -> .bss 标签。
+        std::map<std::string, std::string> _globalSlots;
+        // 全局槽的类型表。不能塞进 _scopes：emitFunctionBody 每次都会
+        // _scopes.clear()，全局变量必须活得比函数帧更久。
+        std::map<std::string, VarSlot> _globals;
+        // 需要在 .bss 里声明的 (标签, 字节数)，按首次登记顺序。
+        std::vector<std::pair<std::string, size_t>> _globalDecls;
+        // 顶层 var 的名字集合 —— emitProgram 用它把顶层 `var x = 1` 从
+        // 「局部变量定义」改判成「写全局槽」。
+        // 光看名字不够：函数体里的同名局部 `var x` 必须仍然分配栈槽并
+        // 遮蔽全局，所以还要配合 _inTopLevelStatements 判断。
+        std::set<std::string> _topLevelVarNames;
+        // 正在发射 __rio_main 的顶层语句（而不是任何函数体）。
+        bool _inTopLevelStatements = false;
         // 当前函数的返回标签
         std::string _returnLabel;
         // P9：当前函数的返回类型 + 是否来自显式标注。
@@ -361,6 +391,11 @@ namespace backend
             // 本类自己声明的字段（登记顺序）
             std::vector<std::string> ownFieldNames;
             std::map<std::string, sema::TypePtr> ownFieldTypes;
+            // P12/G11：实例字段的初始化器（`var x: int = 42`），按声明顺序。
+            // 原仓库 datatype.rio:50 `var TP_INT: str static = type(0)`、
+            // ds.rio:492 `compareHandler: funi[...] private = null` 都靠它。
+            // static 字段整体不支持（见 §1.3，用顶层 var 替代），这里只收实例字段。
+            std::vector<std::pair<std::string, std::shared_ptr<ast::ExpressionNode>>> ownFieldInits;
             // computeLayout 填出来的完整布局（含继承来的字段，基类在前）
             std::vector<std::string> fieldOrder;
             std::map<std::string, long long> fieldOffsets;
@@ -373,6 +408,10 @@ namespace backend
             std::shared_ptr<ast::ExpressionNode> ctorBodyNode;
             // 方法名 -> 定义
             std::map<std::string, std::shared_ptr<ast::FunctionDefinitionNode>> methods;
+            // P12/G5：方法重载集。`A.m(x: int)` 与 `A.m(x: str)` 都能保留。
+            // 单定义的方法**保持裸名**（与全局函数同一判据），只有 ≥2 个定义
+            // 的方法才修饰成 `<Class>.m_R<len><形参编码>`。
+            std::map<std::string, std::vector<std::shared_ptr<ast::FunctionDefinitionNode>>> methodOverloads;
         };
         // 方法解析结果：定义 + 真正声明它的类（发射符号要用 owner）
         struct MethodRef
@@ -391,6 +430,14 @@ namespace backend
         // 成员写 `obj.field = v`（emitAssignment 分派过来）。
         void emitAttributeAssign(const std::shared_ptr<ast::InfixExpressionNode>& target,
                                  const std::shared_ptr<ast::ExpressionNode>& value);
+        // P12/G2：元素写 `a[i] = v` / `d[k] = v`（emitAssignment 分派过来）。
+        // 值已经在 %rax（或浮点 %xmm0）。返回 false 表示左值不是容器索引。
+        bool emitIndexAssign(const std::shared_ptr<ast::IndexExpressionNode>& target,
+                             const std::shared_ptr<ast::ExpressionNode>& value);
+        // 同上，但值的静态类型由调用方给出 —— 用于复合赋值等「值已经算好、
+        // 但手上没有对应 AST 节点」的场景，避免重新求值。
+        bool emitIndexAssignValue(const std::shared_ptr<ast::IndexExpressionNode>& target,
+                                  const sema::TypePtr& valType);
         // 构造调用 `Point(10, 20)`：分配并清零对象，再调 <Class>.__init__。
         void emitConstructorCall(const std::string& className,
                                  const std::shared_ptr<ast::ExpressionNode>& callNode,
@@ -406,6 +453,9 @@ namespace backend
         const ClassInfo* findClass(const std::string& name) const;
         // 某个类（含基类）里所有可见方法。
         std::map<std::string, MethodRef> collectMethods(const std::string& name) const;
+        // P12/G5：收集「这个类 + 这个方法名」的全部定义（沿继承链，派生类整体遮蔽）。
+        std::vector<MethodRef> collectMethodOverloads(const std::string& name,
+                                                       const std::string& method) const;
         // 从表达式推出它的类名（推不出来返回空串）。
         std::string classNameOf(const std::shared_ptr<ast::ExpressionNode>& node) const;
         // 在类层次里找字段偏移，找不到返回 -1。

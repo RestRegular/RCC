@@ -378,7 +378,17 @@ namespace parser {
     ExpressionNodePtr Parser::buildReturnExpression(){
         const auto &returnToken = currentToken();
         ExpressionNodePtr expression = nullptr;
-        if (!nextTokenIs(TokenType::TOKEN_NEWLINE))
+        // P12/G7：`ret` 后面可以没有表达式，不只有「换行」一种情况。
+        // `fun f(): void { ret }` 写在同一行时，`ret` 后面直接是 `}`，
+        // 旧实现会把它当表达式起始，于是报 TOKEN_RBRACE 找不到前缀构造。
+        // 手写 Rio 代码几乎一定会踩这个坑，而收益极大。
+        const auto t = currentToken().getType();
+        const bool noValue =
+            nextTokenIs(TokenType::TOKEN_NEWLINE) ||
+            nextTokenIs(TokenType::TOKEN_RBRACE) ||
+            nextTokenIs(TokenType::TOKEN_STREAM_END) ||
+            t == TokenType::TOKEN_STREAM_END;
+        if (!noValue)
         {
             next();
             expression = buildExpression(Precedence::LOWEST);

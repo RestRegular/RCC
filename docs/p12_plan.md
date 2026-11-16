@@ -62,18 +62,18 @@ git commit -m "feat(backend): rewrite RCC on x86-64 GAS backend (P0-P11)"
 
 | # | 缺口 | 实测报错 / 现象 | 原仓库依据 | P12 决定 |
 |---|---|---|---|---|
-| G1a | 顶层 `var` 在函数体里不可见 | `Undefined variable: g` | 原仓库有 `ScopeType::GLOBAL` / `enterGlobalScope()`；`math.rio` 的 `var pi: float const` 就是顶层 var | **必补**：全局静态槽（详见 §4.1） |
+| G1a | 顶层 `var` 在函数体里不可见 | `Undefined variable: g` | 原仓库有 `ScopeType::GLOBAL` / `enterGlobalScope()`；`math.rio` 的 `var pi: float const` 就是顶层 var | ✅ **已完成**：全局静态槽（`.bss`），8 个用例见 `test_p12_g1a_globals.ps1` |
 | G1b | 程序入口与运行参数传递 | 无 argv 通道（见 §4.2 实测） | **原始设计里没有 argv 传递** —— 详见 §4.2 的核实结论 | ⚠️ **待设计**：需先提交提案 |
-| G3 | `str + str` | 编译成整数加法：`cannot assign a value of type int to a target of type str` | 原仓库 `lowlevel.rio:53` `var riString: str = i + ": "`、`str.rio:111` `[""] + result + ""` 都在用 | **必补**：`rt_str_concat` |
-| G4 | `list + list` | `Index access on a non-container value`（推断成 int） | 原仓库 `str.rio:111` 用 `[""] + result + ""` 做列表拼接 | **必补**：`rt_list_concat` |
-| G5 | 方法重载（类内同名不同签名） | `Argument 1 of 'A.m': cannot assign a value of type int ...` | P11 已在全局函数上实现，类方法漏做 | **必补**：复用 P11 mangling |
+| G3 | `str + str` | 编译成整数加法：`cannot assign a value of type int to a target of type str` | 原仓库 `lowlevel.rio:53` `var riString: str = i + ": "`、`str.rio:111` `[""] + result + ""` 都在用 | ✅ **已完成**：`emitStrConcat`（内联，不改 core ABI） |
+| G4 | `list + list` | `Index access on a non-container value`（推断成 int） | 原仓库 `str.rio:111` 用 `[""] + result + ""` 做列表拼接 | ✅ **已完成**：`emitListConcat` |
+| G5 | 方法重载（类内同名不同签名） | `Argument 1 of 'A.m': cannot assign a value of type int ...` | P11 已在全局函数上实现，类方法漏做 | ✅ **已完成**：`methodOverloads` + `collectMethodOverloads`，单定义保持裸名 |
 | G6 | 闭包捕获**写回** | `sum1` 保持 0 | 原仓库 `ds.iter` / `ds.forInRange` 的契约就是「回调里改外层变量」 | ⚠️ **待设计**：须先对齐内存模型（详见 §4.3） |
-| G7 | `{ ret }` —— `ret` 与 `}` 同一行 | ParserError `TOKEN_RBRACE` 找不到前缀构造 | 原仓库裸 `ret` 是合法语法，`ds.rio` 里大量使用 | **必补**：parser 一行小修 |
-| G9 | `str` 相等比较按**指针**比 | `"x" == "x"` → `false`；`var a="ab" var c="ab"` → `a != c` 成立 | 原仓库 `str.rio:105` `if del == ""`、`datatype.rio:92` `typeOfArg1 == arg2[i]` 都依赖**内容**比较；legacy `ITER_GET`/字典查找也按内容比 | **必补**：`emitBinary` 在 str 分支改调 `core_mem_eq` |
+| G7 | `{ ret }` —— `ret` 与 `}` 同一行 | ParserError `TOKEN_RBRACE` 找不到前缀构造 | 原仓库裸 `ret` 是合法语法，`ds.rio` 里大量使用 | ✅ **已完成**：`}` / `TOKEN_STREAM_END` 视为无返回值 |
+| G9 | `str` 相等比较按**指针**比 | `"x" == "x"` → `false`；`var a="ab" var c="ab"` → `a != c` 成立 | 原仓库 `str.rio:105` `if del == ""`、`datatype.rio:92` `typeOfArg1 == arg2[i]` 都依赖**内容**比较；legacy `ITER_GET`/字典查找也按内容比 | ✅ **已完成**：`emitStrEq`（先比长度头，再 `core_mem_eq`） |
 | G10 | `str` 下标 `s[i]` | `Index access on a non-container value` | 原仓库 v1.21.2 **实测支持读取**（`sout(s[1])` → `e`）；但**写入是静默失效的 bug**（`s[1]="X"` 输出仍 `hello`，因 VM 的 `String::getDataAt` 返回副本） | **必补（只读不写）**：`emitIndexExpression` 加 TK_STR 分支返回 `char`；`s[i]=c` **编译期报错**。详见 §G10 |
-| G11 | 类字段初始化器 `var x: int = 42` 不生效 | 读出来是 `0`（只有 ctor 里赋值才有效） | 原仓库 `datatype.rio:50` `var TP_INT: str static = type(0)`、`ds.rio:492` `compareHandler: funi[...] private = null` 都是字段初始化器 | **必补**：`registerClassBody` 记录初值，构造时写入 |
-| G12 | `ptr` 返回值标注不可用（无 cast） | `fun f(): ptr { var p = core_alloc(...) ret p }` → `cannot assign a value of type int to a target of type ptr` | 原仓库没有 `ptr` 类型（`builtInTypes` 里无 `ptr`），这是**新架构自己引入**的类型；但 `core.rio` 的 `alloc`/`realloc` 必须能返回指针，否则 std 无法分配内存 | **必补**：`ptr` 与 `int` 视为同族（`sameValueFamily` 放行），或允许 `ptr` 形参接受 `alloc` 结果 |
-| G13 | `any` 作为**显式标注**不认 | `fun f(a: any): int` → `Unknown type 'any'`；但**省略标注**完全正常 | 原仓库 `builtInTypes` 里**有** `any`（`rcc_symbol.cpp:650`），`ds.rio:32` `fun copy(arg): any`、`math.rio:26` `fun pow(a, times: int): any` 都在用 | **必补**（低优先级）：`parseTypeName` 加 `any` → `getUnknownType()`（等于「不标注」），语义正好等价 |
+| G11 | 类字段初始化器 `var x: int = 42` 不生效 | 读出来是 `0`（只有 ctor 里赋值才有效） | 原仓库 `datatype.rio:50` `var TP_INT: str static = type(0)`、`ds.rio:492` `compareHandler: funi[...] private = null` 都是字段初始化器 | ✅ **已完成**：`ownFieldInits`，沿继承链在 ctor 前写入 |
+| G12 | `ptr` 返回值标注不可用（无 cast） | `fun f(): ptr { var p = core_alloc(...) ret p }` → `cannot assign a value of type int to a target of type ptr` | 原仓库没有 `ptr` 类型（`builtInTypes` 里无 `ptr`），这是**新架构自己引入**的类型；但 `core.rio` 的 `alloc`/`realloc` 必须能返回指针，否则 std 无法分配内存 | ✅ **已完成**：`sameValueFamily` 放行 `ptr` ↔ 数值族（方案 1） |
+| G13 | `any` 作为**显式标注**不认 | `fun f(a: any): int` → `Unknown type 'any'`；但**省略标注**完全正常 | 原仓库 `builtInTypes` 里**有** `any`（`rcc_symbol.cpp:650`），`ds.rio:32` `fun copy(arg): any`、`math.rio:26` `fun pow(a, times: int): any` 都在用 | ✅ **已完成**：`parseTypeName` / 形参登记 / 返回标注校验三处都认 `any` → unknown |
 
 **B. 属于「新增语言特性」的提案 —— 全部已否决，不改实现（详见 §1.4）**
 

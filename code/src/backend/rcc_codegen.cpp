@@ -1,3 +1,4 @@
+#include <algorithm>
 // rcc_codegen.cpp —— AST -> x86-64 汇编
 //
 // 采用「朴素栈式」策略：每个表达式结果放 %rax（或 %xmm0），
@@ -52,6 +53,12 @@ namespace backend{
             if (name == "float") return sema::getFloatType();
             if (name == "str")   return sema::getStrType();
             if (name == "ptr")   return sema::getPtrType();
+            // P12/G13：`any` 作为显式标注。原仓库 builtInTypes 里有 any
+            // （rcc_symbol.cpp:650），ds.rio:32 `fun copy(arg): any`、
+            // math.rio:26 `fun pow(a, times: int): any` 都在用。
+            // 映射成 unknown = 「不标注」，语义正好等价（checkAssignable /
+            // sameValueFamily 对 unknown 一律放行）。
+            if (name == "any")   return sema::getUnknownType();
             // P8：容器形参标注。没有元素类型信息时给一个「元素按 int 解释」的
             // 保守容器类型 —— 关键是让 `xs[i]` 知道左边是 list 而不是 int，
             // 否则会落到「Index access on a non-container value」。
@@ -289,6 +296,16 @@ namespace backend{
                    k == sema::TypeKind::TK_CHAR || k == sema::TypeKind::TK_BOOL;
         };
         if (numeric(a) && numeric(b)) return true;
+        // P12/G12：`ptr` 与数值族互通。
+        // ptr 本质就是 64 位整数，但它是**新架构自己引入**的类型（原仓库
+        // builtInTypes 里没有 ptr），而 core_* 的 extern fun 不参与类型表，
+        // 于是 `var p = core_alloc(32, 8)` 推断成 int，`ret p` 在 ptr 函数里
+        // 报 "cannot assign int to ptr" —— 用户没有任何合法写法能过。
+        // 与 P9「数值族互通、不设转换墙」的原则一致。
+        const auto ptrLike = [](const sema::TypePtr& t) {
+            return t->getKind() == sema::TypeKind::TK_PTR;
+        };
+        if ((ptrLike(a) && numeric(b)) || (ptrLike(b) && numeric(a))) return true;
         // 指针族互通：str/list/dict/class/ptr 都是「一个 8 字节指针」，
         // 运行时布局不同但寄存器语义一致，允许显式混用（rt 里就靠这个）。
         if (a->isPointerLike() && b->isPointerLike()) return true;
@@ -733,6 +750,12 @@ namespace backend{
                 return &found->second;
             }
         }
+        // P12/G1a：局部作用域都没有，回退查全局槽。
+        // 全局表独立于 _scopes —— emitFunctionBody 会 _scopes.clear()，
+        // 全局变量必须活得比任何函数帧更久。
+        if (const auto g = _globals.find(name); g != _globals.end())        {
+            return &g->second;
+        }
         return nullptr;
     }
     long long CodeGen::allocateSlot(const std::string& name, const sema::TypePtr& type, size_t size)    {
@@ -752,6 +775,26 @@ namespace backend{
         if (_scopes.empty()) _scopes.emplace_back();
         _scopes.back()[name] = slot;
         return offset;
+    }
+    std::string CodeGen::addrOf(const VarSlot& slot)    {
+        // P12/G1a：全局槽用 RIP 相对寻址，栈槽用 rbp 相对负偏移。
+        if (slot.isGlobal()) return slot.globalLabel + "(%rip)";
+        return std::to_string(slot.stackOffset) + "(%rbp)";
+    }
+    std::string CodeGen::allocateGlobal(const std::string& name, const sema::TypePtr& type, size_t size)    {
+        // 全局槽必须至少 8 字节，保证对齐；.bss 天然零初始化，
+        // 因此「顶层 var 的初始化语句」仍由 __rio_main 按源码顺序执行，
+        // 这里只负责给它们一块固定存储。
+        const size_t slotSize = size < 8 ? 8 : ((size + 7) & ~static_cast<size_t>(7));
+        const std::string label = "_g_" + name;
+        if (_globalSlots.insert({name, label}).second)        {
+            _globalDecls.push_back({label, slotSize});
+        }
+        VarSlot slot;
+        slot.type = type;
+        slot.globalLabel = label;
+        _globals[name] = slot;
+        return label;
     }
     sema::TypePtr CodeGen::inferType(const std::shared_ptr<ast::ExpressionNode>& node) const    {
         if (!node) return sema::getVoidType();
@@ -896,6 +939,19 @@ namespace backend{
             }
             const auto lt = inferType(infix->getLeftNode());
             const auto rt = inferType(infix->getRightNode());
+            // P12/G3 + G4：`str + str` 得 str、`list + list` 得 list（拼接）。
+            // 不这样写的话，`var s = "a" + "b"` 会把结果槽推成 int，
+            // 后续 sout 走 rt_print_int，打出指针值。
+            if (t == core::TokenType::TOKEN_PLUS && lt && rt)            {
+                if (lt->getKind() == sema::TypeKind::TK_STR &&
+                    rt->getKind() == sema::TypeKind::TK_STR)                {
+                    return sema::getStrType();
+                }
+                if (lt->getKind() == sema::TypeKind::TK_LIST &&
+                    rt->getKind() == sema::TypeKind::TK_LIST)                {
+                    return lt;
+                }
+            }
             // 比较运算返回 bool（浮点比较也是 bool）
             if (t == core::TokenType::TOKEN_EQUAL || t == core::TokenType::TOKEN_NOT_EQUAL ||                t == core::TokenType::TOKEN_LESS || t == core::TokenType::TOKEN_LESS_EQUAL ||                t == core::TokenType::TOKEN_GREATER || t == core::TokenType::TOKEN_GREATER_EQUAL)            {
                 return sema::getBoolType();
@@ -1039,6 +1095,10 @@ namespace backend{
             const auto elem = listType->getElemType();
             return (elem && elem->getKind() != sema::TypeKind::TK_UNKNOWN) ? elem : sema::getIntType();
         }
+        // P12/G10：`s[i]` 返回 char（0..255）。
+        if (targetType && targetType->getKind() == sema::TypeKind::TK_STR)        {
+            return sema::getCharType();
+        }
         if (targetType && targetType->getKind() == sema::TypeKind::TK_DICT)        {
             const auto dictType = std::static_pointer_cast<sema::DictType>(targetType);
             // 键是字符串字面量时走精化表，拿到那个键**自己**的值类型。
@@ -1146,6 +1206,11 @@ namespace backend{
         _overloadedNames.clear();
         _signatures.clear();
         _emittedSymbols.clear();
+        // P12/G1a
+        _globalSlots.clear();
+        _globalDecls.clear();
+        _topLevelVarNames.clear();
+        _inTopLevelStatements = false;
         try        {
             emitPrelude();
             emitProgram(program);
@@ -1165,6 +1230,16 @@ namespace backend{
             emitPendingInstances();
             emitClosureObjects();
             _asm.emitStringLiterals();
+            // P12/G1a：顶层 var 的全局槽。.bss 天然零初始化，
+            // 真正的初值由 __rio_main 按源码顺序写入。
+            if (!_globalDecls.empty())            {
+                _asm.bss();
+                for (const auto& [label, bytes] : _globalDecls)                {
+                    _asm.align(8);
+                    _asm.label(label);
+                    _asm.inst(".zero", std::to_string(bytes));
+                }
+            }
             // 浮点常量池
             if (!_floatLiterals.empty())            {
                 _asm.rodata();
@@ -1250,6 +1325,29 @@ namespace backend{
             }
             topLevelStatements.push_back(expr);
         }
+        // P12/G1a：顶层 `var` 必须放进全局静态槽，否则它只是 __rio_main 的
+        // 局部变量，函数体里根本看不到（`math.rio` 的 `var pi: float const`
+        // 就是这种顶层 var）。
+        //
+        // 做法：先扫出所有顶层 var 的名字并分配 .bss 槽，再把槽登记到
+        // **最外层作用域**（_scopes.front()）。这样函数体 pushScope 之后
+        // lookupVar 由内向外一定能命中它。
+        for (const auto& expr : topLevelStatements)        {
+            const auto varDef = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(expr);
+            if (!varDef) continue;
+            for (const auto& def : varDef->getVarDefs())            {
+                if (!def || !def->getNameNode()) continue;
+                const std::string name = def->getNameNode()->getName();
+                _topLevelVarNames.insert(name);
+                // 类型：有初值就按初值推断，否则按标注（拿不到就 int）。
+                sema::TypePtr varType;
+                if (def->hasInitialValue() && def->getValueNode())                {
+                    varType = inferType(def->getValueNode());
+                }
+                if (!varType) varType = sema::getIntType();
+                allocateGlobal(name, varType, varType->getSize());
+            }
+        }
         // P6 阶段 A：登记所有类的名字、基类、字段、方法（不发射指令）。
         for (const auto& cls : classNodes)        {
             registerClass(cls);
@@ -1301,9 +1399,11 @@ namespace backend{
         // 用一个占位标签包住待回填的帧调整
         const std::string framePlaceholder = _asm.newLabel("frame");
         _asm.label(framePlaceholder);
+        _inTopLevelStatements = true;
         for (const auto& expr : topLevelStatements)        {
             emitStatement(expr);
         }
+        _inTopLevelStatements = false;
         _asm.label(_returnLabel);
         _asm.mov("%rbp", "%rsp");
         _asm.pop("%rbp");
@@ -1646,7 +1746,7 @@ namespace backend{
             fail("Undefined variable: " + id->getName());
             return;
         }
-        const std::string src = std::to_string(slot->stackOffset) + "(%rbp)";
+        const std::string src = addrOf(*slot);
         // 按槽位类型选加载指令：浮点进 %xmm0，其余进 %rax
         if (slot->type && slot->type->isFloat())        {
             _asm.inst("movsd", src, "%xmm0");
@@ -1694,8 +1794,57 @@ namespace backend{
         // 浮点运算走 XMM
         const auto lt = inferType(infix->getLeftNode());
         const auto rt = inferType(infix->getRightNode());
+        // P12/G3 + G4：`str + str` / `list + list` 是**拼接**，不是整数加法。
+        // 之前这里无条件走 addq，于是 `"a" + "b"` 把两个指针相加，
+        // 结果按 int 解释（原仓库 str.rio:111 的 `[""] + result + ""`、
+        // lowlevel.rio:53 的 `i + ": "` 都依赖拼接）。
+        if (op == core::TokenType::TOKEN_PLUS)        {
+            const bool bothStr = lt && rt && lt->getKind() == sema::TypeKind::TK_STR &&
+                                 rt->getKind() == sema::TypeKind::TK_STR;
+            const bool bothList = lt && rt && lt->getKind() == sema::TypeKind::TK_LIST &&
+                                  rt->getKind() == sema::TypeKind::TK_LIST;
+            if (bothStr || bothList)            {
+                // 两个实参都用栈槽传递，避免 push 造成 rsp 非对齐
+                const std::string lhsSlot = allocateTemp(lt);
+                emitExpression(infix->getLeftNode());
+                if (hasFailed()) return;
+                _asm.mov("%rax", lhsSlot);
+                const std::string rhsSlot = allocateTemp(rt);
+                emitExpression(infix->getRightNode());
+                if (hasFailed()) return;
+                _asm.mov("%rax", rhsSlot);
+                if (bothStr)                {
+                    emitStrConcat(lhsSlot, rhsSlot);
+                }
+                else                {
+                    emitListConcat(lhsSlot, rhsSlot);
+                }
+                return;
+            }
+        }
         if (lt->isFloat() || rt->isFloat())        {
             emitFloatBinary(node, lt, rt);
+            return;
+        }
+        // P12/G9：`str == str` / `str != str` 必须按**内容**比较。
+        // 下面走的是 cmpq + sete，比的是两个指针；字符串字面量即使内容相同
+        // 地址也不同，所以永远 ne（原仓库 str.rio:105 的 `if del == ""`、
+        // datatype.rio:92 的 `typeOfArg1 == arg2[i]` 全都依赖内容比较）。
+        if ((op == core::TokenType::TOKEN_EQUAL || op == core::TokenType::TOKEN_NOT_EQUAL) &&
+            lt && rt && lt->getKind() == sema::TypeKind::TK_STR &&
+            rt->getKind() == sema::TypeKind::TK_STR)        {
+            const std::string lhsSlot = allocateTemp(lt);
+            emitExpression(infix->getLeftNode());
+            if (hasFailed()) return;
+            _asm.mov("%rax", lhsSlot);
+            const std::string rhsSlot = allocateTemp(rt);
+            emitExpression(infix->getRightNode());
+            if (hasFailed()) return;
+            _asm.mov("%rax", rhsSlot);
+            emitStrEq(lhsSlot, rhsSlot);
+            if (op == core::TokenType::TOKEN_NOT_EQUAL)            {
+                _asm.inst("xorq", "$1", "%rax");
+            }
             return;
         }
         // 左值求值 -> push
@@ -1880,7 +2029,7 @@ namespace backend{
             fail("Undefined variable in ++/--: " + id->getName());
             return;
         }
-        const std::string addr = std::to_string(slot->stackOffset) + "(%rbp)";
+        const std::string addr = addrOf(*slot);
         _asm.mov(addr, "%rax");
         if (postfix->getPostfixType() == ast::NodeType::INCREMENT)        {
             _asm.inst("addq", "$1", "%rax");
@@ -1898,6 +2047,51 @@ namespace backend{
         }
         const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(infix->getLeftNode());
         if (!id)        {
+            // P12/G2：`a[i] += v` —— 元素复合赋值。
+            // 降低成 `a[i] = a[i] <op> v` 再走 emitIndexAssign，避免为
+            // 「读旧值 + 写回」再复制一份地址计算逻辑（dict 的写回还要
+            // 处理扩容，重复实现只会引入不一致）。
+            if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(
+                    infix->getLeftNode()))            {
+                emitExpression(infix->getRightNode());
+                if (hasFailed()) return;
+                const std::string rhsSlot = allocateTemp(inferType(infix->getRightNode()));
+                _asm.mov("%rax", rhsSlot);
+                // 读旧值
+                emitExpression(infix->getLeftNode());
+                if (hasFailed()) return;
+                // 按 op 合并：旧值在 %rax，右值从槽里取回
+                const std::string contSlot = allocateTemp(inferType(idx->getLeftNode()));
+                _asm.mov("%rax", contSlot);
+                _asm.mov(rhsSlot, "%rcx");
+                _asm.mov(contSlot, "%rax");
+                switch (infix->getOpToken().getType())                {
+                case core::TokenType::TOKEN_PLUS_ASSIGN:                    _asm.add("%rcx", "%rax");
+                    break;
+                case core::TokenType::TOKEN_MINUS_ASSIGN:                    _asm.sub("%rcx", "%rax");
+                    break;
+                case core::TokenType::TOKEN_STAR_ASSIGN:                    _asm.imul("%rcx", "%rax");
+                    break;
+                case core::TokenType::TOKEN_SLASH_ASSIGN:                    // %rax = 旧值，%rcx = 右值；除法是 old / rhs
+                    _asm.mov("%rcx", "%r10");
+                    _asm.inst("cqto");
+                    _asm.inst("idivq", "%r10");
+                    break;
+                case core::TokenType::TOKEN_MODULO_ASSIGN:                    _asm.mov("%rcx", "%r10");
+                    _asm.inst("cqto");
+                    _asm.inst("idivq", "%r10");
+                    _asm.mov("%rdx", "%rax");
+                    break;
+                default:                    fail("Unsupported compound assignment: " +
+                         infix->getOpToken().getValue());
+                    return;
+                }
+                if (!emitIndexAssignValue(idx, inferType(infix->getRightNode())))                {
+                    failAt(infix->getPos(), "Index compound assignment on a non-container value: " +
+                           infix->getLeftNode()->toString());
+                }
+                return;
+            }
             fail("Only simple variable compound assignment is supported: " + node->toString());
             return;
         }
@@ -1906,7 +2100,7 @@ namespace backend{
             fail("Undefined variable in compound assignment: " + id->getName());
             return;
         }
-        const std::string addr = std::to_string(slot->stackOffset) + "(%rbp)";
+        const std::string addr = addrOf(*slot);
         // 先把右值算出来暂存，再取左值
         emitExpression(infix->getRightNode());
         _asm.push("%rax");
@@ -1952,6 +2146,17 @@ namespace backend{
                 return;
             }
         }
+        // P12/G2：`a[i] = v` / `d[k] = v`。值必须先算出来，再交给
+        // emitIndexAssign（它会把值落临时槽，然后算元素地址写回）。
+        if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(lhs))        {
+            emitExpression(rhs);
+            if (hasFailed()) return;
+            if (!emitIndexAssign(idx, rhs))            {
+                failAt(assign->getPos(), "Index assignment on a non-container value: " +
+                       lhs->toString());
+            }
+            return;
+        }
         const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(lhs);
         if (!id)        {
             fail("Only simple variable assignment is supported: " + node->toString());
@@ -1964,7 +2169,7 @@ namespace backend{
         }
         emitExpression(rhs);
         if (hasFailed()) return;
-        const std::string dest = std::to_string(slot->stackOffset) + "(%rbp)";
+        const std::string dest = addrOf(*slot);
         const auto rhsType = inferType(rhs);
         // P9：赋值是「把值塞进一个有静态类型的槽」，必须检查。
         // 之前 `var x = 1` 之后 `x = "str"` 会把字符串指针塞进整型槽，
@@ -2032,16 +2237,44 @@ namespace backend{
                     for (const auto& label : def->getLabelNodes())                    {
                         if (label) { raw = label->getFullLabel(); break; }
                     }
-                    failAt(def->getNameNode()->getPos(),
-                           "Unknown type '" + raw + "' in declaration of '" + name + "'");
-                    return;
+                    // P12/G13：`var x: any` 等价于不标注，不是未知类型。
+                    std::string firstWord;
+                    for (const char c : raw)                    {
+                        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') firstWord += c;
+                        else if (!firstWord.empty()) break;
+                    }
+                    if (firstWord == "any")                    {
+                        type = hasInit ? initType : sema::getUnknownType();
+                        if (type && type->getKind() == sema::TypeKind::TK_UNKNOWN) type = sema::getIntType();
+                    }
+                    else                    {
+                        failAt(def->getNameNode()->getPos(),
+                               "Unknown type '" + raw + "' in declaration of '" + name + "'");
+                        return;
+                    }
                 }
             }
  else if (hasInit)            {
                 type = initType;
             }
-            const long long offset = allocateSlot(name, type, type->getSize());
-            const std::string slot = std::to_string(offset) + "(%rbp)";
+            // P12/G1a：顶层 var 已经有全局槽了（emitProgram 里登记过），
+            // 这里不能再去分配一个栈槽 —— 否则函数体看到的是全局那份，
+            // 而初始化写进了栈上这份，全局永远是 0。
+            std::string slot;
+            if (_inTopLevelStatements && _topLevelVarNames.count(name) != 0)            {
+                const auto found = _globalSlots.find(name);
+                if (found == _globalSlots.end())                {
+                    fail("Internal: top-level var '" + name + "' has no global slot");
+                    return;
+                }
+                slot = found->second + "(%rip)";
+                // 让全局槽的类型与本次推断保持一致
+                if (auto* gslot = lookupVar(name)) gslot->type = type;
+            }
+ else            {
+                const long long offset = allocateSlot(name, type, type->getSize());
+                slot = std::to_string(offset) + "(%rbp)";
+            }
             if (hasInit)            {
                 emitExpression(def->getValueNode());
                 if (hasFailed()) return;
@@ -2646,8 +2879,381 @@ namespace backend{
         }
         _asm.mov(headerSlot, "%rax");
     }
-    void CodeGen::emitIndexExpression(const std::shared_ptr<ast::ExpressionNode>& node)    {
-        const auto index = std::dynamic_pointer_cast<ast::IndexExpressionNode>(node);
+    // ============================================================
+    // P12/G2：元素写 `a[i] = v` / `d[k] = v`
+    // ============================================================
+    //
+    // 为什么这是「恢复回归」而不是新特性：原仓库 v1.21.2 实测支持
+    // `li[0] = 0` / `li[1] += 1` / `li += [4]`。原实现能成立是因为 RA VM
+    // 的 `ITER_GET` 返回指向容器内元素的 shared_ptr —— 改临时变量就等于
+    // 改容器。新架构把元素改成数据区内联的裸值，那条隐含通路没了，
+    // 必须显式计算元素地址再写。
+    //
+    // 布局见本文件 P5 段落：ListHeader 的 data 从 +32 起、元素恒 8 字节；
+    // DictHeader 是 {len,cap,rc,keys,vals}，keys/vals 各是独立数组。
+    bool CodeGen::emitIndexAssign(const std::shared_ptr<ast::IndexExpressionNode>& target,
+                                  const std::shared_ptr<ast::ExpressionNode>& value)    {
+        // 值已经在 %rax（浮点则 %xmm0）。value 只用于取静态类型 —— 调用方
+        // 必须已经**求过值**，这里不会重新求值（否则会重复副作用）。
+        const auto valType = inferType(value);
+        return emitIndexAssignValue(target, valType);
+    }
+    bool CodeGen::emitIndexAssignValue(const std::shared_ptr<ast::IndexExpressionNode>& target,
+                                       const sema::TypePtr& valType)    {
+        const auto cont = target->getLeftNode();
+        const auto key = unwrapIndexKey(target->getIndexNode());
+        if (!cont || !key) return false;
+        const auto contType = inferType(cont);
+        if (!contType) return false;
+        // 值已经在 %rax（浮点则 %xmm0），先落到临时槽 —— 求容器地址的
+        // 过程中会用到 caller-saved 寄存器。
+        const std::string valSlot = allocateTemp(valType);
+        const bool valIsFloat = valType && valType->isFloat();
+        if (valIsFloat)        {
+            _asm.inst("movsd", "%xmm0", valSlot);
+        }
+ else        {
+            _asm.mov("%rax", valSlot);
+        }
+        if (contType->getKind() == sema::TypeKind::TK_LIST)        {
+            const auto listType = std::static_pointer_cast<sema::ListType>(contType);
+            const auto elemType = listType->getElemType();
+            // Q4：元素类型必须匹配 elem_size（元素槽恒 8 字节）
+            const auto why = checkAssignable(
+                (elemType && elemType->getKind() != sema::TypeKind::TK_UNKNOWN)
+                    ? elemType
+                    : sema::getIntType(),
+                valType);
+            if (!why.empty())            {
+                failAt(target->getPos(), "Assignment to list element: " + why);
+                return true;
+            }
+            const std::string contSlot = allocateTemp(contType);
+            emitExpression(cont);
+            if (hasFailed()) return true;
+            _asm.mov("%rax", contSlot);
+            emitExpression(key);
+            if (hasFailed()) return true;
+            // 越界直接跳过（与原仓库抛 RangeError 不同，但新架构的 list 读
+            // 已定为返回 0，写保持同一套「不越界写内存」的口径）。
+            const std::string skipLabel = _asm.newLabel("idxset_skip");
+            const std::string doneLabel = _asm.newLabel("idxset_done");
+            _asm.mov(contSlot, "%rcx");
+            _asm.cmp("(%rcx)", "%rax");
+            _asm.inst("jae", skipLabel);
+            _asm.mov(valSlot, "%rdx");
+            _asm.inst("movq", "%rdx", "32(%rcx,%rax,8)");
+            _asm.jmp(doneLabel);
+            _asm.label(skipLabel);
+            _asm.label(doneLabel);
+            _asm.mov(valSlot, "%rax");
+            if (valIsFloat) _asm.inst("movq", "%rax", "%xmm0");
+            return true;
+        }
+        if (contType->getKind() == sema::TypeKind::TK_DICT)        {
+            const auto dictType = std::static_pointer_cast<sema::DictType>(contType);
+            const auto keyType = dictType->getKeyType();
+            const bool keyIsStr = keyType && keyType->getKind() == sema::TypeKind::TK_STR;
+            const std::string contSlot = allocateTemp(contType);
+            emitExpression(cont);
+            if (hasFailed()) return true;
+            _asm.mov("%rax", contSlot);
+            const std::string keySlot = allocateTemp(keyIsStr ? sema::getStrType() : sema::getIntType());
+            emitExpression(key);
+            if (hasFailed()) return true;
+            _asm.mov("%rax", keySlot);
+            const std::string iSlot = allocateTemp(sema::getIntType());
+            _asm.movImm(0, "%rax");
+            _asm.mov("%rax", iSlot);
+            const std::string loopLabel = _asm.newLabel("idxset_loop");
+            const std::string nextLabel = _asm.newLabel("idxset_next");
+            const std::string foundLabel = _asm.newLabel("idxset_found");
+            const std::string growLabel = _asm.newLabel("idxset_grow");
+            const std::string doneLabel = _asm.newLabel("idxset_done");
+            _asm.label(loopLabel);
+            // 循环状态全放栈槽：core_mem_eq 会按 MS ABI 破坏 caller-saved 寄存器。
+            _asm.mov(iSlot, "%rax");
+            _asm.mov(contSlot, "%rcx");
+            _asm.cmp("(%rcx)", "%rax");
+            _asm.inst("jae", growLabel);
+            _asm.inst("movq", "24(%rcx)", "%rdx");
+            // keys[i]
+            _asm.inst("movq", "(%rdx,%rax,8)", "%rdx");
+            _asm.mov(keySlot, "%r8");
+            if (keyIsStr)            {
+                // 字符串键按**内容**比较：先比长度，再 mem_eq
+                _asm.inst("movq", "(%rdx)", "%r9");
+                // 已存键的长度
+                _asm.inst("movq", "(%r8)", "%r10");
+                // 查找键的长度
+                _asm.cmp("%r10", "%r9");
+                _asm.jne(nextLabel);
+                // 真实字节从 +8 起（头 8 字节是长度）
+                _asm.lea("8(%rdx)", "%rcx");
+                _asm.lea("8(%r8)", "%rdx");
+                _asm.mov("%r9", "%r8");
+                _asm.subRsp(32);
+                _asm.call("core_mem_eq");
+                _asm.addRsp(32);
+                _asm.inst("testl", "%eax", "%eax");
+                _asm.je(nextLabel);
+            }
+ else            {
+                _asm.cmp("%r8", "%rdx");
+                _asm.jne(nextLabel);
+            }
+            _asm.jmp(foundLabel);
+            _asm.label(nextLabel);
+            _asm.mov(iSlot, "%rax");
+            _asm.inst("addq", "$1", "%rax");
+            _asm.mov("%rax", iSlot);
+            _asm.jmp(loopLabel);
+            // ---- 命中：写 vals[i] ----
+            _asm.label(foundLabel);
+            _asm.mov(contSlot, "%rcx");
+            _asm.mov(iSlot, "%rax");
+            _asm.inst("movq", "32(%rcx)", "%rdx");
+            _asm.mov(valSlot, "%r8");
+            _asm.inst("movq", "%r8", "(%rdx,%rax,8)");
+            _asm.jmp(doneLabel);
+            // ---- 未命中：Q3 定案「新增键值对」----
+            // keys / vals 各重新分配成 len+1 个槽，拷回旧内容，追加新键值对。
+            // 不做 cap 倍增：P5 的字典本来就是线性扫描、不做哈希，语义优先。
+            _asm.label(growLabel);
+            _asm.mov(contSlot, "%rcx");
+            _asm.inst("movq", "(%rcx)", "%rax");
+            // %rax = 旧 len
+            _asm.mov("%rax", iSlot);
+            // i = 旧 len（新元素下标）
+            _asm.inst("addq", "$1", "%rax");
+            _asm.mov(contSlot, "%rcx");
+            _asm.mov("%rax", "(%rcx)");
+            // header.len = len + 1
+            _asm.mov("%rax", "8(%rcx)");
+            // header.cap = len + 1
+            // 新 keys 数组：(len+1) * 8 字节
+            const std::string newKeysSlot = allocateTemp(sema::getPtrType());
+            const std::string newValsSlot = allocateTemp(sema::getPtrType());
+            _asm.movImm(0, "%rax");
+            _asm.mov(iSlot, "%rax");
+            _asm.inst("addq", "$1", "%rax");
+            _asm.inst("leaq", "(,%rax,8)", "%rcx");
+            _asm.subRsp(32);
+            _asm.call("core_alloc");
+            _asm.addRsp(32);
+            _asm.mov("%rax", newKeysSlot);
+            _asm.movImm(0, "%rax");
+            _asm.mov(iSlot, "%rax");
+            _asm.inst("addq", "$1", "%rax");
+            _asm.inst("leaq", "(,%rax,8)", "%rcx");
+            _asm.subRsp(32);
+            _asm.call("core_alloc");
+            _asm.addRsp(32);
+            _asm.mov("%rax", newValsSlot);
+            // 拷贝旧内容：长度 = 旧 len（存在 iSlot）
+            const std::string jSlot = allocateTemp(sema::getIntType());
+            const std::string copyLoop = _asm.newLabel("idxset_copy");
+            const std::string copyDone = _asm.newLabel("idxset_copydone");
+            _asm.movImm(0, "%rax");
+            _asm.mov("%rax", jSlot);
+            _asm.label(copyLoop);
+            _asm.mov(jSlot, "%rax");
+            _asm.mov(iSlot, "%rcx");
+            _asm.cmp("%rcx", "%rax");
+            _asm.inst("jae", copyDone);
+            _asm.mov(contSlot, "%rcx");
+            _asm.inst("movq", "24(%rcx)", "%rdx");
+            _asm.inst("movq", "(%rdx,%rax,8)", "%rdx");
+            _asm.mov(newKeysSlot, "%r8");
+            _asm.inst("movq", "%rdx", "(%r8,%rax,8)");
+            _asm.mov(contSlot, "%rcx");
+            _asm.inst("movq", "32(%rcx)", "%rdx");
+            _asm.inst("movq", "(%rdx,%rax,8)", "%rdx");
+            _asm.mov(newValsSlot, "%r8");
+            _asm.inst("movq", "%rdx", "(%r8,%rax,8)");
+            _asm.mov(jSlot, "%rax");
+            _asm.inst("addq", "$1", "%rax");
+            _asm.mov("%rax", jSlot);
+            _asm.jmp(copyLoop);
+            _asm.label(copyDone);
+            // header.keys / header.vals 指向新数组
+            _asm.mov(contSlot, "%rcx");
+            _asm.mov(newKeysSlot, "%rax");
+            _asm.inst("movq", "%rax", "24(%rcx)");
+            _asm.mov(newValsSlot, "%rax");
+            _asm.inst("movq", "%rax", "32(%rcx)");
+            // 追加到下标 = 旧 len
+            _asm.mov(iSlot, "%rax");
+            _asm.mov(contSlot, "%rcx");
+            _asm.inst("movq", "24(%rcx)", "%rdx");
+            _asm.mov(keySlot, "%r8");
+            _asm.inst("movq", "%r8", "(%rdx,%rax,8)");
+            _asm.inst("movq", "32(%rcx)", "%rdx");
+            _asm.mov(valSlot, "%r8");
+            _asm.inst("movq", "%r8", "(%rdx,%rax,8)");
+            _asm.label(doneLabel);
+            _asm.mov(valSlot, "%rax");
+            if (valIsFloat) _asm.inst("movq", "%rax", "%xmm0");
+            return true;
+        }        return false;
+    }
+    // ============================================================
+    // P12/G3 + G4：字符串 / 列表拼接
+    // ============================================================
+    //
+    // `+` 在旧后端是 RA 虚拟机的动态加法；到 x86-64 后端变成裸 addq，
+    // 而 str / list 都是**指针**，addq 出来的是垃圾（原仓库 str.rio:111 的
+    // `[""] + result + ""`、lowlevel.rio:53 的 `i + ": "` 都依赖拼接）。
+    //
+    // 这里直接内联生成，不调 rt.rio 的辅助函数：core 只提供 mem_copy /
+    // mem_set / mem_eq / alloc，没有「读 8 字节」这种入口，用 Rio 写不出来；
+    // 为此改 core 的 ABI 不值得（core.rio 是三层之间的冻结契约）。
+    void CodeGen::emitStrConcat(const std::string& lhsSlot, const std::string& rhsSlot)    {
+        // 结果：新 str = { len_a+len_b, 字节A, 字节B }
+        // 长度头在偏移 0，真实字节从 +8 起（与 rt_write_str 的约定一致）。
+        const std::string laSlot = allocateTemp(sema::getIntType());
+        const std::string lbSlot = allocateTemp(sema::getIntType());
+        _asm.mov(lhsSlot, "%rax");
+        _asm.inst("movq", "(%rax)", "%rax");
+        // la
+        _asm.mov("%rax", laSlot);
+        _asm.mov(rhsSlot, "%rax");
+        _asm.inst("movq", "(%rax)", "%rax");
+        // lb
+        _asm.mov("%rax", lbSlot);
+        const std::string bufSlot = allocateTemp(sema::getStrType());
+        _asm.mov(laSlot, "%rcx");
+        _asm.mov(lbSlot, "%rax");
+        _asm.inst("addq", "%rax", "%rcx");
+        // total = la + lb
+        _asm.inst("addq", "$8", "%rcx");
+        // + 长度头
+        _asm.movImm(8, "%rdx");
+        _asm.subRsp(32);
+        _asm.call("core_alloc");
+        _asm.addRsp(32);
+        _asm.mov("%rax", bufSlot);
+        // 写长度头
+        _asm.mov(laSlot, "%rcx");
+        _asm.mov(lbSlot, "%rdx");
+        _asm.inst("addq", "%rdx", "%rcx");
+        _asm.mov("%rcx", "(%rax)");
+        // mem_copy(buf+8, a+8, la)
+        _asm.mov("%rax", "%rcx");
+        _asm.inst("addq", "$8", "%rcx");
+        _asm.mov(lhsSlot, "%rdx");
+        _asm.inst("addq", "$8", "%rdx");
+        _asm.mov(laSlot, "%r8");
+        _asm.subRsp(32);
+        _asm.call("core_mem_copy");
+        _asm.addRsp(32);
+        // mem_copy(buf+8+la, b+8, lb)
+        _asm.mov(bufSlot, "%rcx");
+        _asm.inst("addq", "$8", "%rcx");
+        _asm.mov(laSlot, "%rax");
+        _asm.inst("addq", "%rax", "%rcx");
+        _asm.mov(rhsSlot, "%rdx");
+        _asm.inst("addq", "$8", "%rdx");
+        _asm.mov(lbSlot, "%r8");
+        _asm.subRsp(32);
+        _asm.call("core_mem_copy");
+        _asm.addRsp(32);
+        _asm.mov(bufSlot, "%rax");
+    }
+    void CodeGen::emitListConcat(const std::string& lhsSlot, const std::string& rhsSlot)    {
+        // ListHeader { i64 len, cap, rc, elem_size; u8 data[] }，data 从 +32 起，
+        // 元素槽恒 8 字节（见本文件 P5 段）。
+        const std::string laSlot = allocateTemp(sema::getIntType());
+        const std::string lbSlot = allocateTemp(sema::getIntType());
+        _asm.mov(lhsSlot, "%rax");
+        _asm.inst("movq", "(%rax)", "%rax");
+        _asm.mov("%rax", laSlot);
+        _asm.mov(rhsSlot, "%rax");
+        _asm.inst("movq", "(%rax)", "%rax");
+        _asm.mov("%rax", lbSlot);
+        const std::string bufSlot = allocateTemp(sema::getPtrType());
+        _asm.mov(laSlot, "%rcx");
+        _asm.mov(lbSlot, "%rax");
+        _asm.inst("addq", "%rax", "%rcx");
+        // total
+        _asm.inst("leaq", "32(,%rcx,8)", "%rcx");
+        // 32 + total*8
+        _asm.movImm(8, "%rdx");
+        _asm.subRsp(32);
+        _asm.call("core_alloc");
+        _asm.addRsp(32);
+        _asm.mov("%rax", bufSlot);
+        // len / cap / rc / elem_size
+        _asm.mov(laSlot, "%rcx");
+        _asm.mov(lbSlot, "%rdx");
+        _asm.inst("addq", "%rdx", "%rcx");
+        _asm.mov("%rcx", "(%rax)");
+        // len
+        _asm.mov("%rcx", "8(%rax)");
+        // cap
+        _asm.movImm(1, "%rcx");
+        _asm.mov("%rcx", "16(%rax)");
+        // rc
+        _asm.movImm(8, "%rcx");
+        _asm.mov("%rcx", "24(%rax)");
+        // elem_size
+        // mem_copy(buf+32, a+32, la*8)
+        _asm.mov(bufSlot, "%rcx");
+        _asm.inst("addq", "$32", "%rcx");
+        _asm.mov(lhsSlot, "%rdx");
+        _asm.inst("addq", "$32", "%rdx");
+        _asm.mov(laSlot, "%r8");
+        _asm.inst("shlq", "$3", "%r8");
+        _asm.subRsp(32);
+        _asm.call("core_mem_copy");
+        _asm.addRsp(32);
+        // mem_copy(buf+32+la*8, b+32, lb*8)
+        _asm.mov(bufSlot, "%rcx");
+        _asm.inst("addq", "$32", "%rcx");
+        _asm.mov(laSlot, "%rax");
+        _asm.inst("leaq", "(%rcx,%rax,8)", "%rcx");
+        _asm.mov(rhsSlot, "%rdx");
+        _asm.inst("addq", "$32", "%rdx");
+        _asm.mov(lbSlot, "%r8");
+        _asm.inst("shlq", "$3", "%r8");
+        _asm.subRsp(32);
+        _asm.call("core_mem_copy");
+        _asm.addRsp(32);
+        _asm.mov(bufSlot, "%rax");
+    }
+    void CodeGen::emitStrEq(const std::string& lhsSlot, const std::string& rhsSlot)    {
+        // 先比长度头，再比内容字节。两段都可能为 null（空串/未初始化），
+        // core_mem_eq 对 n=0 直接返回 true，长度不等时提前退出即可。
+        const std::string laSlot = allocateTemp(sema::getIntType());
+        const std::string lbSlot = allocateTemp(sema::getIntType());
+        _asm.mov(lhsSlot, "%rax");
+        _asm.inst("movq", "(%rax)", "%rax");
+        _asm.mov("%rax", laSlot);
+        _asm.mov(rhsSlot, "%rax");
+        _asm.inst("movq", "(%rax)", "%rax");
+        _asm.mov("%rax", lbSlot);
+        const std::string neLabel = _asm.newLabel("streq_ne");
+        const std::string doneLabel = _asm.newLabel("streq_done");
+        _asm.mov(laSlot, "%rcx");
+        _asm.mov(lbSlot, "%rax");
+        _asm.cmp("%rax", "%rcx");
+        _asm.jne(neLabel);
+        // 长度相等：比较内容（从 +8 起）
+        _asm.mov(lhsSlot, "%rcx");
+        _asm.inst("addq", "$8", "%rcx");
+        _asm.mov(rhsSlot, "%rdx");
+        _asm.inst("addq", "$8", "%rdx");
+        _asm.mov(laSlot, "%r8");
+        _asm.subRsp(32);
+        _asm.call("core_mem_eq");
+        _asm.addRsp(32);
+        _asm.inst("movzbq", "%al", "%rax");
+        _asm.jmp(doneLabel);
+        _asm.label(neLabel);
+        _asm.movImm(0, "%rax");
+        _asm.label(doneLabel);
+    }
+    void CodeGen::emitIndexExpression(const std::shared_ptr<ast::ExpressionNode>& node)    {        const auto index = std::dynamic_pointer_cast<ast::IndexExpressionNode>(node);
         if (!index)        {
             fail("Not an index expression: " + node->toString());
             return;
@@ -2683,6 +3289,25 @@ namespace backend{
             if (resultType && resultType->isFloat())            {
                 _asm.inst("movq", "%rax", "%xmm0");
             }
+            return;
+        }
+        // P12/G10：`s[i]` 读取。str 的表示是「指向长度头的指针」，
+        // 长度在偏移 0，真实字节从 +8 起。返回 char（0..255，int 族）。
+        // 越界返回 0，与上面 list 分支同口径。
+        // 注意：按**字节**索引，多字节 UTF-8 字符会被拆开 —— 与原仓库一致。
+        if (targetType && targetType->getKind() == sema::TypeKind::TK_STR)        {
+            emitExpression(key);
+            if (hasFailed()) return;
+            const std::string missLabel = _asm.newLabel("stridx_miss");
+            const std::string doneLabel = _asm.newLabel("stridx_done");
+            _asm.mov(contSlot, "%rcx");
+            _asm.cmp("(%rcx)", "%rax");
+            _asm.inst("jae", missLabel);
+            _asm.inst("movzbq", "8(%rcx,%rax)", "%rax");
+            _asm.jmp(doneLabel);
+            _asm.label(missLabel);
+            _asm.movImm(0, "%rax");
+            _asm.label(doneLabel);
             return;
         }
         if (targetType && targetType->getKind() == sema::TypeKind::TK_DICT)        {
@@ -3078,7 +3703,7 @@ namespace backend{
         for (size_t i = 0; i < capturedNames.size(); ++i)        {
             const auto slot = lookupVar(capturedNames[i]);
             if (!slot) continue;
-            const std::string src = std::to_string(slot->stackOffset) + "(%rbp)";
+            const std::string src = addrOf(*slot);
             const std::string dst = std::to_string(16 + i * 8) + "(%rax)";
             _asm.inst("movq", src, "%rcx");
             _asm.inst("movq", "%rcx", dst);
@@ -3549,8 +4174,7 @@ namespace backend{
         // 先按内建类型名解析，认不出来再查类登记表 —— 这样 `x: Point`
         // 这种标注才会得到 ClassType 而不是 TK_UNKNOWN。
         const auto builtin = parseTypeName(raw);
-        if (builtin && builtin->getKind() != sema::TypeKind::TK_UNKNOWN) return builtin;
-        std::string name;
+        if (builtin && builtin->getKind() != sema::TypeKind::TK_UNKNOWN) return builtin;        std::string name;
         for (const char c : raw)        {
             if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') name += c;
             else if (!name.empty()) break;
@@ -3974,6 +4598,11 @@ namespace backend{
                         if (!ftype || ftype->getKind() == sema::TypeKind::TK_UNKNOWN) ftype = sema::getIntType();
                         info.ownFieldNames.push_back(fname);
                         info.ownFieldTypes[fname] = ftype;
+                        // P12/G11：收集实例字段初始化器，对象创建时写入。
+                        // static 字段整体不支持，跳过即可（不影响普通字段）。
+                        if (def->hasInitialValue() && def->getValueNode())                        {
+                            info.ownFieldInits.emplace_back(fname, def->getValueNode());
+                        }
                     }
                     continue;
                 }
@@ -3995,7 +4624,12 @@ namespace backend{
                             mname = lid->getName();
                         }
                     }
-                    if (!mname.empty()) info.methods[mname] = fn;
+                    if (!mname.empty())                    {
+                        // P12/G5：方法名可以重载 —— 全部收进重载集，
+                        // 单定义时 methods 仍指向那一份（保持裸名）。
+                        info.methodOverloads[mname].push_back(fn);
+                        info.methods[mname] = fn;
+                    }
                 }
             }
         }
@@ -4045,6 +4679,31 @@ namespace backend{
             }
         }
         return out;
+    }
+    std::vector<CodeGen::MethodRef> CodeGen::collectMethodOverloads(const std::string& name,
+                                                                    const std::string& method) const    {
+        // P12/G5：收集「这个类 + 这个方法名」的全部定义（沿继承链）。
+        // 派生类声明了同名方法就**整体遮蔽**基类的同名重载集 —— 与 Java/C++
+        // 的「名字隐藏」一致，且不会出现「派生类一份 + 基类两份」的怪异组合。
+        std::vector<std::string> chain;
+        std::string cur = name;
+        size_t guard = 0;
+        while (!cur.empty() && guard++ < 64)        {
+            chain.push_back(cur);
+            const auto cls = findClass(cur);
+            if (!cls) break;
+            cur = cls->baseName;
+        }
+        for (const auto& clsName : chain)        {
+            const auto cls = findClass(clsName);
+            if (!cls) continue;
+            const auto found = cls->methodOverloads.find(method);
+            if (found == cls->methodOverloads.end() || found->second.empty()) continue;
+            std::vector<MethodRef> out;
+            for (const auto& def : found->second) out.push_back(MethodRef{clsName, def});
+            return out;
+        }
+        return {};
     }
     long long CodeGen::findFieldOffset(const std::string& className, const std::string& field) const    {
         std::string cur = className;
@@ -4195,7 +4854,10 @@ namespace backend{
                              {}, {}, "this", true);
         }
         // 方法：符号 <Class>.<method>，同样带隐藏 this。
-        for (const auto& [mname, def] : cls->methods)        {
+        // P12/G5：同名方法可能有多个定义（重载）。≥2 个定义时按与全局函数
+        // 相同的规则修饰成 `<Class>.<method>_R<len><形参编码>`，单定义保持裸名。
+        for (const auto& [mname, defs] : cls->methodOverloads)        {
+          for (const auto& def : defs)        {
             std::vector<std::string> paramNames;
             std::vector<sema::TypePtr> paramTypes;
             if (def && def->getCallNode())            {
@@ -4223,8 +4885,14 @@ namespace backend{
                 if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN) t = sema::getIntType();
             }
             const auto ret = methodReturnType(def, paramNames, paramTypes);
-            emitFunctionBody(name + "." + mname, paramNames, paramTypes, ret,
+            // P12/G5：重载方法用修饰名发射；单定义保持裸名（与全局函数一致）。
+            std::string methodSymbolName = name + "." + mname;
+            if (defs.size() >= 2)            {
+                methodSymbolName = mangleOverload(name + "." + mname, paramTypes);
+            }
+            emitFunctionBody(methodSymbolName, paramNames, paramTypes, ret,
                              def->getBodyNode(), true, {}, {}, "", true);
+          }
         }
         _currentClass = savedClass;
     }
@@ -4363,6 +5031,43 @@ namespace backend{
         _asm.call("core_mem_set");
         _asm.addRsp(32);
         _asm.pop("%rax");
+        // P12/G11：写入实例字段初始化器（`var x: int = 42`）。
+        // 必须在用户构造器**之前**、清零**之后**：ctor 里可以覆盖这些初值。
+        // 顺序按声明顺序，与源码直觉一致。
+        // 对象指针先落到栈槽 —— 求值初始化表达式会用到 %rax 和 caller-saved
+        // 寄存器，指针留在寄存器里会被冲掉。
+        if (!cls->ownFieldInits.empty() || !cls->baseName.empty())        {
+            // 沿基类链收集：基类在前（与字段布局一致），派生类在后。
+            // 只遍历自己会让 `class Derived: Base` 的实例丢掉基类字段初值。
+            std::vector<const ClassInfo*> chain;
+            for (const ClassInfo* c = cls; c != nullptr; )            {
+                chain.push_back(c);
+                c = c->baseName.empty() ? nullptr : findClass(c->baseName);
+            }
+            std::reverse(chain.begin(), chain.end());            const std::string selfSlot = allocateTemp(sema::getPtrType());
+            _asm.mov("%rax", selfSlot);
+            for (const ClassInfo* c : chain)            {
+                for (const auto& [fname, initNode] : c->ownFieldInits)                {
+                    // 偏移与类型必须用**最派生**类的完整布局查：
+                    // 基类字段的偏移在派生类里可能因对齐而变化。
+                    const auto offIt = cls->fieldOffsets.find(fname);
+                    if (offIt == cls->fieldOffsets.end()) continue;
+                    const long long off = offIt->second;
+                    const auto ftype = cls->fieldTypes.count(fname) ? cls->fieldTypes[fname] : sema::getIntType();
+                    emitExpression(initNode);
+                    if (hasFailed()) return;
+                    if (ftype && ftype->isFloat())                    {
+                        _asm.mov(selfSlot, "%rcx");
+                        _asm.inst("movsd", "%xmm0", std::to_string(off) + "(%rcx)");
+                    }
+                    else                    {
+                        _asm.mov(selfSlot, "%rcx");
+                        _asm.mov("%rax", std::to_string(off) + "(%rcx)");
+                    }
+                }
+            }
+            _asm.mov(selfSlot, "%rax");
+        }
         std::vector<std::string> paramNames;
         collectParamNamesT(cls->ctorParamNode, paramNames);
         std::vector<sema::TypePtr> paramTypes;
@@ -4413,7 +5118,7 @@ namespace backend{
             fail("Class " + owner + " has no method named '" + methodId->getName() + "'");
             return;
         }
-        const std::string symbol = it->second.owner + "." + methodId->getName();
+        std::string symbol = it->second.owner + "." + methodId->getName();
         std::vector<std::string> paramNames;
         std::vector<sema::TypePtr> paramTypes;
         if (it->second.def && it->second.def->getCallNode())        {
@@ -4425,6 +5130,70 @@ namespace backend{
             }
         }
         while (paramTypes.size() < paramNames.size()) paramTypes.push_back(sema::getIntType());
+        // P12/G5：方法重载决议。
+        // 判据与全局函数完全一致（P11）：唯一名字保持裸名，≥2 个定义才修饰。
+        // 修饰名里带类名，避免两个类的方法互相撞符号。
+        if (const auto overloads = collectMethodOverloads(owner, methodId->getName());
+            overloads.size() >= 2)        {
+            // 按实参类型打分，取最优；同分取先声明的（与全局重载一致）。
+            std::vector<sema::TypePtr> actualTypes;
+            for (const auto& a : args) actualTypes.push_back(inferType(a));
+            int bestScore = -1;
+            const MethodRef* best = nullptr;
+            for (const auto& cand : overloads)            {
+                std::vector<std::string> candNames;
+                std::vector<sema::TypePtr> candTypes;
+                if (cand.def && cand.def->getCallNode())                {
+                    if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(cand.def->getCallNode()))                    {
+                        if (const auto argsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))                        {
+                            collectParamNamesT(argsNode, candNames);
+                            collectParamTypesT(argsNode, candTypes);
+                        }
+                    }
+                }
+                while (candTypes.size() < candNames.size()) candTypes.push_back(sema::getIntType());
+                // 形参个数必须匹配（本实现不做可变参数 / 缺省实参的方法）
+                if (candTypes.size() != actualTypes.size()) continue;
+                int score = 0;
+                bool ok = true;
+                for (size_t i = 0; i < actualTypes.size(); ++i)                {
+                    const int s = overloadScore(candTypes[i], actualTypes[i], true);
+                    if (s < 0) { ok = false; break; }
+                    score += s;
+                }
+                if (!ok) continue;
+                if (score > bestScore)                {
+                    bestScore = score;
+                    best = &cand;
+                }
+            }
+            if (!best)            {
+                failAt(member->getPos(), "No matching overload for method '" + methodId->getName() +
+                       "' of class " + owner);
+                return;
+            }
+            // 用与全局函数同一套修饰规则生成符号（`_R<len><base><形参编码>`）。
+            std::vector<sema::TypePtr> bestTypes;
+            if (best->def && best->def->getCallNode())            {
+                if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(best->def->getCallNode()))                {
+                    if (const auto argsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))
+                        collectParamTypesT(argsNode, bestTypes);
+                }
+            }
+            symbol = mangleOverload(best->owner + "." + methodId->getName(), bestTypes);
+            // 形参类型/名字换成被选中那一份的
+            paramNames.clear();
+            paramTypes.clear();
+            if (best->def && best->def->getCallNode())            {
+                if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(best->def->getCallNode()))                {
+                    if (const auto argsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))                    {
+                        collectParamNamesT(argsNode, paramNames);
+                        collectParamTypesT(argsNode, paramTypes);
+                    }
+                }
+            }
+            while (paramTypes.size() < paramNames.size()) paramTypes.push_back(sema::getIntType());
+        }
         // 接收者先求值压栈（实参求值可能包含调用），最后落到 %rcx。
         emitExpression(member->getLeftNode());
         if (hasFailed()) return;
@@ -4470,7 +5239,7 @@ namespace backend{
         while (paramTypes.size() < paramNames.size()) paramTypes.push_back(sema::getIntType());
         // 复用当前 this：派生类对象的前缀与基类布局完全一致，
         // 所以直接把同一个指针交给基类构造器就行。
-        _asm.mov(std::to_string(thisSlot->stackOffset) + "(%rbp)", "%rax");
+        _asm.mov(addrOf(*thisSlot), "%rax");
         _asm.push("%rax");
         const std::vector<bool>* superMask = nullptr;
         if (const auto found = _functionParamAnnotated.find(baseName + ".__init__");
@@ -4840,8 +5609,8 @@ namespace backend{
         // 未标注类型的形参回退 int（Rio 的默认整型约定）。
         // P9：但「标注了却解析不出来」是错误，不能也回退成 int ——
         // `fun f(x: Piont)` 静默当 int 会让 f 内部所有字段访问变成垃圾。
+        std::vector<std::string> annotations;
         {
-            std::vector<std::string> annotations;
             if (const auto callInfix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node->getCallNode()))            {
                 if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(callInfix->getRightNode()))
                     collectParamAnnotations(paren->getRangerNode(), annotations);
@@ -4856,6 +5625,16 @@ namespace backend{
             }
             for (size_t i = 0; i < annotations.size(); ++i)            {
                 if (annotations[i].empty()) continue;
+                // P12/G13：`any` 是合法标注（等价于「不标注」），不是未知类型。
+                const std::string firstWord = [&] {
+                    std::string w;
+                    for (const char c : annotations[i])                    {
+                        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') w += c;
+                        else if (!w.empty()) break;
+                    }
+                    return w;
+                }();
+                if (firstWord == "any") continue;
                 const auto t = resolveTypeName(annotations[i]);
                 if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN)                {
                     const std::string pname = (i < paramNames.size()) ? paramNames[i] : std::to_string(i);
@@ -4869,8 +5648,22 @@ namespace backend{
                 annotatedMask[i] = !annotations[i].empty();
             _functionParamAnnotated[fname] = annotatedMask;
         }
-        for (auto& pt : paramTypes)        {
-            if (!pt || pt->getKind() == sema::TypeKind::TK_UNKNOWN) pt = sema::getIntType();
+        for (size_t i = 0; i < paramTypes.size(); ++i)        {
+            auto& pt = paramTypes[i];
+            if (!pt || pt->getKind() == sema::TypeKind::TK_UNKNOWN)            {
+                // P12/G13：标注为 `any` 的形参必须**保持** unknown。
+                // 补成 int 会让 `copy("hi")` 报 "cannot assign str to int"，
+                // 而 any 的语义就是「什么都收」。
+                const bool isAny = i < annotations.size() && [&] {
+                    std::string w;
+                    for (const char c : annotations[i])                    {
+                        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') w += c;
+                        else if (!w.empty()) break;
+                    }
+                    return w == "any";
+                }();
+                if (!isAny) pt = sema::getIntType();
+            }
         }
         _functionParams[fname] = paramTypes;
         // P8：登记形参名与默认值，供调用点处理命名实参 / 缺省实参。
@@ -4915,8 +5708,17 @@ namespace backend{
                 if (label) { raw = label->getFullLabel(); break; }
             }
             if (!raw.empty())            {
-                failAt(node->getPos(), "Unknown return type '" + raw + "' of function '" + fname + "'");
-                return;
+                // P12/G13：`any` 是合法返回标注，等价于不标注 ——
+                // 让下面的 inferAnonReturnType 去推断真实类型。
+                std::string firstWord;
+                for (const char c : raw)                {
+                    if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') firstWord += c;
+                    else if (!firstWord.empty()) break;
+                }
+                if (firstWord != "any")                {
+                    failAt(node->getPos(), "Unknown return type '" + raw + "' of function '" + fname + "'");
+                    return;
+                }
             }
         }
         if (retType->getKind() == sema::TypeKind::TK_UNKNOWN)        {
@@ -5080,7 +5882,7 @@ namespace backend{
         // 其余函数默认返回 0（浮点函数返回 0.0）。
         const VarSlot* defaultSlot = defaultReturnVar.empty() ? nullptr : lookupVar(defaultReturnVar);
         if (defaultSlot)        {
-            _asm.mov(std::to_string(defaultSlot->stackOffset) + "(%rbp)", "%rax");
+            _asm.mov(addrOf(*defaultSlot), "%rax");
         }
         else if (retType && retType->isFloat())        {
             _asm.inst("xorpd", "%xmm0", "%xmm0");
