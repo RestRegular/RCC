@@ -186,7 +186,9 @@ namespace ast {
     };
 
     class IntegerLiteralNode final : public NumberLiteralNode {
-        int value;
+        // P12 任务 2：Rio 的 int 是 64 位，这里原先用 int 会让 2147483648
+        // 以上的字面量在解析期就溢出（词法阶段 stringToInt 报错）
+        long long value;
     public:
         explicit IntegerLiteralNode(const Token& token);
 

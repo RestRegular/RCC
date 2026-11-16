@@ -115,8 +115,13 @@ namespace utils
         return static_cast<ArgType>(value);
     }
 
-    Number::Number(const int int_value) :
+    Number::Number(const long long int_value) :
         type(NumType::int_type), int_value(int_value), double_value(0)
+    {
+    }
+
+    Number::Number(const int int_value) :
+        type(NumType::int_type), int_value(static_cast<long long>(int_value)), double_value(0)
     {
     }
 
@@ -224,7 +229,16 @@ namespace utils
     }
 
     // 字符串转整数
-    int stringToInt(const std::string& str)
+    //
+    // P12 任务 2：Rio 的 int 是 64 位（codegen 全用 64 位寄存器/8 字节槽），
+    // 但这里长期按 32 位 `int` 解析并判溢出，导致 2147483648 及以上**任何**
+    // 整数字面量在词法阶段就报 Overflow error。放宽到 int64_t。
+    //
+    // 边界处理：`-9223372036854775808` 的正数部分 9223372036854775808 超出
+    // int64_t 正数上限，所以不能先累加成正数再取负。这里按**无符号**累加，
+    // 末位再折成有符号（负号时取 0-u 的补码），这样 i64 的两端都精确。
+    // 超出 i64 范围继续报 Overflow error，不做静默截断或退化成浮点。
+    long long stringToInt(const std::string& str)
     {
         if (str.empty())
         {
@@ -243,21 +257,30 @@ namespace utils
         {
             throw std::invalid_argument("Invalid argument: " + str);
         }
-        int result = 0;
+        // 累加用无符号，末位再按符号折回；上限按「绝对值」判：
+        // 负数允许到 2^63（= 0x8000000000000000），正数只到 2^63-1。
+        const unsigned long long limit = isNegative
+            ? static_cast<unsigned long long>(std::numeric_limits<long long>::max()) + 1ULL
+            : static_cast<unsigned long long>(std::numeric_limits<long long>::max());
+        unsigned long long result = 0;
         for (; i < str.size(); ++i)
         {
             if (str[i] < '0' || str[i] > '9')
             {
                 throw std::invalid_argument("Invalid argument: " + str);
             }
+            const unsigned long long digit = static_cast<unsigned long long>(str[i] - '0');
             // Check for overflow
-            if (result > (std::numeric_limits<int>::max() - (str[i] - '0')) / 10)
+            if (result > (limit - digit) / 10)
             {
                 throw std::overflow_error("Overflow error: " + str);
             }
-            result = result * 10 + (str[i] - '0');
+            result = result * 10 + digit;
         }
-        return isNegative ? -result : result;
+        // 无符号 → 有符号：负数走补码取负，正数直接截断（已保证不越界）
+        return isNegative
+            ? static_cast<long long>(0ULL - result)
+            : static_cast<long long>(result);
     }
 
     // 字符串转浮点数

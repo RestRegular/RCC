@@ -54,11 +54,14 @@ fun rt_print_uint(v: int): void {
 fun rt_print_int(v: int): void {
     if v < 0 {
         rt_write_byte(45)                     // '-'
-        // 注意：legacy AST 的 IntegerLiteralNode::value 是 int（32 位），
-        // 写不出 i64 最小值这个字面量。这里不做最小值特判，
-        // 代价是 rt_print_int(-9223372036854775808) 会打印错误结果。
-        // 等 P2 把字面量改成 i64 后再补特判（见 docs/p1_plan.md 已知限制）。
-        rt_print_uint(0 - v)
+        // i64 最小值特判：0 - v 在这里会溢出（结果是它自己），
+        // rt_print_uint 会拿到负数并打出垃圾（实测 "("）。
+        // P12 任务 2 之后字面量已是 i64，这个常量终于能写出来了。
+        if v == -9223372036854775808 {
+            rt_write_str("9223372036854775808", 19)
+        } else {
+            rt_print_uint(0 - v)
+        }
     } else {
         rt_print_uint(v)
     }

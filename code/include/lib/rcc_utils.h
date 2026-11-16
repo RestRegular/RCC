@@ -158,7 +158,7 @@ namespace utils {
     std::string processRCCPath(const std::string &path);
 
     // === 数据类型转换 ===
-    int stringToInt(const std::string& str);
+    long long stringToInt(const std::string& str);
     double stringToDouble(const std::string& str);
     char stringToChar(const std::string& str);
     bool stringToBool(const std::string& str);
@@ -425,9 +425,14 @@ namespace utils {
     // === 数值处理 ===
     struct Number final : Object {
         NumType type;
-        int int_value;
+        // P12 任务 2：与语言层的 64 位 int 对齐（原先是 32 位，会把
+        // 2147483648 以上的字面量截断/误判成浮点）
+        long long int_value;
         double double_value;
         explicit Number();
+        explicit Number(long long int_value);
+        // 保留 int 重载：否则 `Number(5)`（int 实参）会在 long long 与 double
+        // 两个重载之间产生二义（整型提升与浮点转换同属 Conversion 级）
         explicit Number(int int_value);
         explicit Number(double double_value);
         [[nodiscard]] std::string toString() const override;

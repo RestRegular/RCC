@@ -83,7 +83,7 @@ namespace rjson {
         [[nodiscard]] std::shared_ptr<RJValue> getAtIndex(const int &index) const;
         [[nodiscard]] std::shared_ptr<RJValue> getAtKey(const std::string &key) const;
         [[nodiscard]] std::string getStringValue() const;
-        [[nodiscard]] int getIntValue() const;
+        [[nodiscard]] long long getIntValue() const;
         [[nodiscard]] double getDoubleValue() const;
         [[nodiscard]] std::vector<std::shared_ptr<RJValue>> getListValue() const;
         [[nodiscard]] std::vector<std::shared_ptr<RJPair>> getObjectValue() const;

@@ -449,6 +449,7 @@ namespace ast {
     }
 
     std::string IntegerLiteralNode::literalString() const {
+        // 用 std::to_string(long long)：int 版本在 i64 值上会截断
         return std::to_string(value);
     }
 

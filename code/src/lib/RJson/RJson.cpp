@@ -264,7 +264,7 @@ namespace rjson {
                 {"Check the type before accessing as string"});
     }
 
-    int RJValue::getIntValue() const {
+    long long RJValue::getIntValue() const {
         if (rjValue.valueType == RJType::RJ_NUMBER && rjValue.numberValue.type == NumType::int_type) {
             return rjValue.numberValue.int_value;
         }
