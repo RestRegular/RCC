@@ -72,7 +72,7 @@ $expectedSigs = @{
         'concat[T](a: list, b: list): list'
         'contains[T](xs: list, t: T): bool'
         'copy[T](xs: list): list'
-        'dictKeys(d: dict): list'
+        'dictKeys[K](d: dict): list'
         'dictRemove(d: dict, key: int): void'
         'dictRemove(d: dict, key: str): void'
         'dictValues(d: dict): list'
@@ -351,6 +351,8 @@ import(ds="ds")
 var l: list[int] = [1, 2, 3]
 var e: list[int] = []
 var d: dict = {"a": 1, "b": 2}
+// dictKeys 的 K 要从形参 dict[K, any] 推，裸 dict 推不出来 → 单独给一份带类型的
+var dk: dict[str, int] = {"k": 1}
 sout(isEmpty(l))
 sout(isEmpty(""))
 sout(isEmpty({}))
@@ -368,7 +370,7 @@ listRemove(lr, 0)
 sout(core_str_len(lr))
 dictRemove(d, "a")
 sout(core_str_len(d))
-var ks: list[str] = dictKeys(d)
+var ks: list[str] = dictKeys(dk)
 sout(core_str_len(ks))
 var vs: list = dictValues(d)
 sout(core_str_len(vs))
@@ -713,14 +715,27 @@ sout(d["aa"])
 '@) "1`n1" @('ds.dictRemove')
 
     Invoke-RioCase 'behavior' 'ds' 'b_ds_dictKeys' ($dsImp + @'
-var d: dict = {"zz": 1, "aa": 2}
+var d: dict[str, int] = {"zz": 1, "aa": 2}
 var ks: list[str] = dictKeys(d)
 sout(core_str_len(ks))
 sout(ks[0])
 sout(ks[1])
-var e: dict = {}
+var e: dict[str, int] = {}
 sout(core_str_len(dictKeys(e)))
 '@) "2`nzz`naa`n0" @('ds.dictKeys')
+
+    # dictKeys 的键类型不限于 str（P13 缺陷回归，2026-11-17）：
+    # 原先签名写死 list[str]，int 键会被当成地址解引用，取回 0。
+    Invoke-RioCase 'behavior' 'ds' 'b_ds_dictKeys_int' ($dsImp + @'
+var d: dict[int, str] = {7: "x", 9: "y"}
+var ks: list[int] = dictKeys(d)
+sout(core_str_len(ks))
+sout(ks[0])
+sout(ks[1])
+var c: dict[char, int] = {'a': 1}
+var cs: list[char] = dictKeys(c)
+sout(cs[0])
+'@) "2`n7`n9`na" @('ds.dictKeys')
 
     Invoke-RioCase 'behavior' 'ds' 'b_ds_dictValues' ($dsImp + @'
 var d: dict = {"aa": 11, "bb": 22}

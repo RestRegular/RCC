@@ -356,24 +356,38 @@ fun _dsDictRemoveAt(d: dict, idx: int): void {
 
 // ============================ 字典视图 ============================
 
+// 从 8 字节槽还原一个 str 键：槽里是指针位模式，经 ptr 中转。
+// 直接 `var ks: str = slot` 会被标注校验拦下 —— 那不是值转换而是位复用。
+fun _dsSlotToStr(slot: int): str {
+    var kp: ptr = slot
+    var ks: str = kp
+    ret ks
+}
+
 /**
  * 取字典的全部键，顺序与插入顺序一致。
  *
- * 返回 `list[str]`：键在运行期就是 str（长度头在 +0，内容在 +8），
- * 所以元素类型可以如实标注，调用方拿到的是真正的 str，可直接比较/拼接。
+ * 键类型是泛型 `[K]`：dict 的键**不限于 str**（int / float / char 都可，
+ * 2026-11-17 实测）。原先签名写死 `list[str]`，int 键会被当成地址解引用
+ * —— 实测 `dictKeys({7:"x"})` 取不回 7。
  *
- * @example dictKeys({"a":1,"b":2}) 得到 ["a","b"]
+ * 实现要点：8 字节槽的原始位模式用 `int` 读出，再直接装进 `list[K]`。
+ * 这里**不能**写 `var k: K = slot` —— K 实例化成 str 时会被标注校验拦下
+ * （"cannot assign int to str"），而 `r += [slot]` 是往容器里塞一个
+ * 8 字节槽，不做类型转换，两种 K 都成立（实测 int / str 均可）。
+ *
+ * 空字典推不出 K，需要显式写 `dictKeys[int]({})`（泛型推导的固有限制）。
+ *
+ * @example dictKeys({"a":1,"b":2}) 得到 ["a","b"]；dictKeys({7:"x"}) 得到 [7]
  */
-fun dictKeys(d: dict): list[str] {
-    var r: list[str] = []
+fun dictKeys[K](d: dict[K, any]): list[K] {
+    var r: list[K] = []
     var scratch: ptr = _dsScratch()
     var n: int = core_str_len(d)
     var keys: ptr = _dsLoadI64(scratch, d + 24)
     var i: int = 0
     while i < n {
-        var kp: ptr = _dsLoadI64(scratch, keys + i * 8)
-        var ks: str = kp
-        r += [ks]
+        r += [_dsLoadI64(scratch, keys + i * 8)]
         i += 1
     }
     ret r

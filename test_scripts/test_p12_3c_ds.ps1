@@ -122,7 +122,7 @@ sout(d["cc"])
 
 # dictKeys
 Invoke-Case "a09_dictKeys" ($imp + @'
-var d: dict = {"zz": 1, "aa": 2}
+var d: dict[str, int] = {"zz": 1, "aa": 2}
 var ks: list[str] = dictKeys(d)
 sout(core_str_len(ks))
 sout(ks[0])
@@ -318,8 +318,8 @@ sout(core_str_len(b))
 '@) "1/1"
 
 Invoke-Case "b15_dictKeys_empty" ($imp + @'
-var d: dict = {}
-var ks: list = dictKeys(d)
+var d: dict[str, int] = {}
+var ks: list[str] = dictKeys(d)
 sout(core_str_len(ks))
 '@) "0"
 
