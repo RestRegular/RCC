@@ -5848,7 +5848,31 @@ namespace backend{
                                             const std::map<std::string, sema::TypePtr>& bindings)    {
         const auto found = _genericFunctions.find(name);
         if (found == _genericFunctions.end()) return std::string();
-        const GenericFunction& generic = found->second;
+        // 同名可能有 `f[T]` / `f[T,K]` 两份：挑「泛型形参全部绑定上」的那一份。
+        // 交错处（两份都能绑上）不可能出现 —— 绑定集来自 deduceTypeArgs，
+        // 它只填该份声明自己的 genericParams。
+        const GenericFunction* chosen = nullptr;
+        for (const auto& g : found->second)        {
+            bool complete = true;
+            for (const auto& gp : g.genericParams)            {
+                if (bindings.find(gp) == bindings.end() || !bindings.at(gp)) { complete = false; break; }
+            }
+            if (!complete) continue;
+            // 还要保证绑定集里没有这一份声明不认识的泛型形参（否则是另一份的）。
+            bool foreign = false;
+            for (const auto& [key, _] : bindings)            {
+                bool known = false;
+                for (const auto& gp : g.genericParams)                {
+                    if (gp == key) { known = true; break; }
+                }
+                if (!known) { foreign = true; break; }
+            }
+            if (foreign) continue;
+            chosen = &g;
+            break;
+        }
+        if (!chosen) return std::string();
+        const GenericFunction& generic = *chosen;
         std::vector<sema::TypePtr> orderedArgs;
         for (const auto& g : generic.genericParams)        {
             const auto b = bindings.find(g);
@@ -5912,12 +5936,38 @@ namespace backend{
             _currentGenericBindings = savedBindings;
         }
     }
+    std::vector<const CodeGen::GenericFunction*> CodeGen::genericCandidates(
+        const std::string& name, const size_t explicitCount) const    {
+        std::vector<const GenericFunction*> out;
+        const auto found = _genericFunctions.find(name);
+        if (found == _genericFunctions.end()) return out;
+        for (const auto& g : found->second)        {
+            // 显式给了类型实参：个数必须对得上（这是硬约束，
+            // 库里的 pair[A,B] 不能用 pair[A] 去调）。
+            if (explicitCount > 0 && g.genericParams.size() != explicitCount) continue;
+            out.push_back(&g);
+        }
+        return out;
+    }
+    bool CodeGen::genericAcceptsArgCount(const GenericFunction& g, const size_t argc) const    {
+        // 实参个数必须落在「必填形参个数 .. 全部形参个数」之间。
+        // 有默认值的形参可以不传 —— 这一点原先漏了，导致
+        // `fun pad[T](x: T, n: int = 42)` 的 `pad(1)` 被当成「个数不符」
+        // 而报 Cannot deduce（P13 回归，2026-11-17）。
+        const size_t total = g.paramNames.size();
+        size_t required = total;
+        for (size_t i = 0; i < total; ++i)        {
+            const std::string& pname = g.paramNames[i];
+            if (g.defaults.find(pname) != g.defaults.end())            {
+                required = i;
+                break;
+            }
+        }
+        return argc >= required && argc <= total;
+    }
     sema::TypePtr CodeGen::inferGenericCallType(const std::string& name,
                                                 const std::shared_ptr<ast::ExpressionNode>& callee,
                                                 const std::shared_ptr<ast::ExpressionNode>& callNode) const    {
-        const auto found = _genericFunctions.find(name);
-        if (found == _genericFunctions.end()) return nullptr;
-        const GenericFunction& generic = found->second;
         // 实参列表
         std::vector<std::shared_ptr<ast::ExpressionNode>> args;
         if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(callNode))        {
@@ -5925,13 +5975,21 @@ namespace backend{
                 collectArgs(argsNode, args);
             }
         }
-        std::map<std::string, sema::TypePtr> bindings;
-        if (!deduceTypeArgs(generic, explicitTypeArgs(callee), args, bindings)) return nullptr;
-        auto ret = substituteGenerics(generic.retType, bindings);
-        if (!ret || ret->getKind() == sema::TypeKind::TK_UNKNOWN ||
-            ret->getKind() == sema::TypeKind::TK_GENERIC)
-            return nullptr;
-        return ret;
+        const auto explicitArgs = explicitTypeArgs(callee);
+        // 同名泛型可能有多份（`f[T]` / `f[T,K]`）：逐个试，第一个能推出
+        // 全部泛型形参、且能绑定实参的候选就是答案。
+        // 约束按「显式类型实参个数」先过滤，再从实参推导。
+        for (const auto* generic : genericCandidates(name, explicitArgs.size()))        {
+            if (!genericAcceptsArgCount(*generic, args.size())) continue;
+            std::map<std::string, sema::TypePtr> bindings;
+            if (!deduceTypeArgs(*generic, explicitArgs, args, bindings)) continue;
+            auto ret = substituteGenerics(generic->retType, bindings);
+            if (!ret || ret->getKind() == sema::TypeKind::TK_UNKNOWN ||
+                ret->getKind() == sema::TypeKind::TK_GENERIC)
+                continue;
+            return ret;
+        }
+        return nullptr;
     }
     bool CodeGen::tryEmitGenericCall(const std::string& name,
                                      const std::shared_ptr<ast::ExpressionNode>& callee,
@@ -5939,32 +5997,59 @@ namespace backend{
                                      const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)    {
         const auto found = _genericFunctions.find(name);
         if (found == _genericFunctions.end()) return false;
-        const GenericFunction& generic = found->second;
-        std::map<std::string, sema::TypePtr> bindings;
         const auto explicitArgs = explicitTypeArgs(callee);
-        if (!deduceTypeArgs(generic, explicitArgs, args, bindings))        {
-            // 个数不对与推不出来要分开报：前者是写错了类型实参列表，
-            // 后者是实参里根本没有能推出 T 的信息。
-            if (!explicitArgs.empty() && explicitArgs.size() != generic.genericParams.size())            {
+        // 同名泛型可能有多份（`f[T]` / `f[T,K]`）。按实参个数 + 能否推出
+        // 全部泛型形参来挑；挑不出唯一一份时按下面的规则给诊断。
+        const GenericFunction* chosen = nullptr;
+        std::map<std::string, sema::TypePtr> bindings;
+        for (const auto* generic : genericCandidates(name, explicitArgs.size()))        {
+            if (!genericAcceptsArgCount(*generic, args.size())) continue;
+            std::map<std::string, sema::TypePtr> candidateBindings;
+            if (!deduceTypeArgs(*generic, explicitArgs, args, candidateBindings)) continue;
+            chosen = generic;
+            bindings = std::move(candidateBindings);
+            break;
+        }
+        if (!chosen)        {
+            // 挑不出候选：用「泛型形参个数最接近」的那一份来产生诊断文本，
+            // 这样 "takes N type argument(s), but M were supplied" 仍然准确。
+            const auto& all = found->second;
+            const GenericFunction* diagnostic = all.empty() ? nullptr : &all.front();
+            for (const auto& g : all)            {
+                if (!explicitArgs.empty() && g.genericParams.size() == explicitArgs.size())                {
+                    diagnostic = &g;
+                    break;
+                }
+            }
+            if (diagnostic && !explicitArgs.empty() &&
+                explicitArgs.size() != diagnostic->genericParams.size())            {
                 failAt(callNode ? callNode->getPos() : utils::Pos{},
                        "Generic function '" + name + "' takes " +
-                       std::to_string(generic.genericParams.size()) +
+                       std::to_string(diagnostic->genericParams.size()) +
                        " type argument(s), but " + std::to_string(explicitArgs.size()) +
                        " were supplied");
                 return true;
             }
-            std::string missing;
-            for (const auto& g : generic.genericParams)            {
-                if (bindings.find(g) == bindings.end())                {
-                    if (!missing.empty()) missing += ", ";
-                    missing += g;
+            if (diagnostic)            {
+                std::string missing;
+                for (const auto& g : diagnostic->genericParams)                {
+                    if (bindings.find(g) == bindings.end())                {
+                        if (!missing.empty()) missing += ", ";
+                        missing += g;
+                    }
+                }
+                if (!missing.empty())                {
+                    failAt(callNode ? callNode->getPos() : utils::Pos{},
+                           "Cannot deduce type arguments for generic function '" + name +
+                           "' (unspecified: " + missing + ")");
+                    return true;
                 }
             }
-            failAt(callNode ? callNode->getPos() : utils::Pos{},
-                   "Cannot deduce type arguments for generic function '" + name +
-                   "' (unspecified: " + missing + ")");
-            return true;
+            // 走到这里说明是「没有一份能接受这个实参个数」——交回普通调用路径，
+            // 由它报「未定义函数」或交给重载决议。
+            return false;
         }
+        const GenericFunction& generic = *chosen;
         const std::string mangled = instantiateGeneric(name, bindings);
         if (mangled.empty())        {
             failAt(callNode ? callNode->getPos() : utils::Pos{},
@@ -6039,7 +6124,9 @@ namespace backend{
             _currentGenericParams = savedParams;
             while (generic.paramTypes.size() < generic.paramNames.size())
                 generic.paramTypes.push_back(sema::getUnknownType());
-            _genericFunctions[fname] = std::move(generic);
+            // 同名不同泛型形参个数是合法的重载形状，按名字收成一组，
+            // 不能覆盖（P13 缺陷修复，2026-11-17）。
+            _genericFunctions[fname].push_back(std::move(generic));
             return;
         }
         // 返回类型与形参类型的登记在收集完形参之后进行（见下方）。

@@ -550,12 +550,31 @@ namespace backend
             std::vector<sema::TypePtr> paramTypes;
             sema::TypePtr retType;
             std::vector<std::string> paramNames;
+            // 每个形参是否写了类型标注（按位置）。决议要靠它区分
+            // 「裸容器形参」与「写了标注的形参」。
+            std::vector<bool> paramAnnotated;
             // 形参默认值：名字 -> 默认值表达式。
             // 必须在声明阶段就收下来：泛型声明本身不发射，形参表只在这里出现一次，
             // 实例化时拿不到 AST 就补不出缺省实参（曾因此让 f(1) 读到栈垃圾）。
             std::map<std::string, std::shared_ptr<ast::ExpressionNode>> defaults;
         };
-        std::map<std::string, GenericFunction> _genericFunctions;
+        // 名字 -> 该名字下的**全部**泛型声明。
+        //
+        // 为什么是 vector 而不是单个 GenericFunction（P13 缺陷修复，2026-11-17）：
+        // 同名不同泛型形参个数的声明是合法的重载形状，典型写法
+        //     fun dumpToStr[T](c: list[T]): str
+        //     fun dumpToStr[T, K](c: dict[T, K]): str
+        // 原先用 map<string, GenericFunction> + operator[] 登记，后一份**直接
+        // 覆盖**前一份且没有任何诊断，调用 dumpToStr[int](...) 时报的是
+        // "takes 2 type argument(s), but 1 were supplied" —— 用户看不出是
+        // 声明被吞了。现在按名字收成一组，调用点按「显式类型实参个数」
+        // 优先、其次按「实参类型能推出哪一份」来选择。
+        std::map<std::string, std::vector<GenericFunction>> _genericFunctions;
+        // 按显式类型实参个数挑候选；个数为 0 时返回全部。
+        std::vector<const GenericFunction*> genericCandidates(
+            const std::string& name, size_t explicitCount) const;
+        // 这份泛型声明能否接受 argc 个实参（必填 <= argc <= 全部）。
+        [[nodiscard]] bool genericAcceptsArgCount(const GenericFunction& g, size_t argc) const;
         // 已实例化的签名：mangled 名 -> true（避免重复单态化）。
         std::map<std::string, bool> _genericInstances;
         // 待发射的实例化函数体。

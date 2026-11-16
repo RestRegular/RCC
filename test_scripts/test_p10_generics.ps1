@@ -217,6 +217,33 @@ $deduced = [ordered]@{
 }
 
 # ---------------------------------------------------------------------------
+# 同名多份泛型声明（P13 缺陷回归，2026-11-17）
+#
+# 用户实测发现：`dumpToStr[T](list[T])` 与 `dumpToStr[T, K](dict[T, K])`
+# 同名共存时，后一份会把前一份**覆盖**掉且无任何诊断，调用前者报
+# "takes 2 type argument(s), but 1 were supplied"。根因是
+# _genericFunctions 原本是 map<string, GenericFunction>，operator[] 直接覆盖。
+# 现在按名字收成一组，调用点按「显式类型实参个数 + 实参个数 + 能否推导」挑。
+# ---------------------------------------------------------------------------
+$genericOverloads = [ordered]@{
+    # 两份同名泛型，各自按显式类型实参个数选中。
+    'gen_multi_decl' = @{
+        Body   = "fun f[T](xs: list[T]): str { ret `"list`" }`nfun f[T, K](d: dict[T, K]): str { ret `"dict`" }`nfun main(): void {`n    sout(f[int]([1]))`n    sout(f[str, int]({`"a`": 1}))`n}`nmain()`n"
+        Expect = "list`ndict"
+    }
+    # 省略类型实参时靠实参推导选中对应的一份。
+    'gen_multi_deduce' = @{
+        Body   = "fun f[T](xs: list[T]): int { ret 1 }`nfun f[T, K](d: dict[T, K]): int { ret 2 }`nfun main(): void {`n    sout(f([1]))`n    sout(f({`"a`": 1}))`n}`nmain()`n"
+        Expect = "1`n2"
+    }
+    # 默认参数 + 同名多份：`pad(1)` 只给一个实参，仍要能选中 [T] 那份。
+    'gen_default_arg_count' = @{
+        Body   = "fun pad[T](x: T, n: int = 42): int { ret n }`nfun main(): void {`n    sout(pad(1))`n    sout(pad(2, 7))`n}`nmain()`n"
+        Expect = "42`n7"
+    }
+}
+
+# ---------------------------------------------------------------------------
 # 反向用例：必须报错，且诊断里要出现指定片段
 # ---------------------------------------------------------------------------
 $negative = [ordered]@{
@@ -291,6 +318,7 @@ function Invoke-Suite {
 
 Invoke-Suite -Title '正向用例（显式类型实参 / 泛型类）' -Cases $positive -ExpectFailure $false
 Invoke-Suite -Title '推导用例（省略类型实参）' -Cases $deduced -ExpectFailure $false
+Invoke-Suite -Title '同名多份泛型声明（P13 缺陷回归）' -Cases $genericOverloads -ExpectFailure $false
 Invoke-Suite -Title '反向用例（必须报错）' -Cases $negative -ExpectFailure $true
 
 Write-Host ""
