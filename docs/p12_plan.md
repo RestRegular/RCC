@@ -1244,14 +1244,15 @@ RCC.exe -v                                             # 1.22.0
 | 1 | P12-1 删旧 RA 路径（含 `-s` 六格式重写）。收益最大、风险最低，且**不涉及任何语言设计** | ✅ 已完成（`3ce00a6`） |
 | 2 | P12-2 实现缺口：G1a / G2 / G3 / G4 / G7 / G9 / G10 / G11 / G12 / G13，每条配回归 | ✅ 已完成 |
 | 3 | P12-2 收尾：G5 方法重载（**G6 不做**，见 §10.2） | ✅ 已完成（会话 2+3 合并提交 `bd8082e`） |
-| 4 | P12-3-A 标准库骨架：`lib/std/` 目录、CMake 复制到 `release/Lib/builtin/`、`.gitignore`、删旧库文件；先落 `math`/`ops`/`prog`/`lowlevel` 四个小模块 | ⬜ 待做 |
-| 5 | P12-3-B 标准库主体：`io` / `str` 两个模块（依赖 G3/G9/G10，均已就绪） | ⬜ 待做 |
-| 6 | P12-3-C 标准库主体：`ds` 模块（20 个 API，含 `iter`/`forInRange` 的 G6 限制说明） | ⬜ 待做 |
+| 4 | P12-3-A 标准库骨架：`lib/std/` 目录、CMake 复制到 `release/Lib/builtin/`、`.gitignore`、删旧库文件；先落 `math`/`ops`/`prog`/`lowlevel` 四个小模块 | ✅ 已完成（`259581b`） |
+| 5 | P12-3-B 标准库主体：`io` / `str` 两个模块（依赖 G3/G9/G10，均已就绪） | ✅ 已完成（`164a0fa`） |
+| 6 | P12-3-C 标准库主体：`ds` 模块（**23 个 API**，含 `iter`/`forInRange` 的 G6 限制说明） | ✅ 已完成（`30b4914`） |
 | 7 | P12-3-D 标准库验收：`test_std.ps1` 三层（compile / api / behavior）全绿 + `api_report.txt` | ⬜ 待做 |
 | 8 | P12-4 脚本重写：`run.bat` / `test.bat` / `test_all.ps1` 去 LLVM | ⬜ 待做 |
 | 9 | P12-5 文档与发版：`rio_doc.md` 重写、版本号 1.22.0、更新日志、§7.1 Breaking 表填实 | ⬜ 待做 |
 | 10 | 最终全量回归 + 仓库干净度检查（§9 的 7 项） | ⬜ 待做 |
 | — | **G1b（argv→回调）与 G6（闭包写回）不在 P12 排期内**，见 §10.2 | ⏳ 延期 |
+| — | **内存模型改造整体归 P13**（用户 2026-11-17 裁定），P12 只做文档（`memory-model-spec-full.md §11A`） | ⏳ 延期 |
 
 > **拆分原则**：会话 4–7 之间是**顺序依赖**（CMake 骨架 → 模块实现 → 验收脚本），
 > 但会话 8（脚本）与 9（文档）**只依赖会话 4 的目录结构**，可与 5–7 并行。
@@ -1433,6 +1434,85 @@ RCC.exe -v                                             # 1.22.0
 **回归**：`test_scripts/test_p12_i64_literals.ps1`（25 项）覆盖 32 位边界、
 i64 两端、四则运算、比较、形参/列表/负号词法三条传递路径、浮点回归，
 以及三条反向用例（超范围必须报错）。
+
+
+### 10.5 P12-3-C 落地记录（ds 模块重写，提交 `30b4914`）
+
+**结论**：`lib/std/ds.rio` 全新实现（579 行），`test_scripts/test_p12_3c_ds.ps1`
+三层 40 项全通过，全量回归 22 套件 439 项全绿。
+
+#### 10.5.1 API 面（23 个）
+
+按用户批准的口径：**保留 15 + 新增 8 + 删除 4**。
+
+| 类别 | API |
+|---|---|
+| 保留（15） | `isEmpty` `top` `copy` `repStr` `repList` `listAppend` `listRemove` `dictRemove` `dictKeys` `dictValues` `sort` `join` `repeat` `forInRange`（+ `size` 委托给 `str`） |
+| 新增（8） | `map` `filter` `contains` `indexOf` `reverse` `slice` `concat` `sum` |
+| 删除（4） | `unpack` `iterContains` `iterRemove` `joins`（`iter` 一并去掉，由 `map`/`filter`/`forInRange` 覆盖） |
+
+#### 10.5.2 `size` 不由 `ds` 导出（导入冲突）
+
+`ds` 与 `str` 各自定义并导出 `size`。模块是**编译期内联**的，两个 `size` 落进
+同一命名空间后成为重载；`ds.size(arg: any)` 的 `any` 形参在重载决议下退化成
+`int`，于是 `str.rio` 里的 `size(s)` 报
+`cannot assign a value of type list[int] to a target of type int`。
+实测：单独导入 `ds` 或单独导入 `sm` 都正常，同时导入必失败；调换导入顺序
+只是把报错位置从 `ds.rio` 挪到 `str.rio`。
+
+**修法**：`ds` 内部长度函数改名 `_dsLen`（带 `_ds` 前缀、不导出），
+`export` 列表里去掉 `size`。用户调 `size(xs)` 仍可用 —— 由 `str` 提供。
+
+#### 10.5.3 顺带修掉的编译器缺陷 1：泛型默认参数失效
+
+**现象**：`fun f[T](x: T, n: int = 42): int { ret n }` 调用 `f(1)` 返回
+`2769425277904` 这类栈垃圾。非泛型函数的默认参数正常。
+
+**根因**：泛型声明分支没有调用 `collectParamDefaults`，`instantiateGeneric`
+也没有登记 `_functionDefaults[mangled]`，被调方拿不到默认值槽。
+
+**修法**：`GenericFunction` 增加 `std::map<std::string,
+std::shared_ptr<ast::ExpressionNode>> defaults`；泛型声明分支收集默认值，
+`instantiateGeneric` 按 mangled 名登记。
+
+**回归**：`test_p10_generics.ps1` 新增 8 项（int/str/float 默认值、多默认值、
+默认值 + 显式实参混用、泛型类方法默认值等）。
+
+#### 10.5.4 顺带修掉的编译器缺陷 2：`str` 的 `<` `<=` `>` `>=` 按指针比较
+
+**现象**：泛型 `fun lt[T](a: T, b: T): bool { ret a < b }` 单态化成 `str` 后，
+`lt("bb","aa")` 返回 `true`。`str` 排序（`sort(["cc","aa","bb"])`）结果错乱。
+
+**根因**：`emitBinary` 只给 `==` / `!=` 加了 `str` 特例（G9 的 `emitStrEq`），
+四个**顺序**运算符没有特例，直接落到 `cmpq` 比较两个指针 —— 结果取决于字面量
+在堆上的相对地址，与内容无关。显式 `str` 形参时偶尔「看起来对」，纯属地址巧合。
+
+**修法**：新增 `CodeGen::emitStrOrder`，按**字典序**逐字节比较（无符号字节，
+与 ASCII/UTF-8 一致）；共同前缀全同则短的更小（`"ab" < "abc"`）。
+`emitBinary` 增加分派分支。头文件里第三个参数用 `int` 而非
+`core::TokenType`，避免后端头文件引入前端 token 定义。
+
+**回归**：`test_p12_3c_ds.ps1` 的 `b03_sort_str`，以及 `a11_contains` /
+`a12_indexOf` 的 `str` 用例。
+
+#### 10.5.5 `test_symbol_export.ps1` 的「内置库报出模块名」断言修正
+
+原断言用 `--ext ds` 检查输出里有 `Modules:` 行。旧 `ds.rio` 有
+`import(datatype=...)` / `import(ops=...)`，所以偶然成立；新 `ds.rio` 自包含、
+不 import 任何模块，`table.moduleNames` 为空，该行不再出现。
+
+**这不是回归**：`moduleNames` 由 module_loader 在**真的 import** 时填充。
+实测 `import(ds="ds")` 的源文件确实报 `Modules: ds, str`。断言改为用真实
+import 的源文件验证模块内联，语义比原来更准确。
+
+#### 10.5.6 内存模型归属（用户 2026-11-17 裁定）
+
+**`list` / `dict` 不需要任何新机制** —— 它们就是「一个 Body + 一块堆内存」，
+`memory-model-spec-full.md` 现有规则直接适用。**元素不是 Body**；销毁代码由
+元素类型在编译期展开；`dict` 的键只读（只给 `Ref`，永不给 `Mut`）。
+
+整体改造归 **P13**，P12 只做文档。已在规范新增 `§11A` 记录对应关系与当前
+实现差距（`listAppend` 返回新列表、`copy` 浅拷贝、从不调 `core_free` 等）。
 
 ## 11. 总体执行原则（本计划的总纲，任何小节冲突时以本节为准）
 

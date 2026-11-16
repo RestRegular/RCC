@@ -1,7 +1,0 @@
-// Temporary test only; feel free to delete it at any time.
-
-fun sout(*args, end="\n"): void {
-    encapsulated
-}
-
-export(sout)
