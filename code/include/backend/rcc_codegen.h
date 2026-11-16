@@ -131,16 +131,24 @@ namespace backend
         void collectFreeVariables(const std::shared_ptr<ast::ExpressionNode>& node,
                                   std::vector<std::string>& bound,
                                   std::vector<std::string>& free);
-        // 把实参求值并装进 ABI 参数寄存器（整型/浮点各一套序列）。
-        // 直接调用与间接调用共用这一段。
-        // paramTypes 非空时按形参类型决定走整型还是浮点寄存器，
-        // 并在实参类型与形参类型不一致时插入转换指令。
-        void emitArgsToRegisters(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
-                                 const std::string& calleeDesc,
-                                 const std::vector<sema::TypePtr>& paramTypes = {},
-                                 size_t intStart = 0,
-                                 size_t floatStart = 0,
-                                 const std::vector<bool>* annotated = nullptr);
+        // 第 pos 个参数在调用区（以调用点 %rsp 为基准）里的字节偏移。
+        // 寄存器参数落在 shadow space 内（pos*8，0..24），
+        // 溢出参数落在 shadow space 之后（shadow + (pos-4)*8）。
+        size_t argSlotOffset(size_t pos) const;
+        // 把实参求值并装进 ABI 参数寄存器，超出的写进调用者预留的栈槽，
+        // 最后**自己**把整块调用区（shadow space + 溢出槽）从 %rsp 上预留出来。
+        // 返回值是预留的字节数，调用点负责 `call` 之后 `addRsp(该值)`。
+        //
+        // argStart 是第一个实参的**整体参数位置**：方法/构造器的隐藏 this
+        // 占掉位置 0，所以用户实参从 1 起排。
+        // MS ABI 实测规则（gcc 15.2.0 交叉验证）：寄存器分配是**按整体位置**
+        // 的，第 pos 个参数用 intRegs[pos] 或 floatRegs[pos]，两类共用同一个
+        // 位置下标；pos >= 4 的参数一律进栈，栈槽序号 = pos - 4。
+        size_t emitArgsToRegisters(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                   const std::string& calleeDesc,
+                                   const std::vector<sema::TypePtr>& paramTypes = {},
+                                   size_t argStart = 0,
+                                   const std::vector<bool>* annotated = nullptr);
         void emitReturn(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitIf(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitBlock(const std::shared_ptr<ast::ExpressionNode>& node);

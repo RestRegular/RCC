@@ -4,12 +4,16 @@
 // 全部平台差异都收在这个文件里。将来加 Linux/SysV 只需新增一个
 // AbiInfo 实现，backend 其余部分不动。
 //
-// Windows x64（MS ABI）实测确认的规则：
-//   * 整型/指针参数：按参数位置依次 RCX, RDX, R8, R9
-//   * 浮点参数：按参数位置依次 XMM0..XMM3（不是"第几个 float 用第几个 XMM"）
-//   * 超出 4 个的参数压栈，偏移从 40(%rsp) 起（8 返回地址 + 32 shadow）
-//   * 调用者必须预留 32 字节 shadow space
-//   * 调用前 rsp 必须 16 字节对齐
+// Windows x64（MS ABI）实测确认的规则（gcc 15.2.0 交叉验证）：
+//   * 寄存器分配**按整体参数位置**，不是按类分别计数：
+//     第 pos 个参数用 intRegs[pos] 或 floatRegs[pos]，两类共用同一个
+//     位置下标。隐藏的 this 也占一个位置。
+//     例：f(double a, int b, double c) -> %xmm0, %edx, %xmm2
+//         g(int a, double b)          -> %ecx,  %xmm1
+//   * pos >= 4 的参数一律进栈，栈槽序号 = pos - 4，
+//     调用点位于 32(%rsp) + (pos-4)*8，被调方入口位于 40(%rsp) + (pos-4)*8
+//   * 调用者必须预留 32 字节 shadow space；有溢出参数时再多留 8*n 字节，
+//     并保持 %rsp 16 字节对齐
 //   * 返回值：RAX（整数/指针）、XMM0（浮点）
 //   * >8 字节结构：调用者分配空间，指针作隐藏首参，后续参数右移
 //   * 9..64 字节结构参数：传引用（指针）
@@ -78,6 +82,7 @@ namespace backend
         [[nodiscard]] std::string getFloatReturnReg() const override { return "%xmm0"; }
 
         // 8 字节返回地址 + 32 字节 shadow space = 40
+        // index 是**溢出参数序号**（= 整体位置 - 4），不含寄存器参数。
         [[nodiscard]] size_t getStackArgOffset(size_t index) const override
         {
             return 40 + index * 8;

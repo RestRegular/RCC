@@ -716,12 +716,10 @@ namespace backend{
         for (auto& pt : paramTypes)        {
             if (!pt || pt->getKind() == sema::TypeKind::TK_UNKNOWN) pt = sema::getIntType();
         }
-        emitArgsToRegisters(flat, displayName, paramTypes, 0, 0, &sig.annotated);
+        const size_t callArea = emitArgsToRegisters(flat, displayName, paramTypes, 0, &sig.annotated);
         if (hasFailed()) return;
-        const size_t shadow = _abi.getShadowSpaceSize();
-        _asm.subRsp(shadow);
         _asm.call(symbol);
-        _asm.addRsp(shadow);
+        _asm.addRsp(callArea);
     }
     void CodeGen::failOverload(const std::string& name,
                                const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
@@ -1879,13 +1877,15 @@ namespace backend{
             }
             return;
         }
-        // 左值求值 -> push
+        // 左值求值 -> 暂存槽（不能用 push：右值求值里可能有调用，
+        // push 造成的 8 字节偏移会让那个调用的 %rsp 失去 16 字节对齐）
         emitExpression(infix->getLeftNode());
-        _asm.push("%rax");
+        const std::string lhsSlot = allocateTemp(sema::getIntType());
+        _asm.mov("%rax", lhsSlot);
         // 右值求值 -> %rax
         emitExpression(infix->getRightNode());
         // 恢复左值到 %rcx
-        _asm.pop("%rcx");
+        _asm.mov(lhsSlot, "%rcx");
         switch (op)        {
         case core::TokenType::TOKEN_PLUS:            _asm.add("%rcx", "%rax");
             break;
@@ -2168,11 +2168,14 @@ namespace backend{
             _asm.mov("%rax", addr);
             return;
         }
-        // 先把右值算出来暂存，再取左值
+        // 先把右值算出来暂存进槽位，再取左值。
+        // 不能用 push：右值求值里可能有调用，push 的 8 字节偏移
+        // 会让那个调用的 %rsp 失去 16 字节对齐。
         emitExpression(infix->getRightNode());
-        _asm.push("%rax");
+        const std::string rhsSlot = allocateTemp(sema::getIntType());
+        _asm.mov("%rax", rhsSlot);
         _asm.mov(addr, "%rcx");
-        _asm.pop("%rax");
+        _asm.mov(rhsSlot, "%rax");
         switch (infix->getOpToken().getType())        {
         case core::TokenType::TOKEN_PLUS_ASSIGN:            _asm.add("%rcx", "%rax");
             break;
@@ -3449,14 +3452,24 @@ namespace backend{
         }
         fail("Index access on a non-container value: " + node->toString());
     }
-    void CodeGen::emitArgsToRegisters(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
-                                      const std::string& calleeDesc,
-                                      const std::vector<sema::TypePtr>& paramTypes,
-                                      const size_t intStart,
-                                      const size_t floatStart,
-                                      const std::vector<bool>* annotated)    {
+    size_t CodeGen::argSlotOffset(const size_t pos) const    {
+        // 调用区布局（相对调用点 %rsp）：
+        //   [0, 32)          shadow space，第 pos 个寄存器参数暂存在 pos*8
+        //   [32, 32+8*n)     第 n 个溢出参数的栈槽（n = pos - 4）
+        const size_t registerSlots = _abi.getIntArgRegs().size();
+        return pos < registerSlots
+                   ? pos * 8
+                   : _abi.getShadowSpaceSize() + (pos - registerSlots) * 8;
+    }
+    size_t CodeGen::emitArgsToRegisters(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                        const std::string& calleeDesc,
+                                        const std::vector<sema::TypePtr>& paramTypes,
+                                        const size_t argStart,
+                                        const std::vector<bool>* annotated)    {
         const auto& intRegs = _abi.getIntArgRegs();
         const auto& floatRegs = _abi.getFloatArgRegs();
+        const size_t registerSlots = intRegs.size() < floatRegs.size() ? intRegs.size() : floatRegs.size();
+        const size_t shadow = _abi.getShadowSpaceSize();
         // 每个实参的目标值类别：有形参类型就按形参类型，否则按实参自身类型。
         // 这一步决定了走整型寄存器还是浮点寄存器 —— 必须与 callee 的
         // 形参落栈逻辑一致，否则 `(x) -> { ret x / 2.0 }` 这种
@@ -3471,28 +3484,26 @@ namespace backend{
                 targetIsFloat[i] = inferType(args[i])->isFloat();
             }
         }
-        // 整型与浮点各用一套寄存器序列（MS ABI 规则）。
-        // intStart / floatStart 用于给隐藏的 this 之类的参数预留槽位：
-        // 方法调用时 %rcx 已经被 this 占掉，用户实参要从 %rdx 起排。
-        size_t intCount = intStart;
-        size_t floatCount = floatStart;
-        for (size_t i = 0; i < args.size(); ++i)        {
-            if (targetIsFloat[i]) ++floatCount;
-            else ++intCount;
-        }
-        if (intCount > intRegs.size() || floatCount > floatRegs.size())        {
-            fail("More than 4 arguments are not supported yet: " + calleeDesc);
-            return;
-        }
-        // 求值顺序从左到右，但寄存器分配要先算好，避免多个浮点实参
-        // 在暂存时互相覆盖（全都经过 %xmm0）。
+        // MS ABI 的寄存器分配是**按整体参数位置**的（gcc 15.2.0 实测）：
+        // 第 pos 个参数用 intRegs[pos] 或 floatRegs[pos]，两类共用同一个
+        // 位置下标；pos >= 4 的一律进栈，栈槽序号 = pos - 4。
+        // 所以这里不能再分别数「第几个整型」「第几个浮点」。
         std::vector<bool> isFloat(args.size(), false);
-        std::vector<std::string> target(args.size());
-        intCount = intStart;
-        floatCount = floatStart;
+        std::vector<std::string> targetReg(args.size()); // 栈参数留空
+        std::vector<size_t> targetSlot(args.size());     // 寄存器参数用 kNoSlot
+        const size_t kNoSlot = static_cast<size_t>(-1);
+        size_t overflow = 0;
         for (size_t i = 0; i < args.size(); ++i)        {
             isFloat[i] = inferType(args[i])->isFloat();
-            target[i] = targetIsFloat[i] ? floatRegs[floatCount++] : intRegs[intCount++];
+            const size_t pos = argStart + i;
+            if (pos < registerSlots)            {
+                targetReg[i] = targetIsFloat[i] ? floatRegs[pos] : intRegs[pos];
+                targetSlot[i] = kNoSlot;
+            }
+ else            {
+                targetSlot[i] = pos - registerSlots;
+                ++overflow;
+            }
         }
         // P9：形参类型已知时校验实参 —— 这是「类型错误诊断」最要紧的一处，
         // 因为 `f("hello")` 传给 `x: int` 之前会静默把指针当整数用。
@@ -3505,14 +3516,22 @@ namespace backend{
             if (!why.empty())            {
                 failAt(args[i] ? args[i]->getPos() : utils::getUnknownPos(),
                        "Argument " + std::to_string(i + 1) + " of '" + calleeDesc + "': " + why);
-                return;
+                return 0;
             }
         }
-        // 先把所有实参求值并压栈暂存（栈上每项 8 字节），
-        // 再从后往前弹出到各自的参数寄存器。
+        // 调用区 = shadow space + 溢出栈槽，取整到 16 的倍数保持调用点对齐。
+        // 必须在**求值实参之前**预留：实参表达式里可能含调用，那些调用会
+        // 从更低的 %rsp 起用自己的调用区，不会踩到这里。
+        const size_t callArea = ((shadow + overflow * 8) + 15) / 16 * 16;
+        _asm.subRsp(callArea);
+        // 求值顺序从左到右。寄存器参数先落到 shadow space 里的对应格子暂存
+        // （位置 pos 用 pos*8，正好占满 32 字节 shadow space），
+        // 溢出参数直接写自己的栈槽（shadow + (pos-4)*8）。
+        // 全部求值完再统一装寄存器 —— 这样后面实参的求值不会冲掉前面
+        // 装好的 %rcx/%xmm0。
         for (size_t i = 0; i < args.size(); ++i)        {
             emitExpression(args[i]);
-            if (hasFailed()) return;
+            if (hasFailed()) return 0;
             // 实参类型与形参类型不一致时按形参转换。
             if (isFloat[i] && !targetIsFloat[i])            {
                 _asm.inst("cvttsd2siq", "%xmm0", "%rax");
@@ -3520,25 +3539,25 @@ namespace backend{
  else if (!isFloat[i] && targetIsFloat[i])            {
                 _asm.inst("cvtsi2sdq", "%rax", "%xmm0");
             }
+            const std::string addr = std::to_string(argSlotOffset(argStart + i)) + "(%rsp)";
             if (targetIsFloat[i])            {
-                _asm.subRsp(8);
-                _asm.inst("movsd", "%xmm0", "(%rsp)");
+                _asm.inst("movsd", "%xmm0", addr);
             }
  else            {
-                _asm.push("%rax");
+                _asm.mov("%rax", addr);
             }
         }
-        for (size_t i = args.size(); i-- > 0;)        {
+        for (size_t i = 0; i < args.size(); ++i)        {
+            if (targetSlot[i] != kNoSlot) continue;
+            const std::string addr = std::to_string(argSlotOffset(argStart + i)) + "(%rsp)";
             if (targetIsFloat[i])            {
-                // 注意：这里不能先 movsd 到 %xmm0 再转到目标寄存器，
-                // 因为后面的实参可能也要经过 %xmm0。直接读到目标寄存器。
-                _asm.inst("movsd", "(%rsp)", target[i]);
-                _asm.addRsp(8);
+                _asm.inst("movsd", addr, targetReg[i]);
             }
  else            {
-                _asm.pop(target[i]);
+                _asm.mov(addr, targetReg[i]);
             }
         }
+        return callArea;
     }
     void CodeGen::emitIndirectCall(const std::shared_ptr<ast::ExpressionNode>& callee,
                                    const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
@@ -3548,25 +3567,22 @@ namespace backend{
         //   +8  env（捕获环境；P4 阶段无捕获，恒为 0）
         // 调用约定：env 走 %r10，目标地址走 %r11，其余与普通调用一致。
         //
-        // 顺序很关键：先把闭包指针压栈保住，再布置实参（布置实参要用
+        // 顺序很关键：先把闭包指针存进栈槽保住，再布置实参（布置实参要用
         // 参数寄存器，任何一次求值都可能把它们冲掉），最后取回闭包指针。
+        // 不能用 push 暂存：push 会让 %rsp 偏离 16 字节对齐，调用点就错了。
         emitExpression(callee);
         if (hasFailed()) return;
-        _asm.push("%rax");
-        emitArgsToRegisters(args, nodeText(callee), paramTypes);
-        if (hasFailed())        {
-            _asm.addRsp(8);
-            return;
-        }
+        const std::string closureSlot = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", closureSlot);
+        const size_t callArea = emitArgsToRegisters(args, nodeText(callee), paramTypes);
+        if (hasFailed()) return;
         // 取回闭包指针，再拆出 env 与 fnptr。
         // 必须先读 +8 再读 +0，否则 %rax 被覆盖后就没法再取 env。
-        _asm.pop("%rax");
+        _asm.mov(closureSlot, "%rax");
         _asm.mov("8(%rax)", "%r10");
         _asm.mov("(%rax)", "%r11");
-        const size_t shadow = _abi.getShadowSpaceSize();
-        _asm.subRsp(shadow);
         _asm.inst("call", "*%r11");
-        _asm.addRsp(shadow);
+        _asm.addRsp(callArea);
     }
     void CodeGen::collectFreeVariables(const std::shared_ptr<ast::ExpressionNode>& node,
                                        std::vector<std::string>& bound,
@@ -3960,16 +3976,14 @@ namespace backend{
         if (const auto found = _functionParamAnnotated.find(fname); found != _functionParamAnnotated.end())        {
             annotatedMask = &found->second;
         }
-        emitArgsToRegisters(callArgs, fname, paramTypes, 0, 0, annotatedMask);
+        const size_t callArea = emitArgsToRegisters(callArgs, fname, paramTypes, 0, annotatedMask);
         if (hasFailed())        {
             return;
         }
-        // 预留 shadow space 并调用。
-        // 注意：MS ABI 要求 32 字节 shadow space，且调用点 %rsp 必须 16 字节对齐。
-        const size_t shadow = _abi.getShadowSpaceSize();
-        _asm.subRsp(shadow);
+        // emitArgsToRegisters 已经预留好调用区（shadow space + 溢出栈槽），
+        // 且保证 %rsp 16 字节对齐，这里只负责调用与回收。
         _asm.call(emitName);
-        _asm.addRsp(shadow);
+        _asm.addRsp(callArea);
     }
     bool CodeGen::isModuleName(const std::string& name) const    {
         for (const auto& m : _moduleNames)        {
@@ -4164,14 +4178,12 @@ namespace backend{
         if (const auto found = _functionParams.find(fname); found != _functionParams.end())        {
             paramTypes = found->second;
         }
-        emitArgsToRegisters(normalizeCallArgs(args, fname), fname, paramTypes);
+        const size_t callArea = emitArgsToRegisters(normalizeCallArgs(args, fname), fname, paramTypes);
         if (hasFailed())        {
             return;
         }
-        const size_t shadow = _abi.getShadowSpaceSize();
-        _asm.subRsp(shadow);
         _asm.call(fname);
-        _asm.addRsp(shadow);
+        _asm.addRsp(callArea);
     }
     void CodeGen::emitRtPrintCall(const std::string& fnName, bool isFloat)    {
         // rt 打印函数的调用约定（Win64）：
@@ -5136,27 +5148,27 @@ namespace backend{
         else if (!destIsFloat && srcIsFloat)        {
             _asm.inst("cvttsd2siq", "%xmm0", "%rax");
         }
+        // 暂存到栈槽（不能用 push：算对象指针时可能有调用，
+        // push 的 8 字节偏移会让那个调用的 %rsp 失去 16 字节对齐）。
+        const std::string valueSlot = allocateTemp(destIsFloat ? sema::getFloatType() : sema::getIntType());
         if (destIsFloat)        {
-            _asm.subRsp(8);
-            _asm.inst("movsd", "%xmm0", "(%rsp)");
+            _asm.inst("movsd", "%xmm0", valueSlot);
         }
         else        {
-            _asm.push("%rax");
+            _asm.mov("%rax", valueSlot);
         }
         emitExpression(target->getLeftNode());
         if (hasFailed())        {
-            _asm.addRsp(8);
             return;
         }
         _asm.mov("%rax", "%r10");
         const std::string addr = std::to_string(offset) + "(%r10)";
         if (destIsFloat)        {
-            _asm.inst("movsd", "(%rsp)", "%xmm0");
-            _asm.addRsp(8);
+            _asm.inst("movsd", valueSlot, "%xmm0");
             _asm.inst("movsd", "%xmm0", addr);
         }
         else        {
-            _asm.pop("%rax");
+            _asm.mov(valueSlot, "%rax");
             _asm.mov("%rax", addr);
         }
     }
@@ -5181,15 +5193,19 @@ namespace backend{
         const long long size = cls->size > 0 ? cls->size : 8;
         emitAlloc(static_cast<size_t>(size));
         if (hasFailed()) return;
+        // 对象指针全程放栈槽：下面的 core_mem_set 调用、字段初始化器求值、
+        // 构造器实参求值都会冲掉 caller-saved 寄存器。
+        // 不用 push 暂存：push 的 8 字节偏移会让调用点的 %rsp 失去 16 字节对齐。
+        const std::string objectSlot = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", objectSlot);
         // 新对象先整体清零：没赋值的字段默认是 0。
-        _asm.push("%rax");
         _asm.mov("%rax", "%rcx");
         _asm.movImm(0, "%rdx");
         _asm.movImm(size, "%r8");
         _asm.subRsp(32);
         _asm.call("core_mem_set");
         _asm.addRsp(32);
-        _asm.pop("%rax");
+        _asm.mov(objectSlot, "%rax");
         // P12/G11：写入实例字段初始化器（`var x: int = 42`）。
         // 必须在用户构造器**之前**、清零**之后**：ctor 里可以覆盖这些初值。
         // 顺序按声明顺序，与源码直觉一致。
@@ -5232,30 +5248,32 @@ namespace backend{
         std::vector<sema::TypePtr> paramTypes;
         collectParamTypesT(cls->ctorParamNode, paramTypes);
         while (paramTypes.size() < paramNames.size()) paramTypes.push_back(sema::getIntType());
-        // 对象指针占掉隐藏 this（%rcx），用户实参从 %rdx 起排。
-        _asm.push("%rax");
+        // 对象指针占掉隐藏 this（位置 0），用户实参从位置 1 起排。
+        // 不能用 push 暂存 this：push 会让 %rsp 偏离 16 字节对齐。
+        const std::string selfArgSlot = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", selfArgSlot);
         const std::vector<bool>* ctorMask = nullptr;
         if (const auto found = _functionParamAnnotated.find(className + ".__init__");
             found != _functionParamAnnotated.end())
             ctorMask = &found->second;
-        emitArgsToRegisters(args, className, paramTypes, 1, 0, ctorMask);
+        const size_t ctorArea = emitArgsToRegisters(args, className, paramTypes, 1, ctorMask);
         if (hasFailed())        {
-            _asm.addRsp(8);
             _currentGenericParams = savedParams;
             _currentGenericBindings = savedBindings;
             return;
         }
-        _asm.pop("%rcx");
+        _asm.mov(selfArgSlot, "%rcx");
         _currentGenericParams = savedParams;
         _currentGenericBindings = savedBindings;
         if (!cls->hasCtor)        {
             // 没有构造器：对象就是结果，字段保持全 0。
-            _asm.mov("%rcx", "%rax");
+            // 参数已经求值过了，预留的调用区要还回去。
+            _asm.addRsp(ctorArea);
+            _asm.mov(selfArgSlot, "%rax");
             return;
         }
-        _asm.subRsp(32);
         _asm.call(className + ".__init__");
-        _asm.addRsp(32);
+        _asm.addRsp(ctorArea);
     }
     void CodeGen::emitMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
                                  const std::shared_ptr<ast::ExpressionNode>& callNode,
@@ -5353,22 +5371,22 @@ namespace backend{
             }
             while (paramTypes.size() < paramNames.size()) paramTypes.push_back(sema::getIntType());
         }
-        // 接收者先求值压栈（实参求值可能包含调用），最后落到 %rcx。
+        // 接收者先求值存进栈槽（实参求值可能包含调用），最后落到 %rcx。
+        // 不能用 push：push 会破坏调用点的 16 字节对齐。
         emitExpression(member->getLeftNode());
         if (hasFailed()) return;
-        _asm.push("%rax");
+        const std::string receiverSlot = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", receiverSlot);
         const std::vector<bool>* methMask = nullptr;
         if (const auto found = _functionParamAnnotated.find(symbol); found != _functionParamAnnotated.end())
             methMask = &found->second;
-        emitArgsToRegisters(args, symbol, paramTypes, 1, 0, methMask);
+        const size_t methArea = emitArgsToRegisters(args, symbol, paramTypes, 1, methMask);
         if (hasFailed())        {
-            _asm.addRsp(8);
             return;
         }
-        _asm.pop("%rcx");
-        _asm.subRsp(32);
+        _asm.mov(receiverSlot, "%rcx");
         _asm.call(symbol);
-        _asm.addRsp(32);
+        _asm.addRsp(methArea);
     }
     void CodeGen::emitSuperCall(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)    {
         if (_currentClass.empty())        {
@@ -5398,22 +5416,25 @@ namespace backend{
         while (paramTypes.size() < paramNames.size()) paramTypes.push_back(sema::getIntType());
         // 复用当前 this：派生类对象的前缀与基类布局完全一致，
         // 所以直接把同一个指针交给基类构造器就行。
+        // 不能 push 暂存：push 会破坏调用点的 16 字节对齐。
         _asm.mov(addrOf(*thisSlot), "%rax");
-        _asm.push("%rax");
+        const std::string superSelfSlot = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", superSelfSlot);
         const std::vector<bool>* superMask = nullptr;
         if (const auto found = _functionParamAnnotated.find(baseName + ".__init__");
             found != _functionParamAnnotated.end())
             superMask = &found->second;
-        emitArgsToRegisters(args, baseName + ".__init__", paramTypes, 1, 0, superMask);
+        const size_t superArea = emitArgsToRegisters(args, baseName + ".__init__", paramTypes, 1, superMask);
         if (hasFailed())        {
-            _asm.addRsp(8);
             return;
         }
-        _asm.pop("%rcx");
-        if (!base->hasCtor) return;
-        _asm.subRsp(32);
+        if (!base->hasCtor)        {
+            _asm.addRsp(superArea);
+            return;
+        }
+        _asm.mov(superSelfSlot, "%rcx");
         _asm.call(baseName + ".__init__");
-        _asm.addRsp(32);
+        _asm.addRsp(superArea);
     }
     // ============================================================
     // P10：泛型（单态化）
@@ -5678,12 +5699,10 @@ namespace backend{
         if (const auto p = _functionParamAnnotated.find(mangled); p != _functionParamAnnotated.end())        {
             instMask = &p->second;
         }
-        emitArgsToRegisters(instArgs, mangled, paramTypes, 0, 0, instMask);
+        const size_t instArea = emitArgsToRegisters(instArgs, mangled, paramTypes, 0, instMask);
         if (hasFailed()) return true;
-        const size_t instShadow = _abi.getShadowSpaceSize();
-        _asm.subRsp(instShadow);
         _asm.call(mangled);
-        _asm.addRsp(instShadow);
+        _asm.addRsp(instArea);
         return true;
     }
     void CodeGen::emitFunctionDefinition(const std::shared_ptr<ast::FunctionDefinitionNode>& node)    {
@@ -6013,11 +6032,14 @@ namespace backend{
         // 栈帧大小在函数体生成完才知道，这里先占位，末尾回填。
         const std::string framePlaceholder = _asm.newLabel("frame_" + emitName);
         _asm.label(framePlaceholder);
-        // 形参分别按整型/浮点各用一套寄存器（MS ABI）
+        // 形参按**整体位置**接收（MS ABI，gcc 实测）：第 pos 个形参用
+        // intRegs[pos] 或 floatRegs[pos]，两类共用同一个位置下标；
+        // pos >= 4 的形参在调用者的栈上，序号 k = pos - 4，
+        // 入口处位于 getStackArgOffset(k)，push %rbp 之后整体 +8。
         const auto& intRegs = _abi.getIntArgRegs();
         const auto& floatRegs = _abi.getFloatArgRegs();
-        size_t intIndex = 0;
-        size_t floatIndex = 0;
+        const size_t registerSlots = intRegs.size() < floatRegs.size() ? intRegs.size() : floatRegs.size();
+        size_t argPos = 0;
         // P6：构造器/方法有隐藏的 this 参数，占掉第一个整型寄存器（%rcx），
         // 用户形参整体后移一格。this 存成一个普通局部槽位，这样函数体里
         // `this.x` 走的是和普通变量完全一样的取址路径。
@@ -6028,20 +6050,34 @@ namespace backend{
             if (!thisType) thisType = sema::getIntType();
             const long long offset = allocateSlot("this", thisType, thisType->getSize());
             _asm.mov("%rcx", std::to_string(offset) + "(%rbp)");
-            intIndex = 1;
+            argPos = 1;
         }
         for (size_t i = 0; i < paramNames.size(); ++i)        {
             auto pt = (i < paramTypes.size()) ? paramTypes[i] : sema::getIntType();
             if (!pt || pt->getKind() == sema::TypeKind::TK_UNKNOWN) pt = sema::getIntType();
             const long long offset = allocateSlot(paramNames[i], pt, pt->getSize());
             const std::string slot = std::to_string(offset) + "(%rbp)";
-            if (pt->isFloat())            {
-                if (floatIndex >= floatRegs.size()) continue;
-                _asm.inst("movsd", floatRegs[floatIndex++], slot);
+            const size_t pos = argPos + i;
+            if (pos < registerSlots)            {
+                if (pt->isFloat())                {
+                    _asm.inst("movsd", floatRegs[pos], slot);
+                }
+ else                {
+                    _asm.mov(intRegs[pos], slot);
+                }
             }
  else            {
-                if (intIndex >= intRegs.size()) continue;
-                _asm.mov(intRegs[intIndex++], slot);
+                // 栈参数：getStackArgOffset 以入口 %rsp 为基准，
+                // 此时 %rbp = 入口 %rsp - 8，所以再 +8。
+                const std::string from = std::to_string(_abi.getStackArgOffset(pos - registerSlots) + 8) + "(%rbp)";
+                if (pt->isFloat())                {
+                    _asm.inst("movsd", from, "%xmm0");
+                    _asm.inst("movsd", "%xmm0", slot);
+                }
+ else                {
+                    _asm.mov(from, "%rax");
+                    _asm.mov("%rax", slot);
+                }
             }
         }
         _returnLabel = _asm.newLabel("ret_" + emitName);
