@@ -112,16 +112,22 @@ namespace backend
             return {label, bytes.size()};
         }
 
-        // 带长度头的字符串字面量：内存布局为
-        //   [0..7]  len (8 字节小端)
-        //   [8.. ]  UTF-8 字节
-        //   [末尾]  0（C 字符串兼容，方便调试）
+        // 带长度头的字符串字面量（**ABI v2**，P13-1）。内存布局为
+        //   [0..7]   len      (8 字节小端)
+        //   [8..15]  cap = 0  ← 关键：0 表示「不可释放的静态只读头」
+        //   [16.. ]  UTF-8 字节
+        //   [末尾]   0（C 字符串兼容，方便调试）
         // 返回 (标签, 长度)，标签指向**长度头**，即该标签就是一个 str 值。
         //
         // 为什么需要头部：str 变量在运行时必须能自描述长度，
         // 否则 rt_print_str 无法知道该打印多少字节。
         // 头部方案也让 str 只用一个指针表示（不用 ptr+len 两个寄存器），
         // 符合 docs/architecture_plan.md 里的 ABI 决定。
+        //
+        // 为什么 cap 必须是 0（docs/p13_plan.md D11 裁决 A）：
+        // 字面量指向 .rdata 里的静态块，对它调 HeapFree 会直接崩。
+        // `core_free` 因此约定「cap==0 即静默返回」。这是**值表示的约定**，
+        // 不是隐式运行时检查 —— 发布构建里也不做额外判断，只读这个字段。
         std::pair<std::string, size_t> internStrValue(const std::string& bytes)
         {
             const std::string label = ".Lstrh" + std::to_string(_stringCounter++);
@@ -140,12 +146,14 @@ namespace backend
                 _out << "    .ascii  \"" << escapeAsm(bytes) << "\"\n";
                 _out << "    .byte   0\n";   // 方便调试查看，长度另行传递
             }
-            // 带长度头的 str 值，8 字节对齐
+            // 带长度头的 str 值（ABI v2：{len, cap, bytes}，见 internStrValue）
             for (const auto& [label, bytes] : _strValues)
             {
                 _out << "    .align  8\n";
                 label_(label);
                 _out << "    .quad   " << bytes.size() << "\n";
+                // cap = 0：静态只读头，core_free 见 cap==0 直接返回（D11）
+                _out << "    .quad   0\n";
                 if (!bytes.empty())
                 {
                     _out << "    .ascii  \"" << escapeAsm(bytes) << "\"\n";

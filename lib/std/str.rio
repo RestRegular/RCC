@@ -9,7 +9,9 @@
  *     所以「从 str 切一段出来」= 分配缓冲区 + 拷字节 + 写长度头。
  *     这是本模块的主力手段，比旧版「逐字符 setType 再拼接」高效且正确
  *     （旧版遇到 UTF-8 多字节字符会切坏，新版按字节切，天然安全）。
- *  2) str 布局 = {i64 len} + bytes。len 在 +0（8 字节小端），内容在 +8。
+ *  2) str 布局（ABI v2，P13-1）= {i64 len, i64 cap} + bytes。
+ *     len 在 +0（8 字节小端），cap 在 +8，内容在 +16。
+ *     cap == 0 表示静态只读头（字面量），不可释放（D11 裁决 A）。
  *     core_mem_set 只写低 8 位，所以长度头必须**逐字节写**（见 _strSetLen）。
  *  3) `s[i]` 读出的是 **char**（单个字节的字符值），不是 int 也不是 str。
  *     char 是完整可用的一等类型：`sout(char)` 走 rt_print_char 打印字符，
@@ -70,20 +72,33 @@ fun _strPow256(k: int): int {
     ret r
 }
 
-// 分配长度为 n 的 str 缓冲区（内容未初始化），长度头已写对。
-// 多分配 32 字节：8 字节长度头 + 内容 + 末尾留 0（C 字符串兼容）。
+// 分配长度为 n 的 str 缓冲区（内容未初始化），长度头与 cap 已写对。
+// 多分配 32 字节：16 字节头（len + cap）+ 内容 + 末尾留 0（C 字符串兼容）。
+//
+// cap 必须写成 **n**（不是 0）：这里分配的是堆内存，将来要被 core_free
+// 释放；而 cap == 0 是「静态只读、不可释放」的标记（D11）。
 fun _strNew(n: int): ptr {
     var p: ptr = core_alloc(n + 32, 8)
     _strSetLen(p, n)
-    core_mem_set(p + 8 + n, 0, 1)
+    _strSetCap(p, n)
+    core_mem_set(p + 16 + n, 0, 1)
     ret p
+}
+
+// 写 cap 字段（偏移 +8）。同样是逐字节写，理由见 _strSetLen。
+fun _strSetCap(p: ptr, n: int): void {
+    var i: int = 0
+    while i < 8 {
+        core_mem_set(p + 8 + i, (n / _strPow256(i)) % 256, 1)
+        i += 1
+    }
 }
 
 // 取 src 从 i 开始的 n 个字节，构造新 str。
 // 这是「没有解引用运算符」时构造字符串的通用手段。
 fun _strSlice(src: str, i: int, n: int): str {
     var p: ptr = _strNew(n)
-    core_mem_copy(p + 8, src + 8 + i, n)
+    core_mem_copy(p + 16, src + 16 + i, n)
     var r: str = p
     ret r
 }
@@ -214,9 +229,9 @@ fun toStr[T, K](arg: dict[T, K]): str {
     var n = size(arg), res = "{"
     var i = 0
     while i < n {
-        // keys[i]（先取 keys 基址 @24，再按 8 字节槽取）
+        // keys[i]。ABI v2 布局：DictHeader { len@0, cap@8, ptr keys@16, ptr vals@24 }
         core_mem_set(scratch, 8, 1)
-        core_mem_copy(scratch + 8, arg + 24, 8)
+        core_mem_copy(scratch + 16, arg + 16, 8)
         var slot: str = scratch
         var keys: int = 0
         var j = 7
@@ -228,7 +243,7 @@ fun toStr[T, K](arg: dict[T, K]): str {
         }
 
         core_mem_set(scratch, 8, 1)
-        core_mem_copy(scratch + 8, keys + i * 8, 8)
+        core_mem_copy(scratch + 16, keys + i * 8, 8)
         slot = scratch
         var kp: int = 0
         j = 7
@@ -347,7 +362,7 @@ fun toLowerCase(data: str): str {
         if b >= 65 && b <= 90 {
             b = b + 32
         }
-        core_mem_set(p + 8 + i, b, 1)
+        core_mem_set(p + 16 + i, b, 1)
         i += 1
     }
     var r: str = p
@@ -363,7 +378,7 @@ fun toUpperCase(data: str): str {
         if b >= 97 && b <= 122 {
             b = b - 32
         }
-        core_mem_set(p + 8 + i, b, 1)
+        core_mem_set(p + 16 + i, b, 1)
         i += 1
     }
     var r: str = p

@@ -23,7 +23,7 @@
  * ==========================================================================
  */
 
-// 把 n 写进 p 指向的 8 字节小端长度头。
+// 把 n 写进 p 指向的 8 字节小端长度头（str 头偏移 +0）。
 // core_mem_set(p, n, 1) 只写低 8 位，n > 255 会截断，必须逐字节写。
 //
 // 函数名带 `_io` 前缀：模块是编译期内联的，多个模块的私有辅助函数共享
@@ -32,6 +32,15 @@ fun _ioSetLen(p: ptr, n: int) {
     var i: int = 0
     while i < 8 {
         core_mem_set(p + i, (n / _ioPow256(i)) % 256, 1)
+        i += 1
+    }
+}
+
+// 写 cap 字段（偏移 +8，8 字节小端，逐字节写，理由同 _ioSetLen）。
+fun _ioSetCap(p: ptr, n: int) {
+    var i: int = 0
+    while i < 8 {
+        core_mem_set(p + 8 + i, (n / _ioPow256(i)) % 256, 1)
         i += 1
     }
 }
@@ -53,13 +62,18 @@ fun _ioPow256(k: int): int {
 // 读到的内容是**原始字节**，不做换行符裁剪 —— 与旧版 sin 一致
 // （旧版也只是把缓冲区包成 str 返回）。
 fun sin(): str {
+    // ABI v2：str 头是 { len@0, cap@8, data@16 }（P13-1，见 docs/p13_plan.md D11/D12）。
+    // cap 必须写成非 0（这里是 n）：缓冲区是堆分配的，将来要能被 core_free
+    // 释放；cap == 0 是「静态只读、不可释放」的标记。
     var p: ptr = core_alloc(2080, 8)
     _ioSetLen(p, 0)
-    var n: int = core_io_read(0, p + 8, 2048)
+    _ioSetCap(p, 2048)
+    var n: int = core_io_read(0, p + 16, 2048)
     if n <= 0 {
         ret ""
     }
     _ioSetLen(p, n)
+    _ioSetCap(p, n)
     var r: str = p
     ret r
 }

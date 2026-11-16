@@ -180,15 +180,50 @@ namespace backend
         // 把 handler 链回退到 depth（弹出 _ehStack 里 index >= depth 的帧）。
         void emitEhUnwindTo(size_t depth);
 
-        // ---------- P5：容器（list / dict） ----------
+        // ---------- P5：容器（str / list / dict） ----------
         //
-        // 运行时布局（与 docs/architecture_plan.md §4.2 的 VecHeader 一致）：
-        //   ListHeader { i64 len, cap, rc, elem_size; u8 data[] }  —— 32 字节头，数据从 +32 起
-        //   DictHeader { i64 len, cap, rc; ptr keys; ptr vals }    —— 40 字节头
-        // 两者都用**单指针**表示（与 str 一致），每个元素槽恒为 8 字节。
+        // **ABI v2**（P13-1，2026-11-17）：三个容器统一成「header 与 data 分离」，
+        // 且移除已废弃的 rc 字段。理由与裁决见 docs/p13_plan.md 的 D11 / D12：
         //
-        // 字典把 keys / vals 分成两块连续数组，查找用线性扫描、按内容比较字符串键。
-        // 不做哈希：P5 只要求语义正确，哈希与扩容留给后续阶段，布局不用变。
+        //   * D12=A：header 地址必须**永不改变**，data 可以 realloc。
+        //     单指针布局（header+data 同块）下，原地追加一旦扩容就会让
+        //     调用者的变量、其他拷贝、形参里的指针全部悬空。
+        //   * D11=A：`core_free` 对 `cap==0` 静默返回，用来标记「不可释放」。
+        //     str 字面量指向静态只读头、不拷贝，必须靠 cap=0 识别。
+        //     旧 str 布局根本没有 cap 字段，所以这条裁决要求 str 加 cap。
+        //   * rc 字段从 G 轮起就废弃（内存模型非目标：引用计数），
+        //     与上面的改造合并成**一次** ABI 变更，不拆两次。
+        //
+        // 统一后的布局（所有偏移都是字节，字段 8 字节对齐）：
+        //
+        //   StrHeader  { i64 len@0, i64 cap@8,  u8 data@16 }
+        //   ListHeader { i64 len@0, i64 cap@8,  i64 elem_size@16, ptr data@24 }
+        //   DictHeader { i64 len@0, i64 cap@8,  ptr keys@16,       ptr vals@24 }
+        //
+        // **len 一律留在 +0** 是刻意的：`core_str_len` 以及 std 里
+        // `size()`/`isEmpty()` 对 str/list/dict 通用，全靠长度在偏移 0。
+        //
+        // list/dict 的 data/keys/vals 都是**独立分配的堆块**，header 只持有指针。
+        // 扩容 = realloc data 块 + 改写 header 里的指针，header 地址不动。
+        //
+        // 字典仍是 keys / vals 两块连续数组 + 线性扫描（不做哈希）；
+        // 元素/键/值槽恒为 8 字节。
+        static constexpr long long kHeaderLen = 0;
+        static constexpr long long kHeaderCap = 8;
+
+        // str
+        static constexpr long long kStrData = 16;
+        static constexpr size_t kStrHeaderSize = 16;
+
+        // list
+        static constexpr long long kListElemSize = 16;
+        static constexpr long long kListData = 24;
+        static constexpr size_t kListHeaderSize = 32;
+
+        // dict
+        static constexpr long long kDictKeys = 16;
+        static constexpr long long kDictVals = 24;
+        static constexpr size_t kDictHeaderSize = 32;
 
         // 列表字面量 `[a, b, c]`
         void emitListExpression(const std::shared_ptr<ast::ExpressionNode>& node);

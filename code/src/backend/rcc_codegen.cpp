@@ -3172,26 +3172,41 @@ namespace backend{
         // 先把对象整块分配好（头部 + n 个元素槽），再逐个求值填进去。
         // 顺序很重要：求值元素时可能再分配（嵌套字面量），
         // 若先求值后分配，中间结果就得跨分配保存。
+        // ABI v2：header 与 data **分离**（docs/p13_plan.md D12 裁决 A）。
+        //   ListHeader { len@0, cap@8, elem_size@16, ptr data@24 }
+        // 为什么要分离：原地追加扩容时会 realloc data；若 data 内联在
+        // header 之后，realloc 会让调用者的变量、其他拷贝、形参里的指针
+        // 全部悬空（单指针布局无法同时更新所有别名）。分离后 header 地址
+        // 永不变，扩容只改写 header 里那个指针。
         const std::string headerSlot = allocateTemp(inferListLiteralType(node));
-        emitAlloc(32 + n * 8);
+        const std::string dataSlot = allocateTemp(sema::getPtrType());
+        emitAlloc(kListHeaderSize);
         _asm.mov("%rax", headerSlot);
+        // data 块单独分配（n==0 时不分配，留 null；null+0 参与 mem_copy 安全）
+        if (n == 0)            {
+            _asm.movImm(0, "%rax");
+        }
+ else            {
+            emitAlloc(n * 8);
+        }
+        _asm.mov("%rax", dataSlot);
         _asm.mov(headerSlot, "%rcx");
         _asm.movImm(static_cast<long long>(n), "%rax");
         _asm.mov("%rax", "0(%rcx)");
         // len
         _asm.mov("%rax", "8(%rcx)");
         // cap（暂不扩容，等于 len）
-        _asm.movImm(1, "%rax");
-        _asm.mov("%rax", "16(%rcx)");
-        // rc
         _asm.movImm(8, "%rax");
+        _asm.mov("%rax", "16(%rcx)");
+        // elem_size（元素槽恒 8 字节）
+        _asm.mov(dataSlot, "%rax");
         _asm.mov("%rax", "24(%rcx)");
-        // elem_size
+        // data 指针
         for (size_t i = 0; i < n; ++i)        {
             emitExpression(elements[i]);
             if (hasFailed()) return;
-            _asm.mov(headerSlot, "%rcx");
-            const std::string dest = std::to_string(32 + i * 8) + "(%rcx)";
+            _asm.mov(dataSlot, "%rcx");
+            const std::string dest = std::to_string(i * 8) + "(%rcx)";
             const auto et = inferType(elements[i]);
             if (et && et->isFloat())            {
                 // 浮点元素按位存 8 字节，读取时再按静态类型解释
@@ -3247,8 +3262,11 @@ namespace backend{
             pairs.swap(unique);
         }
         const size_t n = pairs.size();
+        // ABI v2：DictHeader { len@0, cap@8, ptr keys@16, ptr vals@24 }
+        // keys / vals 本来就是独立数组，这里只是把 rc 去掉、偏移前移
+        // （见 docs/p13_plan.md D12）。
         const std::string headerSlot = allocateTemp(inferDictLiteralType(node));
-        emitAlloc(40);
+        emitAlloc(kDictHeaderSize);
         _asm.mov("%rax", headerSlot);
         _asm.mov(headerSlot, "%rcx");
         _asm.movImm(static_cast<long long>(n), "%rax");
@@ -3256,14 +3274,11 @@ namespace backend{
         // len
         _asm.mov("%rax", "8(%rcx)");
         // cap
-        _asm.movImm(1, "%rax");
-        _asm.mov("%rax", "16(%rcx)");
-        // rc
         if (n == 0)        {
             // 空字典：keys/vals 都是 null，长度 0
             _asm.movImm(0, "%rax");
+            _asm.mov("%rax", "16(%rcx)");
             _asm.mov("%rax", "24(%rcx)");
-            _asm.mov("%rax", "32(%rcx)");
             _asm.mov(headerSlot, "%rax");
             return;
         }
@@ -3275,9 +3290,10 @@ namespace backend{
         _asm.mov("%rax", valsSlot);
         _asm.mov(headerSlot, "%rcx");
         _asm.mov(keysSlot, "%rax");
-        _asm.mov("%rax", "24(%rcx)");
+        _asm.mov("%rax", "16(%rcx)");
+        // header.keys
         _asm.mov(valsSlot, "%rax");
-        _asm.mov("%rax", "32(%rcx)");
+        _asm.mov("%rax", "24(%rcx)");
         for (size_t i = 0; i < n; ++i)        {
             const std::string idx = std::to_string(i * 8) + "(%rcx)";
             emitExpression(pairs[i].first);
@@ -3365,8 +3381,10 @@ namespace backend{
             _asm.mov(contSlot, "%rcx");
             _asm.cmp("(%rcx)", "%rax");
             _asm.inst("jae", skipLabel);
+            // ABI v2：data 是 header+24 处的独立指针
+            _asm.inst("movq", "24(%rcx)", "%rcx");
             _asm.mov(valSlot, "%rdx");
-            _asm.inst("movq", "%rdx", "32(%rcx,%rax,8)");
+            _asm.inst("movq", "%rdx", "(%rcx,%rax,8)");
             _asm.jmp(doneLabel);
             _asm.label(skipLabel);
             _asm.label(doneLabel);
@@ -3410,8 +3428,8 @@ namespace backend{
             _asm.mov(contSlot, "%rcx");
             _asm.cmp("(%rcx)", "%rax");
             _asm.inst("jae", growLabel);
-            _asm.inst("movq", "24(%rcx)", "%rdx");
-            // keys[i]
+            _asm.inst("movq", "16(%rcx)", "%rdx");
+            // keys[i]（ABI v2：keys 指针在 header+16）
             _asm.inst("movq", "(%rdx,%rax,8)", "%rdx");
             _asm.mov(keySlot, "%r8");
             if (keyIsStr)            {
@@ -3423,8 +3441,8 @@ namespace backend{
                 _asm.cmp("%r10", "%r9");
                 _asm.jne(nextLabel);
                 // 真实字节从 +8 起（头 8 字节是长度）
-                _asm.lea("8(%rdx)", "%rcx");
-                _asm.lea("8(%r8)", "%rdx");
+                _asm.lea("16(%rdx)", "%rcx");
+                _asm.lea("16(%r8)", "%rdx");
                 _asm.mov("%r9", "%r8");
                 _asm.subRsp(32);
                 _asm.call("core_mem_eq");
@@ -3446,7 +3464,8 @@ namespace backend{
             _asm.label(foundLabel);
             _asm.mov(contSlot, "%rcx");
             _asm.mov(iSlot, "%rax");
-            _asm.inst("movq", "32(%rcx)", "%rdx");
+            _asm.inst("movq", "24(%rcx)", "%rdx");
+            // vals 指针在 header+24（ABI v2）
             _asm.mov(valSlot, "%r8");
             _asm.inst("movq", "%r8", "(%rdx,%rax,8)");
             _asm.jmp(doneLabel);
@@ -3496,12 +3515,14 @@ namespace backend{
             _asm.cmp("%rcx", "%rax");
             _asm.inst("jae", copyDone);
             _asm.mov(contSlot, "%rcx");
-            _asm.inst("movq", "24(%rcx)", "%rdx");
+            _asm.inst("movq", "16(%rcx)", "%rdx");
+            // keys 指针在 header+16（ABI v2）
             _asm.inst("movq", "(%rdx,%rax,8)", "%rdx");
             _asm.mov(newKeysSlot, "%r8");
             _asm.inst("movq", "%rdx", "(%r8,%rax,8)");
             _asm.mov(contSlot, "%rcx");
-            _asm.inst("movq", "32(%rcx)", "%rdx");
+            _asm.inst("movq", "24(%rcx)", "%rdx");
+            // vals 指针在 header+24（ABI v2）
             _asm.inst("movq", "(%rdx,%rax,8)", "%rdx");
             _asm.mov(newValsSlot, "%r8");
             _asm.inst("movq", "%rdx", "(%r8,%rax,8)");
@@ -3513,16 +3534,16 @@ namespace backend{
             // header.keys / header.vals 指向新数组
             _asm.mov(contSlot, "%rcx");
             _asm.mov(newKeysSlot, "%rax");
-            _asm.inst("movq", "%rax", "24(%rcx)");
+            _asm.inst("movq", "%rax", "16(%rcx)");
             _asm.mov(newValsSlot, "%rax");
-            _asm.inst("movq", "%rax", "32(%rcx)");
+            _asm.inst("movq", "%rax", "24(%rcx)");
             // 追加到下标 = 旧 len
             _asm.mov(iSlot, "%rax");
             _asm.mov(contSlot, "%rcx");
-            _asm.inst("movq", "24(%rcx)", "%rdx");
+            _asm.inst("movq", "16(%rcx)", "%rdx");
             _asm.mov(keySlot, "%r8");
             _asm.inst("movq", "%r8", "(%rdx,%rax,8)");
-            _asm.inst("movq", "32(%rcx)", "%rdx");
+            _asm.inst("movq", "24(%rcx)", "%rdx");
             _asm.mov(valSlot, "%r8");
             _asm.inst("movq", "%r8", "(%rdx,%rax,8)");
             _asm.label(doneLabel);
@@ -3556,9 +3577,9 @@ namespace backend{
         _asm.mov("%rcx", dstSlot);
     }
     void CodeGen::emitStrConcat(const std::string& lhsSlot, const std::string& rhsSlot)    {
-        // 结果：新 str = { len_a+len_b, 字节A, 字节B }
-        // 长度头在偏移 0，真实字节从 +8 起（与 rt_write_str 的约定一致）。
-        // 两侧都可能是 null（空串），长度按 0 算；null+8 参与 mem_copy 时
+        // 结果：新 str = { len_a+len_b, cap, 字节A, 字节B }
+        // ABI v2：len@0, cap@8, 内容@16（见头文件 kStrData）。
+        // 两侧都可能是 null（空串），长度按 0 算；null+16 参与 mem_copy 时
         // n=0，core_mem_copy 直接返回，不会解引用。
         const std::string laSlot = allocateTemp(sema::getIntType());
         const std::string lbSlot = allocateTemp(sema::getIntType());
@@ -3569,8 +3590,8 @@ namespace backend{
         _asm.mov(lbSlot, "%rax");
         _asm.inst("addq", "%rax", "%rcx");
         // total = la + lb
-        _asm.inst("addq", "$8", "%rcx");
-        // + 长度头
+        _asm.inst("addq", "$16", "%rcx");
+        // + StrHeader（len + cap）
         _asm.movImm(8, "%rdx");
         _asm.subRsp(32);
         _asm.call("core_alloc");
@@ -3581,22 +3602,24 @@ namespace backend{
         _asm.mov(lbSlot, "%rdx");
         _asm.inst("addq", "%rdx", "%rcx");
         _asm.mov("%rcx", "(%rax)");
-        // mem_copy(buf+8, a+8, la)
+        // cap：拼接结果是**堆上新建**的，可释放（cap = 总字节数，非 0）
+        _asm.mov("%rcx", "8(%rax)");
+        // mem_copy(buf+16, a+16, la)
         _asm.mov("%rax", "%rcx");
-        _asm.inst("addq", "$8", "%rcx");
+        _asm.inst("addq", "$16", "%rcx");
         _asm.mov(lhsSlot, "%rdx");
-        _asm.inst("addq", "$8", "%rdx");
+        _asm.inst("addq", "$16", "%rdx");
         _asm.mov(laSlot, "%r8");
         _asm.subRsp(32);
         _asm.call("core_mem_copy");
         _asm.addRsp(32);
-        // mem_copy(buf+8+la, b+8, lb)
+        // mem_copy(buf+16+la, b+16, lb)
         _asm.mov(bufSlot, "%rcx");
-        _asm.inst("addq", "$8", "%rcx");
+        _asm.inst("addq", "$16", "%rcx");
         _asm.mov(laSlot, "%rax");
         _asm.inst("addq", "%rax", "%rcx");
         _asm.mov(rhsSlot, "%rdx");
-        _asm.inst("addq", "$8", "%rdx");
+        _asm.inst("addq", "$16", "%rdx");
         _asm.mov(lbSlot, "%r8");
         _asm.subRsp(32);
         _asm.call("core_mem_copy");
@@ -3604,62 +3627,72 @@ namespace backend{
         _asm.mov(bufSlot, "%rax");
     }
     void CodeGen::emitListConcat(const std::string& lhsSlot, const std::string& rhsSlot)    {
-        // ListHeader { i64 len, cap, rc, elem_size; u8 data[] }，data 从 +32 起，
-        // 元素槽恒 8 字节（见本文件 P5 段）。
+        // ABI v2：ListHeader { len@0, cap@8, elem_size@16, ptr data@24 }
+        // header 与 data 分开分配；data 块大小 = total*8（元素槽恒 8 字节）。
         // 两侧都可能是 null（空列表），长度按 0 算，见 emitContainerLenTo。
         const std::string laSlot = allocateTemp(sema::getIntType());
         const std::string lbSlot = allocateTemp(sema::getIntType());
         emitContainerLenTo(lhsSlot, laSlot);
         emitContainerLenTo(rhsSlot, lbSlot);
-        const std::string bufSlot = allocateTemp(sema::getPtrType());
+        const std::string headerSlot2 = allocateTemp(sema::getPtrType());
+        const std::string dataSlot = allocateTemp(sema::getPtrType());
+        // 1) header
+        emitAlloc(kListHeaderSize);
+        _asm.mov("%rax", headerSlot2);
+        // 2) data 块（total*8；total==0 时不分配，留 null）
         _asm.mov(laSlot, "%rcx");
         _asm.mov(lbSlot, "%rax");
         _asm.inst("addq", "%rax", "%rcx");
-        // total
-        _asm.inst("leaq", "32(,%rcx,8)", "%rcx");
-        // 32 + total*8
+        const std::string zeroData = _asm.newLabel("lcat_nodata");
+        const std::string dataDone = _asm.newLabel("lcat_datadone");
+        _asm.inst("testq", "%rcx", "%rcx");
+        _asm.je(zeroData);
+        _asm.inst("leaq", "(,%rcx,8)", "%rcx");
         _asm.movImm(8, "%rdx");
         _asm.subRsp(32);
         _asm.call("core_alloc");
         _asm.addRsp(32);
-        _asm.mov("%rax", bufSlot);
-        // len / cap / rc / elem_size
-        _asm.mov(laSlot, "%rcx");
+        _asm.jmp(dataDone);
+        _asm.label(zeroData);
+        _asm.movImm(0, "%rax");
+        _asm.label(dataDone);
+        _asm.mov("%rax", dataSlot);
+        // 3) 写 header：len / cap / elem_size / data
+        _asm.mov(headerSlot2, "%rcx");
+        _asm.mov(laSlot, "%rax");
         _asm.mov(lbSlot, "%rdx");
-        _asm.inst("addq", "%rdx", "%rcx");
-        _asm.mov("%rcx", "(%rax)");
-        // len
-        _asm.mov("%rcx", "8(%rax)");
-        // cap
-        _asm.movImm(1, "%rcx");
-        _asm.mov("%rcx", "16(%rax)");
-        // rc
-        _asm.movImm(8, "%rcx");
-        _asm.mov("%rcx", "24(%rax)");
+        _asm.inst("addq", "%rdx", "%rax");
+        _asm.mov("%rax", "(%rcx)");
+        // len = la + lb
+        _asm.mov("%rax", "8(%rcx)");
+        // cap = len
+        _asm.movImm(8, "%rax");
+        _asm.mov("%rax", "16(%rcx)");
         // elem_size
-        // mem_copy(buf+32, a+32, la*8)
-        _asm.mov(bufSlot, "%rcx");
-        _asm.inst("addq", "$32", "%rcx");
+        _asm.mov(dataSlot, "%rax");
+        _asm.mov("%rax", "24(%rcx)");
+        // data 指针
+        // 4) mem_copy(data, a.data, la*8)
+        _asm.mov(dataSlot, "%rcx");
         _asm.mov(lhsSlot, "%rdx");
-        _asm.inst("addq", "$32", "%rdx");
+        _asm.inst("movq", "24(%rdx)", "%rdx");
         _asm.mov(laSlot, "%r8");
         _asm.inst("shlq", "$3", "%r8");
         _asm.subRsp(32);
         _asm.call("core_mem_copy");
         _asm.addRsp(32);
-        // mem_copy(buf+32+la*8, b+32, lb*8)
-        _asm.mov(bufSlot, "%rcx");
-        _asm.inst("addq", "$32", "%rcx");
+        // 5) mem_copy(data + la*8, b.data, lb*8)
+        _asm.mov(dataSlot, "%rcx");
         _asm.mov(laSlot, "%rax");
         _asm.inst("leaq", "(%rcx,%rax,8)", "%rcx");
         _asm.mov(rhsSlot, "%rdx");
-        _asm.inst("addq", "$32", "%rdx");
+        _asm.inst("movq", "24(%rdx)", "%rdx");
         _asm.mov(lbSlot, "%r8");
         _asm.inst("shlq", "$3", "%r8");
         _asm.subRsp(32);
         _asm.call("core_mem_copy");
         _asm.addRsp(32);
-        _asm.mov(bufSlot, "%rax");
+        _asm.mov(headerSlot2, "%rax");
     }
     void CodeGen::emitStrEq(const std::string& lhsSlot, const std::string& rhsSlot)    {        // 先比长度头，再比内容字节。两段都可能为 null（空串/未初始化），
         // core_mem_eq 对 n=0 直接返回 true，长度不等时提前退出即可。
@@ -3675,9 +3708,9 @@ namespace backend{
         _asm.jne(neLabel);
         // 长度相等：比较内容（从 +8 起）
         _asm.mov(lhsSlot, "%rcx");
-        _asm.inst("addq", "$8", "%rcx");
+        _asm.inst("addq", "$16", "%rcx");
         _asm.mov(rhsSlot, "%rdx");
-        _asm.inst("addq", "$8", "%rdx");
+        _asm.inst("addq", "$16", "%rdx");
         _asm.mov(laSlot, "%r8");
         _asm.subRsp(32);
         _asm.call("core_mem_eq");
@@ -3722,9 +3755,9 @@ namespace backend{
         const std::string diffLabel = _asm.newLabel("strord_diff");
         const std::string prefixEq = _asm.newLabel("strord_prefix_eq");
         _asm.mov(lhsSlot, "%r9");
-        _asm.inst("addq", "$8", "%r9");
+        _asm.inst("addq", "$16", "%r9");
         _asm.mov(rhsSlot, "%r10");
-        _asm.inst("addq", "$8", "%r10");
+        _asm.inst("addq", "$16", "%r10");
         _asm.movImm(0, "%r8");
         _asm.label(loopLabel);
         _asm.mov(minSlot, "%rax");
@@ -3801,7 +3834,9 @@ namespace backend{
             // 负下标会变成巨大无符号数，同样被拦下。
             _asm.cmp("(%rcx)", "%rax");
             _asm.inst("jae", missLabel);
-            _asm.inst("movq", "32(%rcx,%rax,8)", "%rax");
+            // ABI v2：data 是 header+24 处的独立指针
+            _asm.inst("movq", "24(%rcx)", "%rcx");
+            _asm.inst("movq", "(%rcx,%rax,8)", "%rax");
             _asm.jmp(doneLabel);
             _asm.label(missLabel);
             _asm.movImm(0, "%rax");
@@ -3823,7 +3858,7 @@ namespace backend{
             _asm.mov(contSlot, "%rcx");
             _asm.cmp("(%rcx)", "%rax");
             _asm.inst("jae", missLabel);
-            _asm.inst("movzbq", "8(%rcx,%rax)", "%rax");
+            _asm.inst("movzbq", "16(%rcx,%rax)", "%rax");
             _asm.jmp(doneLabel);
             _asm.label(missLabel);
             _asm.movImm(0, "%rax");
@@ -3870,8 +3905,8 @@ namespace backend{
             _asm.mov(contSlot, "%rcx");
             _asm.cmp("(%rcx)", "%rax");
             _asm.inst("jae", missLabel);
-            _asm.inst("movq", "24(%rcx)", "%rdx");
-            // keys 数组基址
+            _asm.inst("movq", "16(%rcx)", "%rdx");
+            // keys 数组基址（ABI v2：header+16）
             _asm.inst("movq", "(%rdx,%rax,8)", "%rdx");
             // keys[i]
             _asm.mov(keySlot, "%r8");
@@ -3885,8 +3920,8 @@ namespace backend{
                 _asm.jne(nextLabel);
                 // 真实字节从 +8 起（头 8 字节是长度），不能直接传头指针：
                 // 头指针指向的是 len 字段，比出来的永远是「长度相等」。
-                _asm.lea("8(%rdx)", "%rcx");
-                _asm.lea("8(%r8)", "%rdx");
+                _asm.lea("16(%rdx)", "%rcx");
+                _asm.lea("16(%r8)", "%rdx");
                 _asm.mov("%r9", "%r8");
                 _asm.subRsp(32);
                 _asm.call("core_mem_eq");
@@ -3901,7 +3936,8 @@ namespace backend{
             // 命中：取 vals[i]
             _asm.mov(contSlot, "%rcx");
             _asm.mov(iSlot, "%rax");
-            _asm.inst("movq", "32(%rcx)", "%rdx");
+            _asm.inst("movq", "24(%rcx)", "%rdx");
+            // ABI v2：vals 指针在 header+24
             _asm.inst("movq", "(%rdx,%rax,8)", "%rax");
             _asm.jmp(doneLabel);
             _asm.label(nextLabel);
@@ -4684,7 +4720,7 @@ namespace backend{
             const std::string text = lit->unescapedString();
             const auto [label, len] = _asm.internStrValue(text);
             _asm.movImm(1, "%rcx");
-            _asm.lea(label + "+8(%rip)", "%rdx");
+            _asm.lea(label + "+16(%rip)", "%rdx");
             _asm.movImm(static_cast<long long>(len), "%r8");
             _asm.subRsp(32);
             _asm.call("core_io_write");

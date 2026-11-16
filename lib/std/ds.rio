@@ -26,12 +26,14 @@
  *  5) `list[int]` 与 `list[str]` 不能重载分派（元素类型在 mangling 里被擦除，
  *     报「重复定义」），所以凡是按元素类型区分的函数一律用泛型 `[T]`。
  *
- * ============================ 布局常量 ============================
- *   ListHeader { i64 len, cap, rc, elem_size; u8 data[] }
- *      len +0, cap +8, rc +16, elem_size +24, data +32，元素槽恒 8 字节
- *   DictHeader { i64 len, cap, rc; ptr keys; ptr vals }
- *      len +0, cap +8, rc +16, keys +24, vals +32
- *   两者长度都在 +0，所以 _dsLen(arg: any) 对 str/list/dict 通用。
+ * ============================ 布局常量（ABI v2，P13-1）============================
+ * 三个容器统一「len@0, cap@8」，header 与 data 分离（docs/p13_plan.md D11/D12）：
+ *   StrHeader  { i64 len@0, i64 cap@8,  u8 data@16 }
+ *   ListHeader { i64 len@0, i64 cap@8,  i64 elem_size@16, ptr data@24 }
+ *   DictHeader { i64 len@0, i64 cap@8,  ptr keys@16,       ptr vals@24 }
+ *   三者长度都在 +0，所以 _dsLen(arg: any) 对 str/list/dict 通用。
+ *   cap == 0 表示静态只读头（str 字面量），不可释放（D11）。
+ *   元素/键/值槽恒 8 字节。
  *   dict 的键值数组都是 8 字节槽的**线性数组**，遍历顺序 = 插入顺序。
  * ==========================================================================
  */
@@ -76,7 +78,8 @@ fun _dsPow256(k: int): int {
 // 都 alloc 会泄漏，本模块不调用 core_free）。
 fun _dsLoadI64(scratch: ptr, addr: ptr): int {
     _dsSetLen(scratch, 8)
-    core_mem_copy(scratch + 8, addr, 8)
+    // ABI v2：伪造的 str 头也是 {len@0, cap@8, data@16}
+    core_mem_copy(scratch + 16, addr, 8)
     var s: str = scratch
     var r: int = 0
     var i: int = 7
@@ -89,7 +92,7 @@ fun _dsLoadI64(scratch: ptr, addr: ptr): int {
     ret r
 }
 
-// 分配一块可复用的 64 字节读缓冲（8 字节头 + 8 字节数据，留余量）。
+// 分配一块可复用的 64 字节读缓冲（16 字节头 + 8 字节数据，留余量）。
 fun _dsScratch(): ptr {
     ret core_alloc(64, 8)
 }
@@ -111,7 +114,7 @@ fun _dsScratch(): ptr {
 fun _dsKeyIndexOfStr(d: dict, key: str): int {
     var scratch: ptr = _dsScratch()
     var n: int = core_str_len(d)
-    var keys: ptr = _dsLoadI64(scratch, d + 24)
+    var keys: ptr = _dsLoadI64(scratch, d + 16)
     var i: int = 0
     while i < n {
         var kp: int = _dsLoadI64(scratch, keys + i * 8)
@@ -130,7 +133,7 @@ fun _dsKeyIndexOfStr(d: dict, key: str): int {
 fun _dsKeyIndexOfScalar(d: dict, key: int): int {
     var scratch: ptr = _dsScratch()
     var n: int = core_str_len(d)
-    var keys: ptr = _dsLoadI64(scratch, d + 24)
+    var keys: ptr = _dsLoadI64(scratch, d + 16)
     var i: int = 0
     while i < n {
         if _dsLoadI64(scratch, keys + i * 8) == key {
@@ -313,7 +316,10 @@ fun listRemove[T](xs: list[T], index: int): void {
     if index < 0 || index >= n {
         ret
     }
-    var base: ptr = xs + 32
+    // ABI v2：list 的 data 是 header+24 处的独立指针。
+    // 没有解引用运算符，只能经 _dsLoadI64 读那 8 字节（它内部用 scratch）。
+    var scratch: ptr = _dsScratch()
+    var base: ptr = _dsLoadI64(scratch, xs + 24)
     _dsShiftLeft(base, index, n - index - 1)
     _dsSetLen(xs, n - 1)
 }
@@ -346,8 +352,8 @@ fun _dsDictRemoveAt(d: dict, idx: int): void {
     }
     var scratch: ptr = _dsScratch()
     var n: int = core_str_len(d)
-    var keys: ptr = _dsLoadI64(scratch, d + 24)
-    var vals: ptr = _dsLoadI64(scratch, d + 32)
+    var keys: ptr = _dsLoadI64(scratch, d + 16)
+    var vals: ptr = _dsLoadI64(scratch, d + 24)
     var tail: int = n - idx - 1
     _dsShiftLeft(keys, idx, tail)
     _dsShiftLeft(vals, idx, tail)
@@ -384,7 +390,7 @@ fun dictKeys[K](d: dict[K, any]): list[K] {
     var r: list[K] = []
     var scratch: ptr = _dsScratch()
     var n: int = core_str_len(d)
-    var keys: ptr = _dsLoadI64(scratch, d + 24)
+    var keys: ptr = _dsLoadI64(scratch, d + 16)
     var i: int = 0
     while i < n {
         r += [_dsLoadI64(scratch, keys + i * 8)]
@@ -408,7 +414,7 @@ fun dictValues(d: dict): list {
     var r: list = []
     var scratch: ptr = _dsScratch()
     var n: int = core_str_len(d)
-    var vals: ptr = _dsLoadI64(scratch, d + 32)
+    var vals: ptr = _dsLoadI64(scratch, d + 24)
     var i: int = 0
     while i < n {
         var v: int = _dsLoadI64(scratch, vals + i * 8)

@@ -188,10 +188,27 @@ core_realloc:
 /* ============================================================
  * void core_free(void* p)
  *   rcx = p
+ *
+ * P13-1 / D11 裁决 A：两条**静默返回**（不是隐式运行时检查，
+ * 是值表示的约定 —— 见 docs/p13_plan.md D5/D11）：
+ *   1. p == nullptr      -> 直接返回
+ *   2. p->cap == 0       -> 直接返回
+ *      「cap == 0」表示这是**静态只读头**（字符串字面量指向 .rdata，
+ *      由 codegen 的 internStrValue 发出，cap 字段恒为 0）。
+ *      对这种头调 HeapFree 会直接崩。
+ *
+ * 约定 cap 在 header 偏移 +8：str / list / dict 三个容器共用
+ * 「len@0, cap@8」（见 rcc_codegen.h 的 kHeaderLen/kHeaderCap）。
+ *
+ * 重复释放仍是**未定义行为**（不加运行期检查，符合「无隐式运行时检查」
+ * 原则）。调试构建的重复释放检测由 codegen 侧钩子负责（D17）。
  * ============================================================ */
     .globl  core_free
 core_free:
     testq   %rcx, %rcx
+    je      .Lfree_done
+    /* cap == 0 -> 静态只读头，不可释放 */
+    cmpq    $0, 8(%rcx)
     je      .Lfree_done
     subq    $40, %rsp
     movq    %rcx, 32(%rsp)       /* 暂存 p */
