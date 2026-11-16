@@ -1,6 +1,4 @@
-fun sout(*args, end="\n"): void {
-    encapsulated
-}
+import stdio
 
 class ID {
     var _number: int static = 0, num: int

@@ -223,6 +223,61 @@ sout(l[2])
         Expect = "1`n2`n3"
     }
 
+    # 复合赋值形态：`s += "x"` 必须与 `s = s + "x"` 同义（P12/G4 补充）
+    'str_compound_append' = @{
+        Src = @"
+$soutStub
+var s: str = "a"
+s += "b"
+s += "c"
+sout(s)
+"@
+        Expect = 'abc'
+    }
+
+    'str_compound_append_empty' = @{
+        Src = @"
+$soutStub
+var s: str = ""
+s += "x"
+sout(s)
+"@
+        Expect = 'x'
+    }
+
+    'list_compound_append' = @{
+        Src = @"
+$soutStub
+var l = [1]
+l += [2]
+sout(l[0])
+sout(l[1])
+"@
+        Expect = "1`n2"
+    }
+
+    'list_compound_append_chain' = @{
+        Src = @"
+$soutStub
+var l = [1]
+l += [2]
+l += [3]
+sout(l[2])
+"@
+        Expect = '3'
+    }
+
+    # 复合赋值必须是拼接，不能是「指针相加」——原仓库实测可用
+    'str_compound_no_pointer_add' = @{
+        Src = @"
+$soutStub
+var s: str = "ab"
+s += "cd"
+sout(core_str_len(s))
+"@
+        Expect = '4'
+    }
+
     # 字符串元素列表的拼接（元素是指针，按 8 字节复制）
     'list_concat_str_elements' = @{
         Src = @"

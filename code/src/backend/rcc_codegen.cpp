@@ -2101,6 +2101,41 @@ namespace backend{
             return;
         }
         const std::string addr = addrOf(*slot);
+        // P12/G4：`s += "x"` / `l += [v]` 与 `s = s + "x"` 同义，必须走拼接而不是
+        // 整数加法 —— 否则两个指针相加，写回后一读就崩（G3/G4 只在 emitBinary
+        // 的 TOKEN_PLUS 分支处理了拼接，复合赋值是另一条路径）。
+        if (infix->getOpToken().getType() == core::TokenType::TOKEN_PLUS_ASSIGN &&
+            slot->type &&
+            (slot->type->getKind() == sema::TypeKind::TK_STR ||
+             slot->type->getKind() == sema::TypeKind::TK_LIST))        {
+            const std::string lhsSlot = allocateTemp(slot->type);
+            _asm.mov(addr, "%rax");
+            _asm.mov("%rax", lhsSlot);
+            const auto rhsType = inferType(infix->getRightNode());
+            // 右值必须同族：`s += 1` / `l += 1` 没有意义，早报错好过让
+            // addq 把指针和整数加起来、写回一个野地址再在下一次读取时崩。
+            if (!rhsType || rhsType->getKind() != slot->type->getKind())            {
+                failAt(infix->getPos(),
+                       std::string("Compound '+=' on ") +
+                           (slot->type->getKind() == sema::TypeKind::TK_STR ? "str" : "list") +
+                           " requires a " +
+                           (slot->type->getKind() == sema::TypeKind::TK_STR ? "str" : "list") +
+                           " right-hand side, got: " + infix->getRightNode()->toString());
+                return;
+            }
+            const std::string rhsSlot = allocateTemp(rhsType);
+            emitExpression(infix->getRightNode());
+            if (hasFailed()) return;
+            _asm.mov("%rax", rhsSlot);
+            if (slot->type->getKind() == sema::TypeKind::TK_STR)            {
+                emitStrConcat(lhsSlot, rhsSlot);
+            }
+            else            {
+                emitListConcat(lhsSlot, rhsSlot);
+            }
+            _asm.mov("%rax", addr);
+            return;
+        }
         // 先把右值算出来暂存，再取左值
         emitExpression(infix->getRightNode());
         _asm.push("%rax");
