@@ -1,0 +1,66 @@
+/*
+ * core.rio —— RCC Runtime 种子层（Seed Layer）冻结 ABI v1
+ *
+ * ============================ 重要约定 ============================
+ * 本文件是编译器唯一认识的「魔法文件」。它是 Compiler / Runtime /
+ * Standard Library 三层之间唯一的契约，必须保持极小。
+ *
+ * 判断标准：只有「Rio 语言本身无法表达」或「必须直接触碰 OS」的
+ * 能力才允许出现在这里。任何能用 Rio 写出来的东西，一律下沉到 rt。
+ *
+ * 任何签名变更都必须同时提升 ABI 版本号，并同步修改 core_win64.s。
+ *
+ * 实现：core_win64.s（汇编）+ 少量 core_win64.c
+ * 平台：Windows x64（MS x64 ABI）
+ * =================================================================
+ */
+
+// ============================ ABI 版本 ============================
+// 布局或调用约定变化时必须递增
+// ABI_VERSION = 1
+
+// ============================ 内存 ================================
+// 原始字节操作。语义与 C 的 memcpy / memmove / memset / memcmp 一致。
+
+extern fun mem_copy(dst: ptr, src: ptr, n: int): void
+extern fun mem_move(dst: ptr, src: ptr, n: int): void
+extern fun mem_set(dst: ptr, byte: int, n: int): void
+extern fun mem_eq(a: ptr, b: ptr, n: int): bool
+
+// 分配器入口。返回 null 表示失败（不 panic，由 rt 决定如何处理）。
+// align 必须是 2 的幂。
+extern fun alloc(size: int, align: int): ptr
+extern fun realloc(p: ptr, old_size: int, size: int, align: int): ptr
+extern fun free(p: ptr): void
+
+// ============================ IO ==================================
+// 文件描述符约定：0 = stdin, 1 = stdout, 2 = stderr
+// 返回实际读写的字节数；负数表示错误。
+
+extern fun io_write(fd: int, buf: ptr, n: int): int
+extern fun io_read(fd: int, buf: ptr, n: int): int
+extern fun io_flush(fd: int): void
+
+// ============================ 进程 ================================
+extern fun proc_exit(code: int): void
+extern fun proc_abort(): void
+
+// 写 stderr 后终止。msg 不需要以 0 结尾，长度由 len 指定。
+extern fun panic_raise(msg: ptr, len: int): void
+
+// ============================ 栈探测 ==============================
+// Windows 上栈帧超过 4KB 时必须探测 guard page，否则会踩空。
+// 由编译器在函数序言里自动插入，不暴露给用户代码。
+extern fun stack_probe(size: int): void
+
+// ============================ 异常帧链 ============================
+// 采用显式帧链（setjmp/longjmp 风格），而非表驱动 unwind。
+// 代价：析构不保证执行；换来的是实现简单、可预测。
+
+extern fun eh_push(frame: ptr): ptr
+extern fun eh_pop(frame: ptr): void
+extern fun eh_throw(exc: ptr): void
+
+// ============================ 杂项 ================================
+extern fun time_ns(): int
+extern fun sys_breakpoint(): void

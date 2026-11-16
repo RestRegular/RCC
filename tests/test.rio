@@ -2,18 +2,29 @@ fun sout(*args, end="\n"): void {
     encapsulated
 }
 
-class Object {
-    var x: int
+class ID {
+    var _number: int static = 0, num: int
 
-    ctor (x: int) {
-        this.x = x
-    }
-
-    fun print(): void {
-        sout(this.x)
+    ctor () {
+        this._number = this._number + 1
+        this.num = this._number
     }
 }
 
-var o: Object = Object(42)
-sout(o.x)
-o.print()
+class Object {
+    var x: int, id: ID
+
+    ctor (x: int) {
+        this.x = x
+        this.id = ID()
+    }
+
+    fun print(): void {
+        sout("[Object(", this.id.num, "): ", this.x, "]")
+    }
+}
+
+for ({var i = 0; i < 1000; i ++}) {
+    var o: Object = Object(i)
+    o.print()
+}

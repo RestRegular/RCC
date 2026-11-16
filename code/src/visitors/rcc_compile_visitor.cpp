@@ -2,6 +2,7 @@
 // Created by RestRegular on 2025/7/12.
 //
 
+#include <algorithm>
 #include <cstring>
 #include <numeric>
 #include <ranges>

@@ -1,4 +1,4 @@
-//
+﻿//
 // Created by RestRegular on 2025/7/12.
 //
 
@@ -638,24 +638,47 @@ namespace symbol {
         return Symbol::TransformToSI();
     }
 
-    std::unordered_set<std::string> TypeLabelSymbol::builtInTypes = {
-        "int", "float", "char", "str", "bool", "void", "nul",
-        "list", "func", "funi", "dict", "series", "any", "flag",
-        "clas", "..", ".*"
-    };
-    std::unordered_map<std::string, std::string> TypeLabelSymbol::builtInTypeRaCodeMap = {
-        {"..", "tp-args"},
-        {".*", "tp-kwargs"},
-        {"nul", "tp-null"}
-    };
-    std::unordered_map<std::string, std::string> TypeLabelSymbol::customTypeMap = {};
+    // 静态初始化顺序安全：改用函数内局部静态（Meyers singleton）。
+    // 原先是命名空间作用域的静态对象，跨编译单元初始化顺序未定义；
+    // 若在它们初始化前被 getTypeLabelRaCode() 等访问，unordered_map 的
+    // bucket_count 仍为 0，find() 内部的 hash % bucket_count 会触发整数除零
+    // （0xC0000094），表现为程序在 main 之前就崩溃。
+    std::unordered_set<std::string>& TypeLabelSymbol::builtInTypesRef()
+    {
+        static std::unordered_set<std::string> builtInTypes = {
+            "int", "float", "char", "str", "bool", "void", "nul",
+            "list", "func", "funi", "dict", "series", "any", "flag",
+            "clas", "..", ".*"
+        };
+        return builtInTypes;
+    }
+
+    std::unordered_map<std::string, std::string>& TypeLabelSymbol::builtInTypeRaCodeMapRef()
+    {
+        static std::unordered_map<std::string, std::string> builtInTypeRaCodeMap = {
+            {"..", "tp-args"},
+            {".*", "tp-kwargs"},
+            {"nul", "tp-null"}
+        };
+        return builtInTypeRaCodeMap;
+    }
+
+    std::unordered_map<std::string, std::string>& TypeLabelSymbol::customTypeMapRef()
+    {
+        static std::unordered_map<std::string, std::string> customTypeMap = {};
+        return customTypeMap;
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<ClassSymbol>>& TypeLabelSymbol::customClassSymbolMapRef()
+    {
+        static std::unordered_map<std::string, std::shared_ptr<ClassSymbol>> customClassSymbolMap = {};
+        return customClassSymbolMap;
+    }
 
     const char* IRCCTypeLabelSymbolInterface::GetTypeLabelRaCode(
         const std::string &name, const std::string &raValue) {
         return TypeLabelSymbol::getTypeLabelRaCode(name, raValue).c_str();
     }
-
-    std::unordered_map<std::string, std::shared_ptr<ClassSymbol>> TypeLabelSymbol::customClassSymbolMap = {};
 
     TypeLabelSymbol::TypeLabelSymbol(const utils::Pos &pos, const std::string &name,
                                      const size_t &scopeLevel, const std::string &uid)
@@ -667,15 +690,15 @@ namespace symbol {
 
     std::string TypeLabelSymbol::getTypeLabelRaCode(const std::string& name, const std::string& raValue)
     {
-        if (const auto &it = builtInTypeRaCodeMap.find(name);
-            it != builtInTypeRaCodeMap.end())
+        if (const auto &it = builtInTypeRaCodeMapRef().find(name);
+            it != builtInTypeRaCodeMapRef().end())
         {
             return it->second;
         }
-        if (builtInTypes.contains(name)) {
+        if (builtInTypesRef().contains(name)) {
             return "tp-" + name;
         }
-        if (customTypeMap.contains(raValue)) {
+        if (customTypeMapRef().contains(raValue)) {
             return raValue;
         }
         return "tp-any";
@@ -692,7 +715,7 @@ namespace symbol {
 
 
     bool TypeLabelSymbol::isBuiltInType(const std::string &name) {
-        return builtInTypes.contains(name);
+        return builtInTypesRef().contains(name);
     }
 
     bool IRCCTypeLabelSymbolInterface::IsBuiltInType(const char* name)
@@ -701,7 +724,7 @@ namespace symbol {
     }
 
     bool TypeLabelSymbol::isCustomType(const std::string &uid) {
-        return customTypeMap.contains(uid);
+        return customTypeMapRef().contains(uid);
     }
 
     bool IRCCTypeLabelSymbolInterface::IsCustomType(const char* uid)
@@ -711,9 +734,9 @@ namespace symbol {
 
     void TypeLabelSymbol::createCustomType(
         const std::string &name, const std::string &uid, const std::shared_ptr<ClassSymbol> &classSymbol) {
-        customTypeMap[uid] = name;
+        customTypeMapRef()[uid] = name;
         labelTypeMap[uid] = LabelType::TYPE_LABEL;
-        customClassSymbolMap[uid] = classSymbol;
+        customClassSymbolMapRef()[uid] = classSymbol;
     }
 
     void TypeLabelSymbol::createCustomType(const std::shared_ptr<ClassSymbol>& classSymbol)
@@ -723,8 +746,8 @@ namespace symbol {
 
     void TypeLabelSymbol::deleteCustomType(const std::string &uid)
     {
-        if (customTypeMap.contains(uid)) {
-            customTypeMap.erase(uid);
+        if (customTypeMapRef().contains(uid)) {
+            customTypeMapRef().erase(uid);
             labelTypeMap.erase(uid);
         } else
         {
@@ -744,7 +767,7 @@ namespace symbol {
 
     std::shared_ptr<ClassSymbol> TypeLabelSymbol::getCustomClassSymbol(const std::string& uid)
     {
-        if (const auto& it = customClassSymbolMap.find(uid); it != customClassSymbolMap.end())
+        if (const auto& it = customClassSymbolMapRef().find(uid); it != customClassSymbolMapRef().end())
         {
             return it->second;
         }

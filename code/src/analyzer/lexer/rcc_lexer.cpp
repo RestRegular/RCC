@@ -116,8 +116,19 @@ namespace lexer {
                     if (c == '-' && t.tellp() == 0 && commentType == core::CommentType::NONE) {
                         std::stringstream t_;
                         t_ << c;
-                        for (size_t j = i + 1; j < _filecode.size() && std::isdigit(_filecode[j]); ++j) {
-                            t_ << _filecode[j];
+                        bool seenDot = false;
+                        for (size_t j = i + 1; j < _filecode.size(); ++j) {
+                            const char d = _filecode[j];
+                            if (std::isdigit(d)) {
+                                t_ << d;
+                            } else if (d == '.' && !seenDot) {
+                                // -0.5 这类负小数：小数点也要吃进来，
+                                // 否则会切成 "-0" "." "5" 三个 token
+                                seenDot = true;
+                                t_ << d;
+                            } else {
+                                break;
+                            }
                         }
                         if (std::string numStr = t_.str();
                             numStr.size() > 1 && utils::isValidNumber(numStr)) {

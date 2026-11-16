@@ -122,10 +122,12 @@ namespace symbol {
     class TypeLabelSymbol final:
     public LabelSymbol,
     public IRCCTypeLabelSymbolInterface {
-        static std::unordered_set<std::string> builtInTypes;
-        static std::unordered_map<std::string, std::string> builtInTypeRaCodeMap;
-        static std::unordered_map<std::string, std::string> customTypeMap;
-        static std::unordered_map<std::string, std::shared_ptr<ClassSymbol>> customClassSymbolMap;
+        // 静态初始化顺序安全：这些表改为函数内局部静态（Meyers singleton），
+        // 首次访问时才初始化，杜绝跨编译单元的静态初始化顺序灾难。
+        static std::unordered_set<std::string>& builtInTypesRef();
+        static std::unordered_map<std::string, std::string>& builtInTypeRaCodeMapRef();
+        static std::unordered_map<std::string, std::string>& customTypeMapRef();
+        static std::unordered_map<std::string, std::shared_ptr<ClassSymbol>>& customClassSymbolMapRef();
     public:
         TypeLabelSymbol(const utils::Pos &pos, const std::string &name,
             const size_t &scopeLevel, const std::string &uid = "");

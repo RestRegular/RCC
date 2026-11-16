@@ -1,0 +1,658 @@
+//
+// rcc_codegen.h —— 从 AST 直接生成 x86-64 汇编
+//
+// P1 阶段支持：
+//   字面量（整数/浮点/字符串/布尔/字符/null）、算术、比较、逻辑
+//   var 定义、赋值、复合赋值、++/--
+//   fun 定义与调用、ret、递归
+//   if/elif/else、while/until/for、break/continue
+//   sout（按静态类型分派到 rt 的打印函数）
+//
+// 未支持的节点会明确报错，而不是静默生成错误代码。
+//
+
+#ifndef RCC_CODEGEN_H
+#define RCC_CODEGEN_H
+
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "rcc_asm_emitter.h"
+#include "rcc_abi.h"
+#include "../sema/rcc_sema_types.h"
+#include "../lib/rcc_utils.h"
+
+namespace ast
+{
+    class LabelNode;
+    class ProgramNode;
+    class ExpressionNode;
+    class FunctionDefinitionNode;
+    class ClassDefinitionNode;
+    class InfixExpressionNode;
+    class BlockRangerNode;
+}
+
+namespace backend
+{
+    class CodeGen
+    {
+    public:
+        explicit CodeGen(const AbiInfo& abi);
+
+        // 编译为库（不发射 main 入口，也不把顶层语句包进 __rio_main）。
+        // 用于编译 lib/rt / lib/std 这类要链接进别人程序的目标文件。
+        void setLibraryMode(bool on) { _libraryMode = on; }
+
+        // P8：告诉后端哪些名字是「模块名」。模块在加载期已经被内联成
+        // 普通全局函数，所以 `ds.size(x)` 这种限定调用要退化成 `size(x)`。
+        void setModuleNames(const std::vector<std::string>& names) { _moduleNames = names; }
+
+        // 生成完整汇编文本。失败时 errorMsg 非空。
+        std::string generate(const std::shared_ptr<ast::ProgramNode>& program, std::string& errorMsg);
+
+    private:
+        // ---------- 顶层 ----------
+        void emitProgram(const std::shared_ptr<ast::ProgramNode>& program);
+        void emitPrelude();
+        void emitMainWrapper();
+
+        // ---------- 语句/表达式 ----------
+        // 结果留在 %rax（整型）或 %xmm0（浮点）
+        void emitExpression(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitStatement(const std::shared_ptr<ast::ExpressionNode>& node);
+
+        void emitIntegerLiteral(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitFloatLiteral(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitStringLiteral(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitBoolLiteral(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitNullLiteral();
+        void emitIdentifier(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitBinary(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitFloatBinary(const std::shared_ptr<ast::ExpressionNode>& node,
+                             const sema::TypePtr& lt, const sema::TypePtr& rt);
+        void emitUnary(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitPostfix(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitCompoundAssign(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitAssignment(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitVariableDefinition(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitFunctionDefinition(const std::shared_ptr<ast::FunctionDefinitionNode>& node);
+        void emitFunctionCall(const std::shared_ptr<ast::ExpressionNode>& node);
+        // P8：`mod.fn(args)` —— 模块已在加载期内联，直接按全局函数 fn 调用。
+        void emitModuleFunctionCall(const std::string& fname,
+                                    const std::shared_ptr<ast::ExpressionNode>& callNode,
+                                    const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        [[nodiscard]] bool isModuleName(const std::string& name) const;
+
+        // ---------- P4：函数值 / 匿名函数 / 间接调用 ----------
+        // 匿名函数表达式：把函数体排进待发射队列，当前表达式的值取闭包对象地址。
+        void emitAnonymousFunction(const std::shared_ptr<ast::ExpressionNode>& node);
+        // 间接调用：闭包指针 -> 取 { fnptr, env }，env 走 %r10，fnptr 走 call *%r11。
+        // paramTypes 非空时按它决定实参走整型还是浮点寄存器。
+        void emitIndirectCall(const std::shared_ptr<ast::ExpressionNode>& callee,
+                              const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                              const std::vector<sema::TypePtr>& paramTypes = {});
+        // 发射一个函数的完整帧（序言 + 形参落栈 + 函数体 + 尾声 + 栈帧回填）。
+        // 命名函数与匿名函数共用这一份逻辑。
+        // capturedNames/capturedTypes 非空时，函数按「闭包体」发射：
+        // 序言里把 %r10 指向的 env 块逐项拷进本地槽位，函数体随后按普通局部变量访问。
+        void emitFunctionBody(const std::string& emitName,
+                              const std::vector<std::string>& paramNames,
+                              const std::vector<sema::TypePtr>& paramTypes,
+                              const sema::TypePtr& retType,
+                              const std::shared_ptr<ast::ExpressionNode>& bodyNode,
+                              bool makeGlobal,
+                              const std::vector<std::string>& capturedNames = {},
+                              const std::vector<sema::TypePtr>& capturedTypes = {},
+                              const std::string& defaultReturnVar = "",
+                              bool hasThis = false,
+                              bool retTypeAnnotated = false);
+        // 把所有排队的匿名函数体发射出来（发射过程中可能继续入队，循环到队空）。
+        void emitPendingFunctions();
+        // 发射闭包对象（无捕获时是静态的 { fnptr, env } 常量）。
+        void emitClosureObjects();
+        // 具名函数被当作函数值使用时的闭包对象标签（按函数名去重）。
+        std::string closureForFunction(const std::string& fname);
+        // 在匿名函数体里收集自由变量名（不含形参、不含它自己定义的局部变量、
+        // 不含函数名）。嵌套匿名函数的函数体不深入 —— 它的捕获在它自己的
+        // 创建点解析，与外层无关。
+        void collectFreeVariables(const std::shared_ptr<ast::ExpressionNode>& node,
+                                  std::vector<std::string>& bound,
+                                  std::vector<std::string>& free);
+        // 把实参求值并装进 ABI 参数寄存器（整型/浮点各一套序列）。
+        // 直接调用与间接调用共用这一段。
+        // paramTypes 非空时按形参类型决定走整型还是浮点寄存器，
+        // 并在实参类型与形参类型不一致时插入转换指令。
+        void emitArgsToRegisters(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                 const std::string& calleeDesc,
+                                 const std::vector<sema::TypePtr>& paramTypes = {},
+                                 size_t intStart = 0,
+                                 size_t floatStart = 0,
+                                 const std::vector<bool>* annotated = nullptr);
+        void emitReturn(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitIf(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitBlock(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitLoop(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitBreak();
+        void emitContinue();
+
+        // ---------- P7：异常（方案 B 显式帧链） ----------
+        //
+        // 帧布局（40 字节，一块连续栈槽，由 allocateSlot 分配）：
+        //   +0   prev        core_eh_push 写入的上一帧（链指针）
+        //   +8   saved rbp   进入 try 时的 %rbp
+        //   +16  saved rsp   进入 try 时的 %rsp
+        //   +24  resume      handler 命中后要跳转的标签地址
+        //   +32  exc         异常值（core_eh_throw 写入，catch 读出）
+        //
+        // 为什么把 rbp/rsp 存进帧而不是用 %rbx/%r12 之类：
+        // 这些寄存器虽然目前没被 codegen 使用，但一旦将来引入寄存器
+        // 分配就会冲突；栈槽是 %rbp 相对的，跨函数调用天然稳定。
+        //
+        // 代价（docs/architecture_plan.md §8.2 已接受）：非局部退出
+        // 不保证执行析构。但 **handler 链必须保持干净** —— 所以 ret /
+        // break / continue 跳出 try 时会显式 core_eh_pop，否则链上会
+        // 留下指向已销毁栈帧的节点，下一次 throw 就会跳进死帧。
+        void emitTry(const std::shared_ptr<ast::ExpressionNode>& node);
+        void emitThrow(const std::shared_ptr<ast::ExpressionNode>& node);
+        // 发射 core_eh_pop(frameOffset)。
+        void emitEhPop(long long frameOffset);
+        // 把 handler 链回退到 depth（弹出 _ehStack 里 index >= depth 的帧）。
+        void emitEhUnwindTo(size_t depth);
+
+        // ---------- P5：容器（list / dict） ----------
+        //
+        // 运行时布局（与 docs/architecture_plan.md §4.2 的 VecHeader 一致）：
+        //   ListHeader { i64 len, cap, rc, elem_size; u8 data[] }  —— 32 字节头，数据从 +32 起
+        //   DictHeader { i64 len, cap, rc; ptr keys; ptr vals }    —— 40 字节头
+        // 两者都用**单指针**表示（与 str 一致），每个元素槽恒为 8 字节。
+        //
+        // 字典把 keys / vals 分成两块连续数组，查找用线性扫描、按内容比较字符串键。
+        // 不做哈希：P5 只要求语义正确，哈希与扩容留给后续阶段，布局不用变。
+
+        // 列表字面量 `[a, b, c]`
+        void emitListExpression(const std::shared_ptr<ast::ExpressionNode>& node);
+        // 字典字面量 `{k: v, ...}`
+        void emitDictionaryExpression(const std::shared_ptr<ast::ExpressionNode>& node);
+        // 索引访问 `x[i]` / `d[k]`
+        void emitIndexExpression(const std::shared_ptr<ast::ExpressionNode>& node);
+
+        // 把容器字面量的体拆成元素列表。
+        // 体是逗号连接的中缀链（PARALLEL），空字面量的体是 nullptr。
+        void flattenListElements(const std::shared_ptr<ast::ExpressionNode>& body,
+                                 std::vector<std::shared_ptr<ast::ExpressionNode>>& out) const;
+        // 把字典字面量的体拆成 (键, 值) 对。键值对是冒号中缀（PAIR）。
+        void flattenDictPairs(const std::shared_ptr<ast::ExpressionNode>& body,
+                              std::vector<std::pair<std::shared_ptr<ast::ExpressionNode>,
+                                                    std::shared_ptr<ast::ExpressionNode>>>& out) const;
+        // 索引表达式里的键：IndexExpressionNode 的 indexNode 是 BracketExpressionNode，
+        // 真正的键在它的 body 里，需要剥掉这层壳。
+        [[nodiscard]] static std::shared_ptr<ast::ExpressionNode>
+        unwrapIndexKey(const std::shared_ptr<ast::ExpressionNode>& indexNode);
+
+        // 分配堆对象：core_alloc(size, 8)，结果留在 %rax。
+        void emitAlloc(size_t size);
+        // 借一个临时栈槽保存中间值（跨表达式求值时保护指针/键）。
+        // 槽位名唯一，不会和用户变量冲突；返回形如 "-16(%rbp)" 的寻址串。
+        [[nodiscard]] std::string allocateTemp(const sema::TypePtr& type);
+
+        // sout 特化
+        void emitSoutCall(const std::shared_ptr<ast::ExpressionNode>& node);
+        // sout 的单个实参：按静态类型分派到 rt_print_*
+        void emitSoutArg(const std::shared_ptr<ast::ExpressionNode>& arg);
+        // 调用一个 rt 打印函数：把值放在约定的位置后 call
+        void emitRtPrintCall(const std::string& fnName, bool isFloat);
+
+        // ---------- 作用域 ----------
+        struct VarSlot
+        {
+            sema::TypePtr type;
+            long long stackOffset = 0;   // 相对 %rbp 的偏移（负值）
+        };
+
+        void pushScope();
+        void popScope();
+        [[nodiscard]] VarSlot* lookupVar(const std::string& name);
+        long long allocateSlot(const std::string& name, const sema::TypePtr& type, size_t size);
+
+        // ---------- 辅助 ----------
+        [[nodiscard]] sema::TypePtr inferType(const std::shared_ptr<ast::ExpressionNode>& node) const;
+        // P5：容器字面量与索引访问的静态类型推断。
+        // 元素/值类型只影响编译期分派（sout 选 rt_print_*、槽位大小），
+        // 运行时槽位恒为 8 字节，所以异构字面量可以安全地退化成 int。
+        [[nodiscard]] sema::TypePtr inferListLiteralType(const std::shared_ptr<ast::ExpressionNode>& node) const;
+        [[nodiscard]] sema::TypePtr inferDictLiteralType(const std::shared_ptr<ast::ExpressionNode>& node) const;
+        [[nodiscard]] sema::TypePtr inferIndexResultType(const std::shared_ptr<ast::ExpressionNode>& node) const;
+        // 推断匿名函数的返回类型：临时把形参放进一个影子作用域，
+        // 再从函数体里找第一个 ret 的表达式类型。
+        [[nodiscard]] sema::TypePtr inferAnonReturnType(const std::shared_ptr<ast::ExpressionNode>& body,
+                                                        const std::vector<std::string>& paramNames,
+                                                        const std::vector<sema::TypePtr>& paramTypes);
+        // 在函数体里递归找 ret 的表达式类型（找不到返回 TK_UNKNOWN）
+        [[nodiscard]] sema::TypePtr findReturnType(const std::shared_ptr<ast::ExpressionNode>& body) const;
+        [[nodiscard]] std::string currentFunctionName() const { return _functionName; }
+        void fail(const std::string& msg);
+        // P9：带位置信息的诊断。pos 为空时退化成 fail(msg)。
+        // 位置前缀形如 `file.rio:12:5: `（不带绝对路径，用 briefString）。
+        void failAt(const utils::Pos& pos, const std::string& msg);
+        // P9：把节点位置拼成诊断前缀。拿不到有效位置时返回空串。
+        [[nodiscard]] static std::string posPrefix(const utils::Pos& pos);
+        // P9：类型兼容性判定（宽松，只挡真正的错配）。
+        // 返回空串表示可赋值；否则返回一句人类可读的原因。
+        [[nodiscard]] std::string checkAssignable(const sema::TypePtr& target,
+                                                  const sema::TypePtr& source) const;
+        // P9：两个类型是否「同一族」，用于 ret / 实参等只关心值类别的场合。
+        [[nodiscard]] bool sameValueFamily(const sema::TypePtr& a, const sema::TypePtr& b) const;
+        // P9：判断标注里是否真的写了类型（`var x` 与 `var x: int` 的区别）。
+        // 注解解析不出来时返回 TK_UNKNOWN，由调用方决定是报错还是忽略。
+        [[nodiscard]] sema::TypePtr typeFromLabels(const std::vector<std::shared_ptr<ast::LabelNode>>& labels) const;
+        [[nodiscard]] bool hasFailed() const { return !_errorMsg.empty(); }
+
+        // 从 AST 节点提取文本
+        [[nodiscard]] static std::string nodeText(const std::shared_ptr<ast::ExpressionNode>& node);
+
+        const AbiInfo& _abi;
+        AsmEmitter _asm;
+        std::string _errorMsg;
+        std::string _functionName;
+        // 库模式：不发射 main / __rio_main
+        bool _libraryMode = false;
+        // P8：模块名集合。`mod.fn(...)` 里的 mod 命中这里时，
+        // 调用退化成直接调用 fn —— 模块已在加载期内联。
+        std::vector<std::string> _moduleNames;
+
+        // 作用域栈
+        std::vector<std::map<std::string, VarSlot>> _scopes;
+        // 当前帧已分配的局部变量字节数
+        size_t _frameSize = 0;
+        // 当前函数的返回标签
+        std::string _returnLabel;
+        // P9：当前函数的返回类型 + 是否来自显式标注。
+        // 只有显式标注时才校验 ret（推断类型来自 ret 自身，自证无意义）。
+        sema::TypePtr _functionReturnType;
+        bool _functionReturnAnnotated = false;
+        // 循环栈：{ continue 目标标签, break 目标标签 }
+        struct LoopContext
+        {
+            std::string continueLabel;
+            std::string breakLabel;
+            // 进入循环体时的 try 帧深度：break/continue 只需要弹出
+            // 循环体内部建立的帧，循环外面的帧要留着。
+            size_t ehDepth = 0;
+        };
+        std::vector<LoopContext> _loopStack;
+
+        // 已知函数签名：名字 -> 返回类型
+        std::map<std::string, sema::TypePtr> _functionReturns;
+        // 已知函数形参类型：名字 -> 每个形参的静态类型。
+        // 调用点用它决定实参走 %rcx 还是 %xmm0，并在必要时插入转换。
+        std::map<std::string, std::vector<sema::TypePtr>> _functionParams;
+        // P9：每个形参是否写了类型标注（按位置）。
+        // 未标注的形参在 _functionParams 里是回退出来的 int，
+        // 调用点不能用它校验实参，否则 `fun apply(f, x)` 会被误报。
+        std::map<std::string, std::vector<bool>> _functionParamAnnotated;
+        // P8：形参名（按位置）与默认值（名字 -> 默认值表达式）。
+        // 命名实参要按名字映射回位置，缺省实参要在调用点补上默认值，
+        // 这两件事都离不开它们。
+        std::map<std::string, std::vector<std::string>> _functionParamNames;
+        std::map<std::string, std::map<std::string, std::shared_ptr<ast::ExpressionNode>>>
+            _functionDefaults;
+        // 把命名实参按形参位置重排，并在末尾补齐缺省实参的默认值表达式。
+        // 没有命名实参、也没有缺省时原样返回（既有调用路径完全不变）。
+        [[nodiscard]] std::vector<std::shared_ptr<ast::ExpressionNode>>
+        normalizeCallArgs(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                          const std::string& fname) const;
+        // 已登记但实现为 encapsulated 的函数（不发射函数体）
+        std::map<std::string, bool> _encapsulatedFunctions;
+        // 用户是否自己写了 fun main()（发射为 __rio_user_main）
+        bool _hasUserMain = false;
+        // 浮点字面量池：值 -> 标签
+        std::map<double, std::string> _floatPool;
+        std::vector<std::pair<std::string, double>> _floatLiterals;
+
+        // ---------- P4 状态 ----------
+        // 待发射的匿名函数体。匿名函数出现在表达式位置，但函数体必须
+        // 放在函数外发射，所以先排队，等外层函数发完再统一吐出来。
+        struct PendingFunction
+        {
+            std::string emitName;
+            std::vector<std::string> paramNames;
+            std::vector<sema::TypePtr> paramTypes;
+            sema::TypePtr retType;
+            std::shared_ptr<ast::ExpressionNode> bodyNode;
+            // 闭包捕获的变量（按值拷贝，序言里从 env 块装进本地槽位）
+            std::vector<std::string> capturedNames;
+            std::vector<sema::TypePtr> capturedTypes;
+        };
+        std::vector<PendingFunction> _pendingFunctions;
+        // 静态闭包对象：{ fnptr, env=0 }，放在 .data 里，值就是它的地址。
+        struct ClosureObject
+        {
+            std::string label;
+            std::string fnLabel;
+        };
+        std::vector<ClosureObject> _closureObjects;
+        // 匿名函数命名计数：anon_func_1, anon_func_2 ...
+        size_t _anonCounter = 0;
+        // 具名函数名 -> 它的闭包对象标签（函数名当函数值用）
+        std::map<std::string, std::string> _namedClosures;
+
+        // ---------- P5 状态 ----------
+        // 临时槽位计数：allocateTemp 用它造出不会与用户变量重名的槽位名。
+        size_t _tempCounter = 0;
+
+        // ---------- P6：类 ----------
+        // 对象布局：扁平的 8 字节槽数组，第 i 个字段在 +8*i；基类字段排在
+        // 派生类字段之前，所以派生类对象天然可以当基类用（前缀兼容）。
+        // 对象没有头部（不记 rc/类型），因为 P6 不做 GC。
+        struct ClassInfo
+        {
+            std::string name;
+            std::string baseName;                        // 空 = 无基类
+            // 本类自己声明的字段（登记顺序）
+            std::vector<std::string> ownFieldNames;
+            std::map<std::string, sema::TypePtr> ownFieldTypes;
+            // computeLayout 填出来的完整布局（含继承来的字段，基类在前）
+            std::vector<std::string> fieldOrder;
+            std::map<std::string, long long> fieldOffsets;
+            std::map<std::string, sema::TypePtr> fieldTypes;
+            long long size = 0;                          // 对象字节数
+            bool layoutDone = false;
+            // 构造器（可缺省）
+            bool hasCtor = false;
+            std::shared_ptr<ast::ExpressionNode> ctorParamNode;
+            std::shared_ptr<ast::ExpressionNode> ctorBodyNode;
+            // 方法名 -> 定义
+            std::map<std::string, std::shared_ptr<ast::FunctionDefinitionNode>> methods;
+        };
+        // 方法解析结果：定义 + 真正声明它的类（发射符号要用 owner）
+        struct MethodRef
+        {
+            std::string owner;
+            std::shared_ptr<ast::FunctionDefinitionNode> def;
+        };
+        // 阶段 A：只登记类名、基类、字段、方法，不发射任何指令。
+        void registerClass(const std::shared_ptr<ast::ClassDefinitionNode>& node);
+        // 阶段 B：递归算出字段偏移与对象大小（基类先算）。
+        void computeLayout(const std::string& name);
+        // 阶段 C：把构造器与方法作为独立函数发射出去。
+        void emitClassBodies(const std::string& name);
+        // 成员访问 `obj.field`（读）。
+        void emitAttribute(const std::shared_ptr<ast::ExpressionNode>& node);
+        // 成员写 `obj.field = v`（emitAssignment 分派过来）。
+        void emitAttributeAssign(const std::shared_ptr<ast::InfixExpressionNode>& target,
+                                 const std::shared_ptr<ast::ExpressionNode>& value);
+        // 构造调用 `Point(10, 20)`：分配并清零对象，再调 <Class>.__init__。
+        void emitConstructorCall(const std::string& className,
+                                 const std::shared_ptr<ast::ExpressionNode>& callNode,
+                                 const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // 方法调用 `p.sum()` / `p.scale(3)`。
+        void emitMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
+                            const std::shared_ptr<ast::ExpressionNode>& callNode,
+                            const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // `super(...)`：用当前 this 调用基类构造器。
+        void emitSuperCall(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // 类登记表
+        ClassInfo* findClass(const std::string& name);
+        const ClassInfo* findClass(const std::string& name) const;
+        // 某个类（含基类）里所有可见方法。
+        std::map<std::string, MethodRef> collectMethods(const std::string& name) const;
+        // 从表达式推出它的类名（推不出来返回空串）。
+        std::string classNameOf(const std::shared_ptr<ast::ExpressionNode>& node) const;
+        // 在类层次里找字段偏移，找不到返回 -1。
+        long long findFieldOffset(const std::string& className, const std::string& field) const;
+        // 在类层次里找字段类型，找不到返回 nullptr。
+        sema::TypePtr findFieldType(const std::string& className, const std::string& field) const;
+        // 把 `Point` 这样的名字解析成 ClassType（不是类就返回 nullptr）。
+        sema::TypePtr classTypeOf(const std::string& name) const;
+        // 把 `a: Point` 这样的标签文本解析成类型（含类名）。
+        sema::TypePtr resolveTypeName(const std::string& raw) const;
+
+        // ---------- P10：泛型 ----------
+        //
+        // 类型标注里 `[...]` 的内容**只**存在于 LabelNode::labelDesNodes，
+        // getFullLabel() 会把它整个丢掉（`list[float]` 只剩 "list"）。
+        // 所以类型解析必须走 LabelNode 而不是字符串往返 —— 这也是 P9
+        // 「`var xs: list[float]` 打印出 double 位模式」的根因。
+        //
+        // genericParams 非空时，出现在其中的名字解析成 GenericType 占位
+        // （声明阶段），而不是「未知类型」报错。
+        sema::TypePtr typeFromLabelNode(const std::shared_ptr<ast::LabelNode>& label,
+                                        const std::vector<std::string>& genericParams = {}) const;
+        // 类型位置上的表达式转成类型：`float`、`Box[int]`、`list[int]`。
+        sema::TypePtr typeFromTypeArgNode(const std::shared_ptr<ast::ExpressionNode>& node,
+                                          const std::vector<std::string>& genericParams) const;
+        // 把逗号分隔的类型实参表达式摊平（`funi[int, str][bool]` 的第一段）。
+        static void flattenTypeArgs(const std::shared_ptr<ast::ExpressionNode>& node,
+                                    std::vector<std::shared_ptr<ast::ExpressionNode>>& out);
+        // 单态化：把签名里的 GenericType 换成实参类型（未绑定的保持原样）。
+        static sema::TypePtr substituteGenerics(const sema::TypePtr& t,
+                                                const std::map<std::string, sema::TypePtr>& bindings);
+        // §4.3 冻结的名字修饰：`_R<len><name><encoded-params>`。
+        static std::string mangleType(const sema::TypePtr& t);
+        static std::string mangleInstance(const std::string& base,
+                                          const std::vector<sema::TypePtr>& args);
+        // 泛型函数声明（未实例化）。实例按需单态化后放进 _pendingFunctions。
+        struct GenericFunction
+        {
+            std::string name;
+            std::vector<std::string> genericParams;
+            std::shared_ptr<ast::FunctionDefinitionNode> def;
+            // 声明时的「原始」形参类型 / 返回类型（含 GenericType 占位）。
+            std::vector<sema::TypePtr> paramTypes;
+            sema::TypePtr retType;
+            std::vector<std::string> paramNames;
+        };
+        std::map<std::string, GenericFunction> _genericFunctions;
+        // 已实例化的签名：mangled 名 -> true（避免重复单态化）。
+        std::map<std::string, bool> _genericInstances;
+        // 待发射的实例化函数体。
+        //
+        // 为什么必须排队而不能就地发射：实例化是在**调用点**被发现的，
+        // 那时正在发射某个函数体，rsp/frame/label 全在用。就地发射会把
+        // 两个函数的帧搅在一起。所以实例化只登记签名 + 排队，
+        // 等 emitPendingInstances 在末尾统一发射（和闭包同一套路）。
+        struct PendingInstance
+        {
+            std::string emitName;
+            std::vector<std::string> paramNames;
+            std::vector<sema::TypePtr> paramTypes;
+            sema::TypePtr retType;
+            std::shared_ptr<ast::ExpressionNode> bodyNode;
+            std::map<std::string, sema::TypePtr> bindings;
+            std::vector<std::string> genericParams;
+        };
+        std::vector<PendingInstance> _pendingInstances;
+        void emitPendingInstances();
+        // 从泛型函数的声明里取出泛型形参名（`[T]` / `[A, B]`）。
+        static std::vector<std::string> collectGenericParams(
+            const std::shared_ptr<ast::ExpressionNode>& callNode);
+        // 从 `f[T](...)` 的 callee 里取出显式类型实参（`f[int]` 的 int）。
+        std::vector<sema::TypePtr> explicitTypeArgs(
+            const std::shared_ptr<ast::ExpressionNode>& callee) const;
+        // 按实参类型推导类型实参（显式实参优先，缺的从实参补）。
+        bool deduceTypeArgs(const GenericFunction& generic,
+                            const std::vector<sema::TypePtr>& explicitArgs,
+                            const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                            std::map<std::string, sema::TypePtr>& bindings) const;
+        // 实例化一个泛型函数，返回 mangled 名（失败返回空串）。
+        std::string instantiateGeneric(const std::string& name,
+                                       const std::map<std::string, sema::TypePtr>& bindings);
+        // 发射一次泛型调用（`f[int](x)` 或裸名 `f(x)`）。返回 false 表示
+        // 这个名字不是泛型函数，调用方继续走普通路径。
+        bool tryEmitGenericCall(const std::string& name,
+                                const std::shared_ptr<ast::ExpressionNode>& callee,
+                                const std::shared_ptr<ast::ExpressionNode>& callNode,
+                                const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // 泛型调用的静态结果类型（推导失败返回 nullptr）。
+        // 必须在发射前就知道，槽位大小 / sout 选型都依赖它。
+        sema::TypePtr inferGenericCallType(const std::string& name,
+                                           const std::shared_ptr<ast::ExpressionNode>& callee,
+                                           const std::shared_ptr<ast::ExpressionNode>& callNode) const;
+        // 从表达式里的标注取出类型（无标注返回 unknown）。
+        sema::TypePtr typeFromLabelList(
+            const std::vector<std::shared_ptr<ast::LabelNode>>& labels,
+            const std::vector<std::string>& genericParams = {}) const;
+        // 当前正在实例化的泛型形参（空 = 不在泛型函数体里）。
+        // 函数体里的 `var y: T = x` 要靠它把 T 解析成占位而不是报未知类型。
+        std::vector<std::string> _currentGenericParams;
+        // 当前实例化绑定的实参类型：T -> int。发射实例函数体时，
+        // 标注里的 T 必须解析成**具体**类型（槽位大小、float 与否都靠它）。
+        std::map<std::string, sema::TypePtr> _currentGenericBindings;
+
+        // ---------- P10：泛型类 ----------
+        // `class Box[T]` 只是模板，不登记成可构造的类；`Box[int]` 出现时
+        // 才用这个模板生成一份具体布局（名字带 mangled 后缀）。
+        struct GenericClass
+        {
+            std::string name;
+            std::vector<std::string> genericParams;
+            std::shared_ptr<ast::ClassDefinitionNode> def;
+        };
+        std::map<std::string, GenericClass> _genericClasses;
+        // 已实例化出来的具体类名（按发现顺序）与已发射标记。
+        std::vector<std::string> _genericClassInstances;
+        std::map<std::string, bool> _genericClassEmitted;
+        // 每个实例的绑定，发射方法体时要恢复。
+        std::map<std::string, std::pair<std::vector<std::string>,
+                                        std::map<std::string, sema::TypePtr>>> _genericClassBindings;
+        // 确保 `Box[int]` 这个具体类已登记，返回它的 mangled 名。
+        std::string ensureClassInstance(const std::string& base,
+                                        const std::vector<sema::TypePtr>& args);
+        // 把类型实参列表解析出来（`Box[int, str]` 的 [int, str]）。
+        std::vector<sema::TypePtr> typeArgsOf(const std::shared_ptr<ast::ExpressionNode>& node) const;
+        // 用给定具体类名登记类体（模板实例化复用同一条路径）。
+        void registerClassBody(const std::shared_ptr<ast::ClassDefinitionNode>& node,
+                               const std::string& className);
+        // 发射所有已实例化泛型类的构造器与方法体。
+        void emitGenericClassBodies();
+
+        // 形参/返回类型的收集变体：能把类名解析成 ClassType。
+        void collectParamNamesT(const std::shared_ptr<ast::ExpressionNode>& node,
+                                std::vector<std::string>& out) const;
+        void collectParamTypesT(const std::shared_ptr<ast::ExpressionNode>& node,
+                                std::vector<sema::TypePtr>& out) const;
+        // P9：收集每个形参的「原始标注文本」，未标注的项为空串。
+        // 用来区分 `fun f(x)`（未标注，允许推断）与
+        // `fun f(x: Piont)`（标注了但解析不出来，必须报错）。
+        void collectParamAnnotations(const std::shared_ptr<ast::ExpressionNode>& node,
+                                     std::vector<std::string>& out) const;
+        // 方法/构造器的返回类型：声明的标签优先，否则从函数体推断。
+        sema::TypePtr methodReturnType(const std::shared_ptr<ast::FunctionDefinitionNode>& def,
+                                       const std::vector<std::string>& paramNames,
+                                       const std::vector<sema::TypePtr>& paramTypes,
+                                       const std::string& ownerClass = std::string()) const;
+        // 当前正在发射的方法/构造器所属的类名（空 = 不在类里）。
+        std::string _currentClass;
+        // 类登记表
+        std::map<std::string, ClassInfo> _classes;
+
+        // ---------- P11：重载 ----------
+        //
+        // 一个名字可以有多个签名。符号规则（沿用 P10 冻结的 mangling 形状）：
+        //   * 名字只有一个定义 -> 符号就是裸名，rt.o / core 的 ABI 完全不变
+        //   * 名字有多个定义   -> 全部用 `_R<len><name><encoded-params>` 修饰
+        // 决议发生在**调用点**，只看实参的静态类型 —— 单遍 codegen 没有独立
+        // sema pass，所以决议必须能在发射调用指令的当下完成。
+        //
+        // 与 P10 的关系：泛型实例也用 `_R<len><name>...` 这个名字槽位，但那里
+        // 编码的是**类型实参**，这里编码的是**形参类型**。一个名字不会同时
+        // 是泛型又是重载集（泛型声明不参与重载计数，见 registerOverloadSignatures）。
+        struct FunctionSignature
+        {
+            std::string name;
+            // 发射用的汇编符号。唯一名字时等于 name。
+            std::string symbol;
+            std::vector<std::string> paramNames;
+            // 形参类型。未标注的形参在这里是 TK_UNKNOWN（不是回退的 int）：
+            // mangling 要靠它把 `fun f(x)` 与 `fun f(x: int)` 区分开。
+            std::vector<sema::TypePtr> paramTypes;
+            // 每个形参是否写了类型标注。未标注的形参在决议里是通配符。
+            std::vector<bool> annotated;
+            // 形参标注的**原始文本**（空串 = 没标注）。诊断要用它：
+            // `fun f(x: Piont)` 必须报出 "Piont" 而不是解析失败的占位。
+            std::vector<std::string> annotationTexts;
+            std::map<std::string, std::shared_ptr<ast::ExpressionNode>> defaults;
+            sema::TypePtr retType;
+            bool retAnnotated = false;
+            // 非空 = 泛型声明（走 P10 路径，不参与重载）。
+            std::vector<std::string> genericParams;
+            // 函数体只有一个 encapsulated：由运行时提供实现，符号必须是裸名
+            // （rt.o 里就是这么定义的），所以不参与重载计数、不加修饰。
+            bool encapsulated = false;
+            std::shared_ptr<ast::FunctionDefinitionNode> def;
+        };
+        // 纯收集：名字、形参、标注、默认值、返回类型。不做登记、不报错，
+        // 因此预登记与正式发射可以各调一次而结果一致。
+        FunctionSignature collectSignature(const std::shared_ptr<ast::FunctionDefinitionNode>& node);
+        // 名字 -> 候选签名。只对「有多个定义」的名字填充。
+        std::map<std::string, std::vector<FunctionSignature>> _overloads;
+        std::map<std::string, bool> _overloadedNames;
+        // 符号 -> 签名。同样只覆盖重载名：唯一名字继续用裸名 + 原来的
+        // _functionParams/_functionReturns 那几张表，行为完全不变。
+        //
+        // 为什么必须**预登记**：函数体是按文件顺序发射的，f1 里调用文件
+        // 后面才定义的 f2 时，f2 的签名还没登记进 _functionParams。
+        // 重载决议需要候选签名才能比较，所以要在发射任何函数体之前
+        // 先把签名收集一遍（见 registerOverloadSignatures）。
+        std::map<std::string, FunctionSignature> _signatures;
+        // 已发射过的汇编符号（同签名的重复定义要给出明确诊断，
+        // 而不是让汇编器报 symbol already defined）。
+        std::map<std::string, bool> _emittedSymbols;
+        // 预登记：必须在发射**任何**函数体之前跑一遍，否则前向调用
+        // （f1 的函数体里调文件后面才定义的 f2）解析不出候选签名。
+        void registerOverloadSignatures(
+            const std::vector<std::shared_ptr<ast::FunctionDefinitionNode>>& fns);
+        // 重载名的符号修饰。编码的是**形参类型**（未标注形参编成 v）。
+        static std::string mangleOverload(const std::string& base,
+                                          const std::vector<sema::TypePtr>& paramTypes);
+        // 按实参静态类型选签名，返回符号；空串 = 没有候选（ambiguous 置位表示
+        // 多个候选同分）。
+        [[nodiscard]] std::string resolveOverload(
+            const std::string& name,
+            const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+            bool* ambiguous = nullptr) const;
+        // 单个形参的匹配分：-1 不匹配，数值越大越精确。
+        [[nodiscard]] int overloadScore(const sema::TypePtr& formal,
+                                        const sema::TypePtr& actual,
+                                        bool annotated) const;
+        // 按给定签名摊平命名实参 / 补齐默认值。装不下返回 false。
+        static bool normalizeArgsFor(
+            const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+            const std::vector<std::string>& names,
+            const std::map<std::string, std::shared_ptr<ast::ExpressionNode>>& defaults,
+            std::vector<std::shared_ptr<ast::ExpressionNode>>& out);
+        // 已决议到具体符号的调用：摊平实参 + 按签名走寄存器 + call。
+        void emitResolvedCall(const std::string& symbol,
+                              const std::string& displayName,
+                              const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // 重载决议失败的诊断（无候选 / 歧义）。
+        void failOverload(const std::string& name,
+                          const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                          const utils::Pos& pos,
+                          bool ambiguous);
+
+        // ---------- P7：异常 ----------
+        // 当前函数里处于活动状态的 try 帧，栈底 = 最外层 try。
+        // 只记帧块相对 %rbp 的偏移：ret / break / continue 提前离开
+        // try 时必须发射配对的 core_eh_pop，否则链上会留下指向已销毁
+        // 栈帧的节点，下一次 throw 就会跳进死帧。
+        struct EhFrame
+        {
+            long long offset = 0;
+            // 该 try 的 finally 体（可能为空）。ret / break / continue 提前
+            // 离开时必须把它内联发射一遍 —— 否则 finally 被静默跳过。
+            std::shared_ptr<ast::BlockRangerNode> finallyBody;
+        };
+        std::vector<EhFrame> _ehStack;
+        // 正在内联发射 finally 体时置位，防止 finally 里的 ret / break
+        // 又触发一次 finally 展开（无限递归）。
+        bool _emittingFinally = false;
+        // try 帧槽位命名计数
+        size_t _ehCounter = 0;
+    };
+}
+
+#endif //RCC_CODEGEN_H

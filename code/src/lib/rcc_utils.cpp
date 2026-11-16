@@ -761,7 +761,9 @@ namespace utils
         input = std::move(result);
     }
 
-    inline std::pair<bool, std::string> StringManager::isStringFormat(const std::string& str)
+    // 注意：不能标 inline。它声明在头文件里（类内 static 成员），
+    // 但定义只在本 .cpp 中；标 inline 会让其它翻译单元找不到定义。
+    std::pair<bool, std::string> StringManager::isStringFormat(const std::string& str)
     {
         if (str.size() >= 2 && str.front() == '"' && str.back() == '"')
         {

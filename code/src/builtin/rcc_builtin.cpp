@@ -18,7 +18,7 @@ namespace builtin
         // 初始化 - 载入纯内置函数
 
         const bool &isProgramEntry = checkPathEqual(visitor.getProgramEntryFilePath(), visitor.getCurrentProcessingFilePath());
-        for (const auto& [funcName, pureBuiltinFunc] : pureBuiltinFunctionMap)
+        for (const auto& [funcName, pureBuiltinFunc] : pureBuiltinFunctionMapRef())
         {
             const auto &funcId = ast::VarID(funcName, getUnknownPos().getFileField(), visitor.curScopeField(), visitor.curScopeLevel());
             const auto &funcSymbol = std::make_shared<symbol::FunctionSymbol>(
@@ -48,12 +48,12 @@ namespace builtin
 
     bool isPureBuiltinFunction(const std::string& funcName)
     {
-        return pureBuiltinFunctionMap.contains(funcName);
+        return pureBuiltinFunctionMapRef().contains(funcName);
     }
 
     bool isBuiltinFunction(const std::string& funcName)
     {
-        return builtinFunctionMap.contains(funcName) ||
+        return builtinFunctionMapRef().contains(funcName) ||
             rccdll::DLLExtensionManager::hasFunc(funcName);
     }
 
@@ -66,13 +66,13 @@ namespace builtin
         ast::CompileVisitor &visitor,
         const std::string &funcName, const CallInfos& callInfos)
     {
-        if (const auto &it = pureBuiltinFunctionMap.find(funcName);
-            it != pureBuiltinFunctionMap.end())
+        if (const auto &it = pureBuiltinFunctionMapRef().find(funcName);
+            it != pureBuiltinFunctionMapRef().end())
         {
             return it->second.call(visitor, callInfos);
         }
-        if (const auto &it = builtinFunctionMap.find(funcName);
-            it != builtinFunctionMap.end())
+        if (const auto &it = builtinFunctionMapRef().find(funcName);
+            it != builtinFunctionMapRef().end())
         {
             return it->second(visitor, callInfos);
         }
@@ -102,50 +102,58 @@ namespace builtin
 
     void registerExternalPureBuiltinFunction(const std::string& funcName, const PureBuiltinFunction& func)
     {
-        pureBuiltinFunctionMap.insert({funcName, func});
+        pureBuiltinFunctionMapRef().insert({funcName, func});
     }
 
     void registerExternalBuiltinFunction(const std::string& funcName, const BuiltinFunc& func)
     {
-        builtinFunctionMap.insert({funcName, func});
+        builtinFunctionMapRef().insert({funcName, func});
     }
 
-    std::unordered_map<std::string, PureBuiltinFunction> pureBuiltinFunctionMap = {
-        // pure-built-in functions
-        {"import", getImportFunction()},
-        {"export", getExportFunction()},
-        {"super", getSupperFunction()}
-    };
+    std::unordered_map<std::string, PureBuiltinFunction>& pureBuiltinFunctionMapRef()
+    {
+        static std::unordered_map<std::string, PureBuiltinFunction> pureBuiltinFunctionMap = {
+            // pure-built-in functions
+            {"import", getImportFunction()},
+            {"export", getExportFunction()},
+            {"super", getSupperFunction()}
+        };
+        return pureBuiltinFunctionMap;
+    }
 
-    std::unordered_map<std::string, BuiltinFunc> builtinFunctionMap = {
-        // built-in functions
-        // io.rio
-        {"sout", rcc_sout},
-        {"sin", rcc_sin},
+    std::unordered_map<std::string, BuiltinFunc>& builtinFunctionMapRef()
+    {
+        static std::unordered_map<std::string, BuiltinFunc> builtinFunctionMap = {
+            // built-in functions
+            // io.rio
+            {"sout", rcc_sout},
+            {"sin", rcc_sin},
 
-        // ds.rio
-        {"size", rcc_size},
-        {"copy", rcc_copy},
-        {"listRemove", rcc_listRemove},
-        {"listAppend", rcc_listAppend},
-        {"dictRemove", rcc_dictRemove},
-        {"dictKeys", rcc_dictKeys},
-        {"dictValues", rcc_dictValues},
-        {"repeat", rcc_repeat},
+            // ds.rio
+            {"size", rcc_size},
+            {"copy", rcc_copy},
+            {"listRemove", rcc_listRemove},
+            {"listAppend", rcc_listAppend},
+            {"dictRemove", rcc_dictRemove},
+            {"dictKeys", rcc_dictKeys},
+            {"dictValues", rcc_dictValues},
+            {"repeat", rcc_repeat},
 
-        // datatype.rio
-        {"type", rcc_type},
-        {"setType", rcc_setType},
-        {"checkType", rcc_check_type},
+            // datatype.rio
+            {"type", rcc_type},
+            {"setType", rcc_setType},
+            {"checkType", rcc_check_type},
 
-        // prog.rio
-        {"entry", rcc_entry},
-        {"breakpoint", rcc_breakpoint},
+            // prog.rio
+            {"entry", rcc_entry},
+            {"breakpoint", rcc_breakpoint},
 
-        // lowlevel.rio
-        {"id", rcc_id},
-        {"rasm", rcc_rasm},
-        {"bindDllExt", rcc_bindDllExt},
-        {"unbindDllExt", rcc_unbindDllExt}
-    };
+            // lowlevel.rio
+            {"id", rcc_id},
+            {"rasm", rcc_rasm},
+            {"bindDllExt", rcc_bindDllExt},
+            {"unbindDllExt", rcc_unbindDllExt}
+        };
+        return builtinFunctionMap;
+    }
 }

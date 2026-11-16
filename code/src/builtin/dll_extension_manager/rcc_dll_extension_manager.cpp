@@ -4,6 +4,8 @@
 
 #include "../../../include/builtin/dll_extension_manager/rcc_dll_extension_manager.h"
 
+#include <algorithm>
+
 #include "../../../declarations/builtin/rcc_builtin_dec.h"
 #include "../../../include/rcc_base.h"
 #include "../../../include/visitors/rcc_compile_visitor.h"

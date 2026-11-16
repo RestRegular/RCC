@@ -1,0 +1,204 @@
+/*
+ * rt.rio —— RCC 运行时层（Runtime Layer）
+ *
+ * 定位：介于 core 与 std 之间。core 只提供「Rio 语言本身无法表达」的能力
+ * （内存、IO、进程、异常帧），而这里的一切都是**用 Rio 写出来的**。
+ *
+ * 与 core 的关系：
+ *   - core 的符号在汇编里带 core_ 前缀（core_io_write 等），直接可调用
+ *   - rt 的符号不带前缀（rt_print_int 等），由编译器在 sout 里按类型分派
+ *
+ * 引导期约束（P1）：
+ *   当前后端还不支持 list/dict 构造、字符串拼接、import、取地址。
+ *   因此 rt 只用「标量 + 循环 + 递归 + 直接调用 core_*」这几种能力实现。
+ *   等 P5/P8 落地后，这里的实现可以换成更自然的写法，
+ *   但导出的符号契约（rt_print_*）保持不变。
+ *
+ * 构建方式（由 CMake 在构建 RCC 时自动执行）：
+ *   RCC.exe --build --emit-lib --path lib/rt/rt.rio --output release/lib/rt/rt.o
+ */
+
+// ============================ 内部工具 ============================
+
+// 写一个字节到 stdout。
+// 为什么不直接用 core_io_write(fd, buf, n)：它需要一个内存地址，
+// 而 P1 还没有取地址运算符，无法把局部变量当缓冲区。
+// core_io_write_byte 就是为这个场景在 core 里加的单字节入口。
+fun rt_write_byte(ch: int): void {
+    core_io_write_byte(1, ch)
+}
+
+// 写一段字节。调用方保证 (s, n) 有效，s 指向**裸字节**（没有长度头）。
+fun rt_write_bytes(s: ptr, n: int): void {
+    core_io_write(1, s, n)
+}
+
+// 写一个 str 值。str 的表示是「指向长度头的指针」，真实字节从 +8 开始。
+// 字符串字面量在 rt 里就是 str 值，所以写字面量时用这个而不是 rt_write_bytes，
+// 否则会把长度头当成内容写出去（bool 打印曾经因此输出 0 字节）。
+fun rt_write_str(s: ptr, n: int): void {
+    core_io_write(1, s + 8, n)
+}
+
+// ============================ 整数 ============================
+
+// 递归打印非负整数的十进制。回溯时输出最低位，天然得到正确顺序。
+// 用递归而不是数组，是因为 P1 还没有 list。
+fun rt_print_uint(v: int): void {
+    if v >= 10 {
+        rt_print_uint(v / 10)
+    }
+    rt_write_byte(48 + v % 10)
+}
+
+fun rt_print_int(v: int): void {
+    if v < 0 {
+        rt_write_byte(45)                     // '-'
+        // 注意：legacy AST 的 IntegerLiteralNode::value 是 int（32 位），
+        // 写不出 i64 最小值这个字面量。这里不做最小值特判，
+        // 代价是 rt_print_int(-9223372036854775808) 会打印错误结果。
+        // 等 P2 把字面量改成 i64 后再补特判（见 docs/p1_plan.md 已知限制）。
+        rt_print_uint(0 - v)
+    } else {
+        rt_print_uint(v)
+    }
+}
+
+// ============================ 布尔 ============================
+
+fun rt_print_bool(v: int): void {
+    if v == 0 {
+        rt_write_str("false", 5)
+    } else {
+        rt_write_str("true", 4)
+    }
+}
+
+// ============================ null ============================
+
+fun rt_print_null(): void {
+    rt_write_str("null", 4)
+}
+
+// ============================ 字符串 ============================
+
+// str 的内存布局（与 codegen 的 internStrValue 一致）：
+//   [0..7]  len（8 字节小端）
+//   [8.. ]  UTF-8 字节
+//   [末尾]  0（C 字符串兼容）
+// str 变量只存一个指针，指向长度头。
+//
+// P1 还没有指针解引用运算符（`*p`），所以这里调用 core 提供的
+// 读取原语。等 P2 支持解引用后，这段可以改成纯 Rio 的指针访问。
+fun rt_print_str(s: ptr): void {
+    var n = core_str_len(s)
+    core_io_write(1, s + 8, n)
+}
+
+// ============================ 浮点 ============================
+
+// P1 支持「符号 + 整数部分 + 最多 6 位小数」，够 test_3 的 3.14 用。
+// 完整的 %g 风格最短表示留到 P5（需要动态缓冲才能正确舍入）。
+fun rt_print_float(v: float): void {
+    var x = v
+    if x < 0.0 {
+        rt_write_byte(45)                     // '-'
+        x = 0.0 - x
+    }
+
+    var ip: int = 0
+    ip = x                                     // 截断取整数部分（float->int）
+    rt_print_int(ip)
+
+    var frac = x - ip
+    if frac > 0.0 {
+        // 先算出小数各位（最多 6 位），存进一个整数里，
+        // 再按「去掉尾部 0」的最短形式输出 —— 3.14 应输出 "3.14" 而不是 "3.140000"。
+        // 用整数暂存而不是数组，是因为 P1 还没有 list。
+        var digits = 0
+        var n = 0
+        var i = 0
+        while i < 6 {
+            frac = frac * 10.0
+            var d: int = 0
+            d = frac
+            digits = digits * 10 + d
+            n = n + 1
+            frac = frac - d
+            if frac <= 0.0 {
+                break
+            }
+            i = i + 1
+        }
+        // 去掉尾部 0
+        while n > 0 {
+            if digits % 10 == 0 {
+                digits = digits / 10
+                n = n - 1
+            } else {
+                break
+            }
+        }
+        if n > 0 {
+            rt_write_byte(46)                  // '.'
+            // 从最高位开始逐位输出
+            var p = rt_pow10(n - 1)
+            var k = 0
+            while k < n {
+                rt_write_byte(48 + (digits / p) % 10)
+                p = p / 10
+                k = k + 1
+            }
+        }
+    } else {
+        // 整数形态的 float（0.0 / 1.0 / 2.0 ...）也要补上 ".0"：
+        // 否则 sout(1.0) 和 sout(1) 输出一模一样，浮点类型信息就丢了。
+        // 注意这里必须挂在 `if frac > 0.0` 的 else 上——挂在 `if n > 0` 的
+        // else 上没有用，因为 x 是整数时整个小数块都被跳过。
+        rt_write_byte(46)                      // '.'
+        rt_write_byte(48)                      // '0'
+    }
+}
+
+fun rt_pow10(n: int): int {
+    var r = 1
+    var i = 0
+    while i < n {
+        r = r * 10
+        i = i + 1
+    }
+    ret r
+}
+
+// ============================ 指针 ============================
+
+fun rt_pow16(n: int): int {
+    var r = 1
+    var i = 0
+    while i < n {
+        r = r * 16
+        i = i + 1
+    }
+    ret r
+}
+
+// 十六进制打印地址，调试用。
+fun rt_print_ptr(v: int): void {
+    rt_write_str("0x", 2)
+    var i = 15
+    while i >= 0 {
+        var nib = (v / rt_pow16(i)) % 16
+        if nib < 10 {
+            rt_write_byte(48 + nib)
+        } else {
+            rt_write_byte(87 + nib)           // 'a'..'f'
+        }
+        i = i - 1
+    }
+}
+
+// ============================ 字符 ============================
+
+fun rt_print_char(v: int): void {
+    rt_write_byte(v)
+}

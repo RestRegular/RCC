@@ -69,7 +69,9 @@ namespace parser {
     }
 
     ExpressionNodePtr Parser::buildContinueExpression(){
-        return nullptr;
+        // 原先直接返回 nullptr，导致 `continue` 永远报
+        // "failure to find the prefix expression construction function"。
+        return std::make_shared<ContinueExpressionNode>(currentToken());
     }
 
     ExpressionNodePtr Parser::buildFloatExpression(){

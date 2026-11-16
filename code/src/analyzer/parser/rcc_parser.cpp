@@ -10,6 +10,8 @@ namespace parser {
         try
         {
             const auto &result = buildProgram();
+            // 注意语义：返回值的 first 表示"是否出错"（true = 有错误）。
+            // 这是历史约定，CompileVisitor 依赖它；新代码请用 !first。
             return {hasError(), result};
         } catch (const std::exception &)
         {
@@ -74,6 +76,8 @@ namespace parser {
         {TokenType::TOKEN_RETURN, &Parser::buildReturnExpression},
         // 退出循环语句
         {TokenType::TOKEN_BREAK, &Parser::buildBreakExpression},
+        // 跳过本次循环
+        {TokenType::TOKEN_CONTINUE, &Parser::buildContinueExpression},
         // 跳过新行
         {TokenType::TOKEN_SKIP_NEWLINE, &Parser::skipNewLineExpression},
         // try 语句
@@ -197,7 +201,13 @@ namespace parser {
         } else {
             _next_token = nullptr;
         }
-        return _current_token ? currentToken() : *_current_token;
+        // 原先写成 `_current_token ? currentToken() : *_current_token`：
+        // 空指针分支恰好执行 *_current_token，必然触发 shared_ptr 的
+        // __p != nullptr 断言。而构造函数里两次 next() 中的第一次，
+        // _current_token 本来就还是 nullptr（合法的初始化状态），
+        // 所以旧代码在 Parser 构造时就必定崩溃。
+        // 这里改为：当前 token 为空时返回流结束标记，绝不空解引用。
+        return _current_token ? currentToken() : STREAM_END_TOKEN;
     }
 
     void Parser::consumeNext() {
@@ -366,14 +376,19 @@ namespace parser {
     }
 
     std::shared_ptr<ProgramNode> Parser::buildProgram() {
-        if (!currentTokenIs(core::TokenType::TOKEN_PROGRAM)) {
-            recordUnexpectedTokenTypeError(currentToken(), core::TokenType::TOKEN_PROGRAM);
+        // 注意：lexer 从不产出 TOKEN_PROGRAM，首 token 是值为空的占位符
+        // （TOKEN_UNDEFINED）。因此这里不能强制要求 TOKEN_PROGRAM，
+        // 否则任何源文件都会立刻报错。改为：若首 token 不是 PROGRAM，
+        // 就把它当作流起始占位符跳过。
+        if (currentTokenIs(core::TokenType::TOKEN_PROGRAM)) {
+            next();
         }
         const auto &programToken = currentToken();
-        next();
         std::vector<std::shared_ptr<StatementNode>> statementNodes;
         while (hasNext()) {
-            if (!currentTokenIs(core::TokenType::TOKEN_NEWLINE)){
+            // TOKEN_UNDEFINED 是 lexer 放在流首的空占位符，直接跳过。
+            if (!currentTokenIs(core::TokenType::TOKEN_NEWLINE) &&
+                !currentTokenIs(core::TokenType::TOKEN_UNDEFINED)){
                 if (auto statement = buildStatement()) {
                     statementNodes.emplace_back(statement);
                 }

@@ -3,3 +3,24 @@
 /release/RCC.exe
 /test/txt/
 /test/dll/
+
+# 构建产物
+/build/
+# core 层目标文件由 CMake 从 core_win64.s 自动生成
+/release/lib/core/*.o
+# rt 层由 CMake 从 lib/rt/rt.rio 自举编译生成（.s/.o/.exe 都是产物）
+/release/lib/rt/
+# 仓库根 lib/ 下的 rt 编译产物（源文件 rt.rio / core.rio / core_win64.s 要跟踪）
+/lib/rt/*.s
+/lib/rt/*.o
+/lib/rt/*.exe
+# P0 测试临时目录
+/build/p0_test/
+# 本地运行时 DLL（MinGW 动态链接所需，不随仓库分发）
+/release/*.dll
+# DSH 会话本地状态
+/.dsh/
+# 手动编译 tests/ 下用例留下的中间产物
+/tests/*.exe
+/tests/*.o
+/tests/*.s
