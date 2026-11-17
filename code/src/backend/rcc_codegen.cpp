@@ -467,6 +467,18 @@ namespace backend{
             // 一侧显式 Body、另一侧裸类名：别名，放行（决议 §4）。
             if ((isBodyMemory(target) && isBareBody(source)) ||
                 (isBodyMemory(source) && isBareBody(target))) return std::string();
+            // P13-2/L3（决议 §7.3）：调用点 f(bob) 由形参类型决定语义 ——
+            // 形参 Ref[T]/Mut[T] 时，Body 实参隐式取引用（底层同一指针）。
+            // 只放行 Ref/Mut，且要求内层类型与实参类型一致。
+            if (tr >= 0 && sr < 0 && sk != sema::TypeKind::TK_PTR)            {
+                const auto role = static_cast<sema::MemoryRole>(tr);
+                if (role == sema::MemoryRole::REF || role == sema::MemoryRole::MUT)                {
+                    const auto inner = std::dynamic_pointer_cast<sema::MemoryType>(target)->getInnerType();
+                    if (!inner || inner->equals(source)) return std::string();
+                    return "cannot pass " + source->toString() + " as " + target->toString() +
+                           ": inner type mismatch";
+                }
+            }
             // Content/Ref/Mut/Take 与裸类名混用：拒绝。
             if (sk != sema::TypeKind::TK_PTR)            {
                 return "cannot assign " + source->toString() + " to " + target->toString() +
