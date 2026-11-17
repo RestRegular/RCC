@@ -1553,6 +1553,14 @@ namespace backend{
                     }
                     const std::string owner = classNameOf(member->getLeftNode());
                     if (mid && !owner.empty())                    {
+                        // P13-2/L3（决议 §7.1）：Body 内建 ref()/mut() ——
+                        // p.ref() ≡ &p → Ref[Owner]，p.mut() → Mut[Owner]。
+                        if (mid->getName() == "ref" || mid->getName() == "mut")                        {
+                            const auto role = mid->getName() == "ref"
+                                ? sema::MemoryRole::REF : sema::MemoryRole::MUT;
+                            return std::make_shared<sema::MemoryType>(
+                                role, std::make_shared<sema::ClassType>(owner));
+                        }
                         const auto methods = collectMethods(owner);
                         const auto found = methods.find(mid->getName());
                         if (found != methods.end() && found->second.def)                        {
@@ -7063,6 +7071,17 @@ namespace backend{
         const std::string owner = classNameOf(member->getLeftNode());
         if (owner.empty())        {
             fail("Cannot determine the object type of method call: " + member->toString());
+            return;
+        }
+        // P13-2/L3（决议 §7.1）：Body 内建 ref()/mut() 是 & 的语法糖，
+        // 底层与 Body 同为对象指针，直接透传左值；不接受实参。
+        if (methodId->getName() == "ref" || methodId->getName() == "mut")        {
+            if (!args.empty())            {
+                failAt(member->getPos(), "L3: '" + methodId->getName() +
+                       "()' takes no arguments");
+                return;
+            }
+            emitExpression(member->getLeftNode());
             return;
         }
         const auto methods = collectMethods(owner);
