@@ -32,6 +32,7 @@ namespace sema
         TK_CLASS,
         TK_PTR,
         TK_GENERIC,   // P10：泛型形参占位（`fun f[T](x: T)` 里的 T）
+        TK_MEMORY,    // P13-2/L3：内存模型特殊类型（Body/Content/Ref/Mut/Take）
         TK_UNKNOWN,   // 尚未推导出，用于报错前占位
     };
 
@@ -60,7 +61,7 @@ namespace sema
         {
             return _kind == TypeKind::TK_STR || _kind == TypeKind::TK_LIST ||
                    _kind == TypeKind::TK_DICT || _kind == TypeKind::TK_CLASS ||
-                   _kind == TypeKind::TK_PTR;
+                   _kind == TypeKind::TK_PTR || _kind == TypeKind::TK_MEMORY;
         }
         [[nodiscard]] bool isNumeric() const { return isInteger() || isFloat(); }
 
@@ -98,6 +99,7 @@ namespace sema
             case TypeKind::TK_FUNC:  return "func";
             case TypeKind::TK_CLASS: return "class";
             case TypeKind::TK_PTR:   return "ptr";
+            case TypeKind::TK_MEMORY: return "memory";
             default:              return "unknown";
             }
         }
@@ -313,6 +315,58 @@ namespace sema
 
     private:
         std::string _name;
+    };
+
+    // ---------- P13-2/L3：内存模型特殊类型 ----------
+    //
+    // Body[T]/Content[T]/Ref[T]/Mut[T]/Take[T] 都是「包装一个 T」的类型，
+    // 行为同构，用同一个 TypeKind + 角色枚举表示，避免五个几乎相同的子类。
+    // 决议 §4：Player（裸类名）与 Body[Player] 是同一类型（别名），
+    // 所以裸类名仍解析成 ClassType；只有显式写 Body[...] 才得到 MemoryType。
+    enum class MemoryRole
+    {
+        BODY,
+        CONTENT,
+        REF,
+        MUT,
+        TAKE,
+    };
+
+    class MemoryType final : public Type
+    {
+    public:
+        MemoryType(MemoryRole role, TypePtr inner)
+            : Type(TypeKind::TK_MEMORY), _role(role), _inner(std::move(inner)) {}
+
+        [[nodiscard]] MemoryRole getRole() const { return _role; }
+        [[nodiscard]] const TypePtr& getInnerType() const { return _inner; }
+
+        [[nodiscard]] std::string toString() const override
+        {
+            const char* name = "?";
+            switch (_role)
+            {
+            case MemoryRole::BODY:    name = "Body";    break;
+            case MemoryRole::CONTENT: name = "Content"; break;
+            case MemoryRole::REF:     name = "Ref";     break;
+            case MemoryRole::MUT:     name = "Mut";     break;
+            case MemoryRole::TAKE:    name = "Take";    break;
+            }
+            return std::string(name) + "[" + (_inner ? _inner->toString() : "?") + "]";
+        }
+
+        [[nodiscard]] bool equals(const TypePtr& other) const override
+        {
+            if (!other || other->getKind() != TypeKind::TK_MEMORY) return false;
+            const auto o = std::static_pointer_cast<MemoryType>(other);
+            if (_role != o->_role) return false;
+            if (!_inner || !o->_inner) return !_inner && !o->_inner;
+            return _inner->equals(o->_inner);
+        }
+
+    private:
+        MemoryRole _role;
+        TypePtr _inner;
     };
 
     inline TypePtr getGenericType(const std::string& name)

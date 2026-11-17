@@ -438,6 +438,44 @@ namespace backend{
         if (tk == sema::TypeKind::TK_VOID)        {
             return "cannot assign a value to a void-typed target";
         }
+        // ---------- P13-2/L3：内存模型特殊类型（决议 §4） ----------
+        // Player（裸类名 = ClassType）与 Body[Player] 是同一类型（别名）；
+        // Content/Ref/Mut/Take 是不同角色，不能与 Body 或彼此混用。
+        const auto roleOf = [](const sema::TypePtr& t) -> int {
+            if (!t || t->getKind() != sema::TypeKind::TK_MEMORY) return -1;
+            return static_cast<int>(std::dynamic_pointer_cast<sema::MemoryType>(t)->getRole());
+        };
+        const auto isBodyMemory = [&](const sema::TypePtr& t) {
+            return t && t->getKind() == sema::TypeKind::TK_MEMORY &&
+                   roleOf(t) == static_cast<int>(sema::MemoryRole::BODY);
+        };
+        const auto isBareBody = [&](const sema::TypePtr& t) {
+            // 裸类名（ClassType）是 Body 的别名；泛型/其他类型不算。
+            return t && t->getKind() == sema::TypeKind::TK_CLASS;
+        };
+        if (roleOf(target) >= 0 || roleOf(source) >= 0)        {
+            const int tr = roleOf(target), sr = roleOf(source);
+            // 两侧都显式标注角色：角色必须相同，内层再递归比。
+            if (tr >= 0 && sr >= 0)            {
+                if (tr != sr) return "cannot assign " + source->toString() +
+                                    " to " + target->toString() + ": different memory roles";
+                const auto ti = std::dynamic_pointer_cast<sema::MemoryType>(target)->getInnerType();
+                const auto si = std::dynamic_pointer_cast<sema::MemoryType>(source)->getInnerType();
+                return (!ti || !si || ti->equals(si)) ? std::string()
+                       : "inner type mismatch: " + source->toString() + " vs " + target->toString();
+            }
+            // 一侧显式 Body、另一侧裸类名：别名，放行（决议 §4）。
+            if ((isBodyMemory(target) && isBareBody(source)) ||
+                (isBodyMemory(source) && isBareBody(target))) return std::string();
+            // Content/Ref/Mut/Take 与裸类名混用：拒绝。
+            if (sk != sema::TypeKind::TK_PTR)            {
+                return "cannot assign " + source->toString() + " to " + target->toString() +
+                       ": memory role requires explicit type annotation";
+            }
+            // null 字面量（sema 记为 ptr）是任何引用型内存类型的合法零值
+            // （决议 Q-A：引用类型 null = 0 指针，与有效对象地址不同）。
+            return std::string();
+        }
         // ---------- 容器：必须比元素类型（P13 缺陷修复，2026-11-17） ----------
         //
         // 原先这里直接落到 sameValueFamily，而它对 list/dict 只看「都是容器」，
@@ -5795,6 +5833,17 @@ namespace backend{
             }
             std::vector<sema::TypePtr> args;
             for (const auto& a : argNodes) args.push_back(typeFromTypeArgNode(a, genericParams));
+            // P13-2/L3：嵌套的类型实参形态 `list[Body[Player]]` 等走这里。
+            if (base == "Body" || base == "Content" || base == "Ref" ||
+                base == "Mut" || base == "Take")            {
+                sema::MemoryRole role =
+                    base == "Body" ? sema::MemoryRole::BODY :
+                    base == "Content" ? sema::MemoryRole::CONTENT :
+                    base == "Ref" ? sema::MemoryRole::REF :
+                    base == "Mut" ? sema::MemoryRole::MUT : sema::MemoryRole::TAKE;
+                const auto inner = args.empty() ? sema::getUnknownType() : args[0];
+                return std::make_shared<sema::MemoryType>(role, inner);
+            }
             if (base == "list" || base == "series" || base == "array")            {
                 // 关键：`list[float]` 的元素类型必须真的来自标注。
                 // P9 的缺陷就是这里一律给 int，导致 float 元素被当整数打印。
@@ -5896,6 +5945,20 @@ namespace backend{
             std::vector<std::shared_ptr<ast::ExpressionNode>> argNodes;
             flattenTypeArgs(des->getBodyNode(), argNodes);
             for (const auto& a : argNodes) args.push_back(typeFromTypeArgNode(a, genericParams));
+        }
+        // P13-2/L3：五个内存模型特殊类型 Body[T]/Content[T]/Ref[T]/Mut[T]/Take[T]。
+        // 决议 §4：裸类名 Player 仍是 Body[Player] 的别名（走 ClassType 路径），
+        // 只有显式写 Body[...] 才得到 MemoryType。
+        if (base == "Body" || base == "Content" || base == "Ref" ||
+            base == "Mut" || base == "Take")        {
+            sema::MemoryRole role;
+            if      (base == "Body")    role = sema::MemoryRole::BODY;
+            else if (base == "Content") role = sema::MemoryRole::CONTENT;
+            else if (base == "Ref")     role = sema::MemoryRole::REF;
+            else if (base == "Mut")     role = sema::MemoryRole::MUT;
+            else                        role = sema::MemoryRole::TAKE;
+            const auto inner = args.empty() ? sema::getUnknownType() : args[0];
+            return std::make_shared<sema::MemoryType>(role, inner);
         }
         if (base == "list" || base == "series" || base == "array")        {
             // 元素类型**如实**保留：写 `list[any]` 就是「元素是 any」，
