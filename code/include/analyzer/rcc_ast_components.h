@@ -490,8 +490,12 @@ namespace ast {
     };
 
     class BreakExpressionNode : public ExpressionNode {
+        // P13-2/L2(Q-C)：`break value` 的携带值（空 = 不带值）
+        std::shared_ptr<ExpressionNode> valueNode;
     public:
-        explicit BreakExpressionNode(const Token &mainToken_);
+        explicit BreakExpressionNode(const Token &mainToken_,
+                                     const std::shared_ptr<ExpressionNode> &valueNode_ = nullptr);
+        [[nodiscard]] const std::shared_ptr<ExpressionNode>& getValueNode() const;
     };
 
     class ContinueExpressionNode : public ExpressionNode {

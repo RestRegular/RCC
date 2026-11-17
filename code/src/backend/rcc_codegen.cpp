@@ -2153,7 +2153,7 @@ namespace backend{
         }
         // break / continue
         if (std::dynamic_pointer_cast<ast::BreakExpressionNode>(node))        {
-            emitBreak();
+            emitBreak(node);
             return;
         }
         if (std::dynamic_pointer_cast<ast::ContinueExpressionNode>(node))        {
@@ -2275,7 +2275,7 @@ namespace backend{
             return;
         }
         if (std::dynamic_pointer_cast<ast::BreakExpressionNode>(node))        {
-            emitBreak();
+            emitBreak(node);
             return;
         }
         if (std::dynamic_pointer_cast<ast::ContinueExpressionNode>(node))        {
@@ -3369,6 +3369,11 @@ namespace backend{
         if (hasValue)        {
             if (valueIsFloat) _asm.inst("movsd", valueSlot, "%xmm0");
             else              _asm.mov(valueSlot, "%rax");
+            // P13-2/L2：ret value 在循环里等价 break value，写入循环结果槽。
+            if (!ctx.valueSlot.empty())            {
+                if (valueIsFloat) _asm.inst("movsd", "%xmm0", ctx.valueSlot);
+                else              _asm.mov("%rax", ctx.valueSlot);
+            }
         }
         _asm.jmp(ctx.breakLabel);
     }
@@ -3472,7 +3477,10 @@ namespace backend{
                 ? _asm.newLabel("loop_update")
                 : condLabel;
         // P13-2/L2(Q-C)：写了 `: T` 就是权威校验——循环体末值必须匹配 T。
-        // 注：循环自然结束取零值、break/ret value 参与合流属后续 L2 项。
+        // 同时分配结果值槽：自然结束写入 T 的零值，break/ret value 写入携带值，
+        // 循环出口统一从槽读出（决议 §12.2）。
+        std::string loopValueSlot;
+        sema::TypePtr loopAnnotatedType;
         if (!loop->getResultLabels().empty())        {
             const auto annotated = typeFromLabelList(loop->getResultLabels(), _currentGenericParams);
             if (!annotated || annotated->getKind() == sema::TypeKind::TK_UNKNOWN)            {
@@ -3493,8 +3501,16 @@ namespace backend{
                        "L2: loop body value does not match annotated result type: " + why);
                 return;
             }
+            loopAnnotatedType = annotated;
+            // 自然结束取 T 的零值（决议 §12.2）：标注循环先写零值到槽。
+            loopValueSlot = allocateTemp(annotated);
+            if (annotated->isFloat()) _asm.inst("pxor", "%xmm0", "%xmm0");
+            else                      _asm.movImm(0, "%rax");
+            if (annotated->isFloat()) _asm.inst("movsd", "%xmm0", loopValueSlot);
+            else                      _asm.mov("%rax", loopValueSlot);
         }
-        _loopStack.push_back({continueLabel, endLabel, _ehStack.size(), _scopeDrops.size()});
+        _loopStack.push_back({continueLabel, endLabel, _ehStack.size(), _scopeDrops.size(),
+                              loopValueSlot, loopAnnotatedType});
         pushScope();
         if (loop->getBodyNode())        {
             if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(loop->getBodyNode()))            {
@@ -3514,12 +3530,46 @@ namespace backend{
         }
         _asm.jmp(condLabel);
         _asm.label(endLabel);
+        if (!loopValueSlot.empty())        {
+            if (loopAnnotatedType && loopAnnotatedType->isFloat())
+                _asm.inst("movsd", loopValueSlot, "%xmm0");
+            else
+                _asm.mov(loopValueSlot, "%rax");
+        }
         popScope();
     }
-    void CodeGen::emitBreak()    {
+    void CodeGen::emitBreak(const std::shared_ptr<ast::ExpressionNode>& node)    {
         if (_loopStack.empty())        {
             fail("'break' outside of a loop");
             return;
+        }
+        const auto& ctx = _loopStack.back();
+        // P13-2/L2(Q-C)：`break value` 只有在带 `: T` 标注的循环里才合法
+        // （值写入结果槽）；无标注循环里带值是静默丢弃，明确报错。
+        const auto brk = std::dynamic_pointer_cast<ast::BreakExpressionNode>(node);
+        const auto breakValue = brk ? brk->getValueNode() : nullptr;
+        if (breakValue && ctx.valueSlot.empty())        {
+            failAt(node ? node->getPos() : utils::Pos{},
+                   "L2: 'break value' requires the loop to have a ': T' annotation");
+            return;
+        }
+        std::string valueSlot;
+        bool valueIsFloat = false;
+        if (breakValue)        {
+            // 先算值；类型必须匹配标注（决议 §13.2）
+            const auto vt = inferType(breakValue);
+            if (!checkAssignable(ctx.annotatedType, vt).empty())            {
+                failAt(breakValue->getPos(),
+                       "L2: break value does not match annotated result type: " +
+                       checkAssignable(ctx.annotatedType, vt));
+                return;
+            }
+            emitExpression(breakValue);
+            if (hasFailed()) return;
+            valueIsFloat = vt && vt->isFloat();
+            valueSlot = allocateTemp(valueIsFloat ? sema::getFloatType() : sema::getIntType());
+            if (valueIsFloat) _asm.inst("movsd", "%xmm0", valueSlot);
+            else              _asm.mov("%rax", valueSlot);
         }
         // P13-1（D4）：break 是终结性跳转，跳出后**不会**再走到循环体的词法
         // 出口，所以循环体内登记的拥有者必须在跳转前销毁，否则每 break 一次
@@ -3528,12 +3578,18 @@ namespace backend{
         //
         // 只销毁 dropDepth 之后（= 循环体这一层及其被子块）的登记项：
         // 循环外层的变量由外层出口负责，不能在这里提前释放。
-        for (size_t i = _scopeDrops.size(); i > _loopStack.back().dropDepth; --i)        {
+        for (size_t i = _scopeDrops.size(); i > ctx.dropDepth; --i)        {
             emitScopeDrops(i - 1, true);
         }
         // 只弹循环体内建立的帧；循环外的 try 帧要留着。
-        emitEhUnwindTo(_loopStack.back().ehDepth);
-        _asm.jmp(_loopStack.back().breakLabel);
+        emitEhUnwindTo(ctx.ehDepth);
+        if (!valueSlot.empty())        {
+            if (valueIsFloat) _asm.inst("movsd", valueSlot, "%xmm0");
+            else              _asm.mov(valueSlot, "%rax");
+            if (valueIsFloat) _asm.inst("movsd", "%xmm0", ctx.valueSlot);
+            else              _asm.mov("%rax", ctx.valueSlot);
+        }
+        _asm.jmp(ctx.breakLabel);
     }
     void CodeGen::emitContinue()    {
         if (_loopStack.empty())        {

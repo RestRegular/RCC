@@ -155,7 +155,7 @@ namespace backend
         void emitIf(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitBlock(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitLoop(const std::shared_ptr<ast::ExpressionNode>& node);
-        void emitBreak();
+        void emitBreak(const std::shared_ptr<ast::ExpressionNode>& node = nullptr);
         void emitContinue();
 
         // ---------- P7：异常（方案 B 显式帧链） ----------
@@ -521,6 +521,10 @@ namespace backend
             // 跳转前把这一区间里登记的拥有者销毁。只销毁「循环体这一层」
             // 的变量 —— 循环外层的变量由外层出口负责。
             size_t dropDepth = 0;
+            // P13-2/L2(Q-C)：带 `: T` 标注的循环，break/ret value 存入此槽，
+            // 循环出口统一从槽读出；空串表示无标注（break 不许带值）。
+            std::string valueSlot;
+            std::shared_ptr<sema::Type> annotatedType;
         };
         std::vector<LoopContext> _loopStack;
 

@@ -50,20 +50,24 @@ namespace parser {
     }
 
     ExpressionNodePtr Parser::buildBreakExpression(){
-        // P13-2/L0-5：`break <value>` 必须报错 —— break 只退循环不携带值。
-        // 现状 `break 42` 的 AST 是 BreakExpressionNode 后面跟一个独立的 42，
-        // 值被静默丢弃。这里在 break 后紧跟表达式起始 token 时直接报错。
-        const auto t = currentToken().getType();
+        // P13-2/L2(Q-C)：`break value` 收集携带值（AST 的 valueNode）。
+        // 语义校验移到 codegen：无 `: T` 标注的循环里 break value 才报错
+        // （防止值被静默丢弃），有标注时参与值合流。
+        // 决议 §12.1：循环体块的 ret value 等价 break value，
+        // 所以 emitRetFromLoop 与 emitBreak 共用同一套值槽机制。
+        const auto breakToken = currentToken();
+        const auto t = breakToken.getType();
         const bool hasValue =
             !nextTokenIs(TokenType::TOKEN_NEWLINE) &&
             !nextTokenIs(TokenType::TOKEN_RBRACE) &&
             !nextTokenIs(TokenType::TOKEN_STREAM_END) &&
             t != TokenType::TOKEN_STREAM_END;
+        ExpressionNodePtr value = nullptr;
         if (hasValue)        {
-            recordSemanticError(currentToken(),
-                "L0-5: 'break' cannot carry a value; remove the value after break");
+            next();
+            value = buildExpression(Precedence::LOWEST);
         }
-        return std::make_shared<BreakExpressionNode>(currentToken());
+        return std::make_shared<BreakExpressionNode>(breakToken, value);
     }
 
     ExpressionNodePtr Parser::buildClassExpression(){
