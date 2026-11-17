@@ -76,6 +76,8 @@ namespace backend
             }
             case sema::TypeKind::TK_GENERIC:
                 return "T0";
+            case sema::TypeKind::TK_POOL:
+                return "Q";
             case sema::TypeKind::TK_MEMORY:
             {
                 const auto mt = std::static_pointer_cast<sema::MemoryType>(type);

@@ -53,6 +53,8 @@ namespace backend{
             if (name == "float") return sema::getFloatType();
             if (name == "str")   return sema::getStrType();
             if (name == "ptr")   return sema::getPtrType();
+            // P13-2/L3-A（决议 §1.1）：Pool 是标准库普通类型，不做关键字。
+            if (name == "Pool")  return sema::getPoolType();
             // P12/G13：`any` 作为显式标注。原仓库 builtInTypes 里有 any
             // （rcc_symbol.cpp:650），ds.rio:32 `fun copy(arg): any`、
             // math.rio:26 `fun pow(a, times: int): any` 都在用。
@@ -758,6 +760,21 @@ namespace backend{
         if (_moveStates.empty()) _moveStates.emplace_back();
         // 内层遮蔽外层：只在最内层登记，isVarMoved 由内向外查。
         _moveStates.back()[name] = false;
+    }
+    std::string CodeGen::findBirthPlaceLabel(
+        const std::vector<std::shared_ptr<ast::LabelNode>>& labels) const    {
+        // 决议 §2.2：出生地标签是 Pool 类型的变量名。标签区顺序不敏感，
+        // 判定顺序「内置类型 → Pool → 自定义 → 出生地」（Q-A）。
+        // 这里只认「能解析为 Pool 类型局部变量」的标签。
+        for (const auto& label : labels)        {
+            if (!label) continue;
+            const auto name = label->getFullLabel();
+            if (name.empty()) continue;
+            const auto slot = const_cast<CodeGen*>(this)->lookupVar(name);
+            if (slot && slot->type && slot->type->getKind() == sema::TypeKind::TK_POOL)
+                return name;
+        }
+        return std::string();
     }
     void CodeGen::registerBorrow(const std::string& name, const sema::TypePtr& type,
                                  const std::string& addr)    {
@@ -1535,6 +1552,13 @@ namespace backend{
                     // 类型按普通全局函数 / 类名解析，不能落到「未知函数按 int」。
                     if (mid)
                     {
+                        // P13-2/L3-A：Pool 静态方法返回 Pool 类型
+                        if (const auto ownerId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                            ownerId && ownerId->getName() == "Pool" &&
+                            (mid->getName() == "fixed" || mid->getName() == "boxed" ||
+                             mid->getName() == "chunked"))                        {
+                            return sema::getPoolType();
+                        }
                         if (const auto modId =
                                 std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
                             modId && isModuleName(modId->getName()))
@@ -3323,6 +3347,11 @@ namespace backend{
                     (type && type->getKind() == sema::TypeKind::TK_MEMORY) ||
                     (type && type->getKind() == sema::TypeKind::TK_CLASS);
                 if (isMemoryModelVar) registerMoveVar(name);
+                // P13-2/L3-A（决议 §2）：记录出生地标签（Pool 变量名）。
+                if (def->hasLabels())                {
+                    const auto birth = findBirthPlaceLabel(def->getLabelNodes());
+                    if (!birth.empty()) _birthPlaces[name] = birth;
+                }
             }
         }
     }
@@ -5418,6 +5447,34 @@ namespace backend{
                     if (const auto fnId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode()))                    {
                         emitModuleFunctionCall(fnId->getName(), node, args);
                         return;
+                    }
+                }
+                // P13-2/L3-A（决议 §1.1）：Pool 标准库类型的静态方法
+                // Pool.fixed(n) / Pool.boxed() / Pool.chunked(block: n)。
+                // A 阶段先返回最小 Pool 句柄（分配 8 字节头），真实分配器留待 B 阶段。
+                if (const auto ownerId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                    ownerId && ownerId->getName() == "Pool")            {
+                    if (const auto fnId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode()))                    {
+                        const auto& m = fnId->getName();
+                        if (m == "fixed" || m == "boxed" || m == "chunked")                        {
+                            // 求值实参（fixed 容量 / chunked block）后丢弃，A 阶段不存容量。
+                            // 命名参数 `block: 64` 在 AST 里是 InfixExpressionNode(op=COLON)，
+                            // 必须只求值右侧 value，不能当变量读左侧名字。
+                            for (const auto& a : args)                            {
+                                if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(a);
+                                    inf && inf->getOpToken().getType() == core::TokenType::TOKEN_COLON)
+                                    emitExpression(inf->getRightNode());
+                                else
+                                    emitExpression(a);
+                            }
+                            // 最小句柄：分配 8 字节（core_alloc(8, 8) -> ptr）。
+                            _asm.movImm(8, "%rcx");
+                            _asm.movImm(8, "%rdx");
+                            _asm.subRsp(32);
+                            _asm.call("core_alloc");
+                            _asm.addRsp(32);
+                            return;
+                        }
                     }
                 }
                 emitMethodCall(member, node, args);

@@ -33,6 +33,7 @@ namespace sema
         TK_PTR,
         TK_GENERIC,   // P10：泛型形参占位（`fun f[T](x: T)` 里的 T）
         TK_MEMORY,    // P13-2/L3：内存模型特殊类型（Body/Content/Ref/Mut/Take）
+        TK_POOL,      // P13-2/L3-A：Pool 类型（标准库普通类型，管理对象出生地）
         TK_UNKNOWN,   // 尚未推导出，用于报错前占位
     };
 
@@ -61,7 +62,8 @@ namespace sema
         {
             return _kind == TypeKind::TK_STR || _kind == TypeKind::TK_LIST ||
                    _kind == TypeKind::TK_DICT || _kind == TypeKind::TK_CLASS ||
-                   _kind == TypeKind::TK_PTR || _kind == TypeKind::TK_MEMORY;
+                   _kind == TypeKind::TK_PTR || _kind == TypeKind::TK_MEMORY ||
+                   _kind == TypeKind::TK_POOL;
         }
         [[nodiscard]] bool isNumeric() const { return isInteger() || isFloat(); }
 
@@ -100,6 +102,7 @@ namespace sema
             case TypeKind::TK_CLASS: return "class";
             case TypeKind::TK_PTR:   return "ptr";
             case TypeKind::TK_MEMORY: return "memory";
+            case TypeKind::TK_POOL:   return "Pool";
             default:              return "unknown";
             }
         }
@@ -316,6 +319,25 @@ namespace sema
     private:
         std::string _name;
     };
+
+    // ---------- P13-2/L3-A：Pool 类型 ----------
+    // Pool 是标准库普通类型（决议 §1.1），不做关键字。这里只承载类型身份，
+    // 具体分配策略（fixed/boxed/chunked）由内建静态方法处理（codegen）。
+    class PoolType final : public Type
+    {
+    public:
+        PoolType() : Type(TypeKind::TK_POOL) {}
+        [[nodiscard]] std::string toString() const override { return "Pool"; }
+        [[nodiscard]] bool equals(const TypePtr& other) const override
+        {
+            return other && other->getKind() == TypeKind::TK_POOL;
+        }
+    };
+    inline TypePtr getPoolType()
+    {
+        static auto t = std::make_shared<PoolType>();
+        return t;
+    }
 
     // ---------- P13-2/L3：内存模型特殊类型 ----------
     //
