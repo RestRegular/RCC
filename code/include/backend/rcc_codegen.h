@@ -150,6 +150,8 @@ namespace backend
                                    size_t argStart = 0,
                                    const std::vector<bool>* annotated = nullptr);
         void emitReturn(const std::shared_ptr<ast::ExpressionNode>& node);
+        // P13-2/L1：`ret` 在循环里退最近作用域（等价 break），与退函数的 return 分开。
+        void emitRetFromLoop(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitIf(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitBlock(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitLoop(const std::shared_ptr<ast::ExpressionNode>& node);

@@ -479,10 +479,14 @@ namespace ast {
 
     class ReturnExpressionNode : public ExpressionNode {
         std::shared_ptr<ExpressionNode> returnNode;
+        // P13-2/L1：`return` 只退函数（true）；`ret` 退最近可返回值作用域（false）。
+        bool _exitsFunction{true};
     public:
         ReturnExpressionNode(const Token &mainToken_,
-            const std::shared_ptr<ExpressionNode> &returnNode);
+            const std::shared_ptr<ExpressionNode> &returnNode,
+            bool exitsFunction_ = true);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getReturnNode() const;
+        [[nodiscard]] bool exitsFunction() const;
     };
 
     class BreakExpressionNode : public ExpressionNode {

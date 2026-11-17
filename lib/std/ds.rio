@@ -125,7 +125,7 @@ fun _dsKeyIndexOfStr(d: dict, key: str): int {
         var kptr: ptr = kp
         var ks: str = kptr
         if ks == key {
-            ret i
+            return i
         }
         i += 1
     }
@@ -139,7 +139,7 @@ fun _dsKeyIndexOfScalar(d: dict, key: int): int {
     var i: int = 0
     while i < n {
         if _dsLoadI64(scratch, keys + i * 8) == key {
-            ret i
+            return i
         }
         i += 1
     }
@@ -507,7 +507,7 @@ fun contains[T](xs: list[T], t: T): bool {
     var i: int = 0
     while i < _dsLen(xs) {
         if xs[i] == t {
-            ret true
+            return true
         }
         i += 1
     }
@@ -523,7 +523,7 @@ fun indexOf[T](xs: list[T], t: T): int {
     var i: int = 0
     while i < _dsLen(xs) {
         if xs[i] == t {
-            ret i
+            return i
         }
         i += 1
     }

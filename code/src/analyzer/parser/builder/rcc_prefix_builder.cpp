@@ -388,14 +388,17 @@ namespace parser {
                         if (currentTokenIs(TokenType::TOKEN_LBRACE))
                         {
                             bodyNode = buildBraceExpression();
-                        } else if (currentTokenIs(TokenType::TOKEN_RETURN))
+                        } else if (currentTokenIs(TokenType::TOKEN_RETURN) ||
+                                   currentTokenIs(TokenType::TOKEN_RET))
                         {
                             bodyNode = buildReturnExpression();
                             skipNextNewLineToken();
                         } else
                         {
                             const auto &expression = buildExpression(Precedence::LOWEST);
-                            bodyNode = std::make_shared<ReturnExpressionNode>(expression->getMainToken(), expression);
+                            // P13-2/L1：匿名函数的简写 `-> expr` 等价于 `-> ret expr`，
+                            // 退最近作用域，所以 exitsFunction=false。
+                            bodyNode = std::make_shared<ReturnExpressionNode>(expression->getMainToken(), expression, false);
                             skipNextNewLineToken();
                         }
                         return std::make_shared<AnonFunctionDefinitionNode>(
@@ -454,7 +457,10 @@ namespace parser {
             next();
             expression = buildExpression(Precedence::LOWEST);
         }
-        return std::make_shared<ReturnExpressionNode>(returnToken, expression);
+        // P13-2/L1：`return` 只退函数（exitsFunction=true），
+        // `ret` 退最近可返回值作用域（exitsFunction=false）。
+        const bool exitsFunction = currentTokenIs(TokenType::TOKEN_RETURN);
+        return std::make_shared<ReturnExpressionNode>(returnToken, expression, exitsFunction);
     }
 
     ExpressionNodePtr Parser::buildStringExpression(){

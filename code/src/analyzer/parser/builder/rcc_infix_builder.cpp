@@ -54,14 +54,16 @@ namespace parser {
             if (currentTokenIs(TokenType::TOKEN_LBRACE))
             {
                 right = buildBraceExpression();
-            } else if (currentTokenIs(TokenType::TOKEN_RETURN))
+            } else if (currentTokenIs(TokenType::TOKEN_RETURN) ||
+                       currentTokenIs(TokenType::TOKEN_RET))
             {
                 right = buildReturnExpression();
                 skipNextNewLineToken();
             } else
             {
                 const auto &expression = buildExpression(Precedence::LOWEST);
-                right = std::make_shared<ReturnExpressionNode>(expression->getMainToken(), expression);
+                // P13-2/L1：匿名函数简写 `-> expr` 等价于 `-> ret expr`，退最近作用域。
+                right = std::make_shared<ReturnExpressionNode>(expression->getMainToken(), expression, false);
                 skipNextNewLineToken();
             }
             return std::make_shared<AnonFunctionDefinitionNode>(opToken, left, nullptr, std::vector<std::shared_ptr<LabelNode>>{}, opToken, right);

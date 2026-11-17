@@ -51,7 +51,7 @@ namespace core {
         {"link", TokenType::TOKEN_LINK},
         {"var", TokenType::TOKEN_VAR},
         {"encapsulated", TokenType::TOKEN_ENCAPSULATED},
-        {"ret", TokenType::TOKEN_RETURN},
+        {"ret", TokenType::TOKEN_RET},
         {"+", TokenType::TOKEN_PLUS},
         {"-", TokenType::TOKEN_MINUS},
         {"*", TokenType::TOKEN_STAR},
@@ -296,6 +296,7 @@ namespace core {
         case TokenType::TOKEN_PLUS_ASSIGN: return "TOKEN_PLUS_ASSIGN";
         case TokenType::TOKEN_QUESTION: return "TOKEN_QUESTION";
         case TokenType::TOKEN_RETURN: return "TOKEN_RETURN";
+        case TokenType::TOKEN_RET: return "TOKEN_RET";
         case TokenType::TOKEN_SLASH: return "TOKEN_SLASH";
         case TokenType::TOKEN_SLASH_ASSIGN: return "TOKEN_SLASH_ASSIGN";
         case TokenType::TOKEN_STRING: return "TOKEN_STRING";

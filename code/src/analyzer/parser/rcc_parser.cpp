@@ -75,6 +75,8 @@ namespace parser {
         {TokenType::TOKEN_CLASS, &Parser::buildClassExpression},
         // 返回语句
         {TokenType::TOKEN_RETURN, &Parser::buildReturnExpression},
+        // P13-2/L1：`ret` 退最近可返回值作用域，与 return 分开 token、共用构建函数。
+        {TokenType::TOKEN_RET, &Parser::buildReturnExpression},
         // 退出循环语句
         {TokenType::TOKEN_BREAK, &Parser::buildBreakExpression},
         // 跳过本次循环

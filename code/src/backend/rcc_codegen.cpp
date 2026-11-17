@@ -3194,6 +3194,12 @@ namespace backend{
     }
     void CodeGen::emitReturn(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node);
+        // P13-2/L1：`return` 只退函数；`ret` 退最近可返回值作用域 ——
+        // 在循环里就是退循环（等价 break），不在循环里则退函数（保持兼容）。
+        if (ret && !ret->exitsFunction() && !_loopStack.empty())        {
+            emitRetFromLoop(node);
+            return;
+        }
         // P9：只有当返回类型是**显式标注**时才校验 ret 的值。
         // 推断出来的返回类型来自「函数体里第一个 ret」，拿它去约束
         // 其余分支只会自相矛盾；而标注是用户的承诺，可以查。
@@ -3320,6 +3326,44 @@ namespace backend{
         if (!_returnLabel.empty())        {
             _asm.jmp(_returnLabel);
         }
+    }
+    void CodeGen::emitRetFromLoop(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node);
+        // P13-2/L1 / 决议 §12.1、§13.1：`ret` 在循环里退最近作用域，
+        // 等价 `break value`。行为对齐 emitBreak：
+        //   1. 先算值并存临时槽（drop 调用会冲寄存器）
+        //   2. 只销毁「循环体这一层」的拥有者（不是全部 scope 链）
+        //   3. 只弹循环体内建立的 try 帧（不 unwind 到函数顶）
+        //   4. 跳循环的 breakLabel
+        // 与 break 的差别：break 不允许带值（L0-5 已设为报错），
+        // 而 `ret value` 在循环里是合法的循环出口值（L2 的类型标注/合流再消费）。
+        const auto& ctx = _loopStack.back();
+        std::string valueSlot;
+        bool valueIsFloat = false;
+        bool hasValue = false;
+        if (ret && ret->getReturnNode())        {
+            emitExpression(ret->getReturnNode());
+            if (hasFailed()) return;
+            const auto vt = inferType(ret->getReturnNode());
+            valueIsFloat = vt && vt->isFloat();
+            hasValue = !(vt && vt->isVoid());
+            if (hasValue)            {
+                valueSlot = allocateTemp(valueIsFloat ? sema::getFloatType() : sema::getIntType());
+                if (valueIsFloat) _asm.inst("movsd", "%xmm0", valueSlot);
+                else              _asm.mov("%rax", valueSlot);
+            }
+        }
+        // 只销毁循环体层及其子块（口径同 emitBreak）
+        for (size_t i = _scopeDrops.size(); i > ctx.dropDepth; --i)        {
+            emitScopeDrops(i - 1, true);
+        }
+        // 只弹循环体内建立的 try 帧（口径同 emitBreak）
+        emitEhUnwindTo(ctx.ehDepth);
+        if (hasValue)        {
+            if (valueIsFloat) _asm.inst("movsd", valueSlot, "%xmm0");
+            else              _asm.mov(valueSlot, "%rax");
+        }
+        _asm.jmp(ctx.breakLabel);
     }
     void CodeGen::emitIf(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(node);

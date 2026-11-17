@@ -130,6 +130,7 @@ namespace core {
         TOKEN_RBRACE,
         TOKEN_UNTIL,
         TOKEN_RETURN,
+        TOKEN_RET,   // P13-2/L1：`ret` 退最近可返回值作用域（与 TOKEN_RETURN 分开）
         TOKEN_SLASH,
         TOKEN_SLASH_ASSIGN,
         TOKEN_STREAM_END,

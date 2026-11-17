@@ -343,7 +343,7 @@ fun find(content: str, part: str, startIndex: int = 0): int {
             j += 1
         }
         if ok {
-            ret i
+            return i
         }
         i += 1
     }
@@ -467,7 +467,7 @@ fun _strHasByte(s: str, b: int): bool {
     var i: int = 0
     while i < n {
         if s[i] == b {
-            ret true
+            return true
         }
         i += 1
     }

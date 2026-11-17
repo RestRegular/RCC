@@ -208,12 +208,16 @@ namespace ast {
     }
 
     ReturnExpressionNode::ReturnExpressionNode(const Token &mainToken_,
-        const std::shared_ptr<ExpressionNode> &returnNode)
+        const std::shared_ptr<ExpressionNode> &returnNode, bool exitsFunction_)
             : ExpressionNode(mainToken_, NodeType::PREFIX),
-     returnNode(returnNode){}
+     returnNode(returnNode), _exitsFunction(exitsFunction_){}
 
     std::shared_ptr<ExpressionNode> ReturnExpressionNode::getReturnNode() const {
         return returnNode;
+    }
+
+    bool ReturnExpressionNode::exitsFunction() const {
+        return _exitsFunction;
     }
 
     BreakExpressionNode::BreakExpressionNode(const Token &mainToken_)
