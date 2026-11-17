@@ -761,6 +761,20 @@ namespace backend{
         // 内层遮蔽外层：只在最内层登记，isVarMoved 由内向外查。
         _moveStates.back()[name] = false;
     }
+    std::string CodeGen::poolNewReceiverName(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        // `pool.new[T](args)`：FunctionCallNode(callee=Infix(DOT,
+        // left=Identifier(pool), right=IndexExpression(new, [T])))。
+        const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node);
+        if (!call) return std::string();
+        const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
+        if (!member || member->getOpToken().getType() != core::TokenType::TOKEN_DOT) return std::string();
+        const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode());
+        if (!idx) return std::string();
+        const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode());
+        if (!mid || mid->getName() != "new") return std::string();
+        const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+        return recv ? recv->getName() : std::string();
+    }
     std::string CodeGen::findBirthPlaceLabel(
         const std::vector<std::shared_ptr<ast::LabelNode>>& labels) const    {
         // 决议 §2.2：出生地标签是 Pool 类型的变量名。标签区顺序不敏感，
@@ -1547,6 +1561,19 @@ namespace backend{
             // P6：方法调用 `p.sum()` 的返回类型从方法定义里取
             if (const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(callee))            {
                 if (member->getOpToken().getType() == core::TokenType::TOKEN_DOT)                {
+                    // P13-2/L3-B（决议 §1.4）：`pool.new[T](args)` 的形态是
+                    // Infix(DOT, pool, IndexExpression(new, [T]))。
+                    // 返回类型就是 T（构造器选择，必须与构造返回类型一致）。
+                    if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode()))                {
+                        if (const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode());
+                            mid && mid->getName() == "new")                        {
+                            if (const auto bracket = std::dynamic_pointer_cast<ast::BracketExpressionNode>(idx->getIndexNode()))                            {
+                                std::vector<std::shared_ptr<ast::ExpressionNode>> argNodes;
+                                flattenTypeArgs(bracket->getBodyNode(), argNodes);
+                                if (!argNodes.empty()) return typeFromTypeArgNode(argNodes[0], _currentGenericParams);
+                            }
+                        }
+                    }
                     const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
                     // P8：`mod.fn(...)` / `mod.Cls(...)` —— 模块在加载期内联，
                     // 类型按普通全局函数 / 类名解析，不能落到「未知函数按 int」。
@@ -3348,10 +3375,20 @@ namespace backend{
                     (type && type->getKind() == sema::TypeKind::TK_CLASS);
                 if (isMemoryModelVar) registerMoveVar(name);
                 // P13-2/L3-A（决议 §2）：记录出生地标签（Pool 变量名）。
-                if (def->hasLabels())                {
-                    const auto birth = findBirthPlaceLabel(def->getLabelNodes());
-                    if (!birth.empty()) _birthPlaces[name] = birth;
+                // P13-2/L3-A/B（决议 §2/§1.4）：出生地记录与一致性检查。
+                // 标签区出生地、pool.new 绑定二者只能指定一次且必须一致。
+                const auto birth = def->hasLabels()
+                    ? findBirthPlaceLabel(def->getLabelNodes()) : std::string();
+                const auto newPool = hasInit
+                    ? poolNewReceiverName(def->getValueNode()) : std::string();
+                if (!birth.empty() && !newPool.empty() && birth != newPool)                {
+                    failAt(def->getNameNode()->getPos(),
+                           "L3: birth place '" + birth + "' conflicts with pool.new on '" +
+                           newPool + "' (specify the birth place only once)");
+                    return;
                 }
+                if (!birth.empty()) _birthPlaces[name] = birth;
+                else if (!newPool.empty()) _birthPlaces[name] = newPool;
             }
         }
     }
@@ -5474,6 +5511,28 @@ namespace backend{
                             _asm.call("core_alloc");
                             _asm.addRsp(32);
                             return;
+                        }
+                    }
+                }
+                // P13-2/L3-B（决议 §1.4）：`pool.new[T](args)` —— 方法名带类型实参。
+                // AST: Infix(DOT, pool, IndexExpression(new, [T]))。
+                // B 阶段先复用 T 的构造器（pool 句柄暂不参与分配），
+                // 真实池内分配待后续语义阶段。
+                if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode()))                {
+                    if (const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode());
+                        mid && mid->getName() == "new")                    {
+                        if (const auto bracket = std::dynamic_pointer_cast<ast::BracketExpressionNode>(idx->getIndexNode()))                        {
+                            std::vector<std::shared_ptr<ast::ExpressionNode>> typeArgs;
+                            flattenTypeArgs(bracket->getBodyNode(), typeArgs);
+                            if (!typeArgs.empty())                            {
+                                const auto t = typeFromTypeArgNode(typeArgs[0], _currentGenericParams);
+                                if (t && t->getKind() == sema::TypeKind::TK_CLASS)                                {
+                                    emitConstructorCall(t->toString(), node, args);
+                                    return;
+                                }
+                                failAt(node->getPos(), "L3: pool.new[T] requires a class type T");
+                                return;
+                            }
                         }
                     }
                 }
