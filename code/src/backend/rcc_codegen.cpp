@@ -2030,6 +2030,7 @@ namespace backend{
         // （此时类表已齐，前向引用不成问题）。
         if (validateL0FieldTypes(classNodes)) return;
         if (validateL0LabelConflicts(program)) return;
+        if (validateL3TakeUsage(program)) return;
         // P11：重载签名必须在发射**任何**函数体之前登记完 —— 否则前向调用
         // （f1 里调用文件后面才定义的 f2）拿不到候选签名，决议就成了猜。
         // 必须排在 registerClass 之后：形参类型 `x: Point` 要靠类登记表解析。
@@ -6308,6 +6309,75 @@ namespace backend{
         }
         return hasFailed();
     }
+    bool CodeGen::validateL3TakeUsage(const std::shared_ptr<ast::ProgramNode>& program)    {
+        // 决议 §7.3：Take[T] 是二等值，只作为函数形参类型出现；
+        // `var x: Take[T]` / `-> Take[T]` / 字段 `Take[T]` 均编译错误。
+        const auto isTake = [&](const std::shared_ptr<ast::LabelNode>& label) {
+            if (!label) return false;
+            const auto t = typeFromLabelNode(label, _currentGenericParams);
+            return t && t->getKind() == sema::TypeKind::TK_MEMORY &&
+                   std::dynamic_pointer_cast<sema::MemoryType>(t)->getRole() == sema::MemoryRole::TAKE;
+        };
+        const auto checkLabels = [&](const std::vector<std::shared_ptr<ast::LabelNode>>& labels,
+                                     const utils::Pos& pos, const std::string& where) {
+            for (const auto& label : labels)            {
+                if (isTake(label))                {
+                    failAt(pos, "L3: Take[T] cannot be used as " + where +
+                                "; it is only valid as a function parameter type");
+                    return true;
+                }
+            }
+            return false;
+        };
+        std::vector<std::shared_ptr<ast::ExpressionNode>> worklist;
+        for (const auto& stmt : program->getStatements())        {
+            if (const auto es = std::dynamic_pointer_cast<ast::ExpressionStatementNode>(stmt))
+                worklist.push_back(es->getExpression());
+        }
+        while (!worklist.empty())        {
+            auto node = worklist.back();
+            worklist.pop_back();
+            if (!node) continue;
+            if (const auto varDef = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(node))            {
+                for (const auto& def : varDef->getVarDefs())                {
+                    if (!def || !def->getNameNode()) continue;
+                    if (checkLabels(def->getLabelNodes(), def->getNameNode()->getPos(),
+                                    "the type of variable '" + def->getNameNode()->getName() + "'")) return true;
+                }
+                continue;
+            }
+            if (const auto fn = std::dynamic_pointer_cast<ast::FunctionDefinitionNode>(node))            {
+                if (checkLabels(fn->getLabelNodes(), node->getPos(),
+                                "a function return type")) return true;
+                worklist.push_back(fn->getBodyNode());
+                continue;
+            }
+            if (const auto cls = std::dynamic_pointer_cast<ast::ClassDefinitionNode>(node))            {
+                worklist.push_back(cls->getBodyNode());
+                continue;
+            }
+            if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))            {
+                for (const auto& e : block->getBodyExpressions()) worklist.push_back(e);
+                continue;
+            }
+            if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(node))            {
+                for (const auto& b : cond->getBranchNodes()) worklist.push_back(b);
+                continue;
+            }
+            if (const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(node))            {
+                worklist.push_back(branch->getBodyNode());
+                continue;
+            }
+            if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(node))            {
+                worklist.push_back(loop->getBodyNode());
+                continue;
+            }
+            if (const auto stmt = std::dynamic_pointer_cast<ast::ExpressionStatementNode>(node))            {
+                worklist.push_back(stmt->getExpression());
+            }
+        }
+        return hasFailed();
+    }
     void CodeGen::registerClass(const std::shared_ptr<ast::ClassDefinitionNode>& node)    {
         if (!node) return;
         // P10：`class Box[T]` 的类名节点是 IndexExpressionNode(Identifier Box, Bracket([T]))。
@@ -7621,6 +7691,11 @@ namespace backend{
                     return w;
                 }();
                 if (firstWord == "any") continue;
+                // P13-2/L3：五个特殊类型名带 `[...]`（如 Take[Player]），
+                // resolveTypeName 只认裸名；paramTypes 那条路径已由
+                // typeFromTypeArgNode 正确解析，这里跳过字符串校验即可。
+                if (firstWord == "Body" || firstWord == "Content" ||
+                    firstWord == "Ref" || firstWord == "Mut" || firstWord == "Take") continue;
                 const auto t = resolveTypeName(annotations[i]);
                 if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN)                {
                     const std::string pname = (i < paramNames.size()) ? paramNames[i] : std::to_string(i);

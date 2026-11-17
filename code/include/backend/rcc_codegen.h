@@ -672,6 +672,8 @@ namespace backend
         bool validateL0FieldTypes(
             const std::vector<std::shared_ptr<ast::ClassDefinitionNode>>& classNodes);
         bool validateL0LabelConflicts(const std::shared_ptr<ast::ProgramNode>& program);
+        // P13-2/L3(决议 §7.3)：Take[T] 只能作函数形参，不可作变量/字段/返回类型。
+        bool validateL3TakeUsage(const std::shared_ptr<ast::ProgramNode>& program);
         // 阶段 B：递归算出字段偏移与对象大小（基类先算）。
         void computeLayout(const std::string& name);
         // 阶段 C：把构造器与方法作为独立函数发射出去。
