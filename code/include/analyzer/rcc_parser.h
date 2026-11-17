@@ -100,6 +100,8 @@ namespace parser {
 
         // 前缀表达式构建函数
         ExpressionNodePtr buildUnaryExpression();
+        // P13-2/L3：`&` 前缀取引用（只对 Body 变量）
+        ExpressionNodePtr buildRefExpression();
         ExpressionNodePtr buildBoolExpression();
         ExpressionNodePtr buildBreakExpression();
         ExpressionNodePtr buildClassExpression();

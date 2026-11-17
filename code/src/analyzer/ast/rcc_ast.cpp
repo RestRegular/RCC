@@ -57,6 +57,7 @@ namespace ast {
             case NodeType::POWER: return "POWER";
             case NodeType::PROGRAM: return "PROGRAM";
             case NodeType::RETURN: return "RETURN";
+            case NodeType::REF_EXPRESSION: return "REF_EXPRESSION";
             case NodeType::STRING: return "STRING";
             case NodeType::TERNARY: return "TERNARY";
             case NodeType::UNDEFINED: return "UNDEFINED";

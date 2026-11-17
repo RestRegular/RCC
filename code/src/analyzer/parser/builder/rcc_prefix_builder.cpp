@@ -41,6 +41,21 @@ namespace parser {
         return std::make_shared<UnaryExpressionNode>(opToken, opToken, expression);
     }
 
+    ExpressionNodePtr Parser::buildRefExpression() {
+        // P13-2/L3（决议 §7.2）：`&bob` 只接受 Body 变量（标识符），
+        // 产出 Ref[T]。子引用 &p.name / 字面量 / 表达式暂不支持，明确报错。
+        const auto opToken = currentToken();
+        next();
+        const auto operand = buildExpression(Precedence::LOWEST);
+        if (!std::dynamic_pointer_cast<IdentifierNode>(operand))        {
+            recordSemanticError(opToken,
+                "L3: '&' requires a Body variable; sub-references (&p.name), "
+                "literals and expressions are not supported");
+            return nullptr;
+        }
+        return std::make_shared<RefExpressionNode>(opToken, operand);
+    }
+
     ExpressionNodePtr Parser::buildIntegerExpression() {
         return std::make_shared<IntegerLiteralNode>(currentToken());
     }

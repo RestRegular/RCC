@@ -53,6 +53,8 @@ namespace parser {
         {TokenType::TOKEN_PLUS, &Parser::buildPrefixExpression},
         {TokenType::TOKEN_MINUS, &Parser::buildPrefixExpression},
         {TokenType::TOKEN_NOT, &Parser::buildUnaryExpression},
+        // P13-2/L3(Q-E)：`&` 前缀取引用（位运算暂不做，前缀无歧义）
+        {TokenType::TOKEN_BIT_AND, &Parser::buildRefExpression},
         {TokenType::TOKEN_STAR, &Parser::buildUnaryExpression},
         {TokenType::TOKEN_DOUBLE_STAR, &Parser::buildUnaryExpression},
         // 变量定义

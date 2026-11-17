@@ -489,6 +489,16 @@ namespace ast {
         [[nodiscard]] bool exitsFunction() const;
     };
 
+    // P13-2/L3（决议 §7.2）：`&bob` 壳子取引用，产出 Ref[T]。
+    // 只接受 Body 变量（IdentifierNode）；子引用 &p.name 暂不支持。
+    class RefExpressionNode final : public ExpressionNode {
+        std::shared_ptr<ExpressionNode> operand;
+    public:
+        explicit RefExpressionNode(const Token& opToken,
+                                   const std::shared_ptr<ExpressionNode>& operand);
+        [[nodiscard]] const std::shared_ptr<ExpressionNode>& getOperand() const;
+        [[nodiscard]] NodeType getRealType() const override;
+    };
     class BreakExpressionNode : public ExpressionNode {
         // P13-2/L2(Q-C)：`break value` 的携带值（空 = 不带值）
         std::shared_ptr<ExpressionNode> valueNode;

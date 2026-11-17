@@ -220,6 +220,17 @@ namespace ast {
         return _exitsFunction;
     }
 
+    RefExpressionNode::RefExpressionNode(const Token &opToken,
+        const std::shared_ptr<ExpressionNode> &operand)
+        : ExpressionNode(opToken, NodeType::REF_EXPRESSION), operand(operand) {}
+
+    const std::shared_ptr<ExpressionNode>& RefExpressionNode::getOperand() const {
+        return operand;
+    }
+
+    NodeType RefExpressionNode::getRealType() const {
+        return NodeType::REF_EXPRESSION;
+    }
     BreakExpressionNode::BreakExpressionNode(const Token &mainToken_,
         const std::shared_ptr<ExpressionNode> &valueNode_)
         : ExpressionNode(mainToken_, NodeType::PREFIX), valueNode(valueNode_) {}

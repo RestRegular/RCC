@@ -77,6 +77,7 @@ namespace ast {
         PROGRAM, // 抽象语法树根节点，表示整个程序结构
         RANGER, // 表示范围节点
         RETURN, // return返回语句节点
+        REF_EXPRESSION, // P13-2/L3：`&bob` 壳子取引用（产出 Ref[T]）
         STRING, // 字符串字面量节点
         TERNARY, // 三元条件表达式节点
         UNARY, // 一元表达式节点

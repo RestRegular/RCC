@@ -1500,6 +1500,11 @@ namespace backend{
     }
     sema::TypePtr CodeGen::inferType(const std::shared_ptr<ast::ExpressionNode>& node) const    {
         if (!node) return sema::getVoidType();
+        // P13-2/L3（决议 §7.2）：`&bob` -> Ref[inner]，inner 是操作数的类型。
+        if (const auto refExpr = std::dynamic_pointer_cast<ast::RefExpressionNode>(node))        {
+            const auto inner = inferType(refExpr->getOperand());
+            return std::make_shared<sema::MemoryType>(sema::MemoryRole::REF, inner);
+        }
         if (std::dynamic_pointer_cast<ast::IntegerLiteralNode>(node)) return sema::getIntType();
         if (std::dynamic_pointer_cast<ast::FloatLiteralNode>(node)) return sema::getFloatType();
         if (std::dynamic_pointer_cast<ast::StringLiteralNode>(node)) return sema::getStrType();
@@ -2275,6 +2280,12 @@ namespace backend{
     // ============================================================
     void CodeGen::emitExpression(const std::shared_ptr<ast::ExpressionNode>& node)    {
         if (!node || hasFailed()) return;
+        // P13-2/L3（决议 §7.2）：`&bob` 壳子引用，底层与 Body 同表示（对象指针），
+        // 直接透传操作数的值即可；类型层面由 inferType 标成 Ref[T]。
+        if (const auto refExpr = std::dynamic_pointer_cast<ast::RefExpressionNode>(node))        {
+            emitExpression(refExpr->getOperand());
+            return;
+        }
         if (std::dynamic_pointer_cast<ast::IntegerLiteralNode>(node))        {
             emitIntegerLiteral(node);
             return;
