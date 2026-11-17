@@ -1345,6 +1345,26 @@ namespace backend{
             if (!fn) continue;
             auto sig = collectSignature(fn);
             if (sig.name.empty()) continue;
+            // P13-2/L3-F（决议 §5.3）：泛型定义处不写实例级 writes[p.field]
+            // （T 的字段未知，只能用 writes[p] 表示整个参数的上界）。
+            if (!sig.genericParams.empty())            {
+                for (const auto& clause : fn->getSignatureClauses())                {
+                    if (!clause || clause->getFullLabel() != "writes") continue;
+                    const auto des = clause->getLabelDesNodes();
+                    if (des.empty() || !des[0] || !des[0]->getBodyNode()) continue;
+                    std::vector<std::shared_ptr<ast::ExpressionNode>> items;
+                    flattenTypeArgs(des[0]->getBodyNode(), items);
+                    for (const auto& item : items)                    {
+                        if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(item);
+                            inf && inf->getOpToken().getType() == core::TokenType::TOKEN_DOT)                        {
+                            failAt(clause->getMainToken().getPos(),
+                                   "L3: generic definition must not use instance-level writes[p.field] "
+                                   "(P13-2 / §5.3; use writes[p])");
+                            return;
+                        }
+                    }
+                }
+            }
             // 泛型声明走 P10 自己的路径：模板本身不发射，也不会和重载集混在一起。
             if (!sig.genericParams.empty()) continue;
             // encapsulated 由 rt.o 提供实现，符号是裸名，不参与重载计数。

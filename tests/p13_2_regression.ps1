@@ -114,6 +114,8 @@ Test-Case "L3 ensures 只能列 Take 形参（决议 §9.2）" "fun bad(t: int):
 Test-Case "L3 ensures Take 形参 ?t 合法" "$classP`nfun good(t: Take[Player]): int ensures[?t] { ret 1 }`nfun main(): void { }" $true ""
 Test-Case "L3 ensures !t 未消费报错（决议 §9.2）" "$classP`nfun bad(t: Take[Player]): int ensures[!t] { ret 1 }`nfun main(): void { }" $false "unknown state"
 Test-Case "L3 Take 形参调用点隐式 take（决议 §7.3）" "$classP`nfun consume(t: Take[Player]): int { ret 1 }`nfun main(): void { var bob: Player = Player(`"bob`"); consume(bob); var x = bob }" $false "Empty state"
+Test-Case "L3 泛型定义禁 writes[p.field]（决议 §5.3）" "fun setv[T](b: T, x: T): int writes[b.v] { ret 1 }`nfun main(): void { }" $false "instance-level writes"
+Test-Case "L3 泛型定义允许 writes[p]" "fun setv[T](b: T, x: T): int writes[b] { ret 1 }`nfun main(): void { }" $true ""
 
 Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
