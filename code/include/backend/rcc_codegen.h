@@ -442,6 +442,8 @@ namespace backend
         // ---------- 辅助 ----------
         [[nodiscard]] sema::TypePtr inferType(const std::shared_ptr<ast::ExpressionNode>& node) const;
         // P13-2/L2(Q-C)：取块/分支最后一条语句的推断类型（末值语义）。
+        // P13-2/L3(决议 §6)：识别 `X.take()` 形态，返回接收者变量名（空=不是）。
+        [[nodiscard]] static std::string takeReceiverName(const std::shared_ptr<ast::ExpressionNode>& node);
         [[nodiscard]] sema::TypePtr inferBlockValueType(const std::shared_ptr<ast::ExpressionNode>& body) const;
         // P13-2/L2：块内是否含 `ret value`（非 return），用于值出口校验分流。
         [[nodiscard]] bool bodyHasRetValue(const std::shared_ptr<ast::ExpressionNode>& body) const;

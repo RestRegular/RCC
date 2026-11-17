@@ -1555,9 +1555,12 @@ namespace backend{
                     if (mid && !owner.empty())                    {
                         // P13-2/L3（决议 §7.1）：Body 内建 ref()/mut() ——
                         // p.ref() ≡ &p → Ref[Owner]，p.mut() → Mut[Owner]。
-                        if (mid->getName() == "ref" || mid->getName() == "mut")                        {
+                        if (mid->getName() == "ref" || mid->getName() == "mut" ||
+                            mid->getName() == "take")                        {
                             const auto role = mid->getName() == "ref"
-                                ? sema::MemoryRole::REF : sema::MemoryRole::MUT;
+                                ? sema::MemoryRole::REF :
+                                mid->getName() == "mut" ? sema::MemoryRole::MUT
+                                                        : sema::MemoryRole::CONTENT;
                             return std::make_shared<sema::MemoryType>(
                                 role, std::make_shared<sema::ClassType>(owner));
                         }
@@ -3269,6 +3272,13 @@ namespace backend{
             const bool isBorrowInit = [&] {
                 if (!hasInit) return false;
                 const auto init = def->getValueNode();
+                // P13-2/L3（决议 §6.2 位置 1）：`var c = bob.take()` 是落定 ——
+                // bob→E，c 是新拥有者（不按借用）。
+                if (const std::string taken = takeReceiverName(init); !taken.empty())                {
+                    if (!markVarMoved(taken, def->getNameNode()->getPos(),
+                                      "taken into '" + name + "'")) return false;
+                    return false; // 新拥有者
+                }
                 if (const auto initId = std::dynamic_pointer_cast<ast::IdentifierNode>(init))                {
                     // P13-2/L3（决议 §11）：Content 变量赋值即移动 ——
                     // `var a = b`（b 是 Content[T]）时 b→X，a 是新拥有者，
@@ -3315,6 +3325,18 @@ namespace backend{
                 if (isMemoryModelVar) registerMoveVar(name);
             }
         }
+    }
+    std::string CodeGen::takeReceiverName(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        // 识别 `X.take()`：FunctionCallNode(callee=InfixExpressionNode(DOT,
+        // left=IdentifierNode(X), right=IdentifierNode("take")))。
+        const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node);
+        if (!call) return std::string();
+        const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
+        if (!member || member->getOpToken().getType() != core::TokenType::TOKEN_DOT) return std::string();
+        const auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+        if (!method || method->getName() != "take") return std::string();
+        const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+        return recv ? recv->getName() : std::string();
     }
     sema::TypePtr CodeGen::inferBlockValueType(const std::shared_ptr<ast::ExpressionNode>& body) const {
         const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(body);
@@ -5072,6 +5094,12 @@ namespace backend{
                             if (!markVarMoved(id->getName(), id->getPos(),
                                               "taken by Content parameter")) return 0;
                         }
+                    }
+                    // P13-2/L3（决议 §6.2 位置 4）：实参是 `bob.take()` 时，
+                    // Content 形参位置是落点，接收者 bob→E。
+                    if (const std::string taken = takeReceiverName(args[i]); !taken.empty())                {
+                        if (!markVarMoved(taken, args[i]->getPos(),
+                                          "taken by Content parameter")) return 0;
                     }
                 }
             }
@@ -7075,12 +7103,15 @@ namespace backend{
         }
         // P13-2/L3（决议 §7.1）：Body 内建 ref()/mut() 是 & 的语法糖，
         // 底层与 Body 同为对象指针，直接透传左值；不接受实参。
-        if (methodId->getName() == "ref" || methodId->getName() == "mut")        {
+        if (methodId->getName() == "ref" || methodId->getName() == "mut" ||
+            methodId->getName() == "take")        {
             if (!args.empty())            {
                 failAt(member->getPos(), "L3: '" + methodId->getName() +
                        "()' takes no arguments");
                 return;
             }
+            // take() 的内容位置不动（决议 §6.1），值就是接收者指针；
+            // 落定/回填由上下文（var 赋值、Content 形参等）负责。
             emitExpression(member->getLeftNode());
             return;
         }
