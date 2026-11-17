@@ -265,6 +265,12 @@ namespace backend
         // 返回空串表示未指定（默认当前块）。
         [[nodiscard]] std::string findBirthPlaceLabel(
             const std::vector<std::shared_ptr<ast::LabelNode>>& labels) const;
+        // P13-2/L3-A（决议 §2.2）：全量收集出生地标签，用于「最多一个」校验。
+        [[nodiscard]] std::vector<std::string> findAllBirthPlaceLabels(
+            const std::vector<std::shared_ptr<ast::LabelNode>>& labels) const;
+        // P13-2/L3-B（决议 §1.4）：取 `pool.new[T](...)` 的类型实参 T（无则 nullptr）。
+        [[nodiscard]] sema::TypePtr poolNewTypeArg(
+            const std::shared_ptr<ast::ExpressionNode>& node) const;
         // D9 规则 C：登记一个**借用**变量（形参、或初始化自已有变量/元素）。
         // 借用不销毁，但记录在案以便检查「借用逃逸」（ret / 入容器 / 存外层）。
         // addr 同样要记下来：借用被重新赋值后会**升格成拥有者**，那时出口
@@ -527,6 +533,13 @@ namespace backend
         // P13-2/L3-F（决议 §9.2）：ensures 语法校验——只能列 Take[T] 形参。
         void validateEnsuresClauses(const std::vector<std::string>& paramNames,
                                     const std::vector<sema::TypePtr>& paramTypes);
+        // P13-2/L3-F（决议 §9.3/§9.4）：writes / from 子句的每一项必须是形参路径。
+        void validateWritesFromClauses(const std::vector<std::string>& paramNames);
+        // 取子句项（p / p.name / p[i] / &p.name）的根标识符。
+        [[nodiscard]] static std::string clauseItemRoot(
+            const std::shared_ptr<ast::ExpressionNode>& item);
+        // 本函数 `from` 声明允许的引用来源根（决议 §9.4：返回引用 ⊆ from）。
+        std::set<std::string> _fromRoots;
         // P13-2/L3-F（决议 §5.2）：判断名字是否当前函数形参。
         [[nodiscard]] bool isFunctionParam(const std::string& name) const;
         [[nodiscard]] std::string currentFunctionName() const { return _functionName; }

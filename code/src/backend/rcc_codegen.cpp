@@ -790,6 +790,22 @@ namespace backend{
         }
         return std::string();
     }
+    std::vector<std::string> CodeGen::findAllBirthPlaceLabels(
+        const std::vector<std::shared_ptr<ast::LabelNode>>& labels) const    {
+        // 决议 §2.2：标签区**最多一个**出生地标签。
+        // findBirthPlaceLabel 只返回第一个，无法发现第二个，实测
+        // `var a: Player p1 p2 = Player("x")` 静默通过。这里全量收集。
+        std::vector<std::string> found;
+        for (const auto& label : labels)        {
+            if (!label) continue;
+            const auto name = label->getFullLabel();
+            if (name.empty()) continue;
+            const auto slot = const_cast<CodeGen*>(this)->lookupVar(name);
+            if (slot && slot->type && slot->type->getKind() == sema::TypeKind::TK_POOL)
+                found.push_back(name);
+        }
+        return found;
+    }
     void CodeGen::registerBorrow(const std::string& name, const sema::TypePtr& type,
                                  const std::string& addr)    {
         if (!needsDrop(type)) return;
@@ -835,6 +851,20 @@ namespace backend{
                         _ensuresMarks[name] = (op == core::TokenType::TOKEN_NOT)
                             ? BodyState::EMPTY :
                             (op == core::TokenType::TOKEN_QUESTION ? BodyState::UNKNOWN : BodyState::FULL);
+                } else if (const auto prefix = std::dynamic_pointer_cast<ast::PrefixExpressionNode>(item))            {
+                    // P13-2/L3-F（决议 §9.2）：`+a` 走的是 PrefixExpressionNode，
+                    // 不是 UnaryExpressionNode（`!a` / `?a` 才是）。修前只匹配了
+                    // Unary，`ensures[+t]` 被整项静默丢弃 —— 既不登记也不报错，
+                    // 于是 ensures[+p]（p 非 Take）、ensures[+zzz]（无此形参）
+                    // 全都 exit=0 通过。
+                    const auto op = prefix->getMainToken().getType();
+                    if (const auto rhs = prefix->getNode())                    {
+                        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(rhs)) name = id->getName();
+                        else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(rhs)) name = lbl->getFullLabel();
+                    }
+                    if (!name.empty())                        _ensuresMarks[name] = (op == core::TokenType::TOKEN_NOT)
+                            ? BodyState::EMPTY :
+                            (op == core::TokenType::TOKEN_QUESTION ? BodyState::UNKNOWN : BodyState::FULL);
                 } else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(item))            {
                     name = lbl->getFullLabel();
                 }
@@ -859,6 +889,55 @@ namespace backend{
             }
         }
         _currentSignatureClauses.clear(); // 消费后清空，避免泄漏到后续函数体
+    }
+    std::string CodeGen::clauseItemRoot(
+        const std::shared_ptr<ast::ExpressionNode>& item)    {
+        // P13-2/L3-F（决议 §9.3/§9.4）：取 `writes[p.name]` / `from[p]` 的根标识符。
+        // 支持 p / p.name / p[i] / &p.name 这几种写法。
+        if (!item) return std::string();
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(item)) return id->getName();
+        if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(item)) return lbl->getFullLabel();
+        if (const auto ref = std::dynamic_pointer_cast<ast::RefExpressionNode>(item))
+            return clauseItemRoot(ref->getOperand());
+        if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(item))
+            return clauseItemRoot(inf->getLeftNode());
+        if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(item))
+            return clauseItemRoot(idx->getLeftNode());
+        if (const auto unary = std::dynamic_pointer_cast<ast::UnaryExpressionNode>(item))
+            return clauseItemRoot(unary->getRightNode());
+        if (const auto prefix = std::dynamic_pointer_cast<ast::PrefixExpressionNode>(item))
+            return clauseItemRoot(prefix->getNode());
+        return std::string();
+    }
+    void CodeGen::validateWritesFromClauses(const std::vector<std::string>& paramNames)    {
+        // P13-2/L3-F（决议 §9.3/§9.4）：writes / from 的每一项都必须是形参的路径。
+        // 修前这两个子句完全没有校验 —— 实测 `writes[q.name]`（q 不是形参）、
+        // `from[zz.name]`（zz 根本不存在）都静默通过。
+        _fromRoots.clear();
+        for (const auto& clause : _currentSignatureClauses)        {
+            if (!clause) continue;
+            const auto label = clause->getFullLabel();
+            if (label != "writes" && label != "from") continue;
+            const auto des = clause->getLabelDesNodes();
+            if (des.empty() || !des[0] || !des[0]->getBodyNode()) continue;
+            std::vector<std::shared_ptr<ast::ExpressionNode>> items;
+            flattenTypeArgs(des[0]->getBodyNode(), items);
+            for (const auto& item : items)            {
+                const auto root = clauseItemRoot(item);
+                if (root.empty())                {
+                    failAt(clause->getMainToken().getPos(),
+                           "L3: '" + label + "' clause entries must be parameter paths (P13-2 / §9.3)");
+                    return;
+                }
+                if (!isFunctionParam(root))                {
+                    failAt(clause->getMainToken().getPos(),
+                           "L3: '" + label + "[" + root + "]' refers to '" + root +
+                           "', which is not a parameter of this function (P13-2 / §9.3)");
+                    return;
+                }
+                if (label == "from") _fromRoots.insert(root);
+            }
+        }
     }
     void CodeGen::checkEnsuresAtExit(const utils::Pos& pos)    {
         for (const auto& [name, expected] : _ensuresMarks)        {
@@ -3641,6 +3720,17 @@ namespace backend{
                 // P13-2/L3-E（决议 §4.2）：绑定子引用变量名，供 NLL 追踪。
                 if (std::dynamic_pointer_cast<ast::RefExpressionNode>(init))
                     bindLastActiveRef(name);
+                // P13-2/L3-E（决议 §4.3）：`var a = xs.get_mut(i)` 同样是子引用绑定。
+                // 修前 get_mut 登记时 refVar 留空，而 drainActiveRefs 对空 refVar
+                // 一律保守保留，于是登记项永不淘汰 —— 后面再来一次 get_mut(0)
+                // 就假报"conflicting mutable references"，哪怕第一次早已最后使用。
+                if (const auto gc = std::dynamic_pointer_cast<ast::FunctionCallNode>(init))                {
+                    const auto gm = std::dynamic_pointer_cast<ast::InfixExpressionNode>(gc->getLeftNode());
+                    if (gm && gm->getOpToken().getType() == core::TokenType::TOKEN_DOT)                    {
+                        const auto gmid = std::dynamic_pointer_cast<ast::IdentifierNode>(gm->getRightNode());
+                        if (gmid && gmid->getName() == "get_mut") bindLastActiveRef(name);
+                    }
+                }
                 // P13-2/L3-C（决议 §6.1/§6.2 位置 1）：`var c = bob.take()` 落定 ——
                 // bob（Body 壳）→E 空壳（可 clear/fill 复用），c 是新 Content 拥有者。
                 if (const std::string taken = takeReceiverName(init); !taken.empty())                {
@@ -3696,6 +3786,18 @@ namespace backend{
                 // 标签区出生地、pool.new 绑定二者只能指定一次且必须一致。
                 const auto birth = def->hasLabels()
                     ? findBirthPlaceLabel(def->getLabelNodes()) : std::string();
+                // 决议 §2.2：标签区**最多一个**出生地标签。
+                if (def->hasLabels())                {
+                    const auto allBirths = findAllBirthPlaceLabels(def->getLabelNodes());
+                    if (allBirths.size() > 1)                    {
+                        failAt(def->getNameNode()->getPos(),
+                               "L3: variable '" + name + "' has " +
+                               std::to_string(allBirths.size()) +
+                               " birth place labels ('" + allBirths[0] + "', '" + allBirths[1] +
+                               "'); at most one birth place label is allowed (P13-2 / §2.2)");
+                        return;
+                    }
+                }
                 const auto newPool = hasInit
                     ? poolNewReceiverName(def->getValueNode()) : std::string();
                 if (!birth.empty() && !newPool.empty() && birth != newPool)                {
@@ -3706,11 +3808,40 @@ namespace backend{
                 }
                 if (!birth.empty()) _birthPlaces[name] = birth;
                 else if (!newPool.empty()) _birthPlaces[name] = newPool;
+                // 决议 §1.4：`pool.new[T](...)` 的结果类型就是 T，
+                // 必须与声明的变量类型一致。修前完全没校验，
+                // `var a: Enemy = pl.new[Player]("x")` 静默通过。
+                if (hasInit)                {
+                    if (const auto newType = poolNewTypeArg(def->getValueNode()))                    {
+                        if (type && !type->equals(newType))                        {
+                            failAt(def->getNameNode()->getPos(),
+                                   "L3: pool.new[" + newType->toString() + "] result cannot initialize '" +
+                                   name + "' of type " + type->toString() + " (P13-2 / §1.4)");
+                            return;
+                        }
+                    }
+                }
             }
         }
     }
-    std::string CodeGen::takeReceiverName(const std::shared_ptr<ast::ExpressionNode>& node)    {
-        // 识别 `X.take()`：FunctionCallNode(callee=InfixExpressionNode(DOT,
+    sema::TypePtr CodeGen::poolNewTypeArg(const std::shared_ptr<ast::ExpressionNode>& node) const {        // P13-2/L3-B（决议 §1.4）：取 `pool.new[T](...)` 里的 T。
+        // 与 poolNewReceiverName 共用 AST 形状判断。
+        const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node);
+        if (!call) return nullptr;
+        const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
+        if (!member || member->getOpToken().getType() != core::TokenType::TOKEN_DOT) return nullptr;
+        const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode());
+        if (!idx) return nullptr;
+        const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode());
+        if (!mid || mid->getName() != "new") return nullptr;
+        const auto bracket = std::dynamic_pointer_cast<ast::BracketExpressionNode>(idx->getIndexNode());
+        if (!bracket) return nullptr;
+        std::vector<std::shared_ptr<ast::ExpressionNode>> typeArgs;
+        flattenTypeArgs(bracket->getBodyNode(), typeArgs);
+        if (typeArgs.empty()) return nullptr;
+        return typeFromTypeArgNode(typeArgs[0], _currentGenericParams);
+    }
+    std::string CodeGen::takeReceiverName(const std::shared_ptr<ast::ExpressionNode>& node)    {        // 识别 `X.take()`：FunctionCallNode(callee=InfixExpressionNode(DOT,
         // left=IdentifierNode(X), right=IdentifierNode("take")))。
         const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node);
         if (!call) return std::string();
@@ -3893,6 +4024,14 @@ namespace backend{
                 if (!root.empty() && !isFunctionParam(root))                {
                     failAt(node->getPos(), "L3: cannot return a reference to local '" + root +
                            "' (P13-2 / from: references must not point to function locals)");
+                    return;
+                }
+                // 决议 §9.4：返回引用的来源必须 ⊆ 声明的 from 集合。
+                // 修前只做了「不得返回 local」这一半，`from[p]` 里 ret &q
+                // （q 是另一个形参）静默通过。
+                if (!root.empty() && !_fromRoots.empty() && !_fromRoots.count(root))                {
+                    failAt(node->getPos(), "L3: returned reference points to '" + root +
+                           "', which is not listed in this function's from clause (P13-2 / §9.4)");
                     return;
                 }
             }
@@ -5863,6 +6002,21 @@ namespace backend{
                 if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode()))                {
                     if (const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode());
                         mid && mid->getName() == "new")                    {
+                        // 决议 §1.4：接收者必须是 Pool 类型的变量。
+                        // 修前只认了 `X.new[T]` 的形状，没查 X 是不是 Pool，
+                        // 于是 `var n: Player = ...; n.new[Player]("y")` 静默通过。
+                        const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                        if (!recv)                        {
+                            failAt(node->getPos(), "L3: pool.new[T] requires a Pool variable receiver");
+                            return;
+                        }
+                        const auto recvSlot = lookupVar(recv->getName());
+                        if (!recvSlot || !recvSlot->type ||
+                            recvSlot->type->getKind() != sema::TypeKind::TK_POOL)                        {
+                            failAt(node->getPos(), "L3: '" + recv->getName() +
+                                   "' is not a Pool; pool.new[T] requires a Pool receiver (P13-2 / §1.4)");
+                            return;
+                        }
                         if (const auto bracket = std::dynamic_pointer_cast<ast::BracketExpressionNode>(idx->getIndexNode()))                        {
                             std::vector<std::shared_ptr<ast::ExpressionNode>> typeArgs;
                             flattenTypeArgs(bracket->getBodyNode(), typeArgs);
@@ -7683,6 +7837,23 @@ namespace backend{
                 failAt(member->getPos(), "L3: take() requires a Body variable receiver");
                 return;
             }
+            // 决议 §6.1 / §10：take 只能从 **F（Full）** 取内容。
+            // E（已 clear / 已 take 走）与 X（已移动）都是空壳，取不出东西。
+            // 修前只查了同一语句内的 pending_take，跨语句的状态迁移没人管，
+            // 于是 `p.take()` 连着写两次、或 clear() 之后再 take 都静默通过。
+            {
+                const auto st = getBodyState(recv->getName());
+                if (st == BodyState::EMPTY)                {
+                    failAt(member->getPos(), "L3: take target '" + recv->getName() +
+                           "' is Empty; there is no content to take (P13-2 / §6.1)");
+                    return;
+                }
+                if (st == BodyState::MOVED)                {
+                    failAt(member->getPos(), "L3: take target '" + recv->getName() +
+                           "' has been moved and cannot be taken again (P13-2 / §6.1)");
+                    return;
+                }
+            }
             beginPendingTake(recv->getName(), member->getPos());
             emitExpression(member->getLeftNode());
             return;
@@ -8663,6 +8834,22 @@ namespace backend{
         // 否则嵌套发射（方法体里再发匿名函数）会把外层帧带进来。
         const std::vector<EhFrame> savedEhStack = _ehStack;
         const std::vector<LoopContext> savedLoopStack = _loopStack;
+        // P13-2：内存模型的三张事实表（移动状态 / 活跃子引用 / 出生地）
+        // 以及语句级的 pending_take，都是**函数局部**的。
+        // 与 _scopes / _scopeDrops 同理：函数体是独立栈帧，形参同名也只是
+        // 巧合，绝不能继承上一个函数（或外层函数）的登记项。
+        // 实测（修前）：
+        //   fun a(): void { var p: Player = Player("x"); var r = &p.name }
+        //   fun b(p: Player): void { p.clear() }
+        //   → 假报错 "'p' has active sub-references"
+        //   fun a(): void { var pl: Pool = Pool.fixed(4); var q: Player pl = ... }
+        //   fun b(q: Player): void { pl.release(q) }
+        //   → 假通过（出生地串了函数）
+        // 自然结束（走到末尾）的函数不会经过 popScope 链，泄漏最明显。
+        const auto savedMoveStates = _moveStates;
+        const auto savedActiveRefs = _activeRefs;
+        const auto savedBirthPlaces = _birthPlaces;
+        const auto savedPendingTakes = _pendingTakes;
         // P13-1：销毁登记表与 _scopes 是**同生共死**的一对，跨函数必须一起清。
         // 只清 _scopes 而不清 _scopeDrops 会让内层函数对**外层帧**的槽位发
         // drop（实测：mk() 帧只有 64 字节，却对 -176(%rbp) 调 core_free，
@@ -8670,6 +8857,11 @@ namespace backend{
         _functionName = emitName;
         _functionReturnType = retType;
         _functionReturnAnnotated = retTypeAnnotated;
+        // P13-2/L3-F（决议 §9.3/§9.4）：writes / from 的每一项必须是形参路径。
+        // 必须排在 validateEnsuresClauses **之前** —— 后者结束时会
+        // _currentSignatureClauses.clear()，之后再读就是空表。
+        validateWritesFromClauses(paramNames);
+        if (hasFailed()) return;
         // P13-2/L3-F（决议 §9.2）：ensures 语法校验（只对 Take 形参生效）
         validateEnsuresClauses(paramNames, paramTypes);
         if (hasFailed()) return;
@@ -8678,6 +8870,11 @@ namespace backend{
         _loopStack.clear();
         _scopes.clear();
         _scopeDrops.clear();
+        // P13-2：三张内存模型事实表 + 挂起集合随函数体一起清空。
+        _moveStates.clear();
+        _activeRefs.clear();
+        _birthPlaces.clear();
+        _pendingTakes.clear();
         pushScope();
         if (makeGlobal) _asm.global(emitName);
         _asm.label(emitName);
@@ -8822,6 +9019,11 @@ namespace backend{
         // 不清回的话，外层变量会被内层"继承"并在错误的位置销毁。
         _scopes.clear();
         _scopeDrops.clear();
+        // P13-2：三张事实表同理回滚到进入本函数前的状态。
+        _moveStates = savedMoveStates;
+        _activeRefs = savedActiveRefs;
+        _birthPlaces = savedBirthPlaces;
+        _pendingTakes = savedPendingTakes;
         pushScope();          // 与外层入口时的状态对齐（_scopes 与 _scopeDrops 各一层）
     }
 }
