@@ -354,7 +354,7 @@ namespace backend
         // P13-2/L3-C（决议 §2.2）：Body 的四态编译期事实表状态。
         // F=FULL 有内容；E=EMPTY 空壳；H=HELD take 挂起（D 阶段）；
         // X=MOVED 已移走。不是运行时元数据，无 ABI 变更。
-        enum class BodyState { FULL, EMPTY, HELD, MOVED };
+        enum class BodyState { FULL, EMPTY, HELD, MOVED, UNKNOWN };
         // 与 _scopeDrops 同步 push/pop，但独立跟踪 ClassType（Body 别名）等
         // D14 不进 drop 表、却需要 F/X 移动语义的变量。
         std::vector<std::map<std::string, BodyState>> _moveStates;
@@ -520,6 +520,10 @@ namespace backend
         [[nodiscard]] sema::TypePtr findReturnType(const std::shared_ptr<ast::ExpressionNode>& body) const;
         // P13-2/L3-F：当前正在发射的函数的签名子句（emitFunctionBody 读取）。
         std::vector<std::shared_ptr<ast::LabelNode>> _currentSignatureClauses;
+        // P13-2/L3-F：解析后的 ensures 标记（形参名 -> 期望状态）。
+        std::map<std::string, BodyState> _ensuresMarks;
+        // 出口检查（决议 §9.2：逐出口验证，throw 不检查）。
+        void checkEnsuresAtExit(const utils::Pos& pos);
         // P13-2/L3-F（决议 §9.2）：ensures 语法校验——只能列 Take[T] 形参。
         void validateEnsuresClauses(const std::vector<std::string>& paramNames,
                                     const std::vector<sema::TypePtr>& paramTypes);

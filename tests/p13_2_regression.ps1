@@ -111,7 +111,8 @@ Test-Case "L3 get_mut 相同下标冲突" "fun pair(a: Mut[int], b: Mut[int]): i
 Test-Case "L3 from：不得返回 local 引用（决议 §5.2）" "$classP`nfun bad(): Ref[str] { var p: Player = Player(`"bob`"); ret &p.name }`nfun main(): void { }" $false "cannot return a reference to local"
 Test-Case "L3 from：返回形参引用合法" "$classP`nfun good(p: Ref[Player]): Ref[str] { ret &p.name }`nfun main(): void { }" $true ""
 Test-Case "L3 ensures 只能列 Take 形参（决议 §9.2）" "fun bad(t: int): int ensures[t] { ret t }`nfun main(): void { var x = bad(1) }" $false "requires a Take"
-Test-Case "L3 ensures Take 形参合法" "$classP`nfun good(t: Take[Player]): int ensures[!t] { ret 1 }`nfun main(): void { }" $true ""
+Test-Case "L3 ensures Take 形参 ?t 合法" "$classP`nfun good(t: Take[Player]): int ensures[?t] { ret 1 }`nfun main(): void { }" $true ""
+Test-Case "L3 ensures !t 未消费报错（决议 §9.2）" "$classP`nfun bad(t: Take[Player]): int ensures[!t] { ret 1 }`nfun main(): void { }" $false "unknown state"
 Test-Case "L3 Take 形参调用点隐式 take（决议 §7.3）" "$classP`nfun consume(t: Take[Player]): int { ret 1 }`nfun main(): void { var bob: Player = Player(`"bob`"); consume(bob); var x = bob }" $false "Empty state"
 
 Write-Host ""

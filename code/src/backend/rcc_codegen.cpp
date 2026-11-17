@@ -812,6 +812,7 @@ namespace backend{
     }
     void CodeGen::validateEnsuresClauses(const std::vector<std::string>& paramNames,
                                          const std::vector<sema::TypePtr>& paramTypes)    {
+        _ensuresMarks.clear();
         for (const auto& clause : _currentSignatureClauses)        {
             if (!clause || clause->getFullLabel() != "ensures") continue;
             const auto des = clause->getLabelDesNodes();
@@ -829,7 +830,11 @@ namespace backend{
                     const auto rhs = unary->getRightNode();
                     if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(rhs)) name = id->getName();
                     else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(rhs)) name = lbl->getFullLabel();
-                    (void)op; // 标记语义（Full/?/Empty）留给逐出口验证
+                    // 决议 §9.2：!a = Empty，+a/裸名 = Full
+                    if (!name.empty())
+                        _ensuresMarks[name] = (op == core::TokenType::TOKEN_NOT)
+                            ? BodyState::EMPTY :
+                            (op == core::TokenType::TOKEN_QUESTION ? BodyState::UNKNOWN : BodyState::FULL);
                 } else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(item))            {
                     name = lbl->getFullLabel();
                 }
@@ -848,9 +853,30 @@ namespace backend{
                            "(P13-2 / §9.2)");
                     return;
                 }
+                // 裸名 = Full（决议 §9.2）
+                if (_ensuresMarks.find(name) == _ensuresMarks.end())
+                    _ensuresMarks[name] = BodyState::FULL;
             }
         }
         _currentSignatureClauses.clear(); // 消费后清空，避免泄漏到后续函数体
+    }
+    void CodeGen::checkEnsuresAtExit(const utils::Pos& pos)    {
+        for (const auto& [name, expected] : _ensuresMarks)        {
+            const auto actual = getBodyState(name);
+            // 决议 §9.2：? = 不确定，任何状态都满足；其余须精确匹配。
+            if (expected == BodyState::UNKNOWN) continue;
+            if (actual == BodyState::UNKNOWN)            {
+                failAt(pos, "L3: Take parameter '" + name +
+                       "' has unknown state at function exit; ensures requires a definite state");
+                return;
+            }
+            if (actual != expected)            {
+                failAt(pos, "L3: Take parameter '" + name + "' is " + bodyStateName(name) +
+                       " at exit, but ensures requires " +
+                       (expected == BodyState::FULL ? "Full" : "Empty"));
+                return;
+            }
+        }
     }
     bool CodeGen::isFunctionParam(const std::string& name) const    {
         const auto it = _functionParamNames.find(_functionName);
@@ -1028,6 +1054,7 @@ namespace backend{
                 case BodyState::EMPTY: return "Empty";
                 case BodyState::HELD:  return "Held";
                 case BodyState::MOVED: return "Moved";
+                case BodyState::UNKNOWN: return "?";
                 }
             }
         }
@@ -3862,6 +3889,14 @@ namespace backend{
             }
         }
         if (!_returnLabel.empty())        {
+            // P13-2/L3-F：ret 一个 Take 形参 = 内容转移出去，形参→EMPTY；
+            // 然后逐出口校验 ensures。
+            if (ret && ret->getReturnNode())            {
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(ret->getReturnNode()))
+                    if (_ensuresMarks.count(id->getName()))
+                        setBodyState(id->getName(), BodyState::EMPTY, node->getPos(), "returned");
+            }
+            checkEnsuresAtExit(node->getPos());
             _asm.jmp(_returnLabel);
         }
     }
@@ -8663,6 +8698,12 @@ namespace backend{
             // 槽位地址必须传：形参被重新赋值成新值时会升格成拥有者，
             // 那时出口要拿这个地址去释放（忘了传会生成 `leaq , %rcx`）。
             registerBorrow(paramNames[i], pt, slot);
+            // P13-2/L3-F（决议 §9.2）：Take 形参进入函数时状态为 `?`（不确定）。
+            if (pt && pt->getKind() == sema::TypeKind::TK_MEMORY &&
+                std::dynamic_pointer_cast<sema::MemoryType>(pt)->getRole() == sema::MemoryRole::TAKE)            {
+                registerMoveVar(paramNames[i]);
+                setBodyState(paramNames[i], BodyState::UNKNOWN, utils::Pos{}, "Take parameter");
+            }
             const size_t pos = argPos + i;
             if (pos < registerSlots)            {
                 if (pt->isFloat())                {
@@ -8733,6 +8774,7 @@ namespace backend{
         else        {
             _asm.movImm(0, "%rax");
         }
+        checkEnsuresAtExit(bodyNode ? bodyNode->getPos() : utils::Pos{});
         _asm.label(_returnLabel);
         _asm.mov("%rbp", "%rsp");
         _asm.pop("%rbp");
@@ -8750,6 +8792,7 @@ namespace backend{
         _asm.replaceLabel(framePlaceholder,            "    subq    $" + std::to_string(alignedFrame) + ", %rsp\n");
         _functionName = savedFunction;
         _frameSize = savedFrame;
+        _ensuresMarks.clear();
         _returnLabel = savedReturnLabel;
         _functionReturnType = savedReturnType;
         _functionReturnAnnotated = savedReturnAnnotated;
