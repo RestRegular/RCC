@@ -855,6 +855,26 @@ namespace backend{
         _pendingTakes.insert(name);
         setBodyState(name, BodyState::HELD, pos, "taken");
     }
+    void CodeGen::registerActiveRef(const std::string& path, const std::string& owner,
+                                    const std::string& refVar, const utils::Pos& pos)    {
+        // 决议 §4.1：路径穿透引用展开 ——
+        // 若 owner 本身是已登记引用（如 &q.x 得到的 q），新路径要接在
+        // 该引用的 path 后面（q.name -> q.x.name）。
+        std::string full = path;
+        for (const auto& existing : _activeRefs)            {
+            if (existing.refVar == owner)                {
+                full = existing.path + path.substr(owner.size());
+                break;
+            }
+        }
+        _activeRefs.push_back({full, owner, refVar});
+        (void)pos;
+    }
+    bool CodeGen::hasActiveRefOn(const std::string& owner) const    {
+        for (const auto& ref : _activeRefs)
+            if (ref.owner == owner) return true;
+        return false;
+    }
     bool CodeGen::checkNotPending(const std::string& name, const utils::Pos& pos,
                                   const std::string& action)    {
         if (_pendingTakes.count(name))        {
@@ -2435,6 +2455,12 @@ namespace backend{
                     return;
                 }
                 const long long offset = findFieldOffset(owner, field->getName());
+                // 决议 §4.1：owner 是根对象变量名（p），path 是 p.name；
+                // classNameOf 只用于查字段偏移，不是路径的 owner。
+                const auto rootVar = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getLeftNode());
+                const std::string ownerName = rootVar ? rootVar->getName() : owner;
+                registerActiveRef("." + field->getName(), ownerName,
+                                  "", node->getPos()); // refVar 由 var 绑定处补全
                 emitExpression(dot->getLeftNode()); // 对象指针 -> %rax
                 if (hasFailed()) return;
                 if (offset != 0) _asm.inst("addq", std::to_string(offset) + ", %rax");
@@ -7325,6 +7351,11 @@ namespace backend{
                 return;
             }
             if (!checkNotPending(x->getName(), args[0]->getPos(), "released")) return;
+            if (hasActiveRefOn(x->getName()))            {
+                failAt(args[0]->getPos(), "L3: '" + x->getName() +
+                       "' has active sub-references; cannot release");
+                return;
+            }
             const auto found = _birthPlaces.find(x->getName());
             if (found == _birthPlaces.end() || found->second.empty())            {
                 failAt(args[0]->getPos(), "L3: release target '" + x->getName() +
@@ -7388,6 +7419,11 @@ namespace backend{
             }
             const auto& name = recv->getName();
             if (!checkNotPending(name, member->getPos(), methodId->getName() + "()")) return;
+            if (hasActiveRefOn(name))            {
+                failAt(member->getPos(), "L3: '" + name +
+                       "' has active sub-references; cannot " + methodId->getName() + "()");
+                return;
+            }
             if (methodId->getName() == "clear")            {
                 if (!args.empty())                {
                     failAt(member->getPos(), "L3: clear() takes no arguments");

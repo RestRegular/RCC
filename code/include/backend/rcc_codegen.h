@@ -368,6 +368,15 @@ namespace backend
         // P13-2/L3-D（决议 §3.1）：当前语句内被 take 挂起的 Body 变量名集合。
         // 不是事务、不是运行时元数据；emitStatement 末统一结算。
         std::set<std::string> _pendingTakes;
+        // P13-2/L3-E（决议 §4）：活跃子引用事实表。每项是一条路径及其
+        // 根对象变量名（owner）。当前实现是作用域级保守近似（owner 有
+        // 活跃引用即视为冲突），精确 NLL「活跃到最后使用」待后续。
+        struct ActiveRef { std::string path; std::string owner; std::string refVar; };
+        std::vector<ActiveRef> _activeRefs;
+        // 登记子引用；检查 owner 是否有活跃子引用（冲突时报错）。
+        void registerActiveRef(const std::string& path, const std::string& owner,
+                               const std::string& refVar, const utils::Pos& pos);
+        [[nodiscard]] bool hasActiveRefOn(const std::string& owner) const;
         // take 挂起一个 Body（加入 pending 并置 HELD）；重复 take 报错。
         void beginPendingTake(const std::string& name, const utils::Pos& pos);
         // P13-2/L3-D（决议 §6.4）：挂起期间禁止 fill/clear/release。

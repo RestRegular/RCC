@@ -104,6 +104,7 @@ Test-Case "L3 release 默认出生地报错" "$classP`nfun main(): void { var po
 Test-Case "L3 release 非 E 态报错" "$classP`nfun main(): void { var pool: Pool = Pool.fixed(10); var a: Player pool = Player(`"bob`"); pool.release(a) }" $false "not Empty"
 Test-Case "L3 同一语句二次 take 报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); sout(bob.take(), bob.take()) }" $false "already taken"
 Test-Case "L3 挂起期间 clear 报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); sout(bob.take(), bob.clear()) }" $false "pending take"
+Test-Case "L3 活跃子引用阻止 clear（决议 §4）" "$classP`nfun main(): void { var p: Player = Player(`"bob`"); var r = &p.name; p.clear() }" $false "active sub-references"
 
 Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
