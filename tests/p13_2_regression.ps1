@@ -106,6 +106,8 @@ Test-Case "L3 同一语句二次 take 报错" "$classP`nfun main(): void { var b
 Test-Case "L3 挂起期间 clear 报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); sout(bob.take(), bob.clear()) }" $false "pending take"
 Test-Case "L3 活跃子引用阻止 clear（决议 §4）" "$classP`nfun main(): void { var p: Player = Player(`"bob`"); var r = &p.name; p.clear() }" $false "active sub-references"
 Test-Case "L3 NLL：最后使用后 clear 合法" "$classP`nfun main(): void { var p: Player = Player(`"bob`"); var r = &p.name; sout(r); p.clear() }" $true ""
+Test-Case "L3 get_mut 不同下标不冲突（i≠j）" "fun pair(a: Mut[int], b: Mut[int]): int { ret 1 }`nfun main(): void { var xs = [1,2,3]; var x = pair(xs.get_mut(0), xs.get_mut(1)) }" $true ""
+Test-Case "L3 get_mut 相同下标冲突" "fun pair(a: Mut[int], b: Mut[int]): int { ret 1 }`nfun main(): void { var xs = [1,2,3]; var x = pair(xs.get_mut(0), xs.get_mut(0)) }" $false "conflicting mutable references"
 
 Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="

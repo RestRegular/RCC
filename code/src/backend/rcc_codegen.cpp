@@ -856,7 +856,8 @@ namespace backend{
         setBodyState(name, BodyState::HELD, pos, "taken");
     }
     void CodeGen::registerActiveRef(const std::string& path, const std::string& owner,
-                                    const std::string& refVar, const utils::Pos& pos)    {
+                                    const std::string& refVar, const utils::Pos& pos,
+                                    const std::string& indexExpr)    {
         // 决议 §4.1：路径穿透引用展开 ——
         // path 是完整路径（如 "p.name"）。若根 owner（p）本身是已登记的
         // 引用变量（如 &q.x 得到的 p），把前缀替换成该引用的 path，
@@ -869,7 +870,7 @@ namespace backend{
                 break;
             }
         }
-        _activeRefs.push_back({full, owner, refVar, true}); // justBound：绑定语句不清除
+        _activeRefs.push_back({full, owner, refVar, true, indexExpr}); // justBound：绑定语句不清除
         (void)pos;
     }
     void CodeGen::bindLastActiveRef(const std::string& refVar)    {
@@ -917,6 +918,26 @@ namespace backend{
             if (!nodeUsesVarImpl(stmt, it->refVar)) it = _activeRefs.erase(it);
             else ++it;
         }
+    }
+    bool CodeGen::hasActiveRefOn(const std::string& owner,
+                                 const std::string& indexExpr) const    {
+        // 决议 §4.3：不等事实 i≠j 作为事实表一维，消费时放宽冲突。
+        // 只有两个不同的**整数字面量**下标才能证明不相等。
+        const auto isIntLiteral = [](const std::string& s) {
+            if (s.empty()) return false;
+            size_t i = (s[0] == '-' || s[0] == '+') ? 1 : 0;
+            if (i >= s.size()) return false;
+            for (; i < s.size(); ++i) if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
+            return true;
+        };
+        for (const auto& ref : _activeRefs)        {
+            if (ref.owner != owner) continue;
+            if (ref.indexExpr.empty() || indexExpr.empty()) return true; // 静态路径，保守冲突
+            if (!isIntLiteral(ref.indexExpr) || !isIntLiteral(indexExpr)) return true;
+            if (ref.indexExpr == indexExpr) return true; // 同一下标，冲突
+            // 不同字面量：i≠j 成立，此条不冲突，继续看其它引用
+        }
+        return false;
     }
     bool CodeGen::hasActiveRefOn(const std::string& owner) const    {
         for (const auto& ref : _activeRefs)
@@ -1714,6 +1735,17 @@ namespace backend{
                     // 类型按普通全局函数 / 类名解析，不能落到「未知函数按 int」。
                     if (mid)
                     {
+                        // P13-2/L3-E（决议 §4.3）：list.get_mut(i) → Mut[元素类型]
+                        if (mid->getName() == "get_mut")                        {
+                            if (const auto lv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode()))                            {
+                                if (const auto s = const_cast<CodeGen*>(this)->lookupVar(lv->getName());
+                                    s && s->type && s->type->getKind() == sema::TypeKind::TK_LIST)                                {
+                                    const auto elem = std::static_pointer_cast<sema::ListType>(s->type)->getElemType();
+                                    return std::make_shared<sema::MemoryType>(
+                                        sema::MemoryRole::MUT, elem ? elem : sema::getIntType());
+                                }
+                            }
+                        }
                         // P13-2/L3-A：Pool 静态方法返回 Pool 类型
                         if (const auto ownerId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
                             ownerId && ownerId->getName() == "Pool" &&
@@ -7401,6 +7433,50 @@ namespace backend{
         const auto methodId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
         if (!methodId)        {
             fail("Method name must be an identifier: " + member->toString());
+            return;
+        }
+        // P13-2/L3-E（决议 §4.3）：list 内建 get_mut(i) ——
+        // 返回元素槽的 Mut 视图（元素地址），登记 xs[*]+i 路径。
+        // receiver 是 list（内置类型，classNameOf 为空），须在 owner 检查前处理。
+        if (methodId->getName() == "get_mut")        {
+            const auto listVar = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+            if (!listVar || args.size() != 1)            {
+                failAt(member->getPos(), "L3: get_mut(i) requires a list variable and one index");
+                return;
+            }
+            const auto listType = lookupVar(listVar->getName())
+                ? lookupVar(listVar->getName())->type : nullptr;
+            if (!listType || listType->getKind() != sema::TypeKind::TK_LIST)            {
+                failAt(member->getPos(), "L3: get_mut(i) requires a list receiver");
+                return;
+            }
+            // 决议 §4.3：下标文本必须是纯字面量（"0"/"1"）才能证明 i≠j；
+            // args[0]->toString() 带节点格式，不能用于不等事实判定。
+            const auto indexTextForFact = [](const std::shared_ptr<ast::ExpressionNode>& n) {
+                if (const auto lit = std::dynamic_pointer_cast<ast::IntegerLiteralNode>(n))
+                    return lit->literalString();
+                return std::string(); // 非整数字面量：保守（空串→冲突）
+            };
+            const auto idxText = indexTextForFact(args[0]);
+            // 决议 §4.3：同一 owner 上同一下标的另一个 get_mut 冲突；
+            // 不同字面量下标（i≠j）不冲突。
+            if (hasActiveRefOn(listVar->getName(), idxText))            {
+                failAt(member->getPos(), "L3: conflicting mutable references to '" +
+                       listVar->getName() + "' at the same index");
+                return;
+            }
+            // 登记动态路径 xs[*] + 下标文本
+            registerActiveRef(listVar->getName() + "[*]", listVar->getName(), "",
+                              member->getPos(), idxText);
+            // 元素地址：header(rax) -> data(+24) -> data + i*8
+            emitExpression(listVar);
+            if (hasFailed()) return;
+            _asm.inst("movq", "24(%rax)", "%rax");   // data 指针
+            emitExpression(args[0]);
+            if (hasFailed()) return;
+            _asm.inst("movq", "%rax", "%rcx");       // i
+            _asm.inst("imulq", "$8, %rcx");
+            _asm.inst("addq", "%rcx", "%rax");       // 元素槽地址
             return;
         }
         // P13-2/L3-C（决议 §2.3）：Pool 内建 release(x) ——
