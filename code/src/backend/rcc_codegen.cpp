@@ -858,11 +858,13 @@ namespace backend{
     void CodeGen::registerActiveRef(const std::string& path, const std::string& owner,
                                     const std::string& refVar, const utils::Pos& pos)    {
         // 决议 §4.1：路径穿透引用展开 ——
-        // 若 owner 本身是已登记引用（如 &q.x 得到的 q），新路径要接在
-        // 该引用的 path 后面（q.name -> q.x.name）。
+        // path 是完整路径（如 "p.name"）。若根 owner（p）本身是已登记的
+        // 引用变量（如 &q.x 得到的 p），把前缀替换成该引用的 path，
+        // 得到 "q.x.name"（精确登记）。
         std::string full = path;
         for (const auto& existing : _activeRefs)            {
-            if (existing.refVar == owner)                {
+            if (!existing.refVar.empty() && existing.refVar == owner &&
+                path.rfind(owner, 0) == 0)                {
                 full = existing.path + path.substr(owner.size());
                 break;
             }
@@ -2497,17 +2499,22 @@ namespace backend{
             if (const auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(operand);
                 dot && dot->getOpToken().getType() == core::TokenType::TOKEN_DOT)            {
                 const auto field = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getRightNode());
-                const std::string owner = classNameOf(dot->getLeftNode());
+                const auto dotRoot = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getLeftNode());
+                // 决议 §4.1：根节点可能是 Ref/Mut 引用变量（穿透），
+                // 此时 classNameOf 拿不到类名，用 classNameFromVariable 取内嵌类。
+                const std::string owner = dotRoot
+                    ? classNameFromVariable(dotRoot->getName()) : classNameOf(dot->getLeftNode());
                 if (!field || owner.empty())                {
                     failAt(node->getPos(), "L3: cannot resolve field path for sub-reference");
                     return;
                 }
                 const long long offset = findFieldOffset(owner, field->getName());
-                // 决议 §4.1：owner 是根对象变量名（p），path 是 p.name；
-                // classNameOf 只用于查字段偏移，不是路径的 owner。
-                const auto rootVar = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getLeftNode());
-                const std::string ownerName = rootVar ? rootVar->getName() : owner;
-                registerActiveRef("." + field->getName(), ownerName,
+                // 决议 §4.1：ownerName 是根变量名（p 或引用变量 q），
+                // path 完整路径；穿透展开在 registerActiveRef 内部处理。
+                const std::string ownerName = dotRoot ? dotRoot->getName() : owner;
+                // 决议 §4.1：path 用完整路径 "p.name"（穿透展开在
+                // registerActiveRef 内部按 refVar 替换前缀）。
+                registerActiveRef(ownerName + "." + field->getName(), ownerName,
                                   "", node->getPos()); // refVar 由 var 绑定处补全
                 emitExpression(dot->getLeftNode()); // 对象指针 -> %rax
                 if (hasFailed()) return;
@@ -6998,6 +7005,19 @@ namespace backend{
             cur = cls->baseName;
         }
         return nullptr;
+    }
+    std::string CodeGen::classNameFromVariable(const std::string& name) const    {
+        const auto slot = const_cast<CodeGen*>(this)->lookupVar(name);
+        if (!slot || !slot->type) return std::string();
+        if (slot->type->getKind() == sema::TypeKind::TK_CLASS)
+            return std::static_pointer_cast<sema::ClassType>(slot->type)->getName();
+        // Ref/Mut/Take/Body 等 MemoryType：取内嵌类型（决议 §4.1 穿透引用）
+        if (slot->type->getKind() == sema::TypeKind::TK_MEMORY)        {
+            const auto inner = std::dynamic_pointer_cast<sema::MemoryType>(slot->type)->getInnerType();
+            if (inner && inner->getKind() == sema::TypeKind::TK_CLASS)
+                return std::static_pointer_cast<sema::ClassType>(inner)->getName();
+        }
+        return std::string();
     }
     std::string CodeGen::classNameOf(const std::shared_ptr<ast::ExpressionNode>& node) const    {
         if (!node) return {};

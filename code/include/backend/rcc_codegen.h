@@ -767,6 +767,9 @@ namespace backend
                                                        const std::string& method) const;
         // 从表达式推出它的类名（推不出来返回空串）。
         std::string classNameOf(const std::shared_ptr<ast::ExpressionNode>& node) const;
+        // P13-2/L3-E（决议 §4.1）：从变量（含 Ref/Mut 引用）解析类类型名，
+        // 用于穿透引用的子引用字段查找。
+        [[nodiscard]] std::string classNameFromVariable(const std::string& name) const;
         // 在类层次里找字段偏移，找不到返回 -1。
         long long findFieldOffset(const std::string& className, const std::string& field) const;
         // 在类层次里找字段类型，找不到返回 nullptr。
