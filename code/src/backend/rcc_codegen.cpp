@@ -471,12 +471,12 @@ namespace backend{
                 (isBodyMemory(source) && isBareBody(target))) return std::string();
             // P13-2/L3（决议 §7.3 + §6.3）：调用点 f(bob) 由形参类型决定语义 ——
             // Ref[T]/Mut[T] 形参：Body 实参隐式取引用（底层同一指针）；
-            // Content[T] 形参：Body 实参隐式 take（落定，源→E）。
+            // Content[T]/Take[T] 形参：Body 实参隐式 take（落定，源→E）。
             // 都要求 inner 类型与实参类型一致。
             if (tr >= 0 && sr < 0 && sk != sema::TypeKind::TK_PTR)            {
                 const auto role = static_cast<sema::MemoryRole>(tr);
                 if (role == sema::MemoryRole::REF || role == sema::MemoryRole::MUT ||
-                    role == sema::MemoryRole::CONTENT)                {
+                    role == sema::MemoryRole::CONTENT || role == sema::MemoryRole::TAKE)                {
                     const auto inner = std::dynamic_pointer_cast<sema::MemoryType>(target)->getInnerType();
                     if (!inner || inner->equals(source)) return std::string();
                     return "cannot pass " + source->toString() + " as " + target->toString() +
@@ -5437,7 +5437,8 @@ namespace backend{
             if (i < paramTypes.size() && paramTypes[i] &&
                 paramTypes[i]->getKind() == sema::TypeKind::TK_MEMORY)            {
                 const auto mt = std::dynamic_pointer_cast<sema::MemoryType>(paramTypes[i]);
-                if (mt && mt->getRole() == sema::MemoryRole::CONTENT)                {
+                if (mt && (mt->getRole() == sema::MemoryRole::CONTENT ||
+                           mt->getRole() == sema::MemoryRole::TAKE))                {
                     if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(args[i]))                    {
                         const auto srcSlot = lookupVar(id->getName());
                         if (srcSlot && srcSlot->type &&

@@ -112,6 +112,7 @@ Test-Case "L3 from：不得返回 local 引用（决议 §5.2）" "$classP`nfun 
 Test-Case "L3 from：返回形参引用合法" "$classP`nfun good(p: Ref[Player]): Ref[str] { ret &p.name }`nfun main(): void { }" $true ""
 Test-Case "L3 ensures 只能列 Take 形参（决议 §9.2）" "fun bad(t: int): int ensures[t] { ret t }`nfun main(): void { var x = bad(1) }" $false "requires a Take"
 Test-Case "L3 ensures Take 形参合法" "$classP`nfun good(t: Take[Player]): int ensures[!t] { ret 1 }`nfun main(): void { }" $true ""
+Test-Case "L3 Take 形参调用点隐式 take（决议 §7.3）" "$classP`nfun consume(t: Take[Player]): int { ret 1 }`nfun main(): void { var bob: Player = Player(`"bob`"); consume(bob); var x = bob }" $false "Empty state"
 
 Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
