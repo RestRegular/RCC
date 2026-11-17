@@ -365,6 +365,18 @@ namespace backend
         // P13-2/L3-A（决议 §2）：变量 -> 出生地 Pool 变量名（空=当前块默认出生地）。
         // A 阶段只记录不检查生命周期；完整 R1/R2 检查待后续。
         std::map<std::string, std::string> _birthPlaces;
+        // P13-2/L3-D（决议 §3.1）：当前语句内被 take 挂起的 Body 变量名集合。
+        // 不是事务、不是运行时元数据；emitStatement 末统一结算。
+        std::set<std::string> _pendingTakes;
+        // take 挂起一个 Body（加入 pending 并置 HELD）；重复 take 报错。
+        void beginPendingTake(const std::string& name, const utils::Pos& pos);
+        // P13-2/L3-D（决议 §6.4）：挂起期间禁止 fill/clear/release。
+        [[nodiscard]] bool checkNotPending(const std::string& name,
+                                           const utils::Pos& pos, const std::string& action);
+        // 落定：从 pending 移除并置 E（EMPTY）。
+        void settlePendingTake(const std::string& name);
+        // 结算当前语句的 pending_take：未落定的回填 F（决议 §3.1）。
+        void drainPendingTakes();
         // drop glue 实例缓存：mangled 类型名 -> 函数标签
         std::map<std::string, std::string> _dropGlue;
         // 待发射的 drop 函数（类型 + 标签），函数体在 emitProgram 末尾统一发射

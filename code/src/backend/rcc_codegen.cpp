@@ -846,10 +846,40 @@ namespace backend{
         }
         return false;
     }
+    void CodeGen::beginPendingTake(const std::string& name, const utils::Pos& pos)    {
+        if (_pendingTakes.count(name))        {
+            failAt(pos, "L3: '" + name +
+                   "' is already taken in this statement (pending_take is exclusive)");
+            return;
+        }
+        _pendingTakes.insert(name);
+        setBodyState(name, BodyState::HELD, pos, "taken");
+    }
+    bool CodeGen::checkNotPending(const std::string& name, const utils::Pos& pos,
+                                  const std::string& action)    {
+        if (_pendingTakes.count(name))        {
+            failAt(pos, "L3: '" + name + "' is pending take and cannot be " +
+                   action + " (pending_take is exclusive)");
+            return false;
+        }
+        return true;
+    }
+    void CodeGen::settlePendingTake(const std::string& name)    {
+        _pendingTakes.erase(name);
+        setBodyState(name, BodyState::EMPTY, utils::Pos{}, "settled");
+    }
+    void CodeGen::drainPendingTakes()    {
+        // 决议 §3.1：未落定的回填 F；已落定的已在 settlePendingTake 里转 E。
+        for (const auto& name : _pendingTakes)
+            setBodyState(name, BodyState::FULL, utils::Pos{}, "restored");
+        _pendingTakes.clear();
+    }
     bool CodeGen::isVarUnavailable(const std::string& name) const    {
         for (auto it = _moveStates.rbegin(); it != _moveStates.rend(); ++it)        {
             if (const auto found = it->find(name); found != it->end())
-                return found->second != BodyState::FULL;
+                // 决议 §3.4：HELD（挂起）期间允许通过引用读/直接读写字段，
+                // 内容位置没动。只有 EMPTY（空壳）/MOVED 不可直接读。
+                return found->second == BodyState::EMPTY || found->second == BodyState::MOVED;
         }
         return isVarMoved(name); // 回退 drop 表（str/list 等 moved）
     }
@@ -2281,8 +2311,20 @@ namespace backend{
         // 表达式语句……），每一种都可能有临时值；统一在唯一的出口收尾，
         // 才不会有哪个分支漏掉。嵌套语句进入时会再取一次标记，天然正确。
         const size_t mark = _stmtTemps.size();
+        // P13-2/L3-D（决议 §3.3）：独立 take 语句（既不落定也不使用）
+        // 编译警告、不阻断。走 stderr 诊断格式，不新增机制。
+        if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node))            {
+            if (takeReceiverName(node) != "")                {
+                const auto pos = node->getPos();
+                fprintf(stderr, "%swarning: 'take()' as a standalone statement has no effect "
+                                "(result is discarded)\n", posPrefix(pos).c_str());
+            }
+        }
         emitStatementInner(node);
         drainStmtTemps(mark);
+        // P13-2/L3-D（决议 §3.1）：语句末结算 pending_take ——
+        // 未落定的回填 F，已落定的已在落点转 E。
+        drainPendingTakes();
     }
     void CodeGen::drainStmtTemps(const size_t mark)    {
         if (mark >= _stmtTemps.size()) return;
@@ -3365,8 +3407,7 @@ namespace backend{
                 // P13-2/L3-C（决议 §6.1/§6.2 位置 1）：`var c = bob.take()` 落定 ——
                 // bob（Body 壳）→E 空壳（可 clear/fill 复用），c 是新 Content 拥有者。
                 if (const std::string taken = takeReceiverName(init); !taken.empty())                {
-                    setBodyState(taken, BodyState::EMPTY, def->getNameNode()->getPos(),
-                                 "taken into '" + name + "'");
+                    settlePendingTake(taken); // 挂起→落定 E
                     return false; // 新拥有者
                 }
                 if (const auto initId = std::dynamic_pointer_cast<ast::IdentifierNode>(init))                {
@@ -5196,15 +5237,13 @@ namespace backend{
                              (srcSlot->type->getKind() == sema::TypeKind::TK_MEMORY &&
                               std::dynamic_pointer_cast<sema::MemoryType>(srcSlot->type)->getRole() ==
                                   sema::MemoryRole::BODY)))                        {
-                                setBodyState(id->getName(), BodyState::EMPTY, id->getPos(),
-                                             "taken by Content parameter");
+                                settlePendingTake(id->getName()); // 隐式 take→落定 E
                         }
                     }
                     // P13-2/L3（决议 §6.2 位置 4）：实参是 `bob.take()` 时，
                     // Content 形参位置是落点，接收者 bob→E。
                     if (const std::string taken = takeReceiverName(args[i]); !taken.empty())                {
-                        setBodyState(taken, BodyState::EMPTY, args[i]->getPos(),
-                                     "taken by Content parameter");
+                        settlePendingTake(taken); // 显式 take()→落定 E
                     }
                 }
             }
@@ -7269,6 +7308,7 @@ namespace backend{
                 failAt(args[0]->getPos(), "L3: release(x) requires a Body variable");
                 return;
             }
+            if (!checkNotPending(x->getName(), args[0]->getPos(), "released")) return;
             const auto found = _birthPlaces.find(x->getName());
             if (found == _birthPlaces.end() || found->second.empty())            {
                 failAt(args[0]->getPos(), "L3: release target '" + x->getName() +
@@ -7296,15 +7336,28 @@ namespace backend{
         }
         // P13-2/L3（决议 §7.1）：Body 内建 ref()/mut() 是 & 的语法糖，
         // 底层与 Body 同为对象指针，直接透传左值；不接受实参。
-        if (methodId->getName() == "ref" || methodId->getName() == "mut" ||
-            methodId->getName() == "take")        {
+        if (methodId->getName() == "ref" || methodId->getName() == "mut")        {
             if (!args.empty())            {
                 failAt(member->getPos(), "L3: '" + methodId->getName() +
                        "()' takes no arguments");
                 return;
             }
-            // take() 的内容位置不动（决议 §6.1），值就是接收者指针；
-            // 落定/回填由上下文（var 赋值、Content 形参等）负责。
+            emitExpression(member->getLeftNode());
+            return;
+        }
+        // P13-2/L3-D（决议 §3.1）：take() 先挂起（pending_take + HELD），
+        // 值就是接收者指针（内容位置不动）；落定/回填由 emitStatement 末结算。
+        if (methodId->getName() == "take")        {
+            if (!args.empty())            {
+                failAt(member->getPos(), "L3: take() takes no arguments");
+                return;
+            }
+            const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+            if (!recv)            {
+                failAt(member->getPos(), "L3: take() requires a Body variable receiver");
+                return;
+            }
+            beginPendingTake(recv->getName(), member->getPos());
             emitExpression(member->getLeftNode());
             return;
         }
@@ -7318,6 +7371,7 @@ namespace backend{
                 return;
             }
             const auto& name = recv->getName();
+            if (!checkNotPending(name, member->getPos(), methodId->getName() + "()")) return;
             if (methodId->getName() == "clear")            {
                 if (!args.empty())                {
                     failAt(member->getPos(), "L3: clear() takes no arguments");

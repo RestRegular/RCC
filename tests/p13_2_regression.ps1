@@ -101,6 +101,8 @@ Test-Case "L3 release 合法（Pool 出生地 + E 态）" "$classP`nfun main(): 
 Test-Case "L3 release 跨池报错" "$classP`nfun main(): void { var p1: Pool = Pool.fixed(10); var p2: Pool = Pool.fixed(10); var a: Player p1 = Player(`"bob`"); a.clear(); p2.release(a) }" $false "cross-pool"
 Test-Case "L3 release 默认出生地报错" "$classP`nfun main(): void { var pool: Pool = Pool.fixed(10); var a: Player = Player(`"bob`"); pool.release(a) }" $false "no Pool birth place"
 Test-Case "L3 release 非 E 态报错" "$classP`nfun main(): void { var pool: Pool = Pool.fixed(10); var a: Player pool = Player(`"bob`"); pool.release(a) }" $false "not Empty"
+Test-Case "L3 同一语句二次 take 报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); sout(bob.take(), bob.take()) }" $false "already taken"
+Test-Case "L3 挂起期间 clear 报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); sout(bob.take(), bob.clear()) }" $false "pending take"
 
 Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
