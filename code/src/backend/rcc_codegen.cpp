@@ -7251,6 +7251,44 @@ namespace backend{
             fail("Method name must be an identifier: " + member->toString());
             return;
         }
+        // P13-2/L3-C（决议 §2.3）：Pool 内建 release(x) ——
+        // 只对自定义 Pool 出生地的 Body 可用；x 须 E 态；跨池报错。
+        // 必须在 owner 检查之前：receiver 是 Pool 类型变量，classNameOf 为空。
+        if (methodId->getName() == "release")        {
+            const auto poolVar = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+            if (!poolVar)            {
+                failAt(member->getPos(), "L3: release() requires a Pool receiver");
+                return;
+            }
+            if (args.size() != 1)            {
+                failAt(member->getPos(), "L3: release(x) takes exactly one argument");
+                return;
+            }
+            const auto x = std::dynamic_pointer_cast<ast::IdentifierNode>(args[0]);
+            if (!x)            {
+                failAt(args[0]->getPos(), "L3: release(x) requires a Body variable");
+                return;
+            }
+            const auto found = _birthPlaces.find(x->getName());
+            if (found == _birthPlaces.end() || found->second.empty())            {
+                failAt(args[0]->getPos(), "L3: release target '" + x->getName() +
+                       "' has no Pool birth place (default-birth Body cannot be released)");
+                return;
+            }
+            if (found->second != poolVar->getName())            {
+                failAt(args[0]->getPos(), "L3: cross-pool release: '" + x->getName() +
+                       "' was born in '" + found->second + "', not '" + poolVar->getName() + "'");
+                return;
+            }
+            if (getBodyState(x->getName()) != BodyState::EMPTY)            {
+                failAt(args[0]->getPos(), "L3: release target '" + x->getName() +
+                       "' is not Empty (clear it first)");
+                return;
+            }
+            _birthPlaces.erase(found);
+            setBodyState(x->getName(), BodyState::MOVED, args[0]->getPos(), "released");
+            return;
+        }
         const std::string owner = classNameOf(member->getLeftNode());
         if (owner.empty())        {
             fail("Cannot determine the object type of method call: " + member->toString());

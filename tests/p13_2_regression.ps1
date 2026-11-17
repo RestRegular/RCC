@@ -97,6 +97,10 @@ Test-Case "L3 take 回填（未落定）" "$classP`nfun main(): void { var bob: 
 Test-Case "L3 take 落定（Content 形参）" "$classP`nfun consume(c: Content[Player]): int { ret 1 }`nfun main(): void { var bob: Player = Player(`"bob`"); consume(bob.take()); var d = bob }" $false "Empty state"
 Test-Case "L3 fill/clear 状态循环" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); var c = bob.take(); bob.clear(); bob.fill(c) }" $true ""
 Test-Case "L3 fill 前置必须是 E" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); var c: Content[Player] = null; bob.fill(c) }" $false "not Empty"
+Test-Case "L3 release 合法（Pool 出生地 + E 态）" "$classP`nfun main(): void { var pool: Pool = Pool.fixed(10); var a: Player pool = Player(`"bob`"); a.clear(); pool.release(a) }" $true ""
+Test-Case "L3 release 跨池报错" "$classP`nfun main(): void { var p1: Pool = Pool.fixed(10); var p2: Pool = Pool.fixed(10); var a: Player p1 = Player(`"bob`"); a.clear(); p2.release(a) }" $false "cross-pool"
+Test-Case "L3 release 默认出生地报错" "$classP`nfun main(): void { var pool: Pool = Pool.fixed(10); var a: Player = Player(`"bob`"); pool.release(a) }" $false "no Pool birth place"
+Test-Case "L3 release 非 E 态报错" "$classP`nfun main(): void { var pool: Pool = Pool.fixed(10); var a: Player pool = Player(`"bob`"); pool.release(a) }" $false "not Empty"
 
 Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
