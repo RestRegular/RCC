@@ -810,6 +810,12 @@ namespace backend{
         }
         return false;
     }
+    bool CodeGen::isFunctionParam(const std::string& name) const    {
+        const auto it = _functionParamNames.find(_functionName);
+        if (it == _functionParamNames.end()) return false;
+        for (const auto& p : it->second) if (p == name) return true;
+        return false;
+    }
     CodeGen::BodyState CodeGen::getBodyState(const std::string& name) const    {
         for (auto it = _moveStates.rbegin(); it != _moveStates.rend(); ++it)        {
             if (const auto found = it->find(name); found != it->end()) return found->second;
@@ -1687,9 +1693,19 @@ namespace backend{
     }
     sema::TypePtr CodeGen::inferType(const std::shared_ptr<ast::ExpressionNode>& node) const    {
         if (!node) return sema::getVoidType();
-        // P13-2/L3（决议 §7.2）：`&bob` -> Ref[inner]，inner 是操作数的类型。
+        // P13-2/L3（决议 §7.2/§4.1）：`&bob` -> Ref[inner]；
+        // `&p.name` -> Ref[字段类型]（p 可能是 Ref 变量，需穿透查类）。
         if (const auto refExpr = std::dynamic_pointer_cast<ast::RefExpressionNode>(node))        {
-            const auto inner = inferType(refExpr->getOperand());
+            sema::TypePtr inner;
+            if (const auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(refExpr->getOperand());
+                dot && dot->getOpToken().getType() == core::TokenType::TOKEN_DOT)            {
+                const auto field = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getRightNode());
+                const auto root = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getLeftNode());
+                const std::string cls = root ? classNameFromVariable(root->getName())
+                                             : classNameOf(dot->getLeftNode());
+                if (field && !cls.empty()) inner = findFieldType(cls, field->getName());
+            }
+            if (!inner) inner = inferType(refExpr->getOperand());
             return std::make_shared<sema::MemoryType>(sema::MemoryRole::REF, inner);
         }
         if (std::dynamic_pointer_cast<ast::IntegerLiteralNode>(node)) return sema::getIntType();
@@ -3772,6 +3788,24 @@ namespace backend{
                     return;
                 }
                 if (!markVarMoved(id->getName(), node->getPos(), "returned")) return;
+            }
+            // P13-2/L3-F（决议 §5.2）：返回引用不得指向本函数 local。
+            // &localVar / localVar.field（引用根是局部变量且非形参）报错。
+            if (const auto refExprNode = std::dynamic_pointer_cast<ast::RefExpressionNode>(retExpr))            {
+                const auto root = [&]() -> std::string {
+                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(refExprNode->getOperand()))
+                        return id->getName();
+                    if (const auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(refExprNode->getOperand()))                    {
+                        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getLeftNode()))
+                            return id->getName();
+                    }
+                    return std::string();
+                }();
+                if (!root.empty() && !isFunctionParam(root))                {
+                    failAt(node->getPos(), "L3: cannot return a reference to local '" + root +
+                           "' (P13-2 / from: references must not point to function locals)");
+                    return;
+                }
             }
             // 逆序销毁本层所有未移动的可销毁变量（含所有外层作用域的？
             // 不 —— ret 会跳出整条链，但外层变量在**外层的出口**销毁。

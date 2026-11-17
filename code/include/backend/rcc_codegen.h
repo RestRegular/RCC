@@ -518,6 +518,8 @@ namespace backend
                                                         const std::vector<sema::TypePtr>& paramTypes);
         // 在函数体里递归找 ret 的表达式类型（找不到返回 TK_UNKNOWN）
         [[nodiscard]] sema::TypePtr findReturnType(const std::shared_ptr<ast::ExpressionNode>& body) const;
+        // P13-2/L3-F（决议 §5.2）：判断名字是否当前函数形参。
+        [[nodiscard]] bool isFunctionParam(const std::string& name) const;
         [[nodiscard]] std::string currentFunctionName() const { return _functionName; }
         void fail(const std::string& msg);
         // P9：带位置信息的诊断。pos 为空时退化成 fail(msg)。

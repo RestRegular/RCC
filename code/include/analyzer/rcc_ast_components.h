@@ -424,18 +424,25 @@ namespace ast {
         std::vector<std::shared_ptr<LabelNode>> labelNodes;
         std::shared_ptr<Token> indicatorToken;
         std::shared_ptr<ExpressionNode> bodyNode;
+        // P13-2/L3-F（决议 §9）：签名子句 from[...] / writes[...] / ensures[...]。
+        // 每个 LabelNode 的 fullLabel 是子句名，labelDesNodes[0]->getBodyNode()
+        // 是参数表达式列表。空 = 未写子句。
+        std::vector<std::shared_ptr<LabelNode>> signatureClauses;
     public:
         explicit FunctionDefinitionNode(const Token &mainToken_,
             const std::shared_ptr<ExpressionNode> &callNode,
             const std::shared_ptr<Token> &colonToken_,
             const std::vector<std::shared_ptr<LabelNode>> &labelNodes_,
             const std::shared_ptr<Token> &indicatorToken_,
-            const std::shared_ptr<ExpressionNode> &bodyNode);
+            const std::shared_ptr<ExpressionNode> &bodyNode,
+            const std::vector<std::shared_ptr<LabelNode>> &signatureClauses_ = {});
         [[nodiscard]] std::shared_ptr<ExpressionNode> getCallNode() const;
         [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabelNodes() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
         [[nodiscard]] Token getColonToken() const;
         [[nodiscard]] std::shared_ptr<Token> getIndicatorToken() const;
+        [[nodiscard]] const std::vector<std::shared_ptr<LabelNode>>& getSignatureClauses() const;
+        void setSignatureClauses(const std::vector<std::shared_ptr<LabelNode>>& clauses);
     };
 
     class AnonFunctionDefinitionNode final : public ExpressionNode {

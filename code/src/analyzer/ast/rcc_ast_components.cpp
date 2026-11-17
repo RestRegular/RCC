@@ -139,10 +139,12 @@ namespace ast {
         const std::shared_ptr<Token> &colonToken_,
         const std::vector<std::shared_ptr<LabelNode>> &labelNodes_,
         const std::shared_ptr<Token> &indicatorToken_,
-        const std::shared_ptr<ExpressionNode> &bodyNode)
+        const std::shared_ptr<ExpressionNode> &bodyNode,
+        const std::vector<std::shared_ptr<LabelNode>> &signatureClauses_)
             : ExpressionNode(mainToken_, NodeType::PREFIX),
-             callNode(callNode), colonToken(colonToken_),
-    labelNodes(labelNodes_), indicatorToken(indicatorToken_), bodyNode(bodyNode){}
+              callNode(callNode), colonToken(colonToken_),
+     labelNodes(labelNodes_), indicatorToken(indicatorToken_), bodyNode(bodyNode),
+     signatureClauses(signatureClauses_){}
 
     Token FunctionDefinitionNode::getColonToken() const {
         return *colonToken;
@@ -186,6 +188,13 @@ namespace ast {
 
     std::vector<std::shared_ptr<LabelNode>> FunctionDefinitionNode::getLabelNodes() const {
         return labelNodes;
+    }
+    const std::vector<std::shared_ptr<LabelNode>>& FunctionDefinitionNode::getSignatureClauses() const {
+        return signatureClauses;
+    }
+
+    void FunctionDefinitionNode::setSignatureClauses(const std::vector<std::shared_ptr<LabelNode>>& clauses) {
+        signatureClauses = clauses;
     }
 
     std::shared_ptr<ExpressionNode> FunctionDefinitionNode::getBodyNode() const {

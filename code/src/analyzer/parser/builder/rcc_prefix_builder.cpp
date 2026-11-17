@@ -189,6 +189,12 @@ namespace parser {
                 return nullptr;
             }
         }
+        // P13-2/L3-F：把签名子句从返回类型标签里分离，存进 FunctionDefinitionNode。
+        std::vector<std::shared_ptr<LabelNode>> signatureClauses;
+        if (labelNodes.size() > 1)        {
+            signatureClauses.assign(labelNodes.begin() + 1, labelNodes.end());
+            labelNodes.resize(1); // 只保留 label[0] = 返回类型（可能为空）
+        }
         if (nextTokenIs(TokenType::TOKEN_NEWLINE))
         {
             // 函数声明
@@ -202,7 +208,7 @@ namespace parser {
                     {
                         return std::make_shared<FunctionDefinitionNode>(funToken, callNode, colonToken, labelNodes,
                             std::make_shared<Token>(funcDefNode->getIndicatorToken()),
-                            funcDefNode->getBodyNode());
+                            funcDefNode->getBodyNode(), signatureClauses);
                     }
                  }
             } else if (callNode->getRealType() == NodeType::ANON_FUNCTION_DEFINITION &&
@@ -212,7 +218,7 @@ namespace parser {
                 {
                     return std::make_shared<FunctionDefinitionNode>(funToken, funcDefNode->getLeftNode(), colonToken, labelNodes,
                         std::make_shared<Token>(funcDefNode->getOpToken()),
-                        funcDefNode->getRightNode());
+                        funcDefNode->getRightNode(), signatureClauses);
                 }
             }
             return std::make_shared<FunctionDeclarationNode>(funToken, callNode, colonToken, labelNodes);
@@ -228,7 +234,7 @@ namespace parser {
         }
         // 函数定义
         const auto &bodyNode = buildBraceExpression();
-        return std::make_shared<FunctionDefinitionNode>(funToken, callNode, colonToken, labelNodes, indicatorToken, bodyNode);
+        return std::make_shared<FunctionDefinitionNode>(funToken, callNode, colonToken, labelNodes, indicatorToken, bodyNode, signatureClauses);
     }
 
     ExpressionNodePtr Parser::buildIdentifierExpression(){

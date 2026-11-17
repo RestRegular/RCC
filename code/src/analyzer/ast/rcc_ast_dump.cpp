@@ -276,6 +276,10 @@ namespace ast
             {
                 dumpChild("callNode", fn->getCallNode(), level + 1, oss);
                 dumpChild("body", fn->getBodyNode(), level + 1, oss);
+                for (const auto& clause : fn->getSignatureClauses())                {
+                    if (!clause) continue;
+                    oss << indentOf(level + 1) << "clause: " << clause->getFullLabel() << "\n";
+                }
                 return;
             }
             if (const auto decl = std::dynamic_pointer_cast<FunctionDeclarationNode>(node))
