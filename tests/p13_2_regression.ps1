@@ -110,6 +110,8 @@ Test-Case "L3 get_mut 不同下标不冲突（i≠j）" "fun pair(a: Mut[int], b
 Test-Case "L3 get_mut 相同下标冲突" "fun pair(a: Mut[int], b: Mut[int]): int { ret 1 }`nfun main(): void { var xs = [1,2,3]; var x = pair(xs.get_mut(0), xs.get_mut(0)) }" $false "conflicting mutable references"
 Test-Case "L3 from：不得返回 local 引用（决议 §5.2）" "$classP`nfun bad(): Ref[str] { var p: Player = Player(`"bob`"); ret &p.name }`nfun main(): void { }" $false "cannot return a reference to local"
 Test-Case "L3 from：返回形参引用合法" "$classP`nfun good(p: Ref[Player]): Ref[str] { ret &p.name }`nfun main(): void { }" $true ""
+Test-Case "L3 ensures 只能列 Take 形参（决议 §9.2）" "fun bad(t: int): int ensures[t] { ret t }`nfun main(): void { var x = bad(1) }" $false "requires a Take"
+Test-Case "L3 ensures Take 形参合法" "$classP`nfun good(t: Take[Player]): int ensures[!t] { ret 1 }`nfun main(): void { }" $true ""
 
 Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="

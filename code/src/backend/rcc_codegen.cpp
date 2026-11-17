@@ -810,6 +810,48 @@ namespace backend{
         }
         return false;
     }
+    void CodeGen::validateEnsuresClauses(const std::vector<std::string>& paramNames,
+                                         const std::vector<sema::TypePtr>& paramTypes)    {
+        for (const auto& clause : _currentSignatureClauses)        {
+            if (!clause || clause->getFullLabel() != "ensures") continue;
+            const auto des = clause->getLabelDesNodes();
+            if (des.empty() || !des[0] || !des[0]->getBodyNode()) continue;
+            // 展平 ensures[a, ?b, !c] 的每一项
+            std::vector<std::shared_ptr<ast::ExpressionNode>> items;
+            flattenTypeArgs(des[0]->getBodyNode(), items);
+            for (const auto& item : items)            {
+                std::string name;
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(item))            {
+                    name = id->getName();
+                } else if (const auto unary = std::dynamic_pointer_cast<ast::UnaryExpressionNode>(item))            {
+                    // +a / ?a / !a：取操作数的标识符名（前缀是标记）
+                    const auto op = unary->getOpToken().getType();
+                    const auto rhs = unary->getRightNode();
+                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(rhs)) name = id->getName();
+                    else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(rhs)) name = lbl->getFullLabel();
+                    (void)op; // 标记语义（Full/?/Empty）留给逐出口验证
+                } else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(item))            {
+                    name = lbl->getFullLabel();
+                }
+                if (name.empty()) continue;
+                // 决议 §9.2：只对 Take[T] 形参生效，列其他类型报错。
+                size_t idx = paramNames.size();
+                for (size_t i = 0; i < paramNames.size(); ++i)
+                    if (paramNames[i] == name) { idx = i; break; }
+                const bool isTake = idx < paramTypes.size() && paramTypes[idx] &&
+                    paramTypes[idx]->getKind() == sema::TypeKind::TK_MEMORY &&
+                    std::dynamic_pointer_cast<sema::MemoryType>(paramTypes[idx])->getRole() ==
+                        sema::MemoryRole::TAKE;
+                if (!isTake)                {
+                    failAt(clause->getMainToken().getPos(),
+                           "L3: ensures['" + name + "'] requires a Take[T] parameter "
+                           "(P13-2 / §9.2)");
+                    return;
+                }
+            }
+        }
+        _currentSignatureClauses.clear(); // 消费后清空，避免泄漏到后续函数体
+    }
     bool CodeGen::isFunctionParam(const std::string& name) const    {
         const auto it = _functionParamNames.find(_functionName);
         if (it == _functionParamNames.end()) return false;
@@ -8541,6 +8583,7 @@ namespace backend{
         const std::string emitName = !emitSymbol.empty()
                                          ? emitSymbol
                                          : (isUserMain ? "__rio_user_main" : fname);
+        _currentSignatureClauses = node->getSignatureClauses();
         emitFunctionBody(emitName, paramNames, paramTypes, retType, node->getBodyNode(), true,
                          {}, {}, "", false, retAnnotated);
     }
@@ -8571,6 +8614,9 @@ namespace backend{
         _functionName = emitName;
         _functionReturnType = retType;
         _functionReturnAnnotated = retTypeAnnotated;
+        // P13-2/L3-F（决议 §9.2）：ensures 语法校验（只对 Take 形参生效）
+        validateEnsuresClauses(paramNames, paramTypes);
+        if (hasFailed()) return;
         _frameSize = 0;
         _ehStack.clear();
         _loopStack.clear();

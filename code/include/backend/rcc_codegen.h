@@ -518,6 +518,11 @@ namespace backend
                                                         const std::vector<sema::TypePtr>& paramTypes);
         // 在函数体里递归找 ret 的表达式类型（找不到返回 TK_UNKNOWN）
         [[nodiscard]] sema::TypePtr findReturnType(const std::shared_ptr<ast::ExpressionNode>& body) const;
+        // P13-2/L3-F：当前正在发射的函数的签名子句（emitFunctionBody 读取）。
+        std::vector<std::shared_ptr<ast::LabelNode>> _currentSignatureClauses;
+        // P13-2/L3-F（决议 §9.2）：ensures 语法校验——只能列 Take[T] 形参。
+        void validateEnsuresClauses(const std::vector<std::string>& paramNames,
+                                    const std::vector<sema::TypePtr>& paramTypes);
         // P13-2/L3-F（决议 §5.2）：判断名字是否当前函数形参。
         [[nodiscard]] bool isFunctionParam(const std::string& name) const;
         [[nodiscard]] std::string currentFunctionName() const { return _functionName; }
