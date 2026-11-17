@@ -225,6 +225,123 @@ namespace backend
         static constexpr long long kDictVals = 24;
         static constexpr size_t kDictHeaderSize = 32;
 
+        // ---------- P13-1：销毁（drop glue） ----------
+        //
+        // 裁决依据（docs/p13_plan.md）：
+        //   * D16：按**元素类型**生成 drop glue 函数，出口只发一次 call，
+        //     不把整段销毁逻辑内联到每个出口。嵌套类型（list[list[str]]）
+        //     各自对应一个 mangled 名的 drop 函数，在实例缓存里去重。
+        //   * D4：出口 = break / continue / ret / 作用域末，各发一份；
+        //     销毁顺序定为**声明的逆序**。
+        //   * D14：范围外类型（class 实例 / any / 闭包 env）P13-1 一律**不释放**
+        //     （它们是引用语义，直接释放必然双重释放）；`list[Foo]` 只释放缓冲区。
+        //   * D11：`core_free` 对 cap==0 静默返回，所以 str 字面量天然安全。
+        //
+        // drop 函数的签名统一是 `void drop_<mangle>(ptr p)`（p 是**槽位地址**，
+        // 不是值），因为 list/dict 需要写回 null 给调试钩子用。
+
+        // 类型是否有需要释放的资源。标量（int/float/bool/char/ptr）返回 false。
+        [[nodiscard]] bool needsDrop(const sema::TypePtr& type) const;
+        // 取（必要时生成）某个类型的 drop glue 函数名。type 不可释放时返回空串。
+        std::string ensureDropGlue(const sema::TypePtr& type);
+        // 发射一个 drop 函数体（按 type 的具体形状生成）。
+        void emitDropGlueBody(const std::string& fnName, const sema::TypePtr& type);
+        // 在**作用域出口**给该作用域里登记的所有需销毁变量发 drop 调用，
+        // 顺序为声明逆序。scopeIndex 是 _scopes 的下标。
+        void emitScopeDrops(size_t scopeIndex, bool nullOut);
+        // 记录「这个作用域里哪些变量需要销毁」，popScope 时据此发调用。
+        // addr 是该变量的槽位寻址串（`-8(%rbp)` 或 `_g_x(%rip)`）。
+        void registerDropVar(const std::string& name, const std::string& addr,
+                             const sema::TypePtr& type);
+        // D9 规则 C：登记一个**借用**变量（形参、或初始化自已有变量/元素）。
+        // 借用不销毁，但记录在案以便检查「借用逃逸」（ret / 入容器 / 存外层）。
+        // addr 同样要记下来：借用被重新赋值后会**升格成拥有者**，那时出口
+        // 需要拿它的槽位地址去释放（见 setDropAlias 的说明）。
+        void registerBorrow(const std::string& name, const sema::TypePtr& type,
+                            const std::string& addr = std::string());
+        // 这个变量是否是借用（沿作用域链由内向外找）。
+        [[nodiscard]] bool isBorrowed(const std::string& name) const;
+        // D9 的 H/X 两档：这个变量是否已被整体移走（X）。被移动后再使用
+        // 必须编译报错 —— 那等于读一块随时会被别人释放的内存。
+        [[nodiscard]] bool isVarMoved(const std::string& name) const;
+        // 借用逃逸检查：借用不能 ret、不能入容器、不能存进外层作用域变量。
+        // 违反时报错并返回 false。在哪一层作用域要看 fromScope。
+        bool checkBorrowNotEscaping(const std::string& name, const utils::Pos& pos,
+                                    const std::string& action) const;
+        // 把某个变量标记为已移动（D9 规则 C）：出口不再为它发 drop。
+        //
+        // D13（P13-1 保守规则）：**try 体内禁止移动外层拥有者**。原因见
+        // docs/p13_plan.md D13——异常路径不保证销毁（D1=A），一旦把外层拥有者
+        // 移进 try 体内的容器再抛出，接收方随栈帧一起被 longjmp 跳过，
+        // 「移动」承诺的「总有一个人负责销毁」就落空了。P13-1 没有状态格
+        // 来追踪跨异常边界的 H/X，只能保守禁止；P13-2 有了 F/E 状态格再放宽。
+        // 违反时报错并返回 false。
+        bool markVarMoved(const std::string& name, const utils::Pos& pos,
+                          const std::string& action);
+        // 这个变量是否**拥有**资源（= 在登记表里且不是借用）。
+        // 借用（形参、模块内临时、壳子别名）不拥有资源，重新赋值时不需要
+        // 先释放旧值 —— 释放了就变成释放别人的内存。
+        [[nodiscard]] bool isDropOwned(const std::string& name) const;
+        // 这个表达式是不是「新值」（堆上新分配出来的东西）。
+        //
+        // D9 规则 C 的判据，两处共用：新值 -> 拥有者；已有变量/元素/字段 ->
+        // 借用（别名）。用 D10 的说法，新值就是「出生地为当前语句的匿名
+        // local」，语句末必须销毁。
+        [[nodiscard]] bool isFreshValue(const std::shared_ptr<ast::ExpressionNode>& node) const;
+
+        // ---------- P13-1：D10 语句级临时值 ----------
+        //
+        // 规范/裁决：临时值 = 出生地为当前语句的匿名 local，销毁点 = 语句末。
+        //
+        // 为什么必须做：`sout("a" + "b")` 与 `take("a" + "b")` 里的拼接结果
+        // 没有任何变量接住它，早先这里 alloc=1 / free=0，纯泄漏。而 str 的
+        // 大部分分配恰恰来自临时值，不做这条 P13-1 对 str 基本没效果。
+        //
+        // 实现方式：临时实参先落进一个**专属栈槽**（不是 shadow space ——
+        // 那块是调用约定借用的、调用返回后就不属于我们了），登记到
+        // _stmtTemps；emitStatement 在语句末尾统一逆序销毁。
+        struct StmtTemp
+        {
+            std::string addr;      // 栈槽地址
+            sema::TypePtr type;
+        };
+        // 当前语句里累积的临时值。emitStatement 用「进入时的长度」做标记，
+        // 结束时把标记之后的全部销毁并截断 —— 这样嵌套语句天然正确。
+        std::vector<StmtTemp> _stmtTemps;
+        // 把 [mark, size) 区间的临时值逆序销毁并截断到 mark。
+        void drainStmtTemps(size_t mark);
+        // 语句发射的实体（emitStatement 是它的包装，负责收尾销毁）。
+        void emitStatementInner(const std::shared_ptr<ast::ExpressionNode>& node);
+        // 把一个变量的「拥有 / 借用」身份改写掉（D9 规则 C 的状态转移）。
+        //
+        // 为什么需要它：规范 §11A.1 把 `x = y` 定为**壳子赋值**——两个槽共享
+        // 同一块内容，只有一方是拥有者。所以赋值既要释放 x 的旧内容，又要
+        // 把 x 从拥有者降级成借用；反过来 `x = <新值>` 要把它升回拥有者。
+        // 只改登记表里的标记，不发任何代码。
+        void setDropAlias(const std::string& name, bool borrowed);
+
+        // 每个作用域里按声明顺序登记的「可能需要销毁」的变量。
+        struct DropEntry
+        {
+            std::string name;
+            // 登记时就把**槽位地址**定下来。不能只在销毁时按名字 lookupVar：
+            // 内层同名变量会遮蔽外层，按名字查会销毁错的那个。
+            std::string addr;
+            sema::TypePtr type;
+            bool moved = false;   // 已被整体移走（ret / 入容器），出口不销毁
+            // D9 规则 C：借用（初始化表达式是已有变量/元素，或来自形参）
+            // 不拥有资源，不能 ret、不能入容器、不能存进外层变量。
+            bool borrowed = false;
+        };
+        // 与 _scopes 同长、同生命周期。popScope 时同步弹出。
+        std::vector<std::vector<DropEntry>> _scopeDrops;
+        // drop glue 实例缓存：mangled 类型名 -> 函数标签
+        std::map<std::string, std::string> _dropGlue;
+        // 待发射的 drop 函数（类型 + 标签），函数体在 emitProgram 末尾统一发射
+        std::vector<std::pair<std::string, sema::TypePtr>> _pendingDropGlue;
+        // 正在生成的 drop 函数名（防止递归类型无限展开）
+        std::set<std::string> _dropInProgress;
+
         // 列表字面量 `[a, b, c]`
         void emitListExpression(const std::shared_ptr<ast::ExpressionNode>& node);
         // 字典字面量 `{k: v, ...}`
@@ -395,6 +512,11 @@ namespace backend
             // 进入循环体时的 try 帧深度：break/continue 只需要弹出
             // 循环体内部建立的帧，循环外面的帧要留着。
             size_t ehDepth = 0;
+            // P13-1（D4）：进入循环体时的销毁登记深度。break / continue 是
+            // 终结性跳转，跳出后**不会**再走到循环体的词法出口，所以必须在
+            // 跳转前把这一区间里登记的拥有者销毁。只销毁「循环体这一层」
+            // 的变量 —— 循环外层的变量由外层出口负责。
+            size_t dropDepth = 0;
         };
         std::vector<LoopContext> _loopStack;
 
@@ -836,6 +958,16 @@ namespace backend
             // 该 try 的 finally 体（可能为空）。ret / break / continue 提前
             // 离开时必须把它内联发射一遍 —— 否则 finally 被静默跳过。
             std::shared_ptr<ast::BlockRangerNode> finallyBody;
+            // P13-1（D13）：进入该 try 的 **body** 时的作用域深度。
+            //
+            // 「移动外层拥有者」的判据就是这个：要移动的变量登记在
+            // _scopeDrops 的下标 < tryBodyScope 里，说明它比 try 活得久，
+            // 一旦抛出就会被 longjmp 跳过它的销毁 —— 必须禁止。
+            // 循环里 break/continue 用的 dropDepth 是同一套口径。
+            size_t tryBodyScope = 0;
+            // 是否正在发射 try 体（false = 正在发射 handler / finally，
+            // 那两处不受此禁令约束）。
+            bool inTryBody = false;
         };
         std::vector<EhFrame> _ehStack;
         // 正在内联发射 finally 体时置位，防止 finally 里的 ret / break

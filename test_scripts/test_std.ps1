@@ -85,7 +85,7 @@ $expectedSigs = @{
         'isEmpty(arg: list): bool'
         'isEmpty(arg: str): bool'
         'join[T](xs: list, sep: str = ""): str'
-        'listAppend[T](xs: list, item: T): list'
+        'listAppend[T](xs: list, item: T): void'
         'listRemove[T](xs: list, index: int): void'
         'map[T](xs: list, h: funi): list'
         'repList[T](x: T, times: int): list'
@@ -363,7 +363,10 @@ sout(core_str_len(c))
 sout(repStr("a", 2))
 var rl: list[int] = repList(1, 2)
 sout(core_str_len(rl))
-var la: list[int] = listAppend(l, 4)
+// listAppend 自 P13-1（D6=A）起是**原地**追加，返回 void —— 用独立变量，
+// 免得把 l 改长之后影响后面按 l 的原长度写的断言。
+var la: list[int] = [1, 2]
+listAppend(la, 3)
 sout(core_str_len(la))
 var lr: list[int] = [1, 2, 3]
 listRemove(lr, 0)

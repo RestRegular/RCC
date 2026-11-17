@@ -17,9 +17,17 @@
 /* ============================================================
  * void core_mem_copy(void* dst, const void* src, size_t n)
  *   rcx = dst, rdx = src, r8 = n
+ *
+ * P13-1 修正（ABI 合规）：%rdi / %rsi 在 MS x64 上是 **callee-saved**，
+ * 这里必须保存并恢复。此前直接借来当 rep movsb 的源/目的寄存器、返回前
+ * 不恢复，导致任何「把值放在 rsi/rdi 里跨 core_* 调用」的调用者被悄悄
+ * 改掉数据 —— core_list_append 的 value（rsi）与 newcap（rdi）就是这么
+ * 被冲掉的，实测追加后元素变成 0。
  * ============================================================ */
     .globl  core_mem_copy
 core_mem_copy:
+    pushq   %rdi
+    pushq   %rsi
     movq    %rcx, %rax          /* 返回 dst */
     testq   %r8, %r8
     je      .Lmem_copy_done
@@ -30,6 +38,8 @@ core_mem_copy:
     movq    %r9, %rcx
     rep movsb                    /* 逐字节复制 */
 .Lmem_copy_done:
+    popq    %rsi
+    popq    %rdi
     ret
 
 /* ============================================================
@@ -39,6 +49,8 @@ core_mem_copy:
  * ============================================================ */
     .globl  core_mem_move
 core_mem_move:
+    pushq   %rdi
+    pushq   %rsi
     movq    %rcx, %rax
     testq   %r8, %r8
     je      .Lmem_move_done
@@ -65,6 +77,8 @@ core_mem_move:
     cld
     rep movsb
 .Lmem_move_done:
+    popq    %rsi
+    popq    %rdi
     ret
 
 /* ============================================================
@@ -73,6 +87,8 @@ core_mem_move:
  * ============================================================ */
     .globl  core_mem_set
 core_mem_set:
+    pushq   %rdi
+    pushq   %rsi
     movq    %rcx, %rax
     testq   %r8, %r8
     je      .Lmem_set_done
@@ -82,6 +98,8 @@ core_mem_set:
     cld
     rep stosb
 .Lmem_set_done:
+    popq    %rsi
+    popq    %rdi
     ret
 
 /* ============================================================
@@ -91,6 +109,8 @@ core_mem_set:
  * ============================================================ */
     .globl  core_mem_eq
 core_mem_eq:
+    pushq   %rdi
+    pushq   %rsi
     testq   %r8, %r8
     je      .Lmem_eq_true
     movq    %rcx, %rsi
@@ -101,9 +121,13 @@ core_mem_eq:
     jne     .Lmem_eq_false
 .Lmem_eq_true:
     movl    $1, %eax
+    popq    %rsi
+    popq    %rdi
     ret
 .Lmem_eq_false:
     xorl    %eax, %eax
+    popq    %rsi
+    popq    %rdi
     ret
 
 /* ============================================================
@@ -115,6 +139,8 @@ core_mem_eq:
     .globl  core_alloc
 core_alloc:
     subq    $40, %rsp            /* 32 shadow + 8 对齐 */
+    movq    %rsi, 32(%rsp)       /* P13-1 修正（ABI 合规）：%rsi 是 callee-saved，
+                                  * 下面清 ring 的循环拿它当临时寄存器，必须还回去 */
     movq    %rcx, %r8            /* r8 = size（HeapAlloc 第 3 参） */
     movq    %rdx, %r9            /* 保存 align（本实现忽略，堆已 16 字节对齐） */
     call    GetProcessHeap
@@ -124,10 +150,34 @@ core_alloc:
     xorl    %edx, %edx           /* rdx = flags = 0 */
     movq    %r8, %r8             /* r8 = dwBytes */
     call    HeapAlloc
+    /* P13-1 调试钩子（D17）：成功分配才计数。发布构建里这个函数永远不被
+     * 调用（codegen 只在 -debug-alloc 时引用），计数恒为 0 也无害。 */
+    testq   %rax, %rax
+    je      .Lalloc_nobump
+    addq    $1, core_dbg_alloc_count(%rip)
+    /* 这个地址已经重新分配 -> 从「已释放」ring 里清掉，否则下一轮正常
+     * 释放会被误判成重复释放（见 core_free 里的说明）。 */
+    pushq   %rax
+    movq    %rax, %r8
+    leaq    core_dbg_recent(%rip), %rdx
+    movl    $16, %ecx
+.Lalloc_clear_ring:
+    movq    (%rdx), %rsi
+    cmpq    %r8, %rsi
+    jne     .Lalloc_clear_next
+    movq    $0, (%rdx)
+.Lalloc_clear_next:
+    addq    $8, %rdx
+    decl    %ecx
+    jne     .Lalloc_clear_ring
+    popq    %rax
+.Lalloc_nobump:
+    movq    32(%rsp), %rsi
     addq    $40, %rsp
     ret
 .Lalloc_fail:
     xorl    %eax, %eax
+    movq    32(%rsp), %rsi
     addq    $40, %rsp
     ret
 
@@ -206,19 +256,420 @@ core_realloc:
     .globl  core_free
 core_free:
     testq   %rcx, %rcx
-    je      .Lfree_done
+    je      .Lfree_ret
     /* cap == 0 -> 静态只读头，不可释放 */
     cmpq    $0, 8(%rcx)
-    je      .Lfree_done
-    subq    $40, %rsp
+    je      .Lfree_ret
+    /* P13-1 修正（ABI 合规）：下面用 %rsi 当扫描临时寄存器，
+     * 而 %rsi/%rdi 在 MS x64 上是 callee-saved —— 必须保存恢复，
+     * 否则调用者放在里面的数据会被悄悄改掉（core_list_append 就因此
+     * 丢过 value）。 */
+    pushq   %rsi
+    pushq   %rdi
+    subq    $56, %rsp
     movq    %rcx, 32(%rsp)       /* 暂存 p */
+
+    /* ---- P13-1 调试钩子（D17）：重复释放检测 ----
+     * 在**最近释放过的指针**环形缓冲里找 p。命中说明同一块被释放了两次，
+     * 那是必然的堆损坏（HeapFree 对已释放块是未定义行为，实测进程直接
+     * 以 0xC0000374 退出、没有任何可读线索）。
+     *
+     * 命中后**不再真的调用 HeapFree**，只计数然后返回：把「崩溃」变成
+     * 「可观测的数字」。这样负向用例能给出确定结论，而不是在堆里撞运气。
+     *
+     * **关键前提：core_alloc 成功时必须把这个指针从 ring 里清掉。**
+     * 否则「一块被释放 -> 地址被下一轮复用 -> 再被正常释放」会被误判成
+     * 重复释放（实测 3 轮循环各释放一次，却报出 1 次重复）。清掉之后，
+     * ring 里只保留「释放过且尚未被重新分配」的地址，语义才是对的。 */
+    movq    32(%rsp), %rax
+    leaq    core_dbg_recent(%rip), %rdx
+    movl    $0, %ecx
+.Lfree_dup_scan:
+    cmpl    $16, %ecx
+    jae     .Lfree_dup_scan_done
+    movq    (%rdx,%rcx,8), %rsi
+    cmpq    %rax, %rsi
+    je      .Lfree_dup_hit
+    incl    %ecx
+    jmp     .Lfree_dup_scan
+.Lfree_dup_scan_done:
+    jmp     .Lfree_do_it
+.Lfree_dup_hit:
+    /* 命中重复释放：计数，不真的释放，直接结束 */
+    addq    $1, core_dbg_double_free_count(%rip)
+    addq    $56, %rsp
+    popq    %rdi
+    popq    %rsi
+    ret
+
+.Lfree_do_it:
     call    GetProcessHeap
-    movq    %rax, %rcx
+    movq    %rax, 40(%rsp)       /* hHeap */
+
+    /* ---- D17：释放前把整块填 0xDD ----
+     * 需要真实的块大小，而我们的容器头只记 len/cap（那是逻辑长度，不是
+     * 堆块大小）。用 HeapSize 问 Windows 自己，避免猜。
+     * 填在 HeapFree **之前**：之后那块就不属于我们了。 */
+    movq    40(%rsp), %rcx
+    xorl    %edx, %edx
+    movq    32(%rsp), %r8
+    call    HeapSize
+    cmpq    $-1, %rax            /* HeapSize 失败返回 (SIZE_T)-1 */
+    je      .Lfree_after_poison
+    movq    %rax, 48(%rsp)       /* size */
+    testq   %rax, %rax
+    je      .Lfree_after_poison
+    movq    32(%rsp), %rcx       /* dst = p */
+    movl    $0xDD, %edx          /* byte = 0xDD */
+    movq    48(%rsp), %r8        /* n = size */
+    call    core_mem_set
+    movq    48(%rsp), %rax
+    addq    %rax, core_dbg_poison_bytes_total(%rip)
+
+.Lfree_after_poison:
+    movq    40(%rsp), %rcx
     xorl    %edx, %edx
     movq    32(%rsp), %r8
     call    HeapFree
-    addq    $40, %rsp
+    /* P13-1 调试钩子（D17）：只有真正落到 HeapFree 才计数 ——
+     * null / cap==0 的静默返回不算「释放」，否则计数器证明不了任何事。 */
+    addq    $1, core_dbg_free_count(%rip)
+    /* 记进 recently-freed ring（FIFO，覆盖最旧的一项） */
+    leaq    core_dbg_recent(%rip), %rdx
+    movq    core_dbg_recent_idx(%rip), %rcx
+    movq    32(%rsp), %rax
+    movq    %rax, (%rdx,%rcx,8)
+    incq    %rcx
+    andq    $15, %rcx
+    movq    %rcx, core_dbg_recent_idx(%rip)
+    addq    $56, %rsp
+    popq    %rdi
+    popq    %rsi
 .Lfree_done:
+.Lfree_ret:
+    ret
+
+/* ============================================================
+ * ptr core_list_append(ptr list, ptr value)
+ *   rcx = list header, rdx = value（8 字节元素，直接按位复制）
+ *
+ * P13-1 / D6 + D12：受控的**原地追加**。
+ *
+ * 为什么必须在 core 层做：列表长度头在容器内部，而 codegen 的索引写
+ * （`xs[n] = v`）有边界检查 —— 先比长度头，越界直接跳过。所以 std 层
+ * 「先改长度头再写」这条走不通（实测元素根本没进去）。能同时改长度头
+ * 和 data 指针的代码必须在 core 层。
+ *
+ * ABI v2 布局（rcc_codegen.h 的 kHeaderLen/kHeaderCap/kListData）：
+ *   len@0  cap@8  elem_size@16  data@24
+ *
+ * 扩容策略：cap 不够时按 2 倍长（至少 4）重新分配 data，**header 地址不变**
+ * —— 这正是 D12 选「header 与 data 分离」的理由：单指针紧凑布局下 realloc
+ * 会让调用者的变量、其他拷贝、形参里的指针全部悬空。
+ *
+ * 返回 header 本身（原地）；扩容失败返回 null，此时 header 与旧 data 都
+ * 保持原样，调用方可安全放弃。
+ * ============================================================ */
+    .globl  core_list_append
+core_list_append:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    subq    $64, %rsp            /* 32 shadow + 32 局部（3 push + 64 = 88，16 对齐） */
+
+    movq    %rcx, %rbx           /* rbx = header */
+    movq    %rdx, 48(%rsp)       /* value 放栈槽：跨 core_* 调用不会被冲掉 */
+    testq   %rbx, %rbx
+    je      .Lla_fail            /* null header：无可追加 */
+
+    movq    (%rbx), %rax         /* len */
+    movq    8(%rbx), %rdx        /* cap */
+    cmpq    %rdx, %rax
+    jb      .Lla_have_space      /* len < cap：原地写 */
+
+    /* ---- 需要扩容 ---- */
+    /* newcap = max(4, cap*2) */
+    movq    %rdx, %rdi
+    testq   %rdi, %rdi
+    jne     .Lla_double
+    movl    $4, %edi
+    jmp     .Lla_newcap_ready
+.Lla_double:
+    addq    %rdi, %rdi
+    cmpq    $4, %rdi
+    jae     .Lla_newcap_ready
+    movl    $4, %edi
+.Lla_newcap_ready:
+    movq    %rdi, 40(%rsp)       /* newcap 放栈槽 */
+    /* 新 data 块 = newcap * 8 字节 */
+    movq    %rdi, %rcx
+    shlq    $3, %rcx
+    movq    $8, %rdx
+    call    core_alloc
+    testq   %rax, %rax
+    je      .Lla_fail
+    movq    %rax, 32(%rsp)       /* newdata */
+
+    /* 复制旧元素：n = len * 8 */
+    movq    (%rbx), %r8
+    shlq    $3, %r8
+    testq   %r8, %r8
+    je      .Lla_copy_done
+    movq    24(%rbx), %rdx       /* 旧 data */
+    testq   %rdx, %rdx
+    je      .Lla_copy_done
+    movq    32(%rsp), %rcx       /* dst */
+    call    core_mem_copy
+.Lla_copy_done:
+    /* 释放旧 data（cap>0 时它一定是我们分配的） */
+    movq    24(%rbx), %rcx
+    testq   %rcx, %rcx
+    je      .Lla_install
+    call    core_free
+.Lla_install:
+    /* 改写 header：data 指向新块、cap = newcap。len 不变（下面统一 +1） */
+    movq    32(%rsp), %rax
+    movq    %rax, 24(%rbx)
+    movq    40(%rsp), %rax
+    movq    %rax, 8(%rbx)
+
+.Lla_have_space:
+    /* 写元素：data[len] = value */
+    movq    (%rbx), %rax         /* len */
+    movq    24(%rbx), %rcx       /* data */
+    testq   %rcx, %rcx
+    je      .Lla_fail            /* 有空间却没有 data：状态不一致 */
+    movq    48(%rsp), %rdx       /* value */
+    movq    %rdx, (%rcx,%rax,8)
+    /* len += 1 */
+    incq    %rax
+    movq    %rax, (%rbx)
+
+    movq    %rbx, %rax           /* 返回 header（原地） */
+    jmp     .Lla_out
+.Lla_fail:
+    xorl    %eax, %eax
+.Lla_out:
+    addq    $64, %rsp
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* ============================================================
+ * ptr core_clone_str(ptr src)
+ *   rcx = src str header（len@0, cap@8, bytes@16）
+ * 返回一个**新分配**的 str 头（cap 等于真实容量，因而可释放）；
+ * src 为 null 时返回 null。
+ *
+ * 为什么需要：严格借用规则拦下 `ret 形参` 这类恒等函数之后，std 需要一个
+ * 合法手段把「借来的值」变成「自己拥有的新值」—— clone 就是那个手段，
+ * 不需要放宽任何规则，也不制造近似。
+ * ============================================================ */
+    .globl  core_clone_str
+core_clone_str:
+    pushq   %rbx
+    pushq   %rsi
+    subq    $40, %rsp            /* 32 shadow + 8 对齐（2 push + 40 = 56） */
+
+    movq    %rcx, %rbx           /* rbx = src */
+    testq   %rbx, %rbx
+    je      .Lcs_null
+    movq    (%rbx), %rsi         /* len */
+    /* 新块 = 16 + len（头 16 字节 + 内容） */
+    leaq    16(%rsi), %rcx
+    movq    $8, %rdx
+    call    core_alloc
+    testq   %rax, %rax
+    je      .Lcs_null
+    /* len = len, cap = len（真实容量，可释放） */
+    movq    %rsi, (%rax)
+    movq    %rsi, 8(%rax)
+    /* 复制内容：dst=rax+16, src=rbx+16, n=len */
+    movq    %rax, 32(%rsp)       /* 保命：core_mem_copy 会冲掉 rax */
+    testq   %rsi, %rsi
+    je      .Lcs_done
+    leaq    16(%rax), %rcx
+    leaq    16(%rbx), %rdx
+    movq    %rsi, %r8
+    call    core_mem_copy
+.Lcs_done:
+    movq    32(%rsp), %rax
+    jmp     .Lcs_out
+.Lcs_null:
+    xorl    %eax, %eax
+.Lcs_out:
+    addq    $40, %rsp
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* ============================================================
+ * ptr core_clone_list(ptr src)
+ *   rcx = src list header（len@0, cap@8, elem_size@16, data@24）
+ *
+ * 语义上是**浅拷贝元素槽**：src 里那些 8 字节值原样复制到新 data 块。
+ * 这与 D14 的口径一致 —— P13-1 不递归释放元素，所以也不递归克隆元素
+ * （逐元素判断「这个槽里是 int 还是 str 指针」需要运行期类型标签，而本
+ * 架构是静态的、无标签）。真正的按元素类型深拷贝要等 P13-4 的子引用
+ * 路径，那时元素所有权才有静态依据。
+ *
+ * 所以这里的 clone 保证的是：**容器自身**与源完全独立（改一方的
+ * len/data/元素槽不影响另一方），元素指向的堆对象仍共享。
+ * ============================================================ */
+    .globl  core_clone_list
+core_clone_list:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    subq    $48, %rsp
+
+    movq    %rcx, %rbx           /* rbx = src */
+    testq   %rbx, %rbx
+    je      .Lcl_null
+    movq    (%rbx), %rsi         /* len */
+    movq    16(%rbx), %rdi       /* elem_size */
+
+    /* 新 header（32 字节） */
+    movl    $32, %ecx
+    movq    $8, %rdx
+    call    core_alloc
+    testq   %rax, %rax
+    je      .Lcl_null
+    movq    %rax, 32(%rsp)       /* newheader */
+
+    /* 新 header 的 len/cap/elem_size */
+    movq    %rsi, (%rax)
+    movq    %rsi, 8(%rax)
+    movq    %rdi, 16(%rax)
+
+    /* 新 data 块：len*8（len==0 时不分配，留 null） */
+    testq   %rsi, %rsi
+    je      .Lcl_no_data
+    movq    %rsi, %rcx
+    shlq    $3, %rcx
+    movq    $8, %rdx
+    call    core_alloc
+    testq   %rax, %rax
+    je      .Lcl_fail
+    movq    32(%rsp), %rcx
+    movq    %rax, 24(%rcx)       /* newheader->data */
+    /* 复制元素槽：n = len*8 */
+    movq    %rax, %rcx           /* dst */
+    movq    24(%rbx), %rdx       /* src data */
+    movq    %rsi, %r8
+    shlq    $3, %r8
+    call    core_mem_copy
+    jmp     .Lcl_done
+.Lcl_no_data:
+    movq    32(%rsp), %rcx
+    movq    $0, 24(%rcx)
+.Lcl_done:
+    movq    32(%rsp), %rax
+    jmp     .Lcl_out
+.Lcl_fail:
+    movq    32(%rsp), %rcx
+    call    core_free
+    xorl    %eax, %eax
+    jmp     .Lcl_out
+.Lcl_null:
+    xorl    %eax, %eax
+.Lcl_out:
+    addq    $48, %rsp
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* ============================================================
+ * ============ P13-1 调试钩子（D17）============
+ *
+ * 只在**调试构建**里被 codegen 引用（`-debug-alloc` 开关），发布构建
+ * 完全不调用它们 —— D5 说的是「产物无运行期检查」，调试钩子不违反。
+ *
+ * 没有它们，「作用域末确实释放了」这件事无法自动化验证：程序跑完
+ * 就退出，泄漏与正确释放从外部看不出来。
+ *
+ * 计数器是进程内的静态 8 字节变量，不参与任何 ABI 参数传递：
+ *   core_dbg_alloc_count        alloc 成功次数
+ *   core_dbg_free_count         free 真正落到 HeapFree 的次数（cap==0/ null 不算）
+ *   core_dbg_poison_bytes       free 前填 0xDD 的总字节数
+ *   core_dbg_double_free_count  被检测到的重复释放次数
+ * ============================================================ */
+
+    .bss
+    .align  8
+core_dbg_alloc_count:
+    .zero   8
+core_dbg_free_count:
+    .zero   8
+core_dbg_live_bytes:
+    .zero   8
+/* D17：重复释放检测与填埋统计 */
+core_dbg_double_free_count:
+    .zero   8
+core_dbg_poison_bytes_total:
+    .zero   8
+/* 最近释放过的 16 个指针（环形，FIFO 覆盖）。用来抓「同一块释放两次」。 */
+core_dbg_recent:
+    .zero   128
+core_dbg_recent_idx:
+    .zero   8
+
+    .text
+/* void core_dbg_reset(void) */
+    .globl  core_dbg_reset
+core_dbg_reset:
+    xorq    %rax, %rax
+    movq    %rax, core_dbg_alloc_count(%rip)
+    movq    %rax, core_dbg_free_count(%rip)
+    movq    %rax, core_dbg_live_bytes(%rip)
+    movq    %rax, core_dbg_double_free_count(%rip)
+    movq    %rax, core_dbg_poison_bytes_total(%rip)
+    movq    %rax, core_dbg_recent_idx(%rip)
+    leaq    core_dbg_recent(%rip), %rdx
+    movl    $16, %ecx
+.Ldbg_reset_ring:
+    movq    %rax, (%rdx)
+    addq    $8, %rdx
+    decl    %ecx
+    jne     .Ldbg_reset_ring
+    ret
+
+/* int core_dbg_allocations(void) */
+    .globl  core_dbg_allocations
+core_dbg_allocations:
+    movq    core_dbg_alloc_count(%rip), %rax
+    ret
+
+/* int core_dbg_frees(void) —— 真正释放的次数（不含 null / cap==0 的静默返回） */
+    .globl  core_dbg_frees
+core_dbg_frees:
+    movq    core_dbg_free_count(%rip), %rax
+    ret
+
+/* int core_dbg_double_frees(void) —— 被检测到的重复释放次数（D17） */
+    .globl  core_dbg_double_frees
+core_dbg_double_frees:
+    movq    core_dbg_double_free_count(%rip), %rax
+    ret
+
+/* int core_dbg_poison_bytes(void) —— 释放前填 0xDD 的总字节数（D17） */
+    .globl  core_dbg_poison_bytes
+core_dbg_poison_bytes:
+    movq    core_dbg_poison_bytes_total(%rip), %rax
+    ret
+
+/* void core_dbg_bump_alloc(int n) —— 由 core_alloc 调用 */
+    .globl  core_dbg_bump_alloc
+core_dbg_bump_alloc:
+    addq    %rcx, core_dbg_alloc_count(%rip)
+    ret
+
+/* void core_dbg_bump_free(int n) —— 由 core_free 调用 */
+    .globl  core_dbg_bump_free
+core_dbg_bump_free:
+    addq    %rcx, core_dbg_free_count(%rip)
     ret
 
 /* ============================================================

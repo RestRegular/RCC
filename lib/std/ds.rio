@@ -11,10 +11,12 @@
  *     +8 处，再把缓冲区当 str，用 s[i] 逐字节读（char → int 是无符号的）。
  *     见 _dsLoadI64。这是遍历 dict 内部数组的唯一手段。
  *
- *  2) **list 原地追加不可行**。`emitIndexAssignValue` 在写元素前有越界检查
- *     （cmp (%rcx),%rax / jae skip），所以手工把长度头改大之后 `xs[n] = v`
- *     仍会被跳过。因此 listAppend 返回新 list；等 P13 的容器机制补全后改回
- *     原地追加。**原地删除可行**（左移覆盖 + 缩短长度头），listRemove 用它。
+ *  2) **list 原地追加可行（P13-1 起）**。`emitIndexAssignValue` 在写元素前有
+ *     越界检查（cmp (%rcx),%rax / jae skip），所以手工把长度头改大之后
+ *     `xs[n] = v` 仍会被跳过 —— 但 ABI v2 把 header 与 data 分开之后，
+ *     core 层可以同时改长度头与 data 指针，于是追加下沉到
+ *     `core_list_append`（原地、header 地址不变，见 D6 + D12）。
+ *     **原地删除同样可行**（左移覆盖 + 缩短长度头），listRemove 用它。
  *
  *  3) **没有 for-in**。`for x in xs` / `for k in d` 都是语法错误，
  *     一律用 while + 下标。
@@ -234,20 +236,17 @@ fun top[T](xs: list[T]): T {
 // ============================ 拷贝 ============================
 
 /**
- * 浅拷贝：新列表共享元素的堆数据（str 仍指向同一块内存）。
+ * 深拷贝：新列表与源完全独立（header 与 data 都是新分配的）。
  *
- * 与内存模型的 `clone()` 不同：规范里的 clone 是**深拷贝**，那需要元素类型
- * 的销毁/复制规则，属 P13。这里的 copy 只复制 8 字节槽。
+ * P13-1 起委托 `core_clone_list` —— 容器自身（header + data 块）独立，
+ * 但**元素槽仍是浅复制**：逐元素判断「这个槽是 int 还是 str 指针」需要
+ * 运行期类型标签，而本架构是静态的、无标签（D14 的口径，等 P13-4）。
+ * 所以 `copy([[1,2]])` 的内层列表仍与源共享。
  *
- * @example copy([1,2,3]) 得到等值的新列表
+ * @example copy([1,2,3]) 得到等值且独立的列表
  */
 fun copy[T](xs: list[T]): list[T] {
-    var r: list[T] = []
-    var i: int = 0
-    while i < _dsLen(xs) {
-        r += [xs[i]]
-        i += 1
-    }
+    var r: list[T] = core_clone_list(xs)
     ret r
 }
 
@@ -286,18 +285,24 @@ fun repList[T](x: T, times: int): list[T] {
 // ============================ 增删 ============================
 
 /**
- * 追加元素，**返回新列表**。
+ * 追加元素，**原地修改**列表（P13-1 / D6 裁决 A 起恢复旧版语义）。
  *
- * 旧版是 `void` 原地追加（靠 RA 指令直接改容器）。新架构里索引写有越界检查，
- * 手工改大长度头之后 `xs[n] = v` 仍会被跳过，所以无法原地追加。
- * P13 容器机制补全后改回原地语义。
+ * 实现委托 `core_list_append`：ABI v2 把 header 与 data 分开之后，
+ * 扩容只改写 header 里的 data 指针，**header 地址不变** —— 所以调用方的
+ * 变量、其他拷贝、形参里的 list 全都仍然有效（D12 的承诺）。
+ * 这也正是原地追加必须放在 core 层的原因：codegen 的索引写有越界检查，
+ * std 层没法「先改长度头再写」。
  *
- * @example listAppend([1,2], 3) 得到 [1,2,3]，原列表不变
+ * 返回 void 而非 list：header 地址不变意味着返回值毫无信息量，而返回
+ * header 指针会诱使调用方把它当「新列表」赋值（两者在 ABI 上是同一个字，
+ * 语义却完全不同）。
+ *
+ * 扩容失败（OOM）时啥也不做，长度不变。
+ *
+ * @example listAppend([1,2], 3) 之后列表变成 [1,2,3]
  */
-fun listAppend[T](xs: list[T], item: T): list[T] {
-    var r: list[T] = xs
-    r += [item]
-    ret r
+fun listAppend[T](xs: list[T], item: T): void {
+    core_list_append(xs, item)
 }
 
 /**

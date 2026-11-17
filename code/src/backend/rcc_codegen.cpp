@@ -303,6 +303,49 @@ namespace backend{
             }
             return false;
         }
+        // ============================================================
+        // core 种子层的返回值签名表（P12 §4 方案 2 的最小实现）
+        //
+        // 为什么需要：`core.rio` 里的 `extern fun` **不参与新后端的类型表**
+        // （它只是三层契约文档 + 旧前端用），所以 inferType 对任何 `core_*`
+        // 调用都落到「未知函数按 int」。于是
+        //     var c: str = core_clone_str(s)
+        //     var ys: list[int] = core_clone_list(xs)
+        // 在**返回值类型就是它自己**的场合被可赋值性检查挡下
+        // （"cannot assign a value of type int to a target of type str"）。
+        // 这是唯一挡得住的场合，因为 str / list 与 int 不同族；ptr 与数值族
+        // 互通（P12/G12 的裁决），所以 `var p: ptr = core_alloc(...)` 一直是通的。
+        //
+        // 只登记**返回值非 int** 的那几个（void 的也不能按 int：`var n = f()`
+        // 的槽位大小会算错，见 inferType 末尾的说明）。表里没有的名字仍按
+        // 原来的 int 兜底，行为不变。
+        //
+        // 这张表必须与 lib/core/core.rio 的 extern 声明同步 —— 只影响**静态
+        // 类型推断**，不改变任何 ABI：符号名、寄存器约定、栈布局都不动。
+        // ============================================================
+        sema::TypePtr coreReturnType(const std::string& name)        {
+            // 指针族（ptr）：分配器入口
+            if (name == "core_alloc" || name == "core_realloc") return sema::getPtrType();
+            // 容器族：clone 出来的就是原容器
+            if (name == "core_clone_str") return sema::getStrType();
+            if (name == "core_clone_list") return std::make_shared<sema::ListType>(nullptr);
+            // 标量 / void
+            if (name == "core_mem_eq") return sema::getBoolType();
+            if (name == "core_str_len" || name == "core_io_read" || name == "core_io_write" ||
+                name == "core_time_ns" || name == "core_dbg_allocations" ||
+                name == "core_dbg_frees" || name == "core_dbg_double_frees" ||
+                name == "core_dbg_poison_bytes")
+                return sema::getIntType();
+            if (name == "core_mem_copy" || name == "core_mem_move" || name == "core_mem_set" ||
+                name == "core_free" || name == "core_list_append" || name == "core_io_flush" ||
+                name == "core_io_write_byte" || name == "core_proc_exit" ||
+                name == "core_proc_abort" || name == "core_panic_raise" ||
+                name == "core_stack_probe" || name == "core_eh_pop" || name == "core_eh_throw" ||
+                name == "core_dbg_reset" || name == "core_dbg_bump_alloc" ||
+                name == "core_dbg_bump_free" || name == "core_sys_breakpoint")
+                return sema::getVoidType();
+            return nullptr;   // 不在表里：交给调用点原来的 int 兜底
+        }
     }
     CodeGen::CodeGen(const AbiInfo& abi) : _abi(abi)    {
     }
@@ -506,6 +549,275 @@ namespace backend{
         // 时与 `toStr(arg: int)` 撞成同一个符号 `_R5toStri`。
         return naming::mangleGenericInstance(base, args);
     }
+    // ============================================================
+    // P13-1：销毁（drop glue）
+    // ============================================================
+    //
+    // 设计见 docs/p13_plan.md 的 D4 / D11 / D14 / D16：
+    //   * 只有三种堆类型需要释放：str / list / dict。标量、ptr、class 实例、
+    //     any、函数值一律不释放（D14：引用语义，释放必双重释放）。
+    //   * list/dict 的释放要按**元素类型**递归：list[str] 先逐元素释放每个
+    //     str 的堆块，再释放 data 块，最后释放 header。这就是「drop glue」。
+    //   * 每个类型对应一个 mangled 名的函数，在实例缓存里去重，出口只 call。
+    //
+    // 为什么 drop 函数收**槽位地址**而不是值：出口处要把槽位写成 null
+    // （调试钩子 D17 靠它检测重复释放），按值传就拿不到槽位了。
+    bool CodeGen::needsDrop(const sema::TypePtr& type) const    {
+        if (!type) return false;
+        switch (type->getKind())        {
+        case sema::TypeKind::TK_STR:
+        case sema::TypeKind::TK_LIST:
+        case sema::TypeKind::TK_DICT:
+            return true;
+        // D14：范围外类型一律不释放。
+        //   TK_CLASS   —— 引用语义，可能有别名
+        //   TK_FUNC    —— 闭包对象，env 归属未定
+        //   TK_PTR     —— 裸指针，所有权不在语言层
+        //   TK_INT/FLOAT/BOOL/CHAR/VOID —— 无资源
+        default:
+            return false;
+        }
+    }
+    std::string CodeGen::ensureDropGlue(const sema::TypePtr& type)    {
+        if (!needsDrop(type)) return std::string();
+        const std::string mangle = mangleType(type);
+        if (const auto found = _dropGlue.find(mangle); found != _dropGlue.end())        {
+            return found->second;
+        }
+        const std::string fnName = "__rio_drop_" + mangle;
+        // 先登记再生成，递归类型（若将来允许）不会无限展开。
+        _dropGlue[mangle] = fnName;
+        _pendingDropGlue.emplace_back(fnName, type);
+        return fnName;
+    }
+    void CodeGen::emitDropGlueBody(const std::string& fnName, const sema::TypePtr& type)    {
+        // 签名：void fn(ptr slot) —— slot 是变量的**栈槽地址**。
+        // 约定：读出值 -> 若为 null 直接返回 -> 释放 -> 把槽写成 null。
+        //
+        // ============ P13-1 的关键取舍：不递归释放元素 ============
+        //
+        // 只释放容器**自己**的内存（data/keys/vals 块 + header），**不**逐元素
+        // 释放。原因是 P13-1 还没有任何机制能判断「元素归不归这个容器所有」：
+        //
+        //   * `dictKeys(d)` 返回的 list[str] 里装的是 d 内部数组的**键指针**，
+        //     d 还活着，元素不是这个 list 的；
+        //   * `ds.copy(xs)` 是浅拷贝，同样共享元素；
+        //   * `xs += [otherContainerElement]` 也是把别人的指针塞进来。
+        //
+        // 逐元素释放会把上面这些全部变成 use-after-free —— 实测
+        // `dumpToStr(dict)` 直接崩在堆上。判定「元素所有权」需要 P13-4 的
+        // 子引用路径与成员集合追踪，按 D14 的口径登记为**已知泄漏**：
+        // list[str] / dict[K,str] 的元素堆数据 P13-1 不回收。
+        //
+        // 这与 D14 对 `list[Foo]` 的处置完全一致（那里写的是「只释放缓冲区，
+        // 不释放元素」），这里把同一口径推广到全部元素类型。
+        _asm.global(fnName);
+        _asm.label(fnName);
+        _asm.push("%rbp");
+        _asm.mov("%rsp", "%rbp");
+        _asm.subRsp(32);
+        // %rcx = slot，保存到栈上（-8(%rbp)）
+        _asm.mov("%rcx", "-8(%rbp)");
+        // 值 -> %rax
+        _asm.mov("-8(%rbp)", "%rcx");
+        _asm.inst("movq", "(%rcx)", "%rax");
+        const std::string nullLabel = _asm.newLabel("drop_null");
+        const std::string doneLabel = _asm.newLabel("drop_done");
+        _asm.inst("testq", "%rax", "%rax");
+        _asm.je(nullLabel);
+
+        const auto kind = type->getKind();
+        if (kind == sema::TypeKind::TK_STR)        {
+            // str 只需释放头（内容是内联在头后面的）。
+            // %rax 就是槽里存的值（header 指针），从第 580 行读出来还没被动过。
+            _asm.mov("%rax", "%rcx");
+            _asm.subRsp(32);
+            _asm.call("core_free");
+            _asm.addRsp(32);
+            _asm.jmp(doneLabel);
+        }
+ else if (kind == sema::TypeKind::TK_LIST)        {
+            // list：释放 data 块，再释放 header（元素不递归，见上面的说明）。
+            //
+            // 层次要分清：slot 是**变量槽**，(%slot) 才是 header 指针；
+            // header 的字段才是 24/16/0 这些偏移。少一层间接是自由的野地址，
+            // 实测直接堆损坏（0xC0000374）。
+            _asm.mov("-8(%rbp)", "%rcx");
+            _asm.inst("movq", "(%rcx)", "%rcx");
+            // %rcx = header
+            _asm.inst("movq", "24(%rcx)", "%rcx");
+            // header->data
+            _asm.subRsp(32);
+            _asm.call("core_free");
+            _asm.addRsp(32);
+            _asm.mov("-8(%rbp)", "%rcx");
+            _asm.inst("movq", "(%rcx)", "%rcx");
+            // header
+            _asm.subRsp(32);
+            _asm.call("core_free");
+            _asm.addRsp(32);
+            _asm.jmp(doneLabel);
+        }
+ else if (kind == sema::TypeKind::TK_DICT)        {
+            // dict：释放 keys 块、vals 块、header（键/值元素不递归）
+            _asm.mov("-8(%rbp)", "%rcx");
+            _asm.inst("movq", "(%rcx)", "%rcx");
+            _asm.inst("movq", "16(%rcx)", "%rcx");
+            // header->keys
+            _asm.subRsp(32);
+            _asm.call("core_free");
+            _asm.addRsp(32);
+            _asm.mov("-8(%rbp)", "%rcx");
+            _asm.inst("movq", "(%rcx)", "%rcx");
+            _asm.inst("movq", "24(%rcx)", "%rcx");
+            // header->vals
+            _asm.subRsp(32);
+            _asm.call("core_free");
+            _asm.addRsp(32);
+            _asm.mov("-8(%rbp)", "%rcx");
+            _asm.inst("movq", "(%rcx)", "%rcx");
+            // header
+            _asm.subRsp(32);
+            _asm.call("core_free");
+            _asm.addRsp(32);
+        }
+        _asm.label(nullLabel);
+        // 把槽位写成 null（D17：调试钩子据此检测重复释放）
+        _asm.mov("-8(%rbp)", "%rcx");
+        _asm.movImm(0, "%rax");
+        _asm.mov("%rax", "(%rcx)");
+        _asm.label(doneLabel);
+        _asm.mov("%rbp", "%rsp");
+        _asm.pop("%rbp");
+        _asm.ret();
+    }
+    void CodeGen::registerDropVar(const std::string& name, const std::string& addr,
+                                  const sema::TypePtr& type)    {
+        if (!needsDrop(type)) return;
+        if (_scopeDrops.empty()) _scopeDrops.emplace_back();
+        _scopeDrops.back().push_back({name, addr, type, false, false});
+    }
+    void CodeGen::registerBorrow(const std::string& name, const sema::TypePtr& type,
+                                 const std::string& addr)    {
+        if (!needsDrop(type)) return;
+        if (_scopeDrops.empty()) _scopeDrops.emplace_back();
+        // 借用也进登记表（这样 isBorrowed 能找到它），但 moved=true 表示
+        // 「出口不销毁」—— 借用本来就不拥有资源。
+        //
+        // addr 必须记下来：借用被重新赋值（`ys = <新值>`）时会升格成拥有者，
+        // 那时出口要拿这个地址去释放。形参的槽位地址在 emitFunctionBody 里
+        // 算完之后才登记，所以此时能传进来。
+        _scopeDrops.back().push_back({name, addr, type, true, true});
+    }
+    bool CodeGen::isBorrowed(const std::string& name) const    {
+        for (auto it = _scopeDrops.rbegin(); it != _scopeDrops.rend(); ++it)        {
+            for (const auto& e : *it)            {
+                if (e.name == name) return e.borrowed;
+            }
+        }
+        return false;
+    }
+    bool CodeGen::isVarMoved(const std::string& name) const    {
+        // 由内向外找第一个同名项（内层遮蔽外层）。
+        // 借用的 moved 字段恒为 true（借用不销毁），但那是「不用管生命周期」
+        // 而不是「已被移走」，所以只看非借用项。
+        for (auto it = _scopeDrops.rbegin(); it != _scopeDrops.rend(); ++it)        {
+            for (const auto& e : *it)            {
+                if (e.name != name) continue;
+                if (e.borrowed) return false;
+                return e.moved;
+            }
+        }
+        return false;
+    }
+    bool CodeGen::checkBorrowNotEscaping(const std::string& name, const utils::Pos& pos,
+                                         const std::string& action) const    {
+        if (!isBorrowed(name)) return true;
+        const_cast<CodeGen*>(this)->failAt(
+            pos, "'" + name + "' is a borrowed value and cannot be " + action +
+                     " (P13-1 / D9 rule C: only an owner can be moved)");
+        return false;
+    }
+    bool CodeGen::isDropOwned(const std::string& name) const    {
+        // 只有「在登记表里 **且不是借用**」才算拥有者。早先这里漏了 borrowed
+        // 判断，于是 `var ys = xs` 之后的 `ys = xs` 会先按持有者去 drop ys
+        // 的旧值 —— 而 ys 只是 xs 的壳子别名，两个槽指向同一块内容，
+        // 释放它等于提前释放 xs 的缓冲区，作用域末 xs 再释放一次就崩。
+        for (auto it = _scopeDrops.rbegin(); it != _scopeDrops.rend(); ++it)        {
+            for (const auto& e : *it)            {
+                if (e.name != name) continue;
+                return !e.borrowed;
+            }
+        }
+        return false;
+    }
+    void CodeGen::setDropAlias(const std::string& name, const bool borrowed)    {
+        // 从内向外找第一个同名项：内层遮蔽外层，改的是内层那个。
+        for (auto it = _scopeDrops.rbegin(); it != _scopeDrops.rend(); ++it)        {
+            for (auto e = it->rbegin(); e != it->rend(); ++e)            {
+                if (e->name != name) continue;
+                e->borrowed = borrowed;
+                // **两个字段必须一起改**：emitScopeDrops 跳过登记项的依据是
+                // moved，而不变量本身不看 borrowed。只把 borrowed 置真会留下
+                // moved==false，作用域末照样销毁一次 => 与别名源重复释放。
+                // 借用项在 registerBorrow 里就是 moved==true，语义一致。
+                e->moved = borrowed;
+                return;
+            }
+        }
+    }
+    bool CodeGen::markVarMoved(const std::string& name, const utils::Pos& pos,
+                               const std::string& action)    {
+        // 从内向外找第一个同名项：内层遮蔽外层，被移动的是内层那个。
+        for (size_t s = _scopeDrops.size(); s > 0; --s)        {
+            auto& entries = _scopeDrops[s - 1];
+            for (auto e = entries.rbegin(); e != entries.rend(); ++e)            {
+                if (e->name != name) continue;
+                // P13-1（D13）：移动外层拥有者时，若当前正处在 try 体内，
+                // 抛出会让 longjmp 直接跳过该拥有者的作用域出口 —— 它既不被
+                // 销毁（泄漏）又已经被移走（接收方也拿不到），两种情况都比
+                // 「拒绝编译」糟。P13-1 没有跨异常边界的状态格，只能保守禁止。
+                // 判据：登记下标 < 该 try 体入口的作用域深度 = 比 try 活得久。
+                for (const auto& frame : _ehStack)                {
+                    if (!frame.inTryBody) continue;
+                    if (s - 1 >= frame.tryBodyScope) continue;
+                    failAt( pos,
+                            "'" + name + "' is an owner declared outside the current 'try' body "
+                                          "and cannot be " + action + " inside it (P13-1 / D13: an "
+                                          "exception would skip its destruction, turning the move into "
+                                          "a leak or a double free)");
+                    return false;
+                }
+                e->moved = true;
+                return true;
+            }
+        }
+        return true;
+    }
+    void CodeGen::emitScopeDrops(const size_t scopeIndex, const bool nullOut)    {
+        if (scopeIndex >= _scopeDrops.size()) return;
+        const auto& entries = _scopeDrops[scopeIndex];
+        // D4：声明的**逆序**销毁
+        for (auto it = entries.rbegin(); it != entries.rend(); ++it)        {
+            if (it->moved) continue;
+            const std::string dropFn = ensureDropGlue(it->type);
+            if (dropFn.empty()) continue;
+            // 空地址意味着登记时没给出槽位（借用升格成拥有者却没记地址）。
+            // 那会生成 `leaq , %rcx` 这种非法汇编，报错文本还是 Assembler
+            // failed，完全看不出根因。在生成期就拦下来。
+            if (it->addr.empty())            {
+                fail("internal: no slot address registered for '" + it->name +
+                     "' (it was promoted from borrowed to owned without an address)");
+                return;
+            }
+            _asm.lea(it->addr, "%rcx");
+            _asm.subRsp(32);
+            _asm.call(dropFn);
+            _asm.addRsp(32);
+            (void)nullOut;   // drop 函数自己会把槽写成 null（D17）
+        }
+    }
+
     // ============================================================
     // P11：重载
     // ============================================================
@@ -1035,9 +1347,17 @@ namespace backend{
     // ============================================================
     void CodeGen::pushScope()    {
         _scopes.emplace_back();
+        _scopeDrops.emplace_back();
     }
     void CodeGen::popScope()    {
-        if (!_scopes.empty()) _scopes.pop_back();
+        // P13-1（D4）：作用域末发 drop 调用，顺序为声明逆序。
+        // 注意 popScope 只在「词法出口」被调用；ret / break / continue 另有
+        // 各自的处理（见 emitReturn / emitBreak / emitContinue）。
+        if (!_scopes.empty())        {
+            emitScopeDrops(_scopeDrops.size() - 1, true);
+            _scopes.pop_back();
+        }
+        if (!_scopeDrops.empty()) _scopeDrops.pop_back();
     }
     CodeGen::VarSlot* CodeGen::lookupVar(const std::string& name)    {
         // 从最内层向外查找
@@ -1187,6 +1507,9 @@ namespace backend{
                 if (const auto found = _functionReturns.find(id->getName()); found != _functionReturns.end())                {
                     return found->second;
                 }
+                // core 种子层：extern fun 不进 _functionReturns，返回值类型
+                // 只能由这张静态表给（否则 clone 出来的 str/list 会被当成 int）。
+                if (const auto coreRet = coreReturnType(id->getName())) return coreRet;
                 // 经由函数值调用：变量槽里存着 fun(...): T，结果类型就是 T。
                 // 槽位类型是函数类型这一点，由 `var f = (..)->{..}` 的初始化
                 // （inferType 对匿名函数返回 FunctionType）自动带来，不需要额外登记表。
@@ -1528,6 +1851,15 @@ namespace backend{
             // P10：泛型实例体。实例是在发射函数体时按调用点发现的，
             // 所以必须排在这里（不能就地发射，会搅乱正在用的栈帧）。
             emitPendingInstances();
+            // P13-1：drop glue 函数体。它们是在作用域出口 / ret 处
+            // 按类型发现并排队的，这里统一发射（同样的理由：不能就地发）。
+            // 注意 emitDropGlueBody 里可能再发现新类型（嵌套容器），
+            // 所以循环到队空。
+            while (!_pendingDropGlue.empty())            {
+                const auto [fn, ty] = _pendingDropGlue.back();
+                _pendingDropGlue.pop_back();
+                emitDropGlueBody(fn, ty);
+            }
             emitClosureObjects();
             _asm.emitStringLiterals();
             // P12/G1a：顶层 var 的全局槽。.bss 天然零初始化，
@@ -1742,6 +2074,44 @@ namespace backend{
     // 语句
     // ============================================================
     void CodeGen::emitStatement(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        if (!node) return;
+        // P13-1（D10）：临时值的销毁点是**语句末**。这里记下进入本语句时的
+        // 累积长度做标记，语句发射完把标记之后新增的临时值逆序销毁。
+        //
+        // 为什么放在这一层而不是各分支内部：语句的种类太多（调用、赋值、
+        // 表达式语句……），每一种都可能有临时值；统一在唯一的出口收尾，
+        // 才不会有哪个分支漏掉。嵌套语句进入时会再取一次标记，天然正确。
+        const size_t mark = _stmtTemps.size();
+        emitStatementInner(node);
+        drainStmtTemps(mark);
+    }
+    void CodeGen::drainStmtTemps(const size_t mark)    {
+        if (mark >= _stmtTemps.size()) return;
+        // 逆序销毁（与作用域末一致），然后截断。
+        for (size_t i = _stmtTemps.size(); i > mark; --i)        {
+            const auto& tmp = _stmtTemps[i - 1];
+            const std::string dropFn = ensureDropGlue(tmp.type);
+            if (dropFn.empty()) continue;
+            // 声明语句那条路径可能已经把槽位自己释放并清空了，这里读到的就是
+            // null —— 而 drop glue 对 null 是静默返回的（D5），重复调用无害。
+            _asm.lea(tmp.addr, "%rcx");
+            _asm.subRsp(32);
+            _asm.call(dropFn);
+            _asm.addRsp(32);
+        }
+        _stmtTemps.resize(mark);
+    }
+    bool CodeGen::isFreshValue(const std::shared_ptr<ast::ExpressionNode>& node) const    {
+        if (!node) return false;
+        // 已有变量 / 元素 / 字段 = 别人已经管着它的生命周期 -> 不是新值。
+        if (std::dynamic_pointer_cast<ast::IdentifierNode>(node)) return false;
+        if (std::dynamic_pointer_cast<ast::IndexExpressionNode>(node)) return false;
+        if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))        {
+            if (inf->getOpToken().getType() == core::TokenType::TOKEN_DOT) return false;
+        }
+        return needsDrop(inferType(node));
+    }
+    void CodeGen::emitStatementInner(const std::shared_ptr<ast::ExpressionNode>& node)    {
         if (!node) return;
         // 变量定义
         if (std::dynamic_pointer_cast<ast::VariableDefinitionNode>(node))        {
@@ -2044,6 +2414,18 @@ namespace backend{
                 return;
             }
             fail("Undefined variable: " + id->getName());
+            return;
+        }
+        // P13-1（D9 H/X 两档）：已移动的值不能再用。
+        //
+        // H = 槽里有值，X = 已被整体移走（ret 出去 / 塞进容器）。
+        // 这条检查是必须的：`ret xs` 已经把 xs 交给调用方，之后再用
+        // `xs[0]` 会读到一块随时被别人释放的内存。实测这个用例之前
+        // 能编译通过并「碰巧」打印出正确值，正因为 P13-1 之前根本没释放。
+        if (isVarMoved(id->getName()))        {
+            failAt(node->getPos(), "'" + id->getName() +
+                   "' has been moved and cannot be used again "
+                   "(P13-1 / D9: the owner was moved by 'ret' or by storing into a container)");
             return;
         }
         const std::string src = addrOf(*slot);
@@ -2453,6 +2835,33 @@ namespace backend{
             emitExpression(infix->getRightNode());
             if (hasFailed()) return;
             _asm.mov("%rax", rhsSlot);
+            // P13-1（D9 规则 C）：把**拥有者**放进容器即**移动** —— 源变量
+            // 变成 X，作用域末不能再释放它（否则容器里留下悬空元素）。
+            //
+            // `xs += [v]` 是「元素入容器」的标准写法（std 里 split / map /
+            // filter / concat 全是这么写的），所以这里必须识别方括号字面量
+            // 里的标识符并标记移动。`xs += otherList` 是整体拼接，两个操作数
+            // 都只被读，不发生移动。
+            if (slot->type->getKind() == sema::TypeKind::TK_LIST)            {
+                const auto markElementMoved = [&](const std::shared_ptr<ast::ExpressionNode>& e) {
+                    if (const auto eid = std::dynamic_pointer_cast<ast::IdentifierNode>(e))                    {
+                        // D18 负向用例③：**存储借用** —— 借用不能存进容器。
+                        // 容器可能活得比借用源更久（`stash(param)` 返回后，
+                        // 形参指向的东西已经随调用方的作用域销毁），
+                        // 存进去就是让容器持有悬空指针。
+                        if (!checkBorrowNotEscaping(eid->getName(), e->getPos(), "stored into a container"))                        {
+                            return;
+                        }
+                        markVarMoved(eid->getName(), e->getPos(), "stored into a container");
+                    }
+                };
+                const auto rhsNode = infix->getRightNode();
+                if (const auto lit = std::dynamic_pointer_cast<ast::ListExpressionNode>(rhsNode))                {
+                    std::vector<std::shared_ptr<ast::ExpressionNode>> elems;
+                    flattenListElements(lit->getBodyNode(), elems);
+                    for (const auto& e : elems) markElementMoved(e);
+                }
+            }
             if (slot->type->getKind() == sema::TypeKind::TK_STR)            {
                 emitStrConcat(lhsSlot, rhsSlot);
             }
@@ -2545,6 +2954,59 @@ namespace backend{
                        "Assignment to '" + id->getName() + "': " + why);
                 return;
             }
+        }
+        // P13-1（D9 规则 C + 规范 §11A.1）：重新赋值分两步，顺序不能反。
+        //
+        // 第一步：若接收方**当前拥有**内容，先释放旧内容。否则旧值直接泄漏；
+        // 而若先写后释放，释放的就成了刚写进去的新值（use-after-return 级）。
+        // 顺序：右值已在 %rax/%xmm0 -> 存进临时槽保命 -> 释放旧值 -> 装回 -> 写入。
+        //
+        // 第二步：确定接收方**赋值后的身份**，这是原先漏掉、导致双重释放的一步。
+        // 规范 §11A.1 把 `x = y` 定为**壳子赋值**：两个槽共享同一块内容，
+        // 只有一方是拥有者。所以：
+        //     x = <已有变量/元素/字段>  ->  x 降级为借用（别名），出口不销毁
+        //     x = <新值>                ->  x 升格为拥有者，出口销毁
+        // 只做第一步的话，`b = a` 之后 a、b 都还是拥有者且指向同一块，
+        // 作用域末各 drop 一次 => 0xC0000374 堆损坏（实测）。
+        const std::string dropFn = needsDrop(slot->type) ? ensureDropGlue(slot->type) : std::string();
+        const bool ownsSlot = !dropFn.empty() && isDropOwned(id->getName());
+        std::string savedSlot;
+        if (ownsSlot)        {
+            const bool srcFloat2 = rhsType && rhsType->isFloat();
+            savedSlot = allocateTemp(srcFloat2 ? sema::getFloatType() : sema::getIntType());
+            if (srcFloat2) _asm.inst("movsd", "%xmm0", savedSlot);
+            else           _asm.mov("%rax", savedSlot);
+            _asm.lea(dest, "%rcx");
+            _asm.subRsp(32);
+            _asm.call(dropFn);
+            _asm.addRsp(32);
+            // drop 已把槽写成 null，重新装回右值
+            if (srcFloat2) _asm.inst("movsd", savedSlot, "%xmm0");
+            else           _asm.mov(savedSlot, "%rax");
+        }
+        if (!dropFn.empty())        {
+            // 右值是「已有变量 / 元素 / 字段」= 已经有人管着它的生命周期，
+            // 接收方只是又多了一个壳子别名 -> 借用。否则是新值 -> 拥有者。
+            //
+            // 与 emitVariableDefinition 的 isBorrowInit 同一口径，且同样要求
+            // **同类型**：`var r: str = p`（p 是 ptr）是位模式转换，堆块所有权
+            // 经 ptr 中转交给 r，r 是新的所有者，不是别名。
+            bool rhsIsAlias = false;
+            const auto rhsSlot = [&]() -> const CodeGen::VarSlot*                {
+                const auto rid = std::dynamic_pointer_cast<ast::IdentifierNode>(rhs);
+                if (!rid) return nullptr;
+                return const_cast<CodeGen*>(this)->lookupVar(rid->getName());
+            }();
+            if (rhsSlot)            {
+                rhsIsAlias = !(rhsSlot->type && slot->type) || rhsSlot->type->equals(slot->type);
+            }
+            else if (std::dynamic_pointer_cast<ast::IndexExpressionNode>(rhs))            {
+                rhsIsAlias = true;
+            }
+            else if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(rhs))            {
+                if (inf->getOpToken().getType() == core::TokenType::TOKEN_DOT) rhsIsAlias = true;
+            }
+            setDropAlias(id->getName(), rhsIsAlias);
         }
         const bool destIsFloat = slot->type && slot->type->isFloat();
         const bool srcIsFloat = rhsType && rhsType->isFloat();
@@ -2674,6 +3136,52 @@ namespace backend{
                     _asm.mov("%rax", slot);
                 }
             }
+            // P13-1（D9 规则 C）：只有**拥有者**才登记销毁。
+            //
+            //   初始化表达式是「新值」（字面量 / 函数调用结果 / clone()）
+            //     -> 拥有者，作用域末销毁
+            //   初始化表达式是「已有的变量或元素」（`var ys = xs`、`xs[i]`）
+            //     -> **借用**，不销毁（壳子已经有人管了）
+            //
+            // 这条判据是必须的：std 里 `var s: str = scratch` 这种「把一个
+            // 已存在的指针包装成别的静态类型」的写法到处都是（`_dsLoadI64`
+            // 的伪造 str 头就是），把它当拥有者会在作用域末把**别人还在用**的
+            // 缓冲区 free 掉 —— 实测 ds 的 dictKeys/dictValues/dictRemove
+            // 全部因此拿到已释放内存。
+            //
+            // 顶层 var 走全局槽，生命周期是整个进程，P13-1 不释放
+            // （全局槽没有静态已知的「退出点」，留 P13-2 的出生地概念定稿后处理）。
+            const bool isBorrowInit = [&] {
+                if (!hasInit) return false;
+                const auto init = def->getValueNode();
+                if (const auto initId = std::dynamic_pointer_cast<ast::IdentifierNode>(init))                {
+                    // 只有**同类型**的 `var b = a` 才是借用（两个槽引用同一条
+                    // 堆对象）。`var r: str = p`（p 是 ptr）是**位模式转换**：
+                    // 堆块的所有权经 ptr 中转交给 r，r 是新的所有者 ——
+                    // std 里到处是这种写法（_strSlice / _dsLoadI64 的伪造头）。
+                    const auto srcSlot = const_cast<CodeGen*>(this)->lookupVar(initId->getName());
+                    if (srcSlot && srcSlot->type && type)                    {
+                        return srcSlot->type->equals(type);
+                    }
+                    // 类型取不到（形参未标注等）时保守按借用处理
+                    return true;
+                }
+                if (std::dynamic_pointer_cast<ast::IndexExpressionNode>(init)) return true;
+                // `obj.field` 是 InfixExpressionNode(DOT)
+                if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(init))                {
+                    if (inf->getOpToken().getType() == core::TokenType::TOKEN_DOT) return true;
+                }
+                return false;
+            }();
+            const bool isGlobalSlot = _inTopLevelStatements && _topLevelVarNames.count(name) != 0;
+            if (!isGlobalSlot)            {
+                if (isBorrowInit)                {
+                    registerBorrow(name, type, slot);
+                }
+ else                {
+                    registerDropVar(name, slot, type);
+                }
+            }
         }
     }
     void CodeGen::emitReturn(const std::shared_ptr<ast::ExpressionNode>& node)    {
@@ -2748,6 +3256,57 @@ namespace backend{
             }
  else            {
                 _asm.mov(tmp, "%rax");
+            }
+        }
+        // P13-1（D4 + D9 规则 C）：ret 之前先在**当前作用域链**上发 drop 调用。
+        //
+        // 顺序必须是这样：先算返回值（已在 %rax / %xmm0），再销毁其余变量，
+        // 最后跳转。所以先把返回值存进临时槽 —— 销毁调用会冲掉寄存器。
+        //
+        // 「拥有者整体 ret」= 移动（D9）：被返回的那个变量**不能**再销毁，
+        // 否则返回给调用者的是一块已释放内存。这里靠 markVarMoved 把它从
+        // 销毁表里摘掉（只摘最内层同名项，即刚被返回的那个）。
+        {
+            const auto retExpr = ret ? ret->getReturnNode() : nullptr;
+            // 返回值需要跨销毁调用保存：按**转换后**的值类别决定寄存器
+            const auto effType = (_functionReturnAnnotated && _functionReturnType)
+                                     ? _functionReturnType
+                                     : (retExpr ? inferType(retExpr) : nullptr);
+            const bool retIsFloat = effType && effType->isFloat();
+            const bool retHasValue = retExpr && !(effType && effType->isVoid());
+            std::string retSlot;
+            if (retHasValue)            {
+                retSlot = allocateTemp(effType);
+                if (retIsFloat) _asm.inst("movsd", "%xmm0", retSlot);
+                else            _asm.mov("%rax", retSlot);
+            }
+            // 移动语义：如果返回值就是本层的某个变量，它整体转移给调用方。
+            //
+            // D18 负向用例②：**返回借用的形参必须编译报错**。
+            // 用户 2026-11-17 明确裁决：**严格报错，不为了能跑而造近似**。
+            // 借用不拥有资源，把它 ret 出去等于把「别人管的生命周期」
+            // 当成本函数的成果交出去。
+            //
+            // 已知后果（用户已确认接受）：std 里 `fun toStr(arg: str): str
+            // { ret arg }` 这类恒等函数会被这条规则拦下，标准库需要改写 ——
+            // 但**本阶段不改**，等内存规范（P13-2 起的 Body/Content 与
+            // 能力类型）真正落地之后再改，避免用临时近似污染 std。
+            if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(retExpr))            {
+                if (!checkBorrowNotEscaping(id->getName(), node->getPos(), "returned"))                {
+                    return;
+                }
+                if (!markVarMoved(id->getName(), node->getPos(), "returned")) return;
+            }
+            // 逆序销毁本层所有未移动的可销毁变量（含所有外层作用域的？
+            // 不 —— ret 会跳出整条链，但外层变量在**外层的出口**销毁。
+            // 这里 ret 是终结性跳转，不会再回到外层的词法出口，
+            // 所以必须把链上每一层都销毁，从内到外。）
+            for (size_t i = _scopeDrops.size(); i > 0; --i)            {
+                emitScopeDrops(i - 1, true);
+            }
+            if (retHasValue)            {
+                if (retIsFloat) _asm.inst("movsd", retSlot, "%xmm0");
+                else            _asm.mov(retSlot, "%rax");
             }
         }
         if (!_returnLabel.empty())        {
@@ -2827,7 +3386,7 @@ namespace backend{
             (forLoop && forLoop->getUpdateNode())
                 ? _asm.newLabel("loop_update")
                 : condLabel;
-        _loopStack.push_back({continueLabel, endLabel, _ehStack.size()});
+        _loopStack.push_back({continueLabel, endLabel, _ehStack.size(), _scopeDrops.size()});
         pushScope();
         if (loop->getBodyNode())        {
             if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(loop->getBodyNode()))            {
@@ -2854,6 +3413,16 @@ namespace backend{
             fail("'break' outside of a loop");
             return;
         }
+        // P13-1（D4）：break 是终结性跳转，跳出后**不会**再走到循环体的词法
+        // 出口，所以循环体内登记的拥有者必须在跳转前销毁，否则每 break 一次
+        // 就泄漏一批。顺序：先销毁（会冲掉寄存器，但 break 不带走任何值），
+        // 再弹 try 帧，最后跳。
+        //
+        // 只销毁 dropDepth 之后（= 循环体这一层及其被子块）的登记项：
+        // 循环外层的变量由外层出口负责，不能在这里提前释放。
+        for (size_t i = _scopeDrops.size(); i > _loopStack.back().dropDepth; --i)        {
+            emitScopeDrops(i - 1, true);
+        }
         // 只弹循环体内建立的帧；循环外的 try 帧要留着。
         emitEhUnwindTo(_loopStack.back().ehDepth);
         _asm.jmp(_loopStack.back().breakLabel);
@@ -2862,6 +3431,11 @@ namespace backend{
         if (_loopStack.empty())        {
             fail("'continue' outside of a loop");
             return;
+        }
+        // P13-1（D4）：与 break 同理。continue 回到条件判断（for 则是 update 段），
+        // 循环体这一层的变量每轮都是新的，不在跳转前销毁就会每轮泄漏一批。
+        for (size_t i = _scopeDrops.size(); i > _loopStack.back().dropDepth; --i)        {
+            emitScopeDrops(i - 1, true);
         }
         emitEhUnwindTo(_loopStack.back().ehDepth);
         _asm.jmp(_loopStack.back().continueLabel);
@@ -2971,7 +3545,14 @@ namespace backend{
         _asm.lea(resumeLabel + "(%rip)", "%rax");
         _asm.mov("%rax", field(24));                // resume
 
-        _ehStack.push_back({frameOffset, finallyBody});
+        // P13-1（D13）：记下 try 体的作用域下标，并把帧标成「在体内」。
+        //
+        // 下标要算准：pushScope 之后 try 体那一层的下标恰好等于当前的
+        // _scopeDrops.size()（push 前）。判据是「登记下标 < 这个值」= 比 try
+        // 活得久。早先写成 +1，导致 try 体内**自己新声明**的拥有者也被误判
+        // 成外层的（实测 d13_inner_ok 假报错）。
+        const size_t tryBodyScope = _scopeDrops.size();
+        _ehStack.push_back({frameOffset, finallyBody, tryBodyScope, true});
         // 本 try 之外的活动帧数。两条路径（正常 / 异常落地）都要把编译期
         // 帧栈恢复到这一深度 —— 它们各自发一次 core_eh_pop，但 _ehStack
         // 只能被弹一次，否则后面嵌套的 try 会算错深度。
@@ -3205,6 +3786,17 @@ namespace backend{
         for (size_t i = 0; i < n; ++i)        {
             emitExpression(elements[i]);
             if (hasFailed()) return;
+            // P13-1（D9 规则 C）：把借用塞进容器 = 存储借用，必须报错。
+            // `var r: list[str] = [param]` 与 `r += [param]` 同样危险：
+            // 容器活得比借用源久时，里面留下的是悬空指针。
+            if (const auto eid = std::dynamic_pointer_cast<ast::IdentifierNode>(elements[i]))            {
+                if (!checkBorrowNotEscaping(eid->getName(), elements[i]->getPos(),
+                                            "stored into a container"))                {
+                    return;
+                }
+                if (!markVarMoved(eid->getName(), elements[i]->getPos(),
+                                  "stored into a container")) return;
+            }
             _asm.mov(dataSlot, "%rcx");
             const std::string dest = std::to_string(i * 8) + "(%rcx)";
             const auto et = inferType(elements[i]);
@@ -3673,6 +4265,14 @@ namespace backend{
         _asm.mov("%rax", "24(%rcx)");
         // data 指针
         // 4) mem_copy(data, a.data, la*8)
+        //    注意：la==0 时 a 可能是 null（空列表）或 data==null（空 data 块），
+        //    此时**不能**解引用。core_mem_copy 对 n=0 会直接返回，但读
+        //    `24(%rdx)` 这一步本身就会崩（null+24）。
+        const std::string skipA = _asm.newLabel("lcat_skip_a");
+        const std::string afterA = _asm.newLabel("lcat_after_a");
+        _asm.mov(laSlot, "%rax");
+        _asm.inst("testq", "%rax", "%rax");
+        _asm.je(skipA);
         _asm.mov(dataSlot, "%rcx");
         _asm.mov(lhsSlot, "%rdx");
         _asm.inst("movq", "24(%rdx)", "%rdx");
@@ -3681,7 +4281,13 @@ namespace backend{
         _asm.subRsp(32);
         _asm.call("core_mem_copy");
         _asm.addRsp(32);
+        _asm.label(skipA);
+        _asm.label(afterA);
         // 5) mem_copy(data + la*8, b.data, lb*8)
+        const std::string skipB = _asm.newLabel("lcat_skip_b");
+        _asm.mov(lbSlot, "%rax");
+        _asm.inst("testq", "%rax", "%rax");
+        _asm.je(skipB);
         _asm.mov(dataSlot, "%rcx");
         _asm.mov(laSlot, "%rax");
         _asm.inst("leaq", "(%rcx,%rax,8)", "%rcx");
@@ -3692,6 +4298,7 @@ namespace backend{
         _asm.subRsp(32);
         _asm.call("core_mem_copy");
         _asm.addRsp(32);
+        _asm.label(skipB);
         _asm.mov(headerSlot2, "%rax");
     }
     void CodeGen::emitStrEq(const std::string& lhsSlot, const std::string& rhsSlot)    {        // 先比长度头，再比内容字节。两段都可能为 null（空串/未初始化），
@@ -4054,6 +4661,25 @@ namespace backend{
             }
  else            {
                 _asm.mov("%rax", addr);
+            }
+            // P13-1（D10）：实参是**新值**（堆上新分配的：拼接、容器字面量、
+            // 返回堆对象的调用……）时，它的出生地就是当前语句的匿名 local，
+            // 销毁点是语句末。调用返回后没有任何变量接住它，不登记就是纯泄漏
+            // （实测 `take("a"+"b")` 早先 alloc=1 / free=0）。
+            //
+            // 为什么要额外占一个专属槽，而不能直接登记 shadow space 那几条
+            // 实参格子：那块空间是**调用约定借用**的，调用一返回就不再属于
+            // 我们；而被调方还可能往里写东西。专属槽是自己的栈空间，调用
+            // 前后都有效，语句末销毁时读到的仍是那个指针。
+            //
+            // 借用实参（形参、已有变量的元素）不是新值，不登记 —— 释放它
+            // 等于释放调用方的内存。
+            if (isFreshValue(args[i]))            {
+                const auto at = inferType(args[i]);
+                const std::string keep = allocateTemp(at);
+                if (targetIsFloat[i]) _asm.inst("movsd", "%xmm0", keep);
+                else                  _asm.mov("%rax", keep);
+                _stmtTemps.push_back({keep, at});
             }
         }
         for (size_t i = 0; i < args.size(); ++i)        {
@@ -4728,6 +5354,20 @@ namespace backend{
             return;
         }
         emitExpression(arg);
+        // P13-1（D10）：sout 是**特化发射**的（直接 core_io_write / rt_print_*），
+        // 不走 emitArgsToRegisters，所以临时值的登记必须在这里也写一遍。
+        // `sout("a" + "b")` 是 str 临时值最常见的来源之一，漏了它这条规则
+        // 等于没做（实测 t_temp_stmt 仍是 alloc=1 / free=0）。
+        //
+        // 顺序：值已在 %rax/%xmm0，先存进专属槽保住，再从槽里装回给打印用。
+        if (isFreshValue(arg))        {
+            const std::string keep = allocateTemp(type);
+            if (type->isFloat()) _asm.inst("movsd", "%xmm0", keep);
+            else                 _asm.mov("%rax", keep);
+            _stmtTemps.push_back({keep, type});
+            if (type->isFloat()) _asm.inst("movsd", keep, "%xmm0");
+            else                 _asm.mov(keep, "%rax");
+        }
         if (type->isFloat())        {
             emitRtPrintCall("rt_print_float", true);
             return;
@@ -6730,6 +7370,10 @@ namespace backend{
         // 否则嵌套发射（方法体里再发匿名函数）会把外层帧带进来。
         const std::vector<EhFrame> savedEhStack = _ehStack;
         const std::vector<LoopContext> savedLoopStack = _loopStack;
+        // P13-1：销毁登记表与 _scopes 是**同生共死**的一对，跨函数必须一起清。
+        // 只清 _scopes 而不清 _scopeDrops 会让内层函数对**外层帧**的槽位发
+        // drop（实测：mk() 帧只有 64 字节，却对 -176(%rbp) 调 core_free，
+        // 直接崩在堆上）。函数体是独立帧，不需要继承外层登记表，所以直接清。
         _functionName = emitName;
         _functionReturnType = retType;
         _functionReturnAnnotated = retTypeAnnotated;
@@ -6737,6 +7381,7 @@ namespace backend{
         _ehStack.clear();
         _loopStack.clear();
         _scopes.clear();
+        _scopeDrops.clear();
         pushScope();
         if (makeGlobal) _asm.global(emitName);
         _asm.label(emitName);
@@ -6770,6 +7415,13 @@ namespace backend{
             if (!pt || pt->getKind() == sema::TypeKind::TK_UNKNOWN) pt = sema::getIntType();
             const long long offset = allocateSlot(paramNames[i], pt, pt->getSize());
             const std::string slot = std::to_string(offset) + "(%rbp)";
+            // P13-1（D9 规则 C）：形参一律**借用** —— 被调函数不释放它，
+            // 调用方负责。登记成借用后，`ret 形参` / 把它塞进容器都会被
+            // D18 的负向检查拦下。
+            //
+            // 槽位地址必须传：形参被重新赋值成新值时会升格成拥有者，
+            // 那时出口要拿这个地址去释放（忘了传会生成 `leaq , %rcx`）。
+            registerBorrow(paramNames[i], pt, slot);
             const size_t pos = argPos + i;
             if (pos < registerSlots)            {
                 if (pt->isFloat())                {
@@ -6818,6 +7470,19 @@ namespace backend{
         // 默认返回：构造器返回 this（调用方拿它当 new 的结果），
         // 其余函数默认返回 0（浮点函数返回 0.0）。
         const VarSlot* defaultSlot = defaultReturnVar.empty() ? nullptr : lookupVar(defaultReturnVar);
+        // P13-1（D4）：函数体末尾（隐式返回）也要销毁本帧的局部变量。
+        //
+        // 为什么必须在这里做：函数体是一个**语句序列**而不是 BlockRanger，
+        // 所以它没有自己的 popScope —— 只在 popScope 里发 drop 的话，
+        // 函数体这一层永远不销毁。实测 `fun f() { var s = "a"+"b" }`
+        // 的 s 一路泄漏（core_dbg_frees() 一直是 0）。
+        //
+        // 放在「设置默认返回值」**之前**：drop 会冲掉 %rax/%xmm0，而默认值
+        // 是常量（0 / 0.0 / this 槽地址），drop 之后再装正好。
+        // 显式 ret 不走这里 —— 它跳到 _returnLabel 前已自己发过 drop。
+        for (size_t i = _scopeDrops.size(); i > 0; --i)        {
+            emitScopeDrops(i - 1, true);
+        }
         if (defaultSlot)        {
             _asm.mov(addrOf(*defaultSlot), "%rax");
         }
@@ -6849,8 +7514,11 @@ namespace backend{
         _functionReturnAnnotated = savedReturnAnnotated;
         _ehStack = savedEhStack;
         _loopStack = savedLoopStack;
+        // P13-1：与上面的 clear 对称 —— 恢复外层作用域的销毁登记表。
+        // 不清回的话，外层变量会被内层"继承"并在错误的位置销毁。
         _scopes.clear();
-        pushScope();
+        _scopeDrops.clear();
+        pushScope();          // 与外层入口时的状态对齐（_scopes 与 _scopeDrops 各一层）
     }
 }
 

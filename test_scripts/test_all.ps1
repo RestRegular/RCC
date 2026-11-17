@@ -70,6 +70,7 @@ $suites = @(
     @{ Name = 'test_p12_g7g11_ret_field';  Slow = $false; Legacy = $false; Desc = 'P12 G7+G11' }
     @{ Name = 'test_p12_g9g10_str';        Slow = $false; Legacy = $false; Desc = 'P12 G9+G10 str' }
     @{ Name = 'test_p12_g12g13_ptr_any';   Slow = $false; Legacy = $false; Desc = 'P12 G12+G13 ptr/any' }
+    @{ Name = 'test_p13_memory';           Slow = $false; Legacy = $false; Desc = 'P13-1 内存地基' }
     @{ Name = 'test_symbol_export';        Slow = $false; Legacy = $false; Desc = 'P12-1 符号表导出' }
     @{ Name = 'test_p12_std_skeleton';     Slow = $false; Legacy = $false; Desc = 'P12-3-A std 骨架' }
     @{ Name = 'test_p12_3b_io_str';        Slow = $false; Legacy = $false; Desc = 'P12-3-B io/str' }

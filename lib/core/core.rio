@@ -33,6 +33,45 @@ extern fun alloc(size: int, align: int): ptr
 extern fun realloc(p: ptr, old_size: int, size: int, align: int): ptr
 extern fun free(p: ptr): void
 
+// ==================== P13-1：受控的原地追加（D6 / D12）====================
+//
+// 为什么必须是 core 层内建、而不是在 std 里用现有原语拼出来：
+// 列表的长度头在容器内，而 codegen 的索引写有边界检查（`xs[n] = v` 会先比
+// 长度头，越界直接跳过）。所以「先把长度头改大再写」这条路走不通 —— 实测
+// 跳过写入、元素根本没进去。原地追加必须由能同时改长度头与 data 指针的
+// 代码完成，std 层拿不到这个能力。
+//
+// D12 的前提已具备：header 与 data 分离，所以扩容只改写 header 里的
+// data 指针，header 地址不变 —— 调用者的变量、拷贝、形参都不会悬空。
+//
+// 签名：core_list_append(xs: list, value) —— 原地追加，无返回值。
+//
+// 为什么**不**返回 list：header 地址不变是 D12 的承诺，所以返回值毫无
+// 信息量；返回 header 指针反而会诱使调用方把它当成「新列表」去赋值，
+// 而 header 指针与 list 值在 ABI 上是同一个字，语义却完全不同。
+// 参数用裸 `list`（元素类型不约束），这样 list[int] / list[str] 都能传。
+//
+// 扩容失败时**啥也不做**（长度不变）。P13-1 的失败语义是「尽力」，
+// 因为返回 void 无法上报；真有 OOM 需求时再改签名，不在此处提前设计。
+// 参数 value 用 ptr：元素槽恒 8 字节，而 ptr 与数值族互通（P12/G12）、
+// 也与 str/list/dict 同属指针族，所以 int / char / bool / str / 容器指针
+// 都能传进来，不用为每种元素类型各写一份。
+extern fun core_list_append(xs: list, value: ptr): void
+
+// ==================== P13-1：深拷贝（clone）====================
+//
+// 与 ds.copy 的区别：ds.copy 是**浅拷贝**，元素指针原样复制，两个容器共享
+// 元素；clone 复制容器自身（header + data 块），改一方不影响另一方。
+//
+// 元素槽仍是浅复制：逐元素判断「这个槽是 int 还是 str 指针」需要运行期
+// 类型标签，而本架构是静态的、无标签（D14 的口径，等 P13-4）。
+//
+// 为什么 P13-1 需要它：严格借用规则拦下了 `ret 形参` 这类恒等函数，而
+// clone 是让 std 能合法「把借用转成自己拥有的新值」的手段 —— 不需要放宽
+// 任何规则，也不需要造近似。
+extern fun core_clone_list(xs: list): list
+extern fun core_clone_str(s: str): str
+
 // ============================ IO ==================================
 // 文件描述符约定：0 = stdin, 1 = stdout, 2 = stderr
 // 返回实际读写的字节数；负数表示错误。
@@ -64,3 +103,30 @@ extern fun eh_throw(exc: ptr): void
 // ============================ 杂项 ================================
 extern fun time_ns(): int
 extern fun sys_breakpoint(): void
+
+// ==================== P13-1 调试钩子（D17，仅调试构建）====================
+// 只用于验证「作用域末确实释放了」这类不可从外部观察的性质。
+// 发布构建里 codegen 不引用它们，计数恒为 0，不影响任何产物行为。
+//
+// 计数口径：
+//   core_dbg_allocations() —— alloc 成功的次数
+//   core_dbg_frees()       —— 真正落到 HeapFree 的次数
+//                             （nullptr 与 cap==0 的静默返回**不算**释放，
+//                               否则计数器证明不了任何事）
+//
+// 名字带 `core_` 前缀：与 core_win64.s 里的符号**逐字一致**。
+// core.rio 里的 extern 名不会被自动加前缀（std 里也是直接写
+// `core_alloc(...)` 调用的），所以这里必须写全名。
+extern fun core_dbg_reset(): void
+extern fun core_dbg_allocations(): int
+extern fun core_dbg_frees(): int
+// D17 的另外两个钩子：
+//   core_dbg_double_frees() —— 被检测到的重复释放次数。
+//     实现是在「最近释放过的 16 个指针」里查重，命中就**不再真的释放**，
+//     只计数返回。这样「同一块释放两次」从不可读的堆损坏（0xC0000374）
+//     变成可断言的数字。
+//   core_dbg_poison_bytes() —— 释放前填 0xDD 的总字节数。块大小用
+//     HeapSize 问 Windows，不靠容器头里的 len/cap（那是逻辑长度，
+//     不是堆块大小）。
+extern fun core_dbg_double_frees(): int
+extern fun core_dbg_poison_bytes(): int

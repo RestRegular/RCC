@@ -93,14 +93,17 @@ sout(a[0])
 sout(a[2])
 '@) "3/7/7"
 
-# listAppend
+# listAppend（P13-1 / D6 起改为原地追加：header 地址不变，只换 data 块）
 Invoke-Case "a06_listAppend" ($imp + @'
 var a: list[int] = [1, 2]
-var b: list[int] = listAppend(a, 3)
+listAppend(a, 3)
 sout(core_str_len(a))
-sout(core_str_len(b))
-sout(b[2])
-'@) "2/3/3"
+sout(a[2])
+var e: list[int] = []
+listAppend(e, 7)
+sout(core_str_len(e))
+sout(e[0])
+'@) "3/3/1/7"
 
 # listRemove
 Invoke-Case "a07_listRemove" ($imp + @'
