@@ -227,9 +227,10 @@ namespace ast {
         : ExpressionNode(mainToken_, NodeType::PREFIX) {}
 
     BranchNode::BranchNode(const Token &branchOpToken, const std::shared_ptr<ExpressionNode> &conditionNode,
-                           const std::shared_ptr<ExpressionNode> &bodyNode)
+                           const std::shared_ptr<ExpressionNode> &bodyNode,
+                           const std::vector<std::shared_ptr<LabelNode>> &resultLabels_)
             : ExpressionNode(branchOpToken, NodeType::BRANCH),
-    conditionNode(conditionNode), bodyNode(bodyNode) {}
+    conditionNode(conditionNode), bodyNode(bodyNode), resultLabels(resultLabels_) {}
 
     std::shared_ptr<ExpressionNode> BranchNode::getConditionNode() const {
         return conditionNode;
@@ -239,11 +240,23 @@ namespace ast {
         return bodyNode;
     }
 
+    const std::vector<std::shared_ptr<LabelNode>>& BranchNode::getResultLabels() const {
+        return resultLabels;
+    }
+
     ConditionNode::ConditionNode(const std::vector<std::shared_ptr<ExpressionNode>> &branchNodes)
         : ExpressionNode(branchNodes[0]->getMainToken(), NodeType::CONDITION), branchNodes(branchNodes) {}
 
     std::vector<std::shared_ptr<ExpressionNode>> ConditionNode::getBranchNodes() const {
         return branchNodes;
+    }
+
+    void ConditionNode::setResultLabels(const std::vector<std::shared_ptr<LabelNode>>& labels) {
+        resultLabels = labels;
+    }
+
+    const std::vector<std::shared_ptr<LabelNode>>& ConditionNode::getResultLabels() const {
+        return resultLabels;
     }
 
     static std::unordered_map<std::string, LoopType> loopTypeMap = {

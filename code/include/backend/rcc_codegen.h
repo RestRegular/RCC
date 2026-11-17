@@ -431,6 +431,8 @@ namespace backend
 
         // ---------- 辅助 ----------
         [[nodiscard]] sema::TypePtr inferType(const std::shared_ptr<ast::ExpressionNode>& node) const;
+        // P13-2/L2(Q-C)：取块/分支最后一条语句的推断类型（末值语义）。
+        [[nodiscard]] sema::TypePtr inferBlockValueType(const std::shared_ptr<ast::ExpressionNode>& body) const;
         // P5：容器字面量与索引访问的静态类型推断。
         // 元素/值类型只影响编译期分派（sout 选 rt_print_*、槽位大小），
         // 运行时槽位恒为 8 字节，所以异构字面量可以安全地退化成 int。

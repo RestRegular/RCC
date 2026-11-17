@@ -502,20 +502,28 @@ namespace ast {
     class BranchNode : public ExpressionNode {
         std::shared_ptr<ExpressionNode> conditionNode;
         std::shared_ptr<ExpressionNode> bodyNode;
+        // P13-2/L2(Q-C)：`if (cond): T { ... }` 的 `: T` 标注（空 = 未标注）
+        std::vector<std::shared_ptr<LabelNode>> resultLabels;
     public:
         explicit BranchNode(
             const Token &branchOpToken,
             const std::shared_ptr<ExpressionNode> &conditionNode,
-            const std::shared_ptr<ExpressionNode> &bodyNode);
+            const std::shared_ptr<ExpressionNode> &bodyNode,
+            const std::vector<std::shared_ptr<LabelNode>> &resultLabels_ = {});
         [[nodiscard]] std::shared_ptr<ExpressionNode> getConditionNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
+        [[nodiscard]] const std::vector<std::shared_ptr<LabelNode>>& getResultLabels() const;
     };
 
     class ConditionNode final : public ExpressionNode {
         std::vector<std::shared_ptr<ExpressionNode>> branchNodes;
+        // P13-2/L2：整个 if 结构的结果类型标注（取第一个分支的 `: T`）
+        std::vector<std::shared_ptr<LabelNode>> resultLabels;
     public:
         explicit ConditionNode(const std::vector<std::shared_ptr<ExpressionNode>> &branchNodes);
         [[nodiscard]] std::vector<std::shared_ptr<ExpressionNode>> getBranchNodes() const;
+        void setResultLabels(const std::vector<std::shared_ptr<LabelNode>>& labels);
+        [[nodiscard]] const std::vector<std::shared_ptr<LabelNode>>& getResultLabels() const;
     };
 
     class LoopNode : public ExpressionNode {

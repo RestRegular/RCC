@@ -230,16 +230,41 @@ namespace parser {
     }
 
     ExpressionNodePtr Parser::buildIfExpression(){
+
         const auto &ifToken = currentToken();
         next();
-        const auto &conditionNode = buildExpression(Precedence::LOWEST);
+        auto condition = buildExpression(Precedence::LOWEST);
+        // P13-2/L2(Q-C)：`if (cond): T { ... }` 的 `: T` 标注。
+        // buildExpression 会把 `:` 当 infix 吃进 condition，形成
+        //   InfixExpressionNode(op=":", left=cond, right=LabelNode(T))。
+        // 这里把它拆开：左侧作为真 condition，右侧作为结果类型标注。
+        std::vector<std::shared_ptr<LabelNode>> resultLabels{};
+        if (const auto infix = std::dynamic_pointer_cast<InfixExpressionNode>(condition))            {
+            if (infix->getOpToken().getType() == TokenType::TOKEN_COLON)                {
+                if (const auto label = std::dynamic_pointer_cast<LabelNode>(infix->getRightNode()))
+                    resultLabels.push_back(label);
+                condition = infix->getLeftNode();
+            }
+        }
+        // 决议 §12.2 的 `if (cond): T { ... }` 形式：buildExpression 解析完
+        // `(cond)` 后 currentToken 停在 `:`（不是 nextToken），next 是 T。
+        if (currentTokenIs(TokenType::TOKEN_COLON))        {
+            while (nextTokenIs(TokenType::TOKEN_LABEL) ||
+                   nextTokenIs(TokenType::TOKEN_IDENTIFIER))            {
+                next();
+                if (const auto label = std::dynamic_pointer_cast<LabelNode>(buildLabelExpression()))
+                    resultLabels.push_back(label);
+            }
+        }
+
+
         if (!nextTokenIs(TokenType::TOKEN_LBRACE)) {
             recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LBRACE);
             return nullptr;
         }
         next();
         const auto &bodyNode = buildBraceExpression();
-        return std::make_shared<BranchNode>(ifToken, conditionNode, bodyNode);
+        return std::make_shared<BranchNode>(ifToken, condition, bodyNode, resultLabels);
     }
 
     ExpressionNodePtr Parser::buildConditionExpression() {
@@ -296,7 +321,15 @@ namespace parser {
             next(); // 移动到下一个标记
         }
         if (hasError()) return nullptr;
-        return std::make_shared<ConditionNode>(branchNodes);
+        // P13-2/L2(Q-C)：把第一个分支的 `: T` 提升为整个 if 的结果标注。
+        // 决议 §12.2：`: T` 是权威校验，所有正常出口必须产出 T。
+        auto condition = std::make_shared<ConditionNode>(branchNodes);
+        if (!branchNodes.empty())        {
+            if (const auto first = std::dynamic_pointer_cast<BranchNode>(branchNodes.front()))                {
+                condition->setResultLabels(first->getResultLabels());
+            }
+        }
+        return condition;
     }
 
 

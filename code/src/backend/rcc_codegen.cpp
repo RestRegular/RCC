@@ -3192,6 +3192,13 @@ namespace backend{
             }
         }
     }
+    sema::TypePtr CodeGen::inferBlockValueType(const std::shared_ptr<ast::ExpressionNode>& body) const {
+        const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(body);
+        if (!block) return inferType(body);
+        const auto& exprs = block->getBodyExpressions();
+        if (exprs.empty()) return sema::getVoidType();
+        return inferType(exprs.back());
+    }
     void CodeGen::emitReturn(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node);
         // P13-2/L1：`return` 只退函数；`ret` 退最近可返回值作用域 ——
@@ -3372,6 +3379,17 @@ namespace backend{
             return;
         }
         const std::string endLabel = _asm.newLabel("cond_end");
+        // P13-2/L2(Q-C)：写了 `: T` 就是权威校验——每个正常出口必须产出 T。
+        // 标注挂在 ConditionNode 上（取第一个分支的 `: T`）。
+        sema::TypePtr annotatedType;
+        if (!cond->getResultLabels().empty())        {
+            annotatedType = typeFromLabelList(cond->getResultLabels(), _currentGenericParams);
+            if (!annotatedType || annotatedType->getKind() == sema::TypeKind::TK_UNKNOWN)            {
+                failAt(node->getPos(), "L2: unknown result type '" +
+                       cond->getResultLabels().front()->getFullLabel() + "' in if annotation");
+                return;
+            }
+        }
         for (const auto& branchExpr : cond->getBranchNodes())        {
             const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(branchExpr);
             if (!branch) continue;
@@ -3380,6 +3398,21 @@ namespace backend{
                 emitExpression(branch->getConditionNode());
                 _asm.inst("testq", "%rax", "%rax");
                 _asm.je(nextLabel);
+            }
+            if (annotatedType)            {
+                const auto valueType = inferBlockValueType(branch->getBodyNode());
+                if (!valueType || valueType->isVoid())                {
+                    failAt(branch->getBodyNode() ? branch->getBodyNode()->getPos() : node->getPos(),
+                           "L2: if branch has no value but result type " +
+                           annotatedType->toString() + " is annotated");
+                    return;
+                }
+                const auto why = checkAssignable(annotatedType, valueType);
+                if (!why.empty())                {
+                    failAt(branch->getBodyNode()->getPos(),
+                           "L2: if branch value does not match annotated result type: " + why);
+                    return;
+                }
             }
             pushScope();
             emitStatement(branch->getBodyNode());

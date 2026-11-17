@@ -322,6 +322,10 @@ namespace ast
                 {
                     dumpChild("branch[" + std::to_string(i++) + "]", branch, level + 1, oss);
                 }
+                for (const auto& label : cond->getResultLabels())
+                {
+                    if (label) oss << indentOf(level + 1) << "resultType: " << label->getFullLabel() << "\n";
+                }
                 return;
             }
             if (const auto branch = std::dynamic_pointer_cast<BranchNode>(node))
