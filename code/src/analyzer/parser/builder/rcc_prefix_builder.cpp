@@ -540,6 +540,13 @@ namespace parser {
 
     ExpressionNodePtr Parser::buildDictionaryExpression() {
         const auto &beginToken = currentToken();
+        // P13-2/L1(Q-D)：`{` 前缀按结构分流——顶层有 `:` 的是字典，
+        // 否则是裸块（语句序列）。空 `{}` 一律是空字典。
+        if (!peekBraceIsDictionary()) {
+            // 裸块：当前 token 仍是 `{`，buildBraceExpression 会消费它并
+            // 走与函数体相同的语句列表解析，分号分隔语句因此自动可用（Q-D）。
+            return buildBraceExpression();
+        }
         next();
         skipCurrentNewLineToken();
         if (currentTokenIs(TokenType::TOKEN_RBRACE))

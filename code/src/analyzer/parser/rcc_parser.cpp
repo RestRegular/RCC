@@ -378,6 +378,52 @@ namespace parser {
         return expressionNode;
     }
 
+    bool Parser::peekBraceIsDictionary() const {
+        // 调用点：currentToken 是 `{`，nextToken 是第一个内容 token。
+        // Q-D 裁决：空 `{}` 一律是空字典；顶层出现 `:`（键值分隔）即字典；
+        // 否则是裸块（若干语句，单行的分号由 buildBraceExpression 复用现有逻辑）。
+        // 只读前瞻：复制未消费的 token 队列，绝不改动 _tokens / _tempTokens / _next_token。
+        if (nextTokenIs(core::TokenType::TOKEN_RBRACE)) return true;
+
+        auto queueCopy = _tokens;
+        std::shared_ptr<Token> tok = _next_token;
+        int depth = 0;        // 只追踪 () / [] / {} 嵌套；顶层 depth==0
+        bool typeAnnotationAhead = false; // 语句以 var/fun/class 开头 => 其 `:` 是类型标注
+        auto isDelimiter = [](const std::shared_ptr<Token>& t) {
+            return t->getType() == core::TokenType::TOKEN_NEWLINE ||
+                   (t->getType() == core::TokenType::TOKEN_DELIMITER &&
+                    t->getValue() == ";");
+        };
+        while (tok) {
+            const auto type = tok->getType();
+            if (depth == 0) {
+                if (type == core::TokenType::TOKEN_VAR ||
+                    type == core::TokenType::TOKEN_FUNCTION ||
+                    type == core::TokenType::TOKEN_CLASS) {
+                    typeAnnotationAhead = true;
+                } else if (isDelimiter(tok)) {
+                    typeAnnotationAhead = false;
+                }
+            }
+            if (type == core::TokenType::TOKEN_LBRACE ||
+                type == core::TokenType::TOKEN_LBRACKET ||
+                type == core::TokenType::TOKEN_LPAREN) {
+                ++depth;
+            } else if (type == core::TokenType::TOKEN_RBRACE) {
+                if (depth == 0) break; // 匹配到本 `{` 的右括号，扫描结束
+                --depth;
+            } else if (type == core::TokenType::TOKEN_RBRACKET ||
+                       type == core::TokenType::TOKEN_RPAREN) {
+                if (depth > 0) --depth;
+            } else if (depth == 0 && type == core::TokenType::TOKEN_COLON &&
+                       !typeAnnotationAhead) {
+                return true; // 顶层冒号且不是类型标注 = 键值对 = 字典
+            }
+            tok = queueCopy.empty() ? nullptr : queueCopy.front();
+            if (!queueCopy.empty()) queueCopy.pop();
+        }
+        return false; // 无顶层冒号：裸块
+    }
     std::shared_ptr<ProgramNode> Parser::buildProgram() {
         // 注意：lexer 从不产出 TOKEN_PROGRAM，首 token 是值为空的占位符
         // （TOKEN_UNDEFINED）。因此这里不能强制要求 TOKEN_PROGRAM，

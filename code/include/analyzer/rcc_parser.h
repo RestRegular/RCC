@@ -149,6 +149,10 @@ namespace parser {
         // 语句构建辅助函数
         bool validateForRangeExpression(const ExpressionNodePtr& expr, const Token& forToken);
         ExpressionNodePtr buildBracketExpression();
+        // P13-2/L1(Q-D)：窥视 `{ ... }` 内部，判定字典字面量还是裸块。
+        // 不消费 token：复制 _tokens 队列做只读扫描。
+        // 规则：空 `{}` = 字典；顶层出现 `:`（键值对分隔）= 字典；否则裸块。
+        bool peekBraceIsDictionary() const;
 
     };
 } // analyzer
