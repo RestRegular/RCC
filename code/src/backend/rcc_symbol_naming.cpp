@@ -76,6 +76,15 @@ namespace backend
             }
             case sema::TypeKind::TK_GENERIC:
                 return "T0";
+            case sema::TypeKind::TK_MEMORY:
+            {
+                const auto mt = std::static_pointer_cast<sema::MemoryType>(type);
+                const char role = mt->getRole() == sema::MemoryRole::BODY ? 'B' :
+                                  mt->getRole() == sema::MemoryRole::CONTENT ? 'C' :
+                                  mt->getRole() == sema::MemoryRole::REF ? 'R' :
+                                  mt->getRole() == sema::MemoryRole::MUT ? 'M' : 'T';
+                return std::string("Y") + role + mangleType(mt->getInnerType());
+            }
             default:
                 return "v";
             }

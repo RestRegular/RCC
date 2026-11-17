@@ -607,6 +607,11 @@ namespace backend{
         case sema::TypeKind::TK_LIST:
         case sema::TypeKind::TK_DICT:
             return true;
+        // P13-2/L3：内存模型类型需要进 drop 表以跟踪 F/X 状态（移动语义），
+        // 实际资源释放由 L3 主体的 fill/release 负责，这里的 drop glue
+        // 只把槽写 null（见 emitDropGlueBody 默认分支）。
+        case sema::TypeKind::TK_MEMORY:
+            return true;
         // D14：范围外类型一律不释放。
         //   TK_CLASS   —— 引用语义，可能有别名
         //   TK_FUNC    —— 闭包对象，env 归属未定
@@ -2472,7 +2477,8 @@ namespace backend{
         if (isVarMoved(id->getName()))        {
             failAt(node->getPos(), "'" + id->getName() +
                    "' has been moved and cannot be used again "
-                   "(P13-1 / D9: the owner was moved by 'ret' or by storing into a container)");
+                   "(the owner was moved out — by 'ret', by storing into a container, "
+                   "or by a Content assignment; P13-1 / D9 + P13-2 / D11)");
             return;
         }
         const std::string src = addrOf(*slot);
@@ -3202,6 +3208,17 @@ namespace backend{
                 if (!hasInit) return false;
                 const auto init = def->getValueNode();
                 if (const auto initId = std::dynamic_pointer_cast<ast::IdentifierNode>(init))                {
+                    // P13-2/L3（决议 §11）：Content 变量赋值即移动 ——
+                    // `var a = b`（b 是 Content[T]）时 b→X，a 是新拥有者，
+                    // 不按借用处理。必须是 Content 才特判：str/ptr 的
+                    // `var s: str = scratch` 位复用写法依赖借用行为，不能动。
+                    if (const auto srcSlot = const_cast<CodeGen*>(this)->lookupVar(initId->getName());
+                        srcSlot && srcSlot->type && srcSlot->type->getKind() == sema::TypeKind::TK_MEMORY &&
+                        std::dynamic_pointer_cast<sema::MemoryType>(srcSlot->type)->getRole() ==
+                            sema::MemoryRole::CONTENT)                {
+                        if (!markVarMoved(initId->getName(), initId->getPos(), "moved into '" + name + "'")) return false;
+                        return false; // 新拥有者，作用域末销毁
+                    }
                     // 只有**同类型**的 `var b = a` 才是借用（两个槽引用同一条
                     // 堆对象）。`var r: str = p`（p 是 ptr）是**位模式转换**：
                     // 堆块的所有权经 ptr 中转交给 r，r 是新的所有者 ——
