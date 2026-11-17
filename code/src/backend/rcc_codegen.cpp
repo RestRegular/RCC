@@ -467,12 +467,14 @@ namespace backend{
             // 一侧显式 Body、另一侧裸类名：别名，放行（决议 §4）。
             if ((isBodyMemory(target) && isBareBody(source)) ||
                 (isBodyMemory(source) && isBareBody(target))) return std::string();
-            // P13-2/L3（决议 §7.3）：调用点 f(bob) 由形参类型决定语义 ——
-            // 形参 Ref[T]/Mut[T] 时，Body 实参隐式取引用（底层同一指针）。
-            // 只放行 Ref/Mut，且要求内层类型与实参类型一致。
+            // P13-2/L3（决议 §7.3 + §6.3）：调用点 f(bob) 由形参类型决定语义 ——
+            // Ref[T]/Mut[T] 形参：Body 实参隐式取引用（底层同一指针）；
+            // Content[T] 形参：Body 实参隐式 take（落定，源→E）。
+            // 都要求 inner 类型与实参类型一致。
             if (tr >= 0 && sr < 0 && sk != sema::TypeKind::TK_PTR)            {
                 const auto role = static_cast<sema::MemoryRole>(tr);
-                if (role == sema::MemoryRole::REF || role == sema::MemoryRole::MUT)                {
+                if (role == sema::MemoryRole::REF || role == sema::MemoryRole::MUT ||
+                    role == sema::MemoryRole::CONTENT)                {
                     const auto inner = std::dynamic_pointer_cast<sema::MemoryType>(target)->getInnerType();
                     if (!inner || inner->equals(source)) return std::string();
                     return "cannot pass " + source->toString() + " as " + target->toString() +
@@ -752,6 +754,11 @@ namespace backend{
         if (_scopeDrops.empty()) _scopeDrops.emplace_back();
         _scopeDrops.back().push_back({name, addr, type, false, false});
     }
+    void CodeGen::registerMoveVar(const std::string& name)    {
+        if (_moveStates.empty()) _moveStates.emplace_back();
+        // 内层遮蔽外层：只在最内层登记，isVarMoved 由内向外查。
+        _moveStates.back()[name] = false;
+    }
     void CodeGen::registerBorrow(const std::string& name, const sema::TypePtr& type,
                                  const std::string& addr)    {
         if (!needsDrop(type)) return;
@@ -773,6 +780,12 @@ namespace backend{
         return false;
     }
     bool CodeGen::isVarMoved(const std::string& name) const    {
+        // P13-2/L3：先查独立的移动状态表（含 ClassType/Body 别名等
+        // D14 不进 drop 表但参与 take/移动的变量）。
+        for (auto it = _moveStates.rbegin(); it != _moveStates.rend(); ++it)        {
+            if (const auto found = it->find(name); found != it->end()) return found->second;
+        }
+        // 再查 P13-1 的 drop 表（str/list/dict/Content 等资源拥有者）。
         // 由内向外找第一个同名项（内层遮蔽外层）。
         // 借用的 moved 字段恒为 true（借用不销毁），但那是「不用管生命周期」
         // 而不是「已被移走」，所以只看非借用项。
@@ -823,6 +836,22 @@ namespace backend{
     }
     bool CodeGen::markVarMoved(const std::string& name, const utils::Pos& pos,
                                const std::string& action)    {
+        // P13-2/L3：先更新独立的移动状态表（Body/ClassType 等）。
+        for (size_t s = _moveStates.size(); s > 0; --s)        {
+            if (const auto found = _moveStates[s - 1].find(name);
+                found != _moveStates[s - 1].end())            {
+                for (const auto& frame : _ehStack)                {
+                    if (!frame.inTryBody) continue;
+                    if (s - 1 >= frame.tryBodyScope) continue;
+                    failAt(pos, "'" + name + "' is declared outside the current 'try' body "
+                                "and cannot be " + action + " inside it");
+                    return false;
+                }
+                found->second = true;
+                return true;
+            }
+        }
+        // 再更新 P13-1 的 drop 表（原有逻辑）。
         // 从内向外找第一个同名项：内层遮蔽外层，被移动的是内层那个。
         for (size_t s = _scopeDrops.size(); s > 0; --s)        {
             auto& entries = _scopeDrops[s - 1];
@@ -1403,6 +1432,7 @@ namespace backend{
     void CodeGen::pushScope()    {
         _scopes.emplace_back();
         _scopeDrops.emplace_back();
+        _moveStates.emplace_back();
     }
     void CodeGen::popScope()    {
         // P13-1（D4）：作用域末发 drop 调用，顺序为声明逆序。
@@ -1413,6 +1443,7 @@ namespace backend{
             _scopes.pop_back();
         }
         if (!_scopeDrops.empty()) _scopeDrops.pop_back();
+        if (!_moveStates.empty()) _moveStates.pop_back();
     }
     CodeGen::VarSlot* CodeGen::lookupVar(const std::string& name)    {
         // 从最内层向外查找
@@ -3257,6 +3288,12 @@ namespace backend{
  else                {
                     registerDropVar(name, slot, type);
                 }
+                // P13-2/L3：内存模型类型（含 Body 别名 ClassType）进独立移动表，
+                // 以跟踪 F/X 状态（D14 下 ClassType 不进 drop 表，但仍可被 take）。
+                const bool isMemoryModelVar =
+                    (type && type->getKind() == sema::TypeKind::TK_MEMORY) ||
+                    (type && type->getKind() == sema::TypeKind::TK_CLASS);
+                if (isMemoryModelVar) registerMoveVar(name);
             }
         }
     }
@@ -4998,6 +5035,26 @@ namespace backend{
                 if (targetIsFloat[i]) _asm.inst("movsd", "%xmm0", keep);
                 else                  _asm.mov("%rax", keep);
                 _stmtTemps.push_back({keep, at});
+            }
+            // P13-2/L3（决议 §6.3）：Content[T] 形参接受 Body 实参时隐式 take，
+            // 落定即生效（源→E）。移动状态表（_moveStates）已覆盖 ClassType
+            // Body 变量，标记在这里才真正有效。
+            if (i < paramTypes.size() && paramTypes[i] &&
+                paramTypes[i]->getKind() == sema::TypeKind::TK_MEMORY)            {
+                const auto mt = std::dynamic_pointer_cast<sema::MemoryType>(paramTypes[i]);
+                if (mt && mt->getRole() == sema::MemoryRole::CONTENT)                {
+                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(args[i]))                    {
+                        const auto srcSlot = lookupVar(id->getName());
+                        if (srcSlot && srcSlot->type &&
+                            (srcSlot->type->getKind() == sema::TypeKind::TK_CLASS ||
+                             (srcSlot->type->getKind() == sema::TypeKind::TK_MEMORY &&
+                              std::dynamic_pointer_cast<sema::MemoryType>(srcSlot->type)->getRole() ==
+                                  sema::MemoryRole::BODY)))                        {
+                            if (!markVarMoved(id->getName(), id->getPos(),
+                                              "taken by Content parameter")) return 0;
+                        }
+                    }
+                }
             }
         }
         for (size_t i = 0; i < args.size(); ++i)        {

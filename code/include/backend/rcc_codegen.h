@@ -257,6 +257,10 @@ namespace backend
         // addr 是该变量的槽位寻址串（`-8(%rbp)` 或 `_g_x(%rip)`）。
         void registerDropVar(const std::string& name, const std::string& addr,
                              const sema::TypePtr& type);
+        // P13-2/L3：独立的移动状态表（F/E/X），与 _scopeDrops 平行但只登记
+        // 内存模型类型变量（含 Body 别名 ClassType）。D14 下 ClassType 不进
+        // drop 表，但决议 §6/§11 要求这类变量也能 take/移动，故单独跟踪。
+        void registerMoveVar(const std::string& name);
         // D9 规则 C：登记一个**借用**变量（形参、或初始化自已有变量/元素）。
         // 借用不销毁，但记录在案以便检查「借用逃逸」（ret / 入容器 / 存外层）。
         // addr 同样要记下来：借用被重新赋值后会**升格成拥有者**，那时出口
@@ -339,6 +343,10 @@ namespace backend
         };
         // 与 _scopes 同长、同生命周期。popScope 时同步弹出。
         std::vector<std::vector<DropEntry>> _scopeDrops;
+        // P13-2/L3：移动状态表（由内向外每层一个 map：name -> moved）。
+        // 与 _scopeDrops 同步 push/pop，但独立跟踪 ClassType（Body 别名）等
+        // D14 不进 drop 表、却需要 F/X 移动语义的变量。
+        std::vector<std::map<std::string, bool>> _moveStates;
         // drop glue 实例缓存：mangled 类型名 -> 函数标签
         std::map<std::string, std::string> _dropGlue;
         // 待发射的 drop 函数（类型 + 标签），函数体在 emitProgram 末尾统一发射
