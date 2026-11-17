@@ -3199,13 +3199,44 @@ namespace backend{
         if (exprs.empty()) return sema::getVoidType();
         return inferType(exprs.back());
     }
+    bool CodeGen::bodyHasRetValue(const std::shared_ptr<ast::ExpressionNode>& body) const {
+        if (!body) return false;
+        if (const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(body))        {
+            return !ret->exitsFunction() && ret->getReturnNode() != nullptr;
+        }
+        if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(body))        {
+            for (const auto& e : block->getBodyExpressions())
+                if (bodyHasRetValue(e)) return true;
+            return false;
+        }
+        if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(body))        {
+            for (const auto& b : cond->getBranchNodes()) if (bodyHasRetValue(b)) return true;
+            return false;
+        }
+        if (const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(body))
+            return bodyHasRetValue(branch->getBodyNode());
+        if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(body))
+            return bodyHasRetValue(loop->getBodyNode());
+        if (const auto stmt = std::dynamic_pointer_cast<ast::ExpressionStatementNode>(body))
+            return bodyHasRetValue(stmt->getExpression());
+        return false;
+    }
     void CodeGen::emitReturn(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node);
-        // P13-2/L1：`return` 只退函数；`ret` 退最近可返回值作用域 ——
-        // 在循环里就是退循环（等价 break），不在循环里则退函数（保持兼容）。
-        if (ret && !ret->exitsFunction() && !_loopStack.empty())        {
-            emitRetFromLoop(node);
-            return;
+        // P13-2/L1+L2：`return` 只退函数；`ret` 退最近可返回值作用域 ——
+        // 比较 _loopStack / _ifStack 栈顶的 enterSeq，选后进入（更近）的那个；
+        // 两者都空则退函数（保持兼容）。
+        if (ret && !ret->exitsFunction())        {
+            const bool hasLoop = !_loopStack.empty();
+            const bool hasIf = !_ifStack.empty();
+            if (hasLoop && (!hasIf || _loopStack.back().enterSeq > _ifStack.back().enterSeq))            {
+                emitRetFromLoop(node);
+                return;
+            }
+            if (hasIf)            {
+                emitRetFromIf(node);
+                return;
+            }
         }
         // P9：只有当返回类型是**显式标注**时才校验 ret 的值。
         // 推断出来的返回类型来自「函数体里第一个 ret」，拿它去约束
@@ -3377,6 +3408,41 @@ namespace backend{
         }
         _asm.jmp(ctx.breakLabel);
     }
+    void CodeGen::emitRetFromIf(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node);
+        const auto& ctx = _ifStack.back();
+        std::string valueSlot;
+        bool valueIsFloat = false;
+        if (ret && ret->getReturnNode())        {
+            const auto vt = inferType(ret->getReturnNode());
+            if (ctx.annotatedType)            {
+                const auto why = checkAssignable(ctx.annotatedType, vt);
+                if (!why.empty())                {
+                    failAt(ret->getReturnNode()->getPos(),
+                           "L2: ret value does not match if result type: " + why);
+                    return;
+                }
+            }
+            emitExpression(ret->getReturnNode());
+            if (hasFailed()) return;
+            valueIsFloat = vt && vt->isFloat();
+            valueSlot = allocateTemp(valueIsFloat ? sema::getFloatType() : sema::getIntType());
+            if (valueIsFloat) _asm.inst("movsd", "%xmm0", valueSlot);
+            else              _asm.mov("%rax", valueSlot);
+        }
+        // 只销毁 if 分支这一层的拥有者（口径同循环 break）
+        for (size_t i = _scopeDrops.size(); i > ctx.dropDepth; --i)        {
+            emitScopeDrops(i - 1, true);
+        }
+        emitEhUnwindTo(ctx.ehDepth);
+        if (!valueSlot.empty())        {
+            if (valueIsFloat) _asm.inst("movsd", valueSlot, "%xmm0");
+            else              _asm.mov(valueSlot, "%rax");
+            if (valueIsFloat) _asm.inst("movsd", "%xmm0", ctx.valueSlot);
+            else              _asm.mov("%rax", ctx.valueSlot);
+        }
+        _asm.jmp(ctx.endLabel);
+    }
     void CodeGen::emitIf(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(node);
         if (!cond)        {
@@ -3387,6 +3453,7 @@ namespace backend{
         // P13-2/L2(Q-C)：写了 `: T` 就是权威校验——每个正常出口必须产出 T。
         // 标注挂在 ConditionNode 上（取第一个分支的 `: T`）。
         sema::TypePtr annotatedType;
+        std::string ifValueSlot;
         if (!cond->getResultLabels().empty())        {
             annotatedType = typeFromLabelList(cond->getResultLabels(), _currentGenericParams);
             if (!annotatedType || annotatedType->getKind() == sema::TypeKind::TK_UNKNOWN)            {
@@ -3394,6 +3461,11 @@ namespace backend{
                        cond->getResultLabels().front()->getFullLabel() + "' in if annotation");
                 return;
             }
+            ifValueSlot = allocateTemp(annotatedType);
+            if (annotatedType->isFloat()) _asm.inst("pxor", "%xmm0", "%xmm0");
+            else                          _asm.movImm(0, "%rax");
+            if (annotatedType->isFloat()) _asm.inst("movsd", "%xmm0", ifValueSlot);
+            else                          _asm.mov("%rax", ifValueSlot);
         }
         for (const auto& branchExpr : cond->getBranchNodes())        {
             const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(branchExpr);
@@ -3404,7 +3476,7 @@ namespace backend{
                 _asm.inst("testq", "%rax", "%rax");
                 _asm.je(nextLabel);
             }
-            if (annotatedType)            {
+            if (annotatedType && !bodyHasRetValue(branch->getBodyNode()))            {
                 const auto valueType = inferBlockValueType(branch->getBodyNode());
                 if (!valueType || valueType->isVoid())                {
                     failAt(branch->getBodyNode() ? branch->getBodyNode()->getPos() : node->getPos(),
@@ -3420,12 +3492,26 @@ namespace backend{
                 }
             }
             pushScope();
+            if (!ifValueSlot.empty())            {
+                _ifStack.push_back({endLabel, ifValueSlot, annotatedType,
+                                    _scopeDrops.size(), _ehStack.size(), ++_scopeEnterSeq});
+            }
             emitStatement(branch->getBodyNode());
+            if (!ifValueSlot.empty()) _ifStack.pop_back();
             popScope();
+            // 分支末值写入结果槽（ret value 出口已由 emitRetFromIf 写入）
+            if (!ifValueSlot.empty() && !bodyHasRetValue(branch->getBodyNode()))            {
+                if (annotatedType->isFloat()) _asm.inst("movsd", "%xmm0", ifValueSlot);
+                else                          _asm.mov("%rax", ifValueSlot);
+            }
             _asm.jmp(endLabel);
             _asm.label(nextLabel);
         }
         _asm.label(endLabel);
+        if (!ifValueSlot.empty())        {
+            if (annotatedType->isFloat()) _asm.inst("movsd", ifValueSlot, "%xmm0");
+            else                          _asm.mov(ifValueSlot, "%rax");
+        }
     }
     void CodeGen::emitBlock(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node);
@@ -3510,7 +3596,7 @@ namespace backend{
             else                      _asm.mov("%rax", loopValueSlot);
         }
         _loopStack.push_back({continueLabel, endLabel, _ehStack.size(), _scopeDrops.size(),
-                              loopValueSlot, loopAnnotatedType});
+                              loopValueSlot, loopAnnotatedType, ++_scopeEnterSeq});
         pushScope();
         if (loop->getBodyNode())        {
             if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(loop->getBodyNode()))            {

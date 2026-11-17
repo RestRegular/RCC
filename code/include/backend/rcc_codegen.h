@@ -152,6 +152,8 @@ namespace backend
         void emitReturn(const std::shared_ptr<ast::ExpressionNode>& node);
         // P13-2/L1：`ret` 在循环里退最近作用域（等价 break），与退函数的 return 分开。
         void emitRetFromLoop(const std::shared_ptr<ast::ExpressionNode>& node);
+        // P13-2/L2：`ret` 在带 : T 标注的 if 分支里退该 if 并带出值。
+        void emitRetFromIf(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitIf(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitBlock(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitLoop(const std::shared_ptr<ast::ExpressionNode>& node);
@@ -433,6 +435,8 @@ namespace backend
         [[nodiscard]] sema::TypePtr inferType(const std::shared_ptr<ast::ExpressionNode>& node) const;
         // P13-2/L2(Q-C)：取块/分支最后一条语句的推断类型（末值语义）。
         [[nodiscard]] sema::TypePtr inferBlockValueType(const std::shared_ptr<ast::ExpressionNode>& body) const;
+        // P13-2/L2：块内是否含 `ret value`（非 return），用于值出口校验分流。
+        [[nodiscard]] bool bodyHasRetValue(const std::shared_ptr<ast::ExpressionNode>& body) const;
         // P5：容器字面量与索引访问的静态类型推断。
         // 元素/值类型只影响编译期分派（sout 选 rt_print_*、槽位大小），
         // 运行时槽位恒为 8 字节，所以异构字面量可以安全地退化成 int。
@@ -525,8 +529,23 @@ namespace backend
             // 循环出口统一从槽读出；空串表示无标注（break 不许带值）。
             std::string valueSlot;
             std::shared_ptr<sema::Type> annotatedType;
+            // P13-2/L2：进入作用域的全局序号，用于与 _ifStack 比较谁更近。
+            size_t enterSeq = 0;
         };
         std::vector<LoopContext> _loopStack;
+        // P13-2/L2(Q-C)：带 `: T` 标注的 if 分支，ret value 存入值槽，
+        // if 出口统一从槽读出。结构与 LoopContext 对齐，共用 enterSeq 判最近。
+        struct IfContext
+        {
+            std::string endLabel;
+            std::string valueSlot;
+            std::shared_ptr<sema::Type> annotatedType;
+            size_t dropDepth = 0;
+            size_t ehDepth = 0;
+            size_t enterSeq = 0;
+        };
+        std::vector<IfContext> _ifStack;
+        size_t _scopeEnterSeq = 0; // 单调递增，用于判定最近的可返回值作用域
 
         // 已知函数签名：名字 -> 返回类型
         std::map<std::string, sema::TypePtr> _functionReturns;
