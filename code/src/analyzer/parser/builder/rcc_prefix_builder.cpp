@@ -515,27 +515,60 @@ namespace parser {
     ExpressionNodePtr Parser::buildWhileExpression() {
         const auto &whileToken = currentToken();
         next();
-        const auto &condition = buildExpression(Precedence::LOWEST);
+        auto condition = buildExpression(Precedence::LOWEST);
+        // P13-2/L2(Q-C)：`while (cond): T { ... }` 的 `: T` 标注。
+        // 冒号是 infix，若被吃进 condition 则拆出右侧 LabelNode；
+        // 若 currentToken 停在冒号则直接消费其后的 label。
+        std::vector<std::shared_ptr<LabelNode>> resultLabels{};
+        if (const auto infix = std::dynamic_pointer_cast<InfixExpressionNode>(condition)) {
+            if (infix->getOpToken().getType() == TokenType::TOKEN_COLON) {
+                if (const auto label = std::dynamic_pointer_cast<LabelNode>(infix->getRightNode()))
+                    resultLabels.push_back(label);
+                condition = infix->getLeftNode();
+            }
+        }
+        if (currentTokenIs(TokenType::TOKEN_COLON)) {
+            while (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)) {
+                next();
+                if (const auto label = std::dynamic_pointer_cast<LabelNode>(buildLabelExpression()))
+                    resultLabels.push_back(label);
+            }
+        }
         if (!nextTokenIs(TokenType::TOKEN_LBRACE)) {
             recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_LBRACE);
             return nullptr;
         }
         next();
         const auto &body = buildBraceExpression();
-        return std::make_shared<WhileLoopNode>(whileToken, condition, body);
+        return std::make_shared<WhileLoopNode>(whileToken, condition, body, resultLabels);
     }
 
     ExpressionNodePtr Parser::buildUntilExpression() {
         const auto &untilToken = currentToken();
         next();
-        const auto &condition = buildExpression(Precedence::LOWEST);
+        auto condition = buildExpression(Precedence::LOWEST);
+        std::vector<std::shared_ptr<LabelNode>> resultLabels{};
+        if (const auto infix = std::dynamic_pointer_cast<InfixExpressionNode>(condition)) {
+            if (infix->getOpToken().getType() == TokenType::TOKEN_COLON) {
+                if (const auto label = std::dynamic_pointer_cast<LabelNode>(infix->getRightNode()))
+                    resultLabels.push_back(label);
+                condition = infix->getLeftNode();
+            }
+        }
+        if (currentTokenIs(TokenType::TOKEN_COLON)) {
+            while (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)) {
+                next();
+                if (const auto label = std::dynamic_pointer_cast<LabelNode>(buildLabelExpression()))
+                    resultLabels.push_back(label);
+            }
+        }
         if (!nextTokenIs(TokenType::TOKEN_LBRACE)) {
             recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_LBRACE);
             return nullptr;
         }
         next();
         const auto &body = buildBraceExpression();
-        return std::make_shared<UntilLoopNode>(untilToken, condition, body);
+        return std::make_shared<UntilLoopNode>(untilToken, condition, body, resultLabels);
     }
 
     ExpressionNodePtr Parser::buildPassExpression() {

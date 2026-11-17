@@ -266,9 +266,10 @@ namespace ast {
     };
 
     LoopNode::LoopNode(const Token& loopToken, const std::shared_ptr<ExpressionNode> &conditionNode,
-        const std::shared_ptr<ExpressionNode> &bodyNode)
+        const std::shared_ptr<ExpressionNode> &bodyNode,
+        const std::vector<std::shared_ptr<LabelNode>> &resultLabels_)
             : ExpressionNode(loopToken, NodeType::LOOP),
-     conditionNode(conditionNode), bodyNode(bodyNode)
+     conditionNode(conditionNode), bodyNode(bodyNode), resultLabels(resultLabels_)
     {
         if (const auto &it = loopTypeMap.find(loopToken.getValue());
             it != loopTypeMap.end())
@@ -293,18 +294,25 @@ namespace ast {
         return loopType;
     }
 
+    const std::vector<std::shared_ptr<LabelNode>>& LoopNode::getResultLabels() const {
+        return resultLabels;
+    }
+
     WhileLoopNode::WhileLoopNode(const Token &whileToken, const std::shared_ptr<ExpressionNode> &conditionNode,
-                                 const std::shared_ptr<ExpressionNode> &bodyNode)
-            : LoopNode(whileToken, conditionNode, bodyNode) {}
+                                 const std::shared_ptr<ExpressionNode> &bodyNode,
+                                 const std::vector<std::shared_ptr<LabelNode>> &resultLabels_)
+            : LoopNode(whileToken, conditionNode, bodyNode, resultLabels_) {}
 
     UntilLoopNode::UntilLoopNode(const Token &untilToken, const std::shared_ptr<ExpressionNode> &conditionNode,
-        const std::shared_ptr<ExpressionNode> &bodyNode)
-            : LoopNode(untilToken, conditionNode, bodyNode) {}
+        const std::shared_ptr<ExpressionNode> &bodyNode,
+        const std::vector<std::shared_ptr<LabelNode>> &resultLabels_)
+            : LoopNode(untilToken, conditionNode, bodyNode, resultLabels_) {}
 
     ForLoopNode::ForLoopNode(const Token &forToken, const std::shared_ptr<ExpressionNode> &initNode,
         const std::shared_ptr<ExpressionNode> &conditionNode, const std::shared_ptr<ExpressionNode> &updateNode,
-        const std::shared_ptr<ExpressionNode> &bodyNode)
-            : LoopNode(forToken, conditionNode, bodyNode),
+        const std::shared_ptr<ExpressionNode> &bodyNode,
+        const std::vector<std::shared_ptr<LabelNode>> &resultLabels_)
+            : LoopNode(forToken, conditionNode, bodyNode, resultLabels_),
      initNode(initNode), updateNode(updateNode) {}
 
     std::shared_ptr<ExpressionNode> ForLoopNode::getInitNode() const {

@@ -3471,6 +3471,29 @@ namespace backend{
             (forLoop && forLoop->getUpdateNode())
                 ? _asm.newLabel("loop_update")
                 : condLabel;
+        // P13-2/L2(Q-C)：写了 `: T` 就是权威校验——循环体末值必须匹配 T。
+        // 注：循环自然结束取零值、break/ret value 参与合流属后续 L2 项。
+        if (!loop->getResultLabels().empty())        {
+            const auto annotated = typeFromLabelList(loop->getResultLabels(), _currentGenericParams);
+            if (!annotated || annotated->getKind() == sema::TypeKind::TK_UNKNOWN)            {
+                failAt(node->getPos(), "L2: unknown result type '" +
+                       loop->getResultLabels().front()->getFullLabel() + "' in loop annotation");
+                return;
+            }
+            const auto valueType = inferBlockValueType(loop->getBodyNode());
+            if (!valueType || valueType->isVoid())            {
+                failAt(loop->getBodyNode() ? loop->getBodyNode()->getPos() : node->getPos(),
+                       "L2: loop body has no value but result type " +
+                       annotated->toString() + " is annotated");
+                return;
+            }
+            const auto why = checkAssignable(annotated, valueType);
+            if (!why.empty())            {
+                failAt(loop->getBodyNode()->getPos(),
+                       "L2: loop body value does not match annotated result type: " + why);
+                return;
+            }
+        }
         _loopStack.push_back({continueLabel, endLabel, _ehStack.size(), _scopeDrops.size()});
         pushScope();
         if (loop->getBodyNode())        {

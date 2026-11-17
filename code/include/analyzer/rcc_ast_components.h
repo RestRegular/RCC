@@ -530,27 +530,33 @@ namespace ast {
         std::shared_ptr<ExpressionNode> conditionNode;
         std::shared_ptr<ExpressionNode> bodyNode;
         LoopType loopType;
+        // P13-2/L2(Q-C)：`while (cond): T { ... }` 的 `: T` 标注（空 = 未标注）
+        std::vector<std::shared_ptr<LabelNode>> resultLabels;
     public:
         explicit LoopNode(const Token& loopToken,
             const std::shared_ptr<ExpressionNode> &conditionNode,
-            const std::shared_ptr<ExpressionNode> &bodyNode);
+            const std::shared_ptr<ExpressionNode> &bodyNode,
+            const std::vector<std::shared_ptr<LabelNode>> &resultLabels_ = {});
         [[nodiscard]] std::shared_ptr<ExpressionNode> getConditionNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
         [[nodiscard]] LoopType getLoopType() const;
+        [[nodiscard]] const std::vector<std::shared_ptr<LabelNode>>& getResultLabels() const;
     };
 
     class WhileLoopNode final : public LoopNode {
     public:
         explicit WhileLoopNode(const Token &whileToken,
             const std::shared_ptr<ExpressionNode> &conditionNode,
-            const std::shared_ptr<ExpressionNode> &bodyNode);
+            const std::shared_ptr<ExpressionNode> &bodyNode,
+            const std::vector<std::shared_ptr<LabelNode>> &resultLabels_ = {});
     };
 
     class UntilLoopNode final : public LoopNode {
     public:
         explicit UntilLoopNode(const Token &untilToken,
             const std::shared_ptr<ExpressionNode> &conditionNode,
-            const std::shared_ptr<ExpressionNode> &bodyNode);
+            const std::shared_ptr<ExpressionNode> &bodyNode,
+            const std::vector<std::shared_ptr<LabelNode>> &resultLabels_ = {});
     };
 
     class ForLoopNode final : public LoopNode {
@@ -561,7 +567,8 @@ namespace ast {
             const std::shared_ptr<ExpressionNode> &initNode,
             const std::shared_ptr<ExpressionNode> &conditionNode,
             const std::shared_ptr<ExpressionNode> &updateNode,
-            const std::shared_ptr<ExpressionNode> &bodyNode);
+            const std::shared_ptr<ExpressionNode> &bodyNode,
+            const std::vector<std::shared_ptr<LabelNode>> &resultLabels_ = {});
         [[nodiscard]] std::shared_ptr<ExpressionNode> getInitNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getUpdateNode() const;
     };
