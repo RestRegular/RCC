@@ -47,9 +47,17 @@ namespace parser {
         const auto opToken = currentToken();
         next();
         const auto operand = buildExpression(Precedence::LOWEST);
-        if (!std::dynamic_pointer_cast<IdentifierNode>(operand))        {
+        // P13-2/L3-E（决议 §4.1）：`&p.name` 子引用（字段访问）也合法；
+        // 字面量 / 运算表达式仍拒绝。
+        const bool isIdent = std::dynamic_pointer_cast<IdentifierNode>(operand) != nullptr;
+        const bool isField = [&] {
+            if (const auto inf = std::dynamic_pointer_cast<InfixExpressionNode>(operand))
+                return inf->getOpToken().getType() == TokenType::TOKEN_DOT;
+            return false;
+        }();
+        if (!isIdent && !isField)        {
             recordSemanticError(opToken,
-                "L3: '&' requires a Body variable; sub-references (&p.name), "
+                "L3: '&' requires a Body variable or a field path (&p.name); "
                 "literals and expressions are not supported");
             return nullptr;
         }

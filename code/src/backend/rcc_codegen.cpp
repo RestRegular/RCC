@@ -2421,10 +2421,26 @@ namespace backend{
     // ============================================================
     void CodeGen::emitExpression(const std::shared_ptr<ast::ExpressionNode>& node)    {
         if (!node || hasFailed()) return;
-        // P13-2/L3（决议 §7.2）：`&bob` 壳子引用，底层与 Body 同表示（对象指针），
-        // 直接透传操作数的值即可；类型层面由 inferType 标成 Ref[T]。
+        // P13-2/L3（决议 §7.2/§4.1）：`&bob` 壳子引用透传对象指针；
+        // `&p.name` 子引用要算出**字段槽地址**（对象指针 + 字段偏移），
+        // 不是读字段的值。
         if (const auto refExpr = std::dynamic_pointer_cast<ast::RefExpressionNode>(node))        {
-            emitExpression(refExpr->getOperand());
+            const auto operand = refExpr->getOperand();
+            if (const auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(operand);
+                dot && dot->getOpToken().getType() == core::TokenType::TOKEN_DOT)            {
+                const auto field = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getRightNode());
+                const std::string owner = classNameOf(dot->getLeftNode());
+                if (!field || owner.empty())                {
+                    failAt(node->getPos(), "L3: cannot resolve field path for sub-reference");
+                    return;
+                }
+                const long long offset = findFieldOffset(owner, field->getName());
+                emitExpression(dot->getLeftNode()); // 对象指针 -> %rax
+                if (hasFailed()) return;
+                if (offset != 0) _asm.inst("addq", std::to_string(offset) + ", %rax");
+                return;
+            }
+            emitExpression(operand);
             return;
         }
         if (std::dynamic_pointer_cast<ast::IntegerLiteralNode>(node))        {
