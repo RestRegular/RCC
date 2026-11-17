@@ -26,13 +26,37 @@
 
 ## 剩余项与状态
 
-| 项 | 状态 | 原因 |
+### A. 设计文档明确暂缓（不属当前可实施范围）
+
+| 项 | 依据 | 说明 |
 |---|---|---|
-| split(k)（§4.3） | **语法形态待定** | 决议只写「返回两段 Mut 视图」，未写两段如何绑定（元组/数组/两次调用）；按硬规则不自行设计 |
-| Maybe/if-let/match（§6.1） | **设计文档明确暂缓** | Q3 机制待用户提供设计 |
-| 条件销毁属性语法（§5.4） | **设计文档明确暂缓** | 归 Q4 条件销毁，待设计 |
-| 值语义 struct（§6.2） | **设计文档明确暂缓** | struct 声明语法待用户提供 |
-| 缺省 `writes` 的函数体推断（§9.3） | **未实现（保守退化）** | 决议要求「用户写的函数缺省按函数体推断记」。跨函数推断需要先建调用图，当前退化为「没写 `writes` 就不检查」—— 不会误报，但也拦不住。显式 `writes` 已完整生效 |
+| Maybe / if-let / match（§6.1） | Q3 机制待用户提供设计 | 可空类型方案已定为「只有引用类型可空 + 对象包装基本类型」，但 `if let` / `match` 的语法未定 |
+| 条件销毁属性语法（§5.4） | 归 Q4 条件销毁，待设计 | 决议只写「静默生效，无提示语法」，属性形态未定 |
+| 值语义 struct（§6.2） | struct 声明语法待用户提供 | 实测 `struct Pt { ... }` → `Undefined variable: struct` |
+| split(k)（§4.3） | 决议只写「返回两段 Mut 视图」 | 两段如何绑定（元组/数组/两次调用）未定；实测 `xs.split(1)` → "Cannot determine the object type of method call" |
+
+### B. 决议已定但未实现（真实缺口）
+
+| 项 | 决议依据 | 实测表现 |
+|---|---|---|
+| **分支 / 循环的状态合流** | §5「循环外变量在循环体内 take/fill，状态合流取格上界（循环后 `?`）」 | 见下「分支状态不分叉」——这是当前最严重的语义缺陷 |
+| `Link[T][peer][cardinality]` | §7.1、§9.3 的 `release` 前置含 Link 检查 | 类型不存在：`unknown type 'Link' of field` |
+| `clone()`（深拷贝） | §11「拷贝用显式 `clone()`（深拷贝，P13-1 起）」 | `Class Player has no method named 'clone'` |
+| 缺省 `writes` 的函数体推断 | §9.3「用户写的函数：缺省 `writes` 按函数体推断记」 | 退化为「没写就不检查」；用户已明确**暂不补** |
+| `writes[this.x]` 的方法内校验 | §9.3「`writes[this.x]` 允许（方法内写自身字段）」 | 方法上写 `writes[zzz.name]` 不报错（普通函数会报）—— 方法路径整体没进校验 |
+| `throw` 出口不检查 `ensures` | §9.2「`throw` 出口不检查 `ensures`；catch 之后 `Take` 形参状态回到 `?`」 | `fun f(t: Take[P]): int ensures[!t] { throw "x" }` 报「unknown state at function exit」 |
+| try/catch 后 `Take` 状态回 `?` | §9.2 | try 里 take、catch 后 `ret`，承诺被沿用（不报错） |
+| `ensures` 重复列同一形参 | §9.2 每条形参只能有一个状态 | `ensures[!t, !t]` 不报错 |
+
+### C. 实现缺陷（与决议不符，属 bug）
+
+| 缺陷 | 根因 | 实测 |
+|---|---|---|
+| **分支状态不分叉** | `emitIf` 里 `pushScope()` 只压入空 map，而 `getBodyState` 从内向外回退查找；then 分支写的状态被 else 分支和后继代码看到 | `if c { var x = p.take() } else { var y = p.take() }` → 报「take target 'p' is Empty」（互斥分支误报）；`if c { var x = p.take() }` 之后 `sout(p.name)` → 报 Empty（本应 `?`）；`if c { p.take() } p.clear()` → **通过**（本应报 `?`） |
+| 循环体状态不合流 | 同上，`while` 体也是 pushScope/popScope | `while i<3 { var c = p.take() i=i+1 }` 之后 `sout(p.n)` → 报 Empty（本应 `?`）；`while { p.fill(...) }` 静默通过 |
+| §6.4 独占未检查 | 只有「同一语句二次 take」查了 pending_take；`mut()` 之间、`Ref` 与 `Mut` 之间没有重数检查 | `var m1 = p.mut() var m2 = p.mut()` 通过；`var m = p.mut() var r = &p` 通过 |
+| 未声明的出生地标签不报错 | 标签只做「最多一个」检查，没查是否对应真实 Pool 变量 | `var p: Player nosuchpool = Player("a")` 通过 |
+| 类赋值类型检查弱 | `var a: Enemy = Player("x")` 无继承关系也通过 | 通过（P13-1 遗留，非 P13-2 引入） |
 
 ## 判断
 
@@ -79,3 +103,26 @@
 
 验证：`tests/p13_2_regression.ps1` 60 条仍全 PASS；
 `tests/_probe/verify_fixes.ps1` 扩到 43 条（含每项的正反对照）全 PASS。
+
+## 未实现项清单（2026-11-18 复核，逐项实测）
+
+> 本节是上文「剩余项与状态」的补充说明。所有结论均由 `tests/_probe/fix/`
+> 下的最小用例实测得出，不是从文档推断。
+
+**最严重的一条是分支/循环的状态合流。** `_moveStates` 是「按作用域分层的
+map 栈」，`getBodyState` 从最内层向外回退查找第一个同名项 —— 这意味着
+**内层作用域写的状态会泄漏到外层和兄弟分支**，因为 `popScope()` 只是
+把内层的 map 丢掉，外层那份从头到尾没被更新过。于是：
+
+- 互斥分支各 take 一次 → 第二个分支看到第一个分支写的 E，误报
+- `if { take }` 之后本应合流成 `?`，实际外层仍是 F（漏报）或直接 E（误报）
+- 循环体同理，且循环体状态从未与外层合流
+
+决议 §5 明确要求「状态合流取格上界（循环后 `?`）」，这条完全没实现。
+正确做法是在 `emitIf` / `emitWhile` 的分支出入口做状态快照与上界合并，
+而不是靠作用域栈的遮蔽。
+
+**其余缺口的性质**：`Link` / `clone()` 是**类型与方法整体不存在**（不是
+语义错误，是用不了）；`writes[this.x]` 的方法路径没进校验是**校验覆盖
+不全**；`throw` 出口和 try/catch 是**出口枚举不全**（只枚举了正常出口）。
+这些都属实现缺口，不涉语言设计变更。
