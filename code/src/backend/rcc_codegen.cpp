@@ -1008,6 +1008,115 @@ namespace backend{
         _pendingTakes.insert(name);
         setBodyState(name, BodyState::HELD, pos, "taken");
     }
+    std::string CodeGen::exprPathText(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        // P13-2/L3-F（决议 §4.2）：把表达式还原成路径文本 ——
+        // `p` -> "p"，`p.name` -> "p.name"，`p.a.b` -> "p.a.b"。
+        // 只认标识符与 `.` 链；下标、调用、字面量一律返回空串（无法精确追踪）。
+        if (!node) return std::string();
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node)) return id->getName();
+        if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))        {
+            if (inf->getOpToken().getType() != core::TokenType::TOKEN_DOT) return std::string();
+            const auto fname = std::dynamic_pointer_cast<ast::IdentifierNode>(inf->getRightNode());
+            if (!fname) return std::string();
+            const std::string base = exprPathText(inf->getLeftNode());
+            if (base.empty()) return std::string();
+            return base + "." + fname->getName();
+        }
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))
+            return exprPathText(paren->getRangerNode());
+        return std::string();
+    }
+    bool CodeGen::pathIsPrefixOf(const std::string& p, const std::string& q)    {
+        // P13-2/L3-F（规范 §4.1）：按**路径段**比较，不是按字符 ——
+        // "p.n" 不能算 "p.name" 的前缀。
+        if (p.empty() || q.empty()) return false;
+        if (p == q) return true;
+        if (q.size() <= p.size()) return false;
+        if (q.compare(0, p.size(), p) != 0) return false;
+        // 下一字符必须是路径分隔符（'.' 或 '['），否则是同一个名字的更长拼写
+        return q[p.size()] == '.' || q[p.size()] == '[';
+    }
+    bool CodeGen::checkWriteConflicts(const std::string& path, const utils::Pos& pos,
+                                      const std::string& what)    {
+        // P13-2/L3-F（决议 §4.1 + §4.2）：修改路径 P 与活跃子引用路径 Q
+        // 冲突，当且仅当 P 是 Q 的前缀（含相等）。
+        //   p.name = "y"  vs  &p.name  → 相等，冲突
+        //   p.take()      vs  &p.name  → "p" 是 "p.name" 前缀，冲突
+        //   p.score = 99  vs  &p.name  → 不相交，放行
+        if (path.empty()) return true; // 无法解析：不在这里报错（调用点自己保守）
+        for (const auto& ref : _activeRefs)        {
+            // 只比子引用（壳子引用 refVar 为空、且路径就是 owner 的，属于
+            // 「壳子引用」——规范 §4.2 明确壳子引用不受影响）。
+            if (ref.path.empty()) continue;
+            if (ref.path == ref.owner) continue; // 壳子引用
+            if (pathIsPrefixOf(path, ref.path))            {
+                failAt(pos, "L3: " + what + " '" + path + "' conflicts with the live " +
+                       "sub-reference '" + ref.path + "' (P13-2 / §4.1)");
+                return false;
+            }
+        }
+        return true;
+    }
+    std::string CodeGen::resolveEffectPath(const std::string& root, const std::string& suffix,
+                                           const std::vector<std::string>& paramNames,
+                                           const std::vector<std::shared_ptr<ast::ExpressionNode>>& args) const    {
+        // P13-2/L3-F（决议 §4.2）：把形参名映射回调用点的实参路径。
+        // 实参不是可追踪的路径（字面量、构造调用……）时返回空串 —— 保守，
+        // 调用方遇到空串就跳过检查（宁可不报也不误报）。
+        for (size_t i = 0; i < paramNames.size(); ++i)        {
+            if (paramNames[i] != root) continue;
+            if (i >= args.size()) return std::string();
+            const std::string base = exprPathText(args[i]);
+            if (base.empty()) return std::string();
+            return base + suffix;
+        }
+        return std::string();
+    }
+    void CodeGen::registerSignatureEffects(
+        const std::string& emitName,
+        const std::shared_ptr<ast::FunctionDefinitionNode>& def,
+        const std::vector<std::string>& paramNames)    {
+        // P13-2/L3-F（决议 §9.3/§9.4）：把签名里的 writes / from 解析成效果表。
+        // 必须在发射任何函数体之前登记完，否则前向调用（f1 里调文件后面
+        // 才定义的 f2）在调用点拿不到效果。
+        _writeEffects.erase(emitName);
+        _fromEffects.erase(emitName);
+        if (!def) return;
+        for (const auto& clause : def->getSignatureClauses())        {
+            if (!clause) continue;
+            const auto label = clause->getFullLabel();
+            if (label != "writes" && label != "from") continue;
+            const auto des = clause->getLabelDesNodes();
+            if (des.empty() || !des[0] || !des[0]->getBodyNode()) continue;
+            std::vector<std::shared_ptr<ast::ExpressionNode>> items;
+            flattenTypeArgs(des[0]->getBodyNode(), items);
+            for (const auto& item : items)            {
+                // 用 exprPathText 拿完整路径（"p.name"），再拆成 root + suffix
+                std::string full = exprPathText(item);
+                if (full.empty())                {
+                    // `&p.name` 这类带 & 的写法：剥掉取引用再看
+                    if (const auto ref = std::dynamic_pointer_cast<ast::RefExpressionNode>(item))
+                        full = exprPathText(ref->getOperand());
+                }
+                if (full.empty()) continue;
+                const auto dot = full.find('.');
+                WriteEffect eff;
+                if (dot == std::string::npos)                {
+                    eff.root = full;
+                    eff.suffix.clear();
+                }
+  else                {
+                    eff.root = full.substr(0, dot);
+                    eff.suffix = full.substr(dot);
+                }
+                bool isParam = false;
+                for (const auto& p : paramNames) if (p == eff.root) { isParam = true; break; }
+                if (!isParam) continue; // 非法项由 validateWritesFromClauses 报错
+                if (label == "writes") _writeEffects[emitName].push_back(eff);
+                else _fromEffects[emitName].push_back(eff);
+            }
+        }
+    }
     void CodeGen::registerActiveRef(const std::string& path, const std::string& owner,
                                     const std::string& refVar, const utils::Pos& pos,
                                     const std::string& indexExpr)    {
@@ -1455,6 +1564,15 @@ namespace backend{
             ++defCount[sig.name];
             all.push_back(std::move(sig));
         }
+        // P13-2/L3-F（决议 §4.2）：**非重载**函数的 writes / from 也要登记。
+        // 必须在这里（发射任何函数体之前）做完，否则前向调用拿不到效果。
+        // 重载的在下面按 mangling 符号登记，这里跳过它们。
+        for (const auto& sig : all)        {
+            const auto countIt = defCount.find(sig.name);
+            if (countIt != defCount.end() && countIt->second >= 2) continue;
+            const std::string emitName = (sig.name == "main") ? "__rio_user_main" : sig.name;
+            registerSignatureEffects(emitName, sig.def, sig.paramNames);
+        }
         for (const auto& sig : all)        {
             const auto countIt = defCount.find(sig.name);
             if (countIt == defCount.end() || countIt->second < 2) continue;
@@ -1468,6 +1586,10 @@ namespace backend{
             _overloads[sig.name].push_back(entry);
             // 符号到签名的映射按先来后到：撞车时后一份不影响调用点。
             _signatures.emplace(entry.symbol, entry);
+            // P13-2/L3-F（决议 §4.2）：登记这份重载的 writes / from 效果。
+            // 键必须是**发射符号**（已 mangling），调用点 resolveOverload
+            // 拿到的就是它。
+            registerSignatureEffects(entry.symbol, sig.def, sig.paramNames);
         }
     }
     int CodeGen::overloadScore(const sema::TypePtr& formal,
@@ -1723,6 +1845,26 @@ namespace backend{
         }
         return best;
     }
+    bool CodeGen::applyWriteEffects(const std::string& emitName, const std::string& displayName,
+                                    const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                    const utils::Pos& pos)    {
+        // P13-2/L3-F（决议 §4.2）：调用点按被调函数的 writes 效果更新活跃集合。
+        // 修前这里从不读 writes，于是「&p.name 仍活跃时调用 writes[p.name] 的
+        // 函数」静默通过 —— 决议明文要求的效果系统整块缺失。
+        // 保守口径（决议 §9.3/§9.4）：没写 writes 的用户函数按函数体推断记录；
+        // 这里做不到跨函数推断，退化为「不检查」而不是乱报。
+        const auto effIt = _writeEffects.find(emitName);
+        if (effIt == _writeEffects.end() || effIt->second.empty()) return true;
+        const auto namesIt = _functionParamNames.find(displayName);
+        const std::vector<std::string> emptyNames;
+        const auto& pnames = (namesIt != _functionParamNames.end()) ? namesIt->second : emptyNames;
+        for (const auto& eff : effIt->second)        {
+            const std::string path = resolveEffectPath(eff.root, eff.suffix, pnames, args);
+            if (path.empty()) continue; // 实参不是可追踪路径：保守跳过
+            if (!checkWriteConflicts(path, pos, "call writing")) return false;
+        }
+        return true;
+    }
     void CodeGen::emitResolvedCall(
         const std::string& symbol,
         const std::string& displayName,
@@ -1745,6 +1887,7 @@ namespace backend{
         }
         const size_t callArea = emitArgsToRegisters(flat, displayName, paramTypes, 0, &sig.annotated);
         if (hasFailed()) return;
+        if (!applyWriteEffects(symbol, displayName, flat, utils::getUnknownPos())) return;
         _asm.call(symbol);
         _asm.addRsp(callArea);
     }
@@ -3941,6 +4084,13 @@ namespace backend{
                     _asm.inst("cvttsd2siq", "%xmm0", "%rax");
                 }
             }
+            // P13-2/L3-D（决议 §6.2 落定位置 3）：`return bob.take()` 落定到 result，
+            // bob→E。修前这里没有结算，take 在语句末被 drainPendingTakes 回填成 F，
+            // 于是 `fun f(t: Take[Player]): Content[Player] ensures[!t] { return t.take() }`
+            // 报 "Take parameter 't' is Held at exit, but ensures requires Empty" ——
+            // 决议 §6.2 明文列出的四种落定位置之一实际不可用。
+            if (const std::string taken = takeReceiverName(ret->getReturnNode()); !taken.empty())
+                settlePendingTake(taken);
         }
         // ret 跳出所有 try：把 handler 链全部摘干净再跳。
         // 不这么做，链上会留下指向本帧（马上被 ret 销毁）的节点，
@@ -6149,6 +6299,7 @@ namespace backend{
         if (hasFailed())        {
             return;
         }
+        if (!applyWriteEffects(emitName, fname, callArgs, node->getPos())) return;
         // emitArgsToRegisters 已经预留好调用区（shadow space + 溢出栈槽），
         // 且保证 %rsp 16 字节对齐，这里只负责调用与回收。
         _asm.call(emitName);
@@ -7341,11 +7492,14 @@ namespace backend{
         if (!node) return {};
         // 注意：FunctionCallNode 是 InfixExpressionNode 的子类，必须排在前面
         if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node))        {
-            const auto slot = const_cast<CodeGen*>(this)->lookupVar(id->getName());
-            if (slot && slot->type && slot->type->getKind() == sema::TypeKind::TK_CLASS)            {
-                return std::static_pointer_cast<sema::ClassType>(slot->type)->getName();
-            }
-            return {};
+            // P13-2/L3（决议 §4）：Ref/Mut/Take/Content/Body 形参与变量都要能
+            // 拿到**内层类名** —— 它们与 Body 是同一个对象指针，字段访问与方法
+            // 调用都作用在内层对象上。
+            // 修前这里只认 TK_CLASS，于是 `fun f(t: Take[Player]) { t.clear() }`
+            // 报 "Cannot determine the object type of method call"，
+            // 连 t.name 这种字段读也失败 —— 导致 ensures[!t] 除了 throw 出口
+            // 之外无解（无法通过方法消费来满足 Empty）。
+            return classNameFromVariable(id->getName());
         }
         if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node))        {
             // 构造调用 `Point(...)` 的结果就是 Point 对象
@@ -7374,6 +7528,13 @@ namespace backend{
                 const auto ft = findFieldType(owner, fname->getName());
                 if (ft && ft->getKind() == sema::TypeKind::TK_CLASS)                {
                     return std::static_pointer_cast<sema::ClassType>(ft)->getName();
+                }
+                // P13-2：字段本身是 Ref/Mut/Content/Body 时同样取内层类名，
+                // 这样 `p.owner.name` 这种链式穿透也能解析。
+                if (ft && ft->getKind() == sema::TypeKind::TK_MEMORY)                {
+                    const auto inner = std::dynamic_pointer_cast<sema::MemoryType>(ft)->getInnerType();
+                    if (inner && inner->getKind() == sema::TypeKind::TK_CLASS)
+                        return std::static_pointer_cast<sema::ClassType>(inner)->getName();
                 }
             }
             return {};
@@ -7573,6 +7734,12 @@ namespace backend{
         }
         const auto ftype = findFieldType(owner, fieldId->getName());
         const bool destIsFloat = ftype && ftype->isFloat();
+        // P13-2/L3-F（决议 §4.1）：字段赋值是「替换 / 重分配」，与指向该字段
+        // （或其子路径）的活跃子引用冲突。
+        // 修前这里完全不查，于是 `var r = &p.name; p.name = "y"` 静默通过。
+        if (const std::string targetPath = exprPathText(target); !targetPath.empty())        {
+            if (!checkWriteConflicts(targetPath, target->getPos(), "field assignment to")) return;
+        }
         // 先算值并暂存到栈上，再算对象指针 —— 两边都可能包含调用，
         // 而调用会冲掉所有参数寄存器，所以顺序不能颠倒。
         emitExpression(value);
@@ -7822,6 +7989,15 @@ namespace backend{
                        "()' takes no arguments");
                 return;
             }
+            // P13-2/L3-F（决议 §4.1/§4.2）：`mut()` 不是写，但它要求「没有
+            // 与之重叠的活跃引用」—— 与 §4.2「同一 body 的独占」一致。
+            // 修前 `&p.name` 活跃时 `p.mut()` 静默通过。
+            if (methodId->getName() == "mut")            {
+                if (const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode()))                {
+                    if (!checkWriteConflicts(recv->getName(), member->getPos(),
+                                             "mut() on")) return;
+                }
+            }
             emitExpression(member->getLeftNode());
             return;
         }
@@ -7855,6 +8031,9 @@ namespace backend{
                 }
             }
             beginPendingTake(recv->getName(), member->getPos());
+            // P13-2/L3-F（规范 §4.2）：take 等价于对**根路径**的替换，与任何
+            // 活跃子引用冲突。修前 `var r = &p.name; p.take()` 静默通过。
+            if (!checkWriteConflicts(recv->getName(), member->getPos(), "take on")) return;
             emitExpression(member->getLeftNode());
             return;
         }

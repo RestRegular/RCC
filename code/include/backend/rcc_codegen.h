@@ -385,6 +385,45 @@ namespace backend
             std::string indexExpr;
         };
         std::vector<ActiveRef> _activeRefs;
+        // P13-2/L3-F（决议 §4.2 / §9.3）：函数写效果表。
+        // 决议要求「调用时按 writes / from 更新活跃集合」—— 修前 writes 只在
+        // 泛型定义处做形态校验，调用点从不读它，于是下面这些全部静默通过：
+        //   fun w(p: Player) writes[p.name] { p.name = "y" }
+        //   var r = &p.name; w(p)          // r 仍活跃，p.name 被替换 → 应报错
+        //   var r = &p.name; p.name = "y"  // 同上（本地写，§4.1 前缀冲突）
+        //   var r = &p.name; p.take()      // take ≡ 根替换 → 应报错
+        // root 是形参名，suffix 是它之后的路径（""=整个形参，".name"=该字段）。
+        struct WriteEffect {
+            std::string root;
+            std::string suffix;
+        };
+        // 键是**发射名**（重载已 mangling），与 _functionParamNames 同键。
+        std::map<std::string, std::vector<WriteEffect>> _writeEffects;
+        // 决议 §9.4：函数返回引用的来源表（from 子句解析结果，按发射名）。
+        // 空向量 = 函数返回引用但没写 from → 保守视为可能来自任一引用形参。
+        std::map<std::string, std::vector<WriteEffect>> _fromEffects;
+        // 登记函数签名里的 writes / from 效果（发射函数体前由签名预登记调用）。
+        void registerSignatureEffects(const std::string& emitName,
+                                      const std::shared_ptr<ast::FunctionDefinitionNode>& def,
+                                      const std::vector<std::string>& paramNames);
+        // 把形参名 + 路径后缀解析成调用点的实际路径（"p.name" / "a" / ""=无法解析）。
+        [[nodiscard]] std::string resolveEffectPath(const std::string& root,
+                                                    const std::string& suffix,
+                                                    const std::vector<std::string>& paramNames,
+                                                    const std::vector<std::shared_ptr<ast::ExpressionNode>>& args) const;
+        // 取表达式的路径文本（Identifier / DOT 链）；无法解析返回空串。
+        [[nodiscard]] static std::string exprPathText(const std::shared_ptr<ast::ExpressionNode>& node);
+        // 决议 §4.1：P 是 Q 的前缀（按路径段，含相等）即冲突。
+        [[nodiscard]] static bool pathIsPrefixOf(const std::string& p, const std::string& q);
+        // 检查「写路径 P」是否与某个活跃子引用冲突；冲突则报错。
+        [[nodiscard]] bool checkWriteConflicts(const std::string& path,
+                                               const utils::Pos& pos,
+                                               const std::string& what);
+        // 调用点应用被调函数（发射名 emitName、显示名 displayName）的 writes 效果。
+        [[nodiscard]] bool applyWriteEffects(const std::string& emitName,
+                                             const std::string& displayName,
+                                             const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                             const utils::Pos& pos);
         // 登记子引用；检查 owner 是否有活跃子引用（冲突时报错）。
         void registerActiveRef(const std::string& path, const std::string& owner,
                                const std::string& refVar, const utils::Pos& pos,

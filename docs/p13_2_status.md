@@ -28,11 +28,11 @@
 
 | 项 | 状态 | 原因 |
 |---|---|---|
-| writes 调用点效果系统（§4.2） | **未实现（真实缺失）** | 决议要求「调用时按 `writes` / `from` 更新活跃集合」，代码里 `writes` 仅在泛型定义处做形态校验，调用点从不读它。见下方「判断」的实测说明 |
 | split(k)（§4.3） | **语法形态待定** | 决议只写「返回两段 Mut 视图」，未写两段如何绑定（元组/数组/两次调用）；按硬规则不自行设计 |
 | Maybe/if-let/match（§6.1） | **设计文档明确暂缓** | Q3 机制待用户提供设计 |
 | 条件销毁属性语法（§5.4） | **设计文档明确暂缓** | 归 Q4 条件销毁，待设计 |
 | 值语义 struct（§6.2） | **设计文档明确暂缓** | struct 声明语法待用户提供 |
+| 缺省 `writes` 的函数体推断（§9.3） | **未实现（保守退化）** | 决议要求「用户写的函数缺省按函数体推断记」。跨函数推断需要先建调用图，当前退化为「没写 `writes` 就不检查」—— 不会误报，但也拦不住。显式 `writes` 已完整生效 |
 
 ## 判断
 
@@ -40,18 +40,21 @@
   L0 去伪、L1 语法地基、L2 结构语义、L3 内存模型主体、L4 诊断（from/ensures/writes 语法层）。
 - L4 的「可选类型」部分、split 绑定形态、条件销毁被设计文档明确推迟，
   不属当前可实施范围（硬规则：语言设计层变更必须先获批）。
-- **writes 调用点效果（决议 §4.2）确实未实现，不是「与 NLL 等价」。**
+- **writes 调用点效果（决议 §4.2）曾整块缺失，现已实现。**
   早先的判断（「NLL 已在引用最后使用后将其移除，writes 要影响的活跃引用
   本就不存在」）经实测证伪：`_activeRefs` 的清理只发生在 `drainActiveRefs`
-  被调用的语句边界上，而冲突检查只有 `get_mut` / `release` / `clear` 三处
-  会查 `hasActiveRefOn`。`take` / `mut` / 字段赋值 / 调用 `writes` 函数
-  一律不查。实测（`tests/_probe/` 下）：
+  被调用的语句边界上，而冲突检查原本只有 `get_mut` / `release` / `clear`
+  三处会查 `hasActiveRefOn`，`take` / `mut` / 字段赋值 / 调用 `writes` 函数
+  一律不查。实测（修前）：
   - `writes[p.name]` 的函数在 `&p.name` 仍活跃时被调用 → 编译通过（应报错）
   - `p.name = "y"` 时 `&p.name` 仍活跃 → 编译通过（违反 §4.1 前缀冲突）
   - `&p.name` 活跃时 `p.take()` / `p.mut()` / 连续两次 `p.mut()` → 均编译通过
 
-  因此这一项应列为**真实缺失**，实现它需要函数效果表 + 调用点更新活跃集合，
-  属跨函数基础设施，按硬规则需先获批再动。
+  现已按决议补齐：函数效果表（`_writeEffects` / `_fromEffects`，键为发射符号，
+  重载按 mangling 区分）在发射任何函数体之前由 `registerSignatureEffects`
+  登记完，调用点由 `applyWriteEffects` 把 `writes` 路径映射回实参路径，
+  再按 §4.1「P 是 Q 的前缀（按路径段，含相等）」判冲突。本地写路径
+  （字段赋值 / `take()` / `mut()`）走同一个 `checkWriteConflicts`。
 - 唯一未实现的可选项 split(k) 因决议未写两段 Mut 的绑定形态而暂缓，
   不自行设计。
 
@@ -69,6 +72,10 @@
 | `get_mut` 的登记项永不淘汰 | 登记时 `refVar` 留空，而 `drainActiveRefs` 对空 `refVar` 一律保守保留 | `var a = xs.get_mut(i)` 时绑定 `refVar` |
 | `writes` / `from` 子句不校验参数 | 两个子句此前完全没有校验 | 每项必须是形参路径；`from` 另校验「返回引用来源 ⊆ 声明集」（§9.4） |
 | 多出生地标签不报错 | `findBirthPlaceLabel` 只返回第一个，发现不了第二个 | 全量收集后校验「最多一个」（§2.2） |
+| 内存模型形参无法访问字段/方法 | `classNameOf` 的 Identifier 分支只认 `TK_CLASS`，`Take[Player]` 这类拿不到内层类名，`t.clear()` / `t.name` 全报 "Cannot determine the object type" | 改走 `classNameFromVariable`（已处理 MemoryType inner）；`.field` 分支同样补 MemoryType 穿透 |
+| `return bob.take()` 不落定 | §6.2 列的四种落定位置，第 3 种（`return`）没结算，take 在语句末被回填成 F，`ensures[!t]` 因此不可达 | `emitReturn` 里补 `settlePendingTake` |
+| §4.2 writes 调用点效果缺失 | `writes` 只在泛型定义处做形态校验，调用点从不读 | 效果表 + 调用点映射 + §4.1 前缀冲突检查 |
+| take / mut / 字段赋值不查活跃子引用 | 冲突检查只在 `get_mut` / `release` / `clear` 三处 | 三处本地写路径统一走 `checkWriteConflicts` |
 
 验证：`tests/p13_2_regression.ps1` 60 条仍全 PASS；
-`tests/_probe/verify_fixes.ps1` 新增 25 条（含每项的正反对照）全 PASS。
+`tests/_probe/verify_fixes.ps1` 扩到 43 条（含每项的正反对照）全 PASS。
