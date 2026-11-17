@@ -87,6 +87,8 @@ namespace parser {
         void recordPrefixBuilderNotFoundError(const Token &token, core::TokenType errorType);
         void recordInfixBuilderNotFoundError(const Token &token, core::TokenType errorType);
         void recordSyntaxError(const Token &token, const Token &errorToken, const std::string &errorMsg);
+        // P13-2/L0：语义级诊断（仍在 parser 阶段产出，由统一错误处理出口打印）
+        void recordSemanticError(const Token &token, const std::string &errorMsg);
 
         // 根节点构建函数
         std::shared_ptr<ProgramNode> buildProgram();

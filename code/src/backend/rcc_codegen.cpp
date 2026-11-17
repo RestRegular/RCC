@@ -1957,6 +1957,9 @@ namespace backend{
             }
             topLevelStatements.push_back(expr);
         }
+        // P13-2/L0：类声明层面的"去伪"校验（重名 / 保留名），必须在
+        // registerClass 之前做，否则重复类会被静默覆盖、类名冲突静默生效。
+        if (validateL0ClassDeclarations(classNodes)) return;
         // P12/G1a：顶层 `var` 必须放进全局静态槽，否则它只是 __rio_main 的
         // 局部变量，函数体里根本看不到（`math.rio` 的 `var pi: float const`
         // 就是这种顶层 var）。
@@ -1984,6 +1987,11 @@ namespace backend{
         for (const auto& cls : classNodes)        {
             registerClass(cls);
         }
+        if (hasFailed()) return;
+        // P13-2/L0-2 + L0-4：类字段类型 + 多类型标签冲突校验
+        // （此时类表已齐，前向引用不成问题）。
+        if (validateL0FieldTypes(classNodes)) return;
+        if (validateL0LabelConflicts(program)) return;
         // P11：重载签名必须在发射**任何**函数体之前登记完 —— 否则前向调用
         // （f1 里调用文件后面才定义的 f2）拿不到候选签名，决议就成了猜。
         // 必须排在 registerClass 之后：形参类型 `x: Point` 要靠类登记表解析。
@@ -5858,6 +5866,142 @@ namespace backend{
         _currentGenericParams = savedParams;
         _currentGenericBindings = savedBindings;
         return mangled;
+    }
+    // ============================================================
+    // P13-2 / L0：语义层"去伪"校验
+    // 这些写法当前静默接受但语义无效，必须在后端明确报错。
+    // ============================================================
+    bool CodeGen::validateL0ClassDeclarations(
+        const std::vector<std::shared_ptr<ast::ClassDefinitionNode>>& classNodes)    {
+        std::unordered_set<std::string> seen;
+        for (const auto& node : classNodes)        {
+            if (!node) continue;
+            // 泛型类 `class Box[T]` 的名字节点是 IndexExpressionNode，
+            // 取其基名做检查。
+            std::string name;
+            utils::Pos namePos;
+            bool hasNamePos = false;
+            if (const auto index = std::dynamic_pointer_cast<ast::IndexExpressionNode>(node->getNameNode()))            {
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(index->getLeftNode()))                {
+                    name = id->getName();
+                    namePos = id->getMainToken().getPos();
+                    hasNamePos = true;
+                }
+            } else if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node->getNameNode()))            {
+                name = id->getName();
+                namePos = id->getMainToken().getPos();
+                hasNamePos = true;
+            } else if (const auto label = std::dynamic_pointer_cast<ast::LabelNode>(node->getNameNode()))            {
+                // 内置类型名（int/str/...）词法上是 TOKEN_LABEL，
+                // buildClassExpression 拿到的是 LabelNode 而非 IdentifierNode。
+                name = label->getFullLabel();
+                namePos = label->getMainToken().getPos();
+                hasNamePos = true;
+            }
+            if (name.empty()) continue;
+            const auto pos = hasNamePos ? namePos : node->getPos();
+            // L0-6：类名不得与内置类型名 / 预声明类型名 Pool 冲突（Q-A 派生）。
+            const bool builtin = base::TYPES.contains(name) || name == "Pool";
+            if (builtin)            {
+                failAt(pos,
+                       "L0-6: class name '" + name +
+                       "' conflicts with a built-in / predefined type; rename it");
+                continue;
+            }
+            // L0-7：重复类定义
+            if (!seen.insert(name).second)            {
+                failAt(pos,
+                       "L0-7: duplicate class definition '" + name + "'");
+            }
+        }
+        return hasFailed();
+    }
+    bool CodeGen::validateL0FieldTypes(
+        const std::vector<std::shared_ptr<ast::ClassDefinitionNode>>& classNodes)    {
+        for (const auto& node : classNodes)        {
+            if (!node) continue;
+            const auto body = std::dynamic_pointer_cast<ast::BlockRangerNode>(node->getBodyNode());
+            if (!body) continue;
+            for (const auto& stmt : body->getBodyExpressions())            {
+                const auto varDef = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(stmt);
+                if (!varDef) continue;
+                for (const auto& def : varDef->getVarDefs())                {
+                    if (!def || !def->hasLabels()) continue;
+                    for (const auto& label : def->getLabelNodes())                    {
+                        if (!label) continue;
+                        const auto full = label->getFullLabel();
+                        if (full.empty()) continue;
+                        // `any` 是合法的通配符标注。
+                        if (full == "any") continue;
+                        const auto t = typeFromLabelNode(label, _currentGenericParams);
+                        if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN)                        {
+                            failAt(def->getNameNode()->getPos(),
+                                   "L0-2: unknown type '" + full + "' of field '" +
+                                   def->getNameNode()->getName() + "'");
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return hasFailed();
+    }
+    bool CodeGen::validateL0LabelConflicts(const std::shared_ptr<ast::ProgramNode>& program)    {
+        // L0-4：标签区里若出现两个以上**能解析成具体类型**的标签，报错。
+        // 决议 §2.3：标签区最多一个类型标签（出生地标签 L1 才引入）。
+        // 这里只检查"两个都是已知类型"的硬冲突，避免误伤未来的出生地标签。
+        std::vector<std::shared_ptr<ast::ExpressionNode>> worklist;
+        for (const auto& stmt : program->getStatements())        {
+            if (const auto es = std::dynamic_pointer_cast<ast::ExpressionStatementNode>(stmt))
+                worklist.push_back(es->getExpression());
+        }
+        while (!worklist.empty())        {
+            auto node = worklist.back();
+            worklist.pop_back();
+            if (!node) continue;
+            if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))            {
+                for (const auto& e : block->getBodyExpressions()) worklist.push_back(e);
+                continue;
+            }
+            if (const auto varDef = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(node))            {
+                for (const auto& def : varDef->getVarDefs())                {
+                    if (!def || !def->hasLabels()) continue;
+                    sema::TypePtr firstType;
+                    std::string firstName;
+                    for (const auto& label : def->getLabelNodes())                    {
+                        if (!label) continue;
+                        const auto full = label->getFullLabel();
+                        if (full.empty() || full == "any") continue;
+                        auto t = typeFromLabelNode(label, _currentGenericParams);
+                        if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN) continue;
+                        if (firstType && !t->equals(firstType))                        {
+                            failAt(def->getNameNode()->getPos(),
+                                   "L0-4: conflicting type labels '" + firstName + "' and '" +
+                                   full + "' in declaration of '" + def->getNameNode()->getName() + "'");
+                            return true;
+                        }
+                        firstType = t;
+                        firstName = full;
+                    }
+                }
+                continue;
+            }
+            // 递归进常见的容器节点，覆盖函数体/分支里的 var 定义。
+            if (const auto stmt = std::dynamic_pointer_cast<ast::ExpressionStatementNode>(node))            {
+                worklist.push_back(stmt->getExpression());
+            } else if (const auto fn = std::dynamic_pointer_cast<ast::FunctionDefinitionNode>(node))            {
+                worklist.push_back(fn->getBodyNode());
+            } else if (const auto cls = std::dynamic_pointer_cast<ast::ClassDefinitionNode>(node))            {
+                worklist.push_back(cls->getBodyNode());
+            } else if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(node))            {
+                for (const auto& b : cond->getBranchNodes()) worklist.push_back(b);
+            } else if (const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(node))            {
+                worklist.push_back(branch->getBodyNode());
+            } else if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(node))            {
+                worklist.push_back(loop->getBodyNode());
+            }
+        }
+        return hasFailed();
     }
     void CodeGen::registerClass(const std::shared_ptr<ast::ClassDefinitionNode>& node)    {
         if (!node) return;

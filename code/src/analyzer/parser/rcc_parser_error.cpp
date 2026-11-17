@@ -39,6 +39,11 @@ namespace parser {
             "Error occurred at " + errorToken.getPosString()));
     }
 
+    void Parser::recordSemanticError(const Token &token, const std::string &errorMsg) {
+        appendErrorMsg(RCCParserError::syntaxError(token.getPosString(), "L0 semantic error: " + errorMsg,
+            "Error occurred at " + token.getPosString()));
+    }
+
     void Parser::recordUnclosedExpressionError(const Token &beginToken, const Token &endToken, core::TokenType expectedType) {
         appendErrorMsg(RCCParserError::unclosedExpressionError(
                 beginToken.getPosString(),

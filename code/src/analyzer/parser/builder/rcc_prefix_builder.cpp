@@ -50,6 +50,19 @@ namespace parser {
     }
 
     ExpressionNodePtr Parser::buildBreakExpression(){
+        // P13-2/L0-5：`break <value>` 必须报错 —— break 只退循环不携带值。
+        // 现状 `break 42` 的 AST 是 BreakExpressionNode 后面跟一个独立的 42，
+        // 值被静默丢弃。这里在 break 后紧跟表达式起始 token 时直接报错。
+        const auto t = currentToken().getType();
+        const bool hasValue =
+            !nextTokenIs(TokenType::TOKEN_NEWLINE) &&
+            !nextTokenIs(TokenType::TOKEN_RBRACE) &&
+            !nextTokenIs(TokenType::TOKEN_STREAM_END) &&
+            t != TokenType::TOKEN_STREAM_END;
+        if (hasValue)        {
+            recordSemanticError(currentToken(),
+                "L0-5: 'break' cannot carry a value; remove the value after break");
+        }
         return std::make_shared<BreakExpressionNode>(currentToken());
     }
 
@@ -92,6 +105,27 @@ namespace parser {
             recordSyntaxError(funToken, currentToken(), "Expected expression");
             return nullptr;
         }
+        // P13-2/L0-3：`fun ctor(...)` 必须报错 —— ctor 是保留名，
+        // 定义处必须省略 fun。实测 AST：`fun ctor(n: int) {...}` 解析成
+        // FunctionDeclarationNode(callNode=ConstructorDefinitionNode)，
+        // 所以它走的是 buildFunctionExpression 的声明分支（nextTokenIs NEWLINE）。
+        // 这里在 callNode 上识别 ConstructorDefinitionNode / 名为 ctor 的标识符即可。
+        const bool wrapsCtor =
+            std::dynamic_pointer_cast<ConstructorDefinitionNode>(callNode) != nullptr ||
+            [&] {
+                if (const auto call = std::dynamic_pointer_cast<FunctionCallNode>(callNode))            {
+                    if (const auto target = std::dynamic_pointer_cast<IdentifierNode>(call->getLeftNode()))
+                        return target->getName() == "ctor";
+                }
+                if (const auto id = std::dynamic_pointer_cast<IdentifierNode>(callNode))
+                    return id->getName() == "ctor";
+                return false;
+            }();
+        if (wrapsCtor)        {
+            recordSemanticError(callNode->getMainToken(),
+                "L0-3: 'ctor' is a reserved name; define constructors without 'fun'");
+            return nullptr;
+        }
         std::vector<std::shared_ptr<LabelNode>> labelNodes{};
         std::shared_ptr<Token> colonToken = nullptr;
         if (currentTokenIs(TokenType::TOKEN_COLON)) {
@@ -99,6 +133,33 @@ namespace parser {
             while (nextTokenIs(TokenType::TOKEN_LABEL) || nextTokenIs(TokenType::TOKEN_IDENTIFIER)) {
                 next();
                 labelNodes.push_back(std::static_pointer_cast<LabelNode>(buildLabelExpression()));
+            }
+        }
+        // P13-2/L0-1：签名子句白名单。
+        // 实测 `: int garbage[a]` 会被上面的循环收进 labelNodes：
+        //   label[0]="int"（返回类型），label[1]="garbage[a]"（带 [...] 的描述）。
+        // 决议 §9.1：返回类型之后只允许 from[...] / writes[...] / ensures[...]，
+        // 且不允许空方括号。任何其它名字一律编译报错。
+        // 因为 `int` 等类型是 TOKEN_LABEL 而 from 等是 TOKEN_IDENTIFIER，
+        // 但实参名也可能是 LABEL，这里只看 label[1..] 的**名字**。
+        static const std::unordered_set<std::string> allowedClauses = {
+            "from", "writes", "ensures"
+        };
+        for (size_t i = 1; i < labelNodes.size(); ++i)        {
+            const auto& label = labelNodes[i];
+            if (!label) continue;
+            const std::string name = label->getFullLabel();
+            if (!allowedClauses.contains(name))            {
+                recordSemanticError(label->getMainToken(),
+                    "L0-1: unknown signature clause '" + name +
+                    "'; expected from[...], writes[...] or ensures[...]");
+                return nullptr;
+            }
+            const auto des = label->getLabelDesNodes();
+            if (des.empty() || !des[0] || !des[0]->getBodyNode())            {
+                recordSemanticError(label->getMainToken(),
+                    "L0-1: signature clause '" + name + "' requires a non-empty [...] list");
+                return nullptr;
             }
         }
         if (nextTokenIs(TokenType::TOKEN_NEWLINE))

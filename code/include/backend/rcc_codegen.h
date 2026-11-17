@@ -637,6 +637,14 @@ namespace backend
         };
         // 阶段 A：只登记类名、基类、字段、方法，不发射任何指令。
         void registerClass(const std::shared_ptr<ast::ClassDefinitionNode>& node);
+        // P13-2/L0：语义层"去伪"校验（在 emitProgram 的分流阶段调用）。
+        // 这些检查都是"当前静默接受但语义无效"的写法，必须变成编译错误。
+        // 返回 true 表示已登记一条错误（hasFailed() 为真），调用方应尽早停止。
+        bool validateL0ClassDeclarations(
+            const std::vector<std::shared_ptr<ast::ClassDefinitionNode>>& classNodes);
+        bool validateL0FieldTypes(
+            const std::vector<std::shared_ptr<ast::ClassDefinitionNode>>& classNodes);
+        bool validateL0LabelConflicts(const std::shared_ptr<ast::ProgramNode>& program);
         // 阶段 B：递归算出字段偏移与对象大小（基类先算）。
         void computeLayout(const std::string& name);
         // 阶段 C：把构造器与方法作为独立函数发射出去。
