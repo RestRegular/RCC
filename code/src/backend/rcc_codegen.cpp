@@ -867,8 +867,54 @@ namespace backend{
                 break;
             }
         }
-        _activeRefs.push_back({full, owner, refVar});
+        _activeRefs.push_back({full, owner, refVar, true}); // justBound：绑定语句不清除
         (void)pos;
+    }
+    void CodeGen::bindLastActiveRef(const std::string& refVar)    {
+        if (!_activeRefs.empty())        {
+            _activeRefs.back().refVar = refVar;
+            _activeRefs.back().justBound = true; // 标记绑定语句，drain 时豁免一次
+        }
+    }
+    static bool nodeUsesVarImpl(const std::shared_ptr<ast::ExpressionNode>& node,
+                                const std::string& name)    {
+        if (!node) return false;
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node))
+            return id->getName() == name;
+        if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
+            return nodeUsesVarImpl(inf->getLeftNode(), name) || nodeUsesVarImpl(inf->getRightNode(), name);
+        if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node))
+            return nodeUsesVarImpl(call->getLeftNode(), name) || nodeUsesVarImpl(call->getRightNode(), name);
+        if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))        {
+            for (const auto& e : block->getBodyExpressions()) if (nodeUsesVarImpl(e, name)) return true;
+            return false;
+        }
+        if (const auto asn = std::dynamic_pointer_cast<ast::AssignmentNode>(node))        {
+            const auto p = asn->getAssignPair();
+            return nodeUsesVarImpl(p.first, name) || nodeUsesVarImpl(p.second, name);
+        }
+        if (const auto vd = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(node))        {
+            for (const auto& def : vd->getVarDefs())            {
+                if (def && def->hasInitialValue() && nodeUsesVarImpl(def->getValueNode(), name)) return true;
+            }
+            return false;
+        }
+        if (const auto ref = std::dynamic_pointer_cast<ast::RefExpressionNode>(node))
+            return nodeUsesVarImpl(ref->getOperand(), name);
+        return false;
+    }
+    void CodeGen::drainActiveRefs(const std::shared_ptr<ast::ExpressionNode>& stmt)    {
+        // 决议 §4.2：NLL —— 引用活跃到最后使用。语句里用到某引用变量，
+        // 则它继续活跃；没用到且本语句不是其绑定语句，则视为最后使用已过。
+        for (auto it = _activeRefs.begin(); it != _activeRefs.end(); )        {
+            if (it->justBound)            {
+                it->justBound = false; // 绑定语句豁免，下一次 drain 才开始 NLL
+                ++it; continue;
+            }
+            if (it->refVar.empty()) { ++it; continue; } // 未绑定变量名的暂保守保留
+            if (!nodeUsesVarImpl(stmt, it->refVar)) it = _activeRefs.erase(it);
+            else ++it;
+        }
     }
     bool CodeGen::hasActiveRefOn(const std::string& owner) const    {
         for (const auto& ref : _activeRefs)
@@ -2345,6 +2391,8 @@ namespace backend{
         // P13-2/L3-D（决议 §3.1）：语句末结算 pending_take ——
         // 未落定的回填 F，已落定的已在落点转 E。
         drainPendingTakes();
+        // P13-2/L3-E（决议 §4.2）：语句末 NLL —— 移除最后使用已过的子引用。
+        drainActiveRefs(node);
     }
     void CodeGen::drainStmtTemps(const size_t mark)    {
         if (mark >= _stmtTemps.size()) return;
@@ -3446,6 +3494,9 @@ namespace backend{
             const bool isBorrowInit = [&] {
                 if (!hasInit) return false;
                 const auto init = def->getValueNode();
+                // P13-2/L3-E（决议 §4.2）：绑定子引用变量名，供 NLL 追踪。
+                if (std::dynamic_pointer_cast<ast::RefExpressionNode>(init))
+                    bindLastActiveRef(name);
                 // P13-2/L3-C（决议 §6.1/§6.2 位置 1）：`var c = bob.take()` 落定 ——
                 // bob（Body 壳）→E 空壳（可 clear/fill 复用），c 是新 Content 拥有者。
                 if (const std::string taken = takeReceiverName(init); !taken.empty())                {

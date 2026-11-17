@@ -371,11 +371,16 @@ namespace backend
         // P13-2/L3-E（决议 §4）：活跃子引用事实表。每项是一条路径及其
         // 根对象变量名（owner）。当前实现是作用域级保守近似（owner 有
         // 活跃引用即视为冲突），精确 NLL「活跃到最后使用」待后续。
-        struct ActiveRef { std::string path; std::string owner; std::string refVar; };
+        struct ActiveRef { std::string path; std::string owner; std::string refVar; bool justBound = false; };
         std::vector<ActiveRef> _activeRefs;
         // 登记子引用；检查 owner 是否有活跃子引用（冲突时报错）。
         void registerActiveRef(const std::string& path, const std::string& owner,
                                const std::string& refVar, const utils::Pos& pos);
+        // P13-2/L3-E：把最后登记的子引用的 refVar 补成绑定变量名
+        // （var r = &p.name 里的 r），供 NLL 追踪最后使用。
+        void bindLastActiveRef(const std::string& refVar);
+        // NLL：语句发射后移除「最后使用」已过的引用（本语句用到则保留到下一语句）。
+        void drainActiveRefs(const std::shared_ptr<ast::ExpressionNode>& stmt);
         [[nodiscard]] bool hasActiveRefOn(const std::string& owner) const;
         // take 挂起一个 Body（加入 pending 并置 HELD）；重复 take 报错。
         void beginPendingTake(const std::string& name, const utils::Pos& pos);
