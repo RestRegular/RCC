@@ -279,6 +279,8 @@ namespace ast
                 for (const auto& clause : fn->getSignatureClauses())                {
                     if (!clause) continue;
                     oss << indentOf(level + 1) << "clause: " << clause->getFullLabel() << "\n";
+                    const auto des = clause->getLabelDesNodes();
+                    if (!des.empty() && des[0]) dumpChild("args", des[0]->getBodyNode(), level + 2, oss);
                 }
                 return;
             }
