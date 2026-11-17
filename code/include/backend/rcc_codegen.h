@@ -276,6 +276,9 @@ namespace backend
         // D9 的 H/X 两档：这个变量是否已被整体移走（X）。被移动后再使用
         // 必须编译报错 —— 那等于读一块随时会被别人释放的内存。
         [[nodiscard]] bool isVarMoved(const std::string& name) const;
+        // P13-2/L3-C：变量是否处于不可直接读取状态（EMPTY/MOVED/HELD）。
+        [[nodiscard]] bool isVarUnavailable(const std::string& name) const;
+        [[nodiscard]] std::string bodyStateName(const std::string& name) const;
         // 借用逃逸检查：借用不能 ret、不能入容器、不能存进外层作用域变量。
         // 违反时报错并返回 false。在哪一层作用域要看 fromScope。
         bool checkBorrowNotEscaping(const std::string& name, const utils::Pos& pos,
@@ -348,9 +351,17 @@ namespace backend
         // 与 _scopes 同长、同生命周期。popScope 时同步弹出。
         std::vector<std::vector<DropEntry>> _scopeDrops;
         // P13-2/L3：移动状态表（由内向外每层一个 map：name -> moved）。
+        // P13-2/L3-C（决议 §2.2）：Body 的四态编译期事实表状态。
+        // F=FULL 有内容；E=EMPTY 空壳；H=HELD take 挂起（D 阶段）；
+        // X=MOVED 已移走。不是运行时元数据，无 ABI 变更。
+        enum class BodyState { FULL, EMPTY, HELD, MOVED };
         // 与 _scopeDrops 同步 push/pop，但独立跟踪 ClassType（Body 别名）等
         // D14 不进 drop 表、却需要 F/X 移动语义的变量。
-        std::vector<std::map<std::string, bool>> _moveStates;
+        std::vector<std::map<std::string, BodyState>> _moveStates;
+        // 读取/设置变量的 Body 状态（由内向外找第一个同名项）。
+        [[nodiscard]] BodyState getBodyState(const std::string& name) const;
+        void setBodyState(const std::string& name, BodyState state,
+                          const utils::Pos& pos, const std::string& action);
         // P13-2/L3-A（决议 §2）：变量 -> 出生地 Pool 变量名（空=当前块默认出生地）。
         // A 阶段只记录不检查生命周期；完整 R1/R2 检查待后续。
         std::map<std::string, std::string> _birthPlaces;

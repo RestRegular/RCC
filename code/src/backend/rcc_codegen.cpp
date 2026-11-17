@@ -759,7 +759,7 @@ namespace backend{
     void CodeGen::registerMoveVar(const std::string& name)    {
         if (_moveStates.empty()) _moveStates.emplace_back();
         // 内层遮蔽外层：只在最内层登记，isVarMoved 由内向外查。
-        _moveStates.back()[name] = false;
+        _moveStates.back()[name] = BodyState::FULL;
     }
     std::string CodeGen::poolNewReceiverName(const std::shared_ptr<ast::ExpressionNode>& node)    {
         // `pool.new[T](args)`：FunctionCallNode(callee=Infix(DOT,
@@ -810,11 +810,28 @@ namespace backend{
         }
         return false;
     }
+    CodeGen::BodyState CodeGen::getBodyState(const std::string& name) const    {
+        for (auto it = _moveStates.rbegin(); it != _moveStates.rend(); ++it)        {
+            if (const auto found = it->find(name); found != it->end()) return found->second;
+        }
+        return BodyState::FULL; // 未登记（非 Body 变量）视作满，不阻挡操作
+    }
+    void CodeGen::setBodyState(const std::string& name, BodyState state,
+                               const utils::Pos& pos, const std::string& action)    {
+        for (auto it = _moveStates.rbegin(); it != _moveStates.rend(); ++it)        {
+            if (const auto found = it->find(name); found != it->end())            {
+                found->second = state;
+                return;
+            }
+        }
+        (void)pos; (void)action; // 未登记变量：静默忽略（非 Body 变量）
+    }
     bool CodeGen::isVarMoved(const std::string& name) const    {
         // P13-2/L3：先查独立的移动状态表（含 ClassType/Body 别名等
         // D14 不进 drop 表但参与 take/移动的变量）。
         for (auto it = _moveStates.rbegin(); it != _moveStates.rend(); ++it)        {
-            if (const auto found = it->find(name); found != it->end()) return found->second;
+            if (const auto found = it->find(name); found != it->end())
+                return found->second == BodyState::MOVED;
         }
         // 再查 P13-1 的 drop 表（str/list/dict/Content 等资源拥有者）。
         // 由内向外找第一个同名项（内层遮蔽外层）。
@@ -828,6 +845,26 @@ namespace backend{
             }
         }
         return false;
+    }
+    bool CodeGen::isVarUnavailable(const std::string& name) const    {
+        for (auto it = _moveStates.rbegin(); it != _moveStates.rend(); ++it)        {
+            if (const auto found = it->find(name); found != it->end())
+                return found->second != BodyState::FULL;
+        }
+        return isVarMoved(name); // 回退 drop 表（str/list 等 moved）
+    }
+    std::string CodeGen::bodyStateName(const std::string& name) const    {
+        for (auto it = _moveStates.rbegin(); it != _moveStates.rend(); ++it)        {
+            if (const auto found = it->find(name); found != it->end())            {
+                switch (found->second)                            {
+                case BodyState::FULL:  return "Full";
+                case BodyState::EMPTY: return "Empty";
+                case BodyState::HELD:  return "Held";
+                case BodyState::MOVED: return "Moved";
+                }
+            }
+        }
+        return "Full";
     }
     bool CodeGen::checkBorrowNotEscaping(const std::string& name, const utils::Pos& pos,
                                          const std::string& action) const    {
@@ -878,7 +915,7 @@ namespace backend{
                                 "and cannot be " + action + " inside it");
                     return false;
                 }
-                found->second = true;
+                found->second = BodyState::MOVED;
                 return true;
             }
         }
@@ -2590,11 +2627,13 @@ namespace backend{
         // 这条检查是必须的：`ret xs` 已经把 xs 交给调用方，之后再用
         // `xs[0]` 会读到一块随时被别人释放的内存。实测这个用例之前
         // 能编译通过并「碰巧」打印出正确值，正因为 P13-1 之前根本没释放。
-        if (isVarMoved(id->getName()))        {
+        // P13-2/L3-C：EMPTY（空壳）/HELD（挂起）/MOVED 都不能直接读值。
+        // E 状态的壳要先用 fill 装回内容（决议 §6.1/§10.1）。
+        if (isVarUnavailable(id->getName()))        {
+            const auto st = bodyStateName(id->getName());
             failAt(node->getPos(), "'" + id->getName() +
-                   "' has been moved and cannot be used again "
-                   "(the owner was moved out — by 'ret', by storing into a container, "
-                   "or by a Content assignment; P13-1 / D9 + P13-2 / D11)");
+                   "' is in " + st + " state and cannot be used directly "
+                   "(P13-2: fill it first if Empty)");
             return;
         }
         const std::string src = addrOf(*slot);
@@ -3323,11 +3362,11 @@ namespace backend{
             const bool isBorrowInit = [&] {
                 if (!hasInit) return false;
                 const auto init = def->getValueNode();
-                // P13-2/L3（决议 §6.2 位置 1）：`var c = bob.take()` 是落定 ——
-                // bob→E，c 是新拥有者（不按借用）。
+                // P13-2/L3-C（决议 §6.1/§6.2 位置 1）：`var c = bob.take()` 落定 ——
+                // bob（Body 壳）→E 空壳（可 clear/fill 复用），c 是新 Content 拥有者。
                 if (const std::string taken = takeReceiverName(init); !taken.empty())                {
-                    if (!markVarMoved(taken, def->getNameNode()->getPos(),
-                                      "taken into '" + name + "'")) return false;
+                    setBodyState(taken, BodyState::EMPTY, def->getNameNode()->getPos(),
+                                 "taken into '" + name + "'");
                     return false; // 新拥有者
                 }
                 if (const auto initId = std::dynamic_pointer_cast<ast::IdentifierNode>(init))                {
@@ -5157,15 +5196,15 @@ namespace backend{
                              (srcSlot->type->getKind() == sema::TypeKind::TK_MEMORY &&
                               std::dynamic_pointer_cast<sema::MemoryType>(srcSlot->type)->getRole() ==
                                   sema::MemoryRole::BODY)))                        {
-                            if (!markVarMoved(id->getName(), id->getPos(),
-                                              "taken by Content parameter")) return 0;
+                                setBodyState(id->getName(), BodyState::EMPTY, id->getPos(),
+                                             "taken by Content parameter");
                         }
                     }
                     // P13-2/L3（决议 §6.2 位置 4）：实参是 `bob.take()` 时，
                     // Content 形参位置是落点，接收者 bob→E。
                     if (const std::string taken = takeReceiverName(args[i]); !taken.empty())                {
-                        if (!markVarMoved(taken, args[i]->getPos(),
-                                          "taken by Content parameter")) return 0;
+                        setBodyState(taken, BodyState::EMPTY, args[i]->getPos(),
+                                     "taken by Content parameter");
                     }
                 }
             }
@@ -7229,6 +7268,49 @@ namespace backend{
             // take() 的内容位置不动（决议 §6.1），值就是接收者指针；
             // 落定/回填由上下文（var 赋值、Content 形参等）负责。
             emitExpression(member->getLeftNode());
+            return;
+        }
+        // P13-2/L3-C（决议 §2.1）：Body 内建 fill(c) / clear()。
+        // 接收者必须是 Body 变量（IdentifierNode），才能查/改事实表状态。
+        if (methodId->getName() == "fill" || methodId->getName() == "clear")        {
+            const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+            if (!recv)            {
+                failAt(member->getPos(), "L3: '" + methodId->getName() +
+                       "()' requires a Body variable receiver");
+                return;
+            }
+            const auto& name = recv->getName();
+            if (methodId->getName() == "clear")            {
+                if (!args.empty())                {
+                    failAt(member->getPos(), "L3: clear() takes no arguments");
+                    return;
+                }
+                const auto st = getBodyState(name);
+                if (st == BodyState::FULL)                    setBodyState(name, BodyState::EMPTY, member->getPos(), "cleared");
+                // 决议 §2.2：已 E 时 no-op 幂等；H/X 状态非法操作（D 阶段细化）
+                return;
+            }
+            // fill(c)：前置目标 E，后置 F；c（Content 变量）→ X。
+            if (args.size() != 1)            {
+                failAt(member->getPos(), "L3: fill(c) takes exactly one argument");
+                return;
+            }
+            const auto st = getBodyState(name);
+            if (st != BodyState::EMPTY)            {
+                failAt(member->getPos(), "L3: fill target '" + name +
+                       "' is not Empty (call clear() first)");
+                return;
+            }
+            if (const auto src = std::dynamic_pointer_cast<ast::IdentifierNode>(args[0]))            {
+                const auto srcState = getBodyState(src->getName());
+                if (srcState == BodyState::MOVED || srcState == BodyState::HELD)                {
+                    failAt(args[0]->getPos(), "L3: fill source '" + src->getName() +
+                           "' is not available");
+                    return;
+                }
+                setBodyState(src->getName(), BodyState::MOVED, args[0]->getPos(), "filled into '" + name + "'");
+            }
+            setBodyState(name, BodyState::FULL, member->getPos(), "filled");
             return;
         }
         const auto methods = collectMethods(owner);
