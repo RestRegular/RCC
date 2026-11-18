@@ -1,0 +1,19 @@
+// @allow-cond-destroy
+// 决议 C 的负向路径：文件里写了指令，但命令行没给 -allow-cond-destroy，
+// 依然必须报错，且诊断要点明缺的是开关这一半。
+class Player {
+    var name: str
+    ctor(n: str) { this.name = n }
+}
+fun maybeClear(cond: bool): void {
+    var b: Body[Player] = Player("x")
+    var c: Content[Player] = b.take()
+    if cond {
+        c.clear()
+    }
+    sout("after")
+}
+fun main(): void {
+    maybeClear(true)
+}
+main()

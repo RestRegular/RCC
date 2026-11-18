@@ -978,6 +978,22 @@
                       "id":  "L3-struct-scalar-fields",
                       "file":  "code/L3-struct-scalar-fields.rio",
                       "expect":  "7\n1.5\ntrue\nz"
+                  },
+                  {
+                      "id":  "L3-cond-destroy-release",
+                      "file":  "code/L3-cond-destroy-release.rio",
+                      "flags":  [
+                                    "-allow-cond-destroy"
+                                ],
+                      "expect":  "after\nafter"
+                  },
+                  {
+                      "id":  "L3-cond-destroy-no-switch",
+                      "file":  "code/L3-cond-destroy-no-switch.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "the command line switch -allow-cond-destroy is not enabled",
+                      "mustMatchLiteral":  true
                   }
               ]
 }

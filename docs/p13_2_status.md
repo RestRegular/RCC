@@ -1,4 +1,4 @@
-# P13-2 实施总结（2026-11-18）
+﻿# P13-2 实施总结（2026-11-18）
 
 > 本文记录 P13-2 内存模型语法的实施状态，基于本会话 37 个提交
 > （其中 32 个动 `code/`，其余为文档与测试脚本）。
@@ -7,7 +7,7 @@
 
 > **关于本文里的测试路径**：文中大量引用 `tests/p13_2_regression.ps1` 与
 > `tests/_probe/verify_fixes.ps1`，这两个脚本已在测试体系重构中迁入新契约，
-> 现在分别是 `tests/agent/p13-2-regression/`（143 例）与
+> 现在分别是 `tests/agent/p13-2-regression/`（145 例）与
 > `tests/agent/p13-verify-fixes/`（43 例）。其余 `test_scripts/test_*.ps1`
 > 也已迁入 `tests/agent/<同名套件>/`。这些引用作为**当时的历史记录**保留原样，
 > 不再逐条改写；现行体系见 `docs/architecture_plan.md` §11。
@@ -38,7 +38,7 @@
 | P std 重写 | 29f6e07 | 标准库（str/io/ops/math/ds）按内存模型规范重写完成；期间修掉四个编译器缺陷，见「C-2」一节 |
 | Q clone() | 29f6e07 | `x.clone()` / `clone(x)` 按静态类型派发（str/list/值类型；dict 待 P13-4） |
 
-**验证**：`tests/agent/p13-2-regression/`，**143 条用例全 PASS**；每次提交后回归。
+**验证**：`tests/agent/p13-2-regression/`，**145 条用例全 PASS**；每次提交后回归。
 另有 `tests/agent/p13-verify-fixes/`（43 条），覆盖审阅中发现的实现缺陷及其对照用例。
 
 ## 剩余项与状态
@@ -840,8 +840,8 @@ sout(p.x) sout(p.y) sout(b.v) sout(b.w)   // 修前：11 22 11 22
 | `L3-struct-ret-method`（方法返回 struct） | `11 22 11 22` | `11 22 7 100` |
 | `L3-struct-ret-method-spill`（实参跨寄存器/栈） | 实参与 this 撞位 | `103 12 100` |
 
-**回归**：`p13-2-regression` 134 → **143/143**（新增 9 条 struct 用例）；
-全量 `tests/user/run-all.ps1` **27 套件 901 用例全过，0 失败**。
+**回归**：`p13-2-regression` 134 → **145/145**（新增 9 条 struct + 2 条条件销毁用例）；
+全量 `tests/user/run-all.ps1` **27 套件 903 用例全过，0 失败**。
 
 ### 仍未覆盖
 

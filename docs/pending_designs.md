@@ -145,9 +145,9 @@ Error: Compilation failed: syntax errors.
 
 - 命令行：`-allow-cond-destroy`（RCC 的 flag 是**单横线**，与 `--path`/`--output` 这类取值选项不同）。
 - 指令扫描：`rcc_main.cpp` 的 `scanCondDestroyDirective()` 在**原始文本**上做，不看 lexer —— 因为 `rcc_lexer.cpp` 只跟踪注释类型、**丢弃注释正文**，改 lexer 会破坏既有契约。只扫主文件，不扫被 import 的模块。
-- 代码生成未改：`emitScopeDrops` 仍无条件销毁每个非 `moved` 项。放行只表示"接受这个模棱两可"，不表示插 flag 位图 —— 真正的条件销毁 codegen 属后续阶段。
+- 代码生成：`emitScopeDrops` 对每个非 `moved` 项都发一次 drop 调用，看起来是"无条件销毁"，但 **drop glue 自身先判空**（`emitDropGlueBody` 入口就是 `movq (%rcx),%rax` / `testq %rax,%rax` / `je null`），空壳直接返回。所以放行之后「分支里已 clear、出口处壳子是空的」不会重复释放 —— 效果上等价于条件销毁，不需要额外的 flag 位图。2026-11-18 实测：`L3-cond-destroy-release` 里 `c` 在 `cond=true` 分支被 clear，两条路径各跑一次都正常退出。
 
-回归：`tests/agent/p13-2-regression` 的 `L3-cond-destroy`（默认必须报错）。
+回归：`tests/agent/p13-2-regression` 的 `L3-cond-destroy`（默认必须报错）、`L3-cond-destroy-no-switch`（有指令无开关仍报错）、`L3-cond-destroy-release`（指令 + 开关齐 → 编译并运行，需 `flags: ["-allow-cond-destroy"]`）。
 
 ---
 
@@ -246,7 +246,7 @@ Error: Cannot determine the object type of method call
 | 四态状态格 | E/F/H/X 是**编译期事实表**，不是运行时元数据（**不是 ABI 变更**） | ✅ 已实现 |
 | take 挂起态 | `pending_take` 集合；同一语句 = 同一 AST 节点；独立 take 警告不阻断 | ✅ 独立 `take()` 出 warning；挂起态检查工作 |
 | 子引用 / NLL | 路径穿透引用展开；过程内 NLL + 跨函数保守 | ✅ `var r: Ref[str] = &p.name` 工作 |
-| 签名标注校验 | `ensures` 逐出口、`from` 子集、`writes` 泛型上界 | ✅ 143 条回归全过 |
+| 签名标注校验 | `ensures` 逐出口、`from` 子集、`writes` 泛型上界 | ✅ 145 条回归全过 |
 
 **另外两处实现与决议不一致，已记为待修缺陷（不涉设计，不需要裁决）**：
 

@@ -1,0 +1,21 @@
+// @allow-cond-destroy
+// 决议 C 的正向路径：文件指令 + 命令行 -allow-cond-destroy 同时成立才放行。
+// 放行之后出口处仍会发一次 drop —— drop glue 内部先判空，等价于条件销毁，
+// 所以「分支里已经 clear 过」这种情形不会重复释放。
+class Player {
+    var name: str
+    ctor(n: str) { this.name = n }
+}
+fun maybeClear(cond: bool): void {
+    var b: Body[Player] = Player("x")
+    var c: Content[Player] = b.take()
+    if cond {
+        c.clear()
+    }
+    sout("after")
+}
+fun main(): void {
+    maybeClear(true)
+    maybeClear(false)
+}
+main()

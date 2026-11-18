@@ -656,8 +656,11 @@ tests/
 
 `agent/` 下 17 个套件把用例表放进 `code/cases.json`，由 `_shared/driver.ps1`
 统一执行。字段：`id`、`file`（或 `main`+`files`）、`expect`、`matchMode`、
-`exitCode`、`expectFailure`、`mustMatch`（+`mustMatchLiteral`/`mustMatchRegex`）、
+`exitCode`、`flags`、`expectFailure`、`mustMatch`（+`mustMatchLiteral`/`mustMatchRegex`）、
 `compileOnly`。
+
+`flags` 是数组，原样放在 `-build` 之前，用于传单横线开关（目前只有
+`-allow-cond-destroy` 需要）。不写等于不传。
 
 三种片段匹配语义被**刻意保留**，因为它们对应老套件里真实存在的三种写法：
 `$out.Contains()`（字面）、`-match`（正则）、`-like "*x*"`（通配符）。

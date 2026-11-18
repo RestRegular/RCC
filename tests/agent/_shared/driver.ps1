@@ -33,6 +33,7 @@
 #    expect        期望 stdout（equals 模式下比对，尾部空白归一）
 #    matchMode     equals（默认）| ignoreWhitespace（去掉全部空白后比对）
 #    exitCode      期望运行退出码，默认 0
+#    flags         额外编译器开关数组（例如 @('-allow-cond-destroy')）
 #    expectFailure true = 必须**编译失败**；此时 expect 无意义
 #    mustMatch     expectFailure 时要求的诊断片段（正则）
 # ============================================================================
@@ -54,7 +55,7 @@ function Convert-RioStdout($text) {
     return ($text -replace "`r`n", "`n").Trim()
 }
 
-function Invoke-RioBuild($rcc, $mainPath, $exePath) {
+function Invoke-RioBuild($rcc, $mainPath, $exePath, $extraFlags) {
     # 预期会失败的命令会往 stderr 写诊断；ErrorActionPreference=Stop 会把它
     # 当成终止错误抛出，所以调用期间必须临时降级。
     $saved = $ErrorActionPreference
@@ -64,7 +65,12 @@ function Invoke-RioBuild($rcc, $mainPath, $exePath) {
         # 例如 'instance-level' 被劈成 'instance-l' + 'evel'。这样期望片段就
         # 永远匹配不上，而且是否折行取决于临时目录路径长度 —— 极难定位。
         # 给一个大宽度，捕获到的就是未折行的原始文本。
-        $out = & $rcc -build --path $mainPath --output $exePath 2>&1 | Out-String -Width 10000
+        #
+        # $extraFlags 供用例传单横线开关（例如 -allow-cond-destroy）。放在
+        # --path 之前：取值选项的实参不能和开关混在一起。
+        $flagArgs = @()
+        if ($extraFlags) { $flagArgs = @($extraFlags) }
+        $out = & $rcc @flagArgs -build --path $mainPath --output $exePath 2>&1 | Out-String -Width 10000
         $code = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $saved
@@ -152,7 +158,7 @@ function Invoke-RioSuite {
         if (-not $mainPath) { continue }
 
         $exePath = Join-Path $work $id
-        $build = Invoke-RioBuild $rcc $mainPath $exePath
+        $build = Invoke-RioBuild $rcc $mainPath $exePath $case.flags
         $buildOk = ($build.Code -eq 0) -and (Test-Path "$exePath.exe")
 
         # ---- 负向用例：必须编译失败，且诊断命中指定片段 ----

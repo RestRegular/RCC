@@ -1,16 +1,20 @@
 # P13-2 回归
 
-P13-2 已实施成果回归：语法/类型/所有权/生命周期各层的编译期行为，以及决议 A（值语义 struct）的运行期行为（143 条）。
+P13-2 已实施成果回归：语法/类型/所有权/生命周期各层的编译期行为，以及决议 A（值语义 struct）与决议 C（条件销毁放行）的运行期行为（145 条）。
 
 - 类型: regression
-- 用例数: 143
+- 用例数: 145
 - 入口: `execute.ps1`（转接 `tests/agent/_shared/driver.ps1`）
 
 ## compileOnly
 
 负向用例带 `compileOnly: true`：只验编译成功/失败，不运行 exe，用 `mustMatchLiteral` 指定诊断子串。
 
-`L3-struct-*` 这 9 条是**运行期**用例（不带 `compileOnly`），用 `expect` 比对 stdout。它们覆盖决议 A 的调用约定：
+## 运行期用例
+
+下列用例**不带** `compileOnly`，用 `expect` 比对 stdout。
+
+`L3-struct-*` 这 9 条覆盖决议 A 的调用约定：
 
 | 用例 | 覆盖点 |
 | --- | --- |
@@ -25,3 +29,13 @@ P13-2 已实施成果回归：语法/类型/所有权/生命周期各层的编�
 | `L3-struct-scalar-fields` | `int`/`float`/`bool`/`char` 四种标量字段 |
 
 后四条是 2026-11-18 修掉的三处 ABI 缺陷的回归：泛型路径、重载路径、方法路径都没有给返回缓冲区留位置（方法路径还让 `this` 和 `__p5_retbuf` 撞同一个寄存器，`ret p` 会把 struct 值写进接收者对象本身）。
+
+`L3-cond-destroy-release` 覆盖决议 C 的放行路径，需要给编译器传 `-allow-cond-destroy`，靠用例的 `flags` 字段：
+
+```json
+{ "id": "L3-cond-destroy-release", "file": "code/L3-cond-destroy-release.rio",
+  "flags": ["-allow-cond-destroy"], "expect": "after\nafter" }
+```
+
+`flags` 是 `driver.ps1` 支持的通用字段（数组，原样放在 `-build` 之前），其它套件不写就是空。
+
