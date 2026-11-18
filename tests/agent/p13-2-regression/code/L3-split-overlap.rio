@@ -1,0 +1,8 @@
+// 决议 D：同一侧两段无法证明不相交 → 保守冲突。
+fun main(): void {
+    var xs = [1, 2, 3, 4]
+    var a = xs.split_at(1)
+    var c = xs.split_at(2)
+    sout("conflict-expected")
+}
+main()

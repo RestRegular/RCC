@@ -1,0 +1,17 @@
+// 决议 C：分支出口状态不一致需要条件销毁 → 默认编译错误。
+class Player {
+    var name: str
+    ctor(n: str) { this.name = n }
+}
+fun maybeClear(cond: bool): void {
+    var b: Body[Player] = Player("x")
+    var c: Content[Player] = b.take()
+    if cond {
+        c.clear()
+    }
+    sout("after")
+}
+fun main(): void {
+    maybeClear(true)
+}
+main()

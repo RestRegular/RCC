@@ -1,0 +1,9 @@
+// 决议 D：视图活跃时列表增长（移动元素缓冲区）必须报错。
+import(ds="ds")
+fun main(): void {
+    var xs = [1, 2, 3]
+    var a = xs.split_at(2)
+    ds.listAppend(xs, 9)
+    sout("conflict-expected")
+}
+main()

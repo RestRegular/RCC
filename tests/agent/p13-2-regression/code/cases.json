@@ -879,6 +879,60 @@
                       "expectFailure":  true,
                       "mustMatch":  "cannot assign",
                       "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-cond-destroy",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "file":  "code/L3-cond-destroy.rio",
+                      "mustMatch":  "needs a \\*conditional\\* destroy",
+                      "mustMatchRegex":  true
+                  },
+                  {
+                      "id":  "L3-split-coexist",
+                      "file":  "code/L3-split-coexist.rio",
+                      "expect":  "1\n2\n3\n4"
+                  },
+                  {
+                      "id":  "L3-split-write",
+                      "file":  "code/L3-split-write.rio",
+                      "expect":  "10\n30"
+                  },
+                  {
+                      "id":  "L3-split-panic-at",
+                      "file":  "code/L3-split-panic-at.rio",
+                      "stderrContains":  "split_at index out of range",
+                      "exitCode":  3
+                  },
+                  {
+                      "id":  "L3-split-panic-from",
+                      "file":  "code/L3-split-panic-from.rio",
+                      "stderrContains":  "split_from index out of range",
+                      "exitCode":  3
+                  },
+                  {
+                      "id":  "L3-split-overlap",
+                      "mustMatch":  "split view on",
+                      "compileOnly":  true,
+                      "mustMatchLiteral":  true,
+                      "expectFailure":  true,
+                      "file":  "code/L3-split-overlap.rio"
+                  },
+                  {
+                      "id":  "L3-split-growth",
+                      "mustMatch":  "list growth via listAppend",
+                      "compileOnly":  true,
+                      "mustMatchLiteral":  true,
+                      "expectFailure":  true,
+                      "file":  "code/L3-split-growth.rio"
+                  },
+                  {
+                      "id":  "L3-get_mut-growth",
+                      "mustMatch":  "list growth via listRemove",
+                      "compileOnly":  true,
+                      "mustMatchLiteral":  true,
+                      "expectFailure":  true,
+                      "file":  "code/L3-get_mut-growth.rio"
                   }
               ]
 }

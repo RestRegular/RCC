@@ -48,9 +48,9 @@
 | 项 | 依据 | 说明 |
 |---|---|---|
 | Maybe / if-let / match（§6.1） | Q3 机制待用户提供设计 | 可空类型方案已定为「只有引用类型可空 + 对象包装基本类型」，但 `if let` / `match` 的语法未定 |
-| 条件销毁属性语法（§5.4） | 归 Q4 条件销毁，待设计 | 决议只写「静默生效，无提示语法」，属性形态未定 |
+| ~~条件销毁属性语法（§5.4）~~ | 归 Q4 条件销毁 | **2026-11-18 已落地**：不引入属性语法，改为「默认编译错误 + 文件级注释指令 `// @allow-cond-destroy` + 命令行 `-allow-cond-destroy`」双重放行，见 `pending_designs.md` §C |
 | 值语义 struct（§6.2） | struct 声明语法待用户提供 | 实测 `struct Pt { ... }` → `Undefined variable: struct` |
-| split(k)（§4.3） | 决议只写「返回两段 Mut 视图」 | 两段如何绑定（元组/数组/两次调用）未定；实测 `xs.split(1)` → "Cannot determine the object type of method call" |
+| ~~split(k)（§4.3）~~ | 决议只写「返回两段 Mut 视图」 | **2026-11-18 已落地**：定为两次调用 `split_at(k)` / `split_from(k)`，各返回一个 `Mut` 视图，两段可共存，路径 `xs.items[lo..hi)`，越界 panic，见 `pending_designs.md` §D |
 
 ### B. 决议已定但未实现（真实缺口）
 
@@ -139,8 +139,8 @@ std 按内存模型规范重写时暴露出来的四个编译器缺陷，全部�
 
 - objective 中「L0→L1→L2→L3→L4」各阶段的**主体**均已落地：
   L0 去伪、L1 语法地基、L2 结构语义、L3 内存模型主体、L4 诊断（from/ensures/writes 语法层）。
-- L4 的「可选类型」部分、split 绑定形态、条件销毁被设计文档明确推迟，
-  不属当前可实施范围（硬规则：语言设计层变更必须先获批）。
+- L4 的「可选类型」部分已实现（`T?` / `if var`）；split 绑定形态与条件销毁
+  于 2026-11-18 按用户裁决实现，不再是缺口。
 - **writes 调用点效果（决议 §4.2）曾整块缺失，现已实现。**
   早先的判断（「NLL 已在引用最后使用后将其移除，writes 要影响的活跃引用
   本就不存在」）经实测证伪：`_activeRefs` 的清理只发生在 `drainActiveRefs`
@@ -156,8 +156,11 @@ std 按内存模型规范重写时暴露出来的四个编译器缺陷，全部�
   登记完，调用点由 `applyWriteEffects` 把 `writes` 路径映射回实参路径，
   再按 §4.1「P 是 Q 的前缀（按路径段，含相等）」判冲突。本地写路径
   （字段赋值 / `take()` / `mut()`）走同一个 `checkWriteConflicts`。
-- 唯一未实现的可选项 split(k) 因决议未写两段 Mut 的绑定形态而暂缓，
-  不自行设计。
+- split(k) 的绑定形态已裁决并实现（`split_at` / `split_from` 两次调用，
+  各返回一个 `Mut` 视图）：两段可共存、区间路径 `xs.items[lo..hi)`、
+  越界 panic、视图活跃时列表增长报错，均有回归覆盖。
+- 条件销毁的诊断级别已实现：默认编译错误，放行需
+  `// @allow-cond-destroy` 指令 **且** `-allow-cond-destroy` 开关。
 
 ## 审阅后的修复（2026-11-18）
 

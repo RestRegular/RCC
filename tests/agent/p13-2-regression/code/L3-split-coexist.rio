@@ -1,0 +1,11 @@
+// 决议 D：两段视图可共存（非重叠），各自读自己的区间。
+fun main(): void {
+    var xs = [1, 2, 3, 4]
+    var a = xs.split_at(2)
+    var b = xs.split_from(2)
+    sout(a[0])
+    sout(a[1])
+    sout(b[0])
+    sout(b[1])
+}
+main()

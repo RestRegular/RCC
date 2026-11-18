@@ -1,0 +1,7 @@
+// 决议 D：split_from 越界必须 panic（不夹取）。
+fun main(): void {
+    var xs = [1, 2, 3, 4]
+    var b = xs.split_from(-1)
+    sout("unreachable")
+}
+main()

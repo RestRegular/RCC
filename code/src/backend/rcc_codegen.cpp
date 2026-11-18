@@ -1009,13 +1009,14 @@ namespace backend
         _asm.pop("%rbp");
         _asm.ret();
     }
-    void CodeGen::registerDropVar(const std::string& name, const std::string& addr, const sema::TypePtr& type)
+    void CodeGen::registerDropVar(const std::string& name, const std::string& addr, const sema::TypePtr& type,
+                                  const utils::Pos& pos)
     {
         if (!needsDrop(type))
             return;
         if (_scopeDrops.empty())
             _scopeDrops.emplace_back();
-        _scopeDrops.back().push_back({name, addr, type, false, false});
+        _scopeDrops.back().push_back({name, addr, type, false, false, pos});
     }
     void CodeGen::registerMoveVar(const std::string& name)
     {
@@ -1101,7 +1102,7 @@ namespace backend
         // addr 必须记下来：借用被重新赋值（`ys = <新值>`）时会升格成拥有者，
         // 那时出口要拿这个地址去释放。形参的槽位地址在 emitFunctionBody 里
         // 算完之后才登记，所以此时能传进来。
-        _scopeDrops.back().push_back({name, addr, type, true, true});
+        _scopeDrops.back().push_back({name, addr, type, true, true, utils::Pos{}});
     }
     bool CodeGen::isBorrowed(const std::string& name) const
     {
@@ -1745,7 +1746,8 @@ namespace backend
         }
     }
     void CodeGen::registerActiveRef(const std::string& path, const std::string& owner, const std::string& refVar,
-                                    const utils::Pos& pos, const std::string& indexExpr)
+                                    const utils::Pos& pos, const std::string& indexExpr,
+                                    const std::string& loText, const std::string& hiText)
     {
         // 决议 §4.1：路径穿透引用展开 ——
         // path 是完整路径（如 "p.name"）。若根 owner（p）本身是已登记的
@@ -1760,8 +1762,40 @@ namespace backend
                 break;
             }
         }
-        _activeRefs.push_back({full, owner, refVar, true, indexExpr}); // justBound：绑定语句不清除
+        _activeRefs.push_back({full, owner, refVar, true, indexExpr, loText, hiText}); // justBound：绑定语句不清除
         (void)pos;
+    }
+    // P13-2/L3-D（决议 §4.2）：两段区间视图能否**证明**不相交。
+    // 决议给的唯一可证形状是「同一下界文本相接」：
+    //   [0,k) 与 [k,len)  —— hiA == loB（或反向），且边界文本非空。
+    // 其余（符号边界、交叉区间、同一侧两段）一律保守视为冲突。
+    bool CodeGen::rangesDisjoint(const std::string& loA, const std::string& hiA,
+                                 const std::string& loB, const std::string& hiB)
+    {
+        if (loA.empty() || hiA.empty() || loB.empty() || hiB.empty())
+            return false;
+        if (hiA == loB || hiB == loA)
+            return true;
+        return false;
+    }
+    // P13-2/L3-D：登记区间视图前的冲突检查。
+    // 与既有区间视图能证明不相交 → 放行（两段共存，决议 §4.2 的核心要求）；
+    // 与非区间子引用（&p.name、get_mut(i)）或无法证明不相交的区间视图 → 冲突。
+    bool CodeGen::hasConflictingRangeRef(const std::string& owner, const std::string& loText,
+                                         const std::string& hiText) const
+    {
+        for (const auto& ref : _activeRefs)
+        {
+            if (ref.owner != owner)
+                continue;
+            if (ref.path.empty() || ref.path == ref.owner) // 空壳引用不构成冲突
+                continue;
+            if (ref.loText.empty() || ref.hiText.empty())
+                return true; // 非区间子引用：保守冲突
+            if (!rangesDisjoint(ref.loText, ref.hiText, loText, hiText))
+                return true; // 两段无法证明不相交
+        }
+        return false;
     }
     void CodeGen::bindLastActiveRef(const std::string& refVar)
     {
@@ -2046,6 +2080,10 @@ namespace backend
     {
         if (scopeIndex >= _scopeDrops.size())
             return;
+        // 决议 C：任何出口（词法出口 / ret / break / continue / 函数体末尾）
+        // 在发销毁代码前都先做一次「条件销毁」诊断 —— 这里就是唯一的收口点，
+        // 不必在每个出口各写一遍。
+        checkCondDestroyAtExit(scopeIndex);
         const auto& entries = _scopeDrops[scopeIndex];
         // D4：声明的**逆序**销毁
         for (auto it = entries.rbegin(); it != entries.rend(); ++it)
@@ -2069,6 +2107,46 @@ namespace backend
             _asm.call(dropFn);
             _asm.addRsp(32);
             (void)nullOut; // drop 函数自己会把槽写成 null（D17）
+        }
+    }
+    void CodeGen::checkCondDestroyAtExit(const size_t scopeIndex)
+    {
+        // 决议 C（2026-11-18）：需要「条件销毁」的出口默认是**编译错误**。
+        //
+        // 判据：某作用域登记了销毁项（拥有者），而它在出口处的壳子状态是 `?`
+        // （各条控制流路径不一致）。这意味着「这个所有者可能在块结束时仍持有
+        // 内容，也可能已经没了」—— 唯一所有权不允许这种模棱两可，因为要不要
+        // 销毁只能在运行期按状态决定，而语言层拒绝为所有权提供运行期开关。
+        //
+        // 已经 moved 的项跳过：它们明确不会在出口销毁，不是条件销毁。
+        if (scopeIndex >= _scopeDrops.size())
+            return;
+        // 放行需要双重条件同时成立，缺一仍报错（用户裁决第 4 条）。
+        const bool released = _allowCondDestroy && _condDestroyDirectiveSeen;
+        for (const auto& e : _scopeDrops[scopeIndex])
+        {
+            if (e.moved || e.borrowed)
+                continue;
+            if (getBodyState(e.name) != BodyState::UNKNOWN)
+                continue;
+            // Take 形参入口那种「编译器不做承诺」的 ? 不算合流不确定（§9.2）。
+            if (!isMergedUnknown(e.name))
+                continue;
+            if (released)
+                continue;
+            // 报错文本要同时点出「这是什么」和「怎么放行」，否则用户只能靠翻文档。
+            std::string why;
+            if (!_allowCondDestroy)
+                why = "the command line switch -allow-cond-destroy is not enabled";
+            else if (!_condDestroyDirectiveSeen)
+                why = "the file has no `// @allow-cond-destroy` directive";
+            failAt(e.pos,
+                   "L3: exit of this scope needs a *conditional* destroy for owner '" + e.name +
+                       "': its state is `?` because the control-flow paths reaching the exit disagree "
+                       "(P13-2 / §8.4 rule 3). Conditional destroy is a compile error by default; "
+                       "to allow it, add the file-level directive `// @allow-cond-destroy` AND pass "
+                       "-allow-cond-destroy to the compiler. Currently not released: " + why + ".");
+            return; // 报第一个就够，后面的都是同一类问题
         }
     }
 
@@ -2695,6 +2773,24 @@ namespace backend
         // 函数」静默通过 —— 决议明文要求的效果系统整块缺失。
         // 保守口径（决议 §9.3/§9.4）：没写 writes 的用户函数按函数体推断记录；
         // 这里做不到跨函数推断，退化为「不检查」而不是乱报。
+        // P13-2/L3-D（决议 §4.2）：内置列表增长例程的隐式写效果。
+        // 这些函数会**移动元素缓冲区**（core_list_append 在 len>=cap 时
+        // realloc + 拷贝；listRemove 左移元素并改长度），因此任何活跃的
+        // 元素子引用（get_mut(i)、split_at/split_from 视图）都会失效。
+        // 它们不写 writes 子句（泛型定义处禁止实例级 writes[p.field]，
+        // 见 §5.3），所以在这里按名字补一张隐式效果表：
+        // 第 1 个参数整体（suffix 为空）视为被写 —— 路径落到 xs.items。
+        {
+            static const std::set<std::string> growthFns = {
+                "listAppend", "listRemove", "listInsert", "listClear", "listPush", "listPop",
+                "core_list_append", "_dsShiftLeft", "_dsSetLen"};
+            for (const auto& g : growthFns)
+            {
+                auto& effs = _writeEffects[g];
+                if (effs.empty())
+                    effs.push_back(WriteEffect{"xs", ".items"});
+            }
+        }
         const auto effIt = _writeEffects.find(emitName);
         if (effIt == _writeEffects.end() || effIt->second.empty())
             return true;
@@ -2809,6 +2905,9 @@ namespace backend
         // 各自的处理（见 emitReturn / emitBreak / emitContinue）。
         if (!_scopes.empty())
         {
+            // 决议 C：词法出口先诊断「条件销毁」，再发销毁代码。
+            // 顺序不能反 —— 报错时不该已经吐出一半的 drop 调用。
+            checkCondDestroyAtExit(_scopeDrops.size() - 1);
             emitScopeDrops(_scopeDrops.size() - 1, true);
             _scopes.pop_back();
         }
@@ -2986,6 +3085,17 @@ namespace backend
                                     return std::make_shared<sema::MemoryType>(sema::MemoryRole::MUT,
                                                                               elem ? elem : sema::getIntType());
                                 }
+                            }
+                        }
+                        // P13-2/L3-D（决议 §4.2）：split_at / split_from → Mut[元素类型]
+                        if (mid->getName() == "split_at" || mid->getName() == "split_from")
+                        {
+                            const auto rt = inferType(member->getLeftNode());
+                            if (rt && rt->getKind() == sema::TypeKind::TK_LIST)
+                            {
+                                const auto elem = std::static_pointer_cast<sema::ListType>(rt)->getElemType();
+                                return std::make_shared<sema::MemoryType>(sema::MemoryRole::MUT,
+                                                                          elem ? elem : sema::getIntType());
                             }
                         }
                         if (mid && mid->getName() == "get")
@@ -3426,6 +3536,13 @@ namespace backend
         if (!index)
             return sema::getIntType();
         const auto targetType = inferType(index->getLeftNode());
+        // P13-2/L3-D（决议 §4.2）：区间视图 `Mut[T]` 的下标结果是 T。
+        if (targetType && targetType->getKind() == sema::TypeKind::TK_MEMORY)
+        {
+            const auto memType = std::static_pointer_cast<sema::MemoryType>(targetType);
+            if (memType->getRole() == sema::MemoryRole::MUT && memType->getInnerType())
+                return memType->getInnerType();
+        }
         if (targetType && targetType->getKind() == sema::TypeKind::TK_LIST)
         {
             const auto listType = std::static_pointer_cast<sema::ListType>(targetType);
@@ -5401,7 +5518,8 @@ namespace backend
                     if (gm && gm->getOpToken().getType() == core::TokenType::TOKEN_DOT)
                     {
                         const auto gmid = std::dynamic_pointer_cast<ast::IdentifierNode>(gm->getRightNode());
-                        if (gmid && gmid->getName() == "get_mut")
+                        if (gmid && (gmid->getName() == "get_mut" || gmid->getName() == "split_at" ||
+                                     gmid->getName() == "split_from"))
                             bindLastActiveRef(name);
                     }
                 }
@@ -5478,7 +5596,7 @@ namespace backend
                 }
                 else
                 {
-                    registerDropVar(name, slot, type);
+                    registerDropVar(name, slot, type, def->getNameNode()->getPos());
                 }
             }
             // P13-2/L3：内存模型类型（含 Body 别名 ClassType）进独立移动表，
@@ -7256,6 +7374,42 @@ namespace backend
                 _asm.inst("movq", "%rax", "%xmm0");
             return true;
         }
+        // P13-2/L3-D（决议 §4.2）：区间视图元素赋值 b[i] = v。
+        // 与读同理：视图值是段首元素槽地址，b[i] 落在 *(view + i*8)。
+        if (contType->getKind() == sema::TypeKind::TK_MEMORY)
+        {
+            const auto memType = std::static_pointer_cast<sema::MemoryType>(contType);
+            if (memType->getRole() == sema::MemoryRole::MUT)
+            {
+                const auto elemType = memType->getInnerType();
+                const auto why = checkAssignable(
+                    (elemType && elemType->getKind() != sema::TypeKind::TK_UNKNOWN) ? elemType : sema::getIntType(),
+                    valType);
+                if (!why.empty())
+                {
+                    failAt(target->getPos(), "Assignment to split view element: " + why);
+                    return true;
+                }
+                const std::string viewSlot = allocateTemp(contType);
+                emitExpression(cont);
+                if (hasFailed())
+                    return true;
+                _asm.mov("%rax", viewSlot);
+                emitExpression(key);
+                if (hasFailed())
+                    return true;
+                _asm.mov(viewSlot, "%rcx"); // 段首元素槽地址
+                _asm.inst("movq", "%rax", "%rdx");
+                _asm.inst("imulq", "$8, %rdx");
+                _asm.inst("addq", "%rdx", "%rcx");
+                _asm.mov(valSlot, "%rdx");
+                _asm.inst("movq", "%rdx", "(%rcx)");
+                _asm.mov(valSlot, "%rax");
+                if (valIsFloat)
+                    _asm.inst("movq", "%rax", "%xmm0");
+                return true;
+            }
+        }
         if (contType->getKind() == sema::TypeKind::TK_DICT)
         {
             const auto dictType = std::static_pointer_cast<sema::DictType>(contType);
@@ -7784,6 +7938,30 @@ namespace backend
             _asm.movImm(0, "%rax");
             _asm.label(doneLabel);
             return;
+        }
+        // P13-2/L3-D（决议 §4.2）：区间视图 `Mut[T]` 的下标读。
+        // 视图值就是**该段首元素槽地址**（split_at/split_from 的返回值），
+        // 所以 b[i] ≡ *(view + i*8)，与 get_mut(i) 同一套「无长度」契约：
+        // 边界由建视图时的 k 检查保证，元素下标不再重复检查。
+        if (targetType && targetType->getKind() == sema::TypeKind::TK_MEMORY)
+        {
+            const auto memType = std::static_pointer_cast<sema::MemoryType>(targetType);
+            if (memType->getRole() == sema::MemoryRole::MUT)
+            {
+                emitExpression(key);
+                if (hasFailed())
+                    return;
+                _asm.mov(contSlot, "%rcx"); // 段首元素槽地址
+                _asm.inst("movq", "%rax", "%rdx");
+                _asm.inst("imulq", "$8, %rdx");
+                _asm.inst("addq", "%rdx", "%rcx");
+                _asm.inst("movq", "(%rcx)", "%rax");
+                if (resultType && resultType->isFloat())
+                {
+                    _asm.inst("movq", "%rax", "%xmm0");
+                }
+                return;
+            }
         }
         if (targetType && targetType->getKind() == sema::TypeKind::TK_DICT)
         {
@@ -8527,6 +8705,25 @@ namespace backend
         _closureObjects.push_back({label, fnLabel});
         return label;
     }
+    // P13-2/L3-D（决议 §4.2）：内置列表增长例程的写冲突检查。
+    // 与 writes 子句走两条路：这些例程是泛型（listAppend[T] / listRemove[T]），
+    // 泛型调用不经过 applyWriteEffects（效果表按实例 mangling 登记，调用点
+    // 拿到的是未 mangling 的名字），所以在调用入口按名字单独拦一道。
+    // 被写的是第 1 个实参的 `items` 路径 —— 它是所有元素子引用的前缀，
+    // 于是「视图活跃时增长」必然命中。
+    bool CodeGen::checkGrowthEffects(const std::string& name,
+                                     const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                     const utils::Pos& pos)
+    {
+        static const std::set<std::string> growthFns = {"listAppend", "listRemove", "listInsert",
+                                                        "listClear",  "listPush",   "listPop"};
+        if (growthFns.find(name) == growthFns.end() || args.empty())
+            return true;
+        const std::string base = exprPathText(args[0]);
+        if (base.empty())
+            return true; // 实参不是可追踪路径：保守跳过
+        return checkWriteConflicts(base + ".items", pos, "list growth via " + name + " on");
+    }
     void CodeGen::emitFunctionCall(const std::shared_ptr<ast::ExpressionNode>& node)
     {
         const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node);
@@ -8542,6 +8739,24 @@ namespace backend
         if (const auto argsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))
         {
             collectArgs(argsNode, args);
+        }
+        // P13-2/L3-D（决议 §4.2）：先按「被调者名字」做一次增长冲突检查。
+        // 裸名 listAppend(xs, v) / 模块名 ds.listAppend(xs, v) / 泛型实例
+        // 三条路径都从这里过，且都在求值实参之前 —— 冲突时不必生成代码。
+        {
+            std::string calleeName;
+            if (const auto cid = std::dynamic_pointer_cast<ast::IdentifierNode>(callee))
+            {
+                calleeName = cid->getName();
+            }
+            else if (const auto cm = std::dynamic_pointer_cast<ast::InfixExpressionNode>(callee);
+                     cm && cm->getOpToken().getType() == core::TokenType::TOKEN_DOT)
+            {
+                if (const auto rid = std::dynamic_pointer_cast<ast::IdentifierNode>(cm->getRightNode()))
+                    calleeName = rid->getName();
+            }
+            if (!calleeName.empty() && !checkGrowthEffects(calleeName, args, node->getPos()))
+                return;
         }
         // 判定直接调用还是经由函数值间接调用：
         //   * 标识符且是 sout              -> sout 特化
@@ -11744,8 +11959,11 @@ namespace backend
                        "L3: conflicting mutable references to '" + listVar->getName() + "' at the same index");
                 return;
             }
-            // 登记动态路径 xs[*] + 下标文本
-            registerActiveRef(listVar->getName() + "[*]", listVar->getName(), "", member->getPos(), idxText);
+            // 登记动态路径 xs.items[*] + 下标文本。
+            // P13-2/L3-D（决议 §4.2）：元素是列表缓冲区的子引用，必须挂在
+            // `.items` 之下 —— 列表增长（listAppend/listRemove 重排元素）的
+            // 写路径就是 `xs.items`，只有成为它的前缀才能被冲突检查命中。
+            registerActiveRef(listVar->getName() + ".items[*]", listVar->getName(), "", member->getPos(), idxText);
             // 元素地址：header(rax) -> data(+24) -> data + i*8
             emitExpression(listVar);
             if (hasFailed())
@@ -11757,6 +11975,93 @@ namespace backend
             _asm.inst("movq", "%rax", "%rcx"); // i
             _asm.inst("imulq", "$8, %rcx");
             _asm.inst("addq", "%rcx", "%rax"); // 元素槽地址
+            return;
+        }
+        // P13-2/L3-D（决议 §4.2）：list 内建两段视图 ——
+        //   var a = xs.split_at(k)    前段 [0,k)   路径 xs.items[0..k)
+        //   var b = xs.split_from(k)  后段 [k,len) 路径 xs.items[k..len)
+        // 各返回一个 Mut 视图（Rio 没有元组，故用两次调用而非一次返回两段）。
+        // 越界（k<0 或 k>len）**panic**，不夹取（决议 §4.2）。
+        // 两段可共存：登记前用 rangesDisjoint 证明不相交才放行。
+        if (methodId->getName() == "split_at" || methodId->getName() == "split_from")
+        {
+            const bool isFrom = methodId->getName() == "split_from";
+            const auto listVar = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+            if (!listVar || args.size() != 1)
+            {
+                failAt(member->getPos(), "L3: " + methodId->getName() + "(k) requires a list variable and one index");
+                return;
+            }
+            const auto listType = lookupVar(listVar->getName()) ? lookupVar(listVar->getName())->type : nullptr;
+            if (!listType || listType->getKind() != sema::TypeKind::TK_LIST)
+            {
+                failAt(member->getPos(), "L3: " + methodId->getName() + "(k) requires a list receiver");
+                return;
+            }
+            // 边界文本：整数字面量取字面量文本，标识符取名字；其余无法证明，
+            // 留空 → 与任何既有子引用都保守冲突（决议 §4.1 保守口径）。
+            const auto boundText = [](const std::shared_ptr<ast::ExpressionNode>& n)
+            {
+                if (const auto lit = std::dynamic_pointer_cast<ast::IntegerLiteralNode>(n))
+                    return lit->literalString();
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(n))
+                    return id->getName();
+                return std::string();
+            };
+            const auto kText = boundText(args[0]);
+            // 前段 [0,k) / 后段 [k,len)
+            const std::string loText = isFrom ? kText : std::string("0");
+            const std::string hiText = isFrom ? std::string("len") : kText;
+            if (hasConflictingRangeRef(listVar->getName(), loText, hiText))
+            {
+                failAt(member->getPos(),
+                       "L3: split view on '" + listVar->getName() +
+                           "' conflicts with a live sub-reference on the same list (P13-2 / §4.1)");
+                return;
+            }
+            const std::string pathLo = loText.empty() ? "*" : loText;
+            const std::string pathHi = hiText.empty() ? "*" : hiText;
+            registerActiveRef(listVar->getName() + ".items[" + pathLo + ".." + pathHi + ")",
+                              listVar->getName(), "", member->getPos(), "", loText, hiText);
+            // 视图值 = 该段首元素槽地址：header -> data(+24) -> data + lo*8
+            const std::string contSlot = allocateTemp(listType);
+            emitExpression(listVar);
+            if (hasFailed())
+                return;
+            _asm.mov("%rax", contSlot); // list 头
+            emitExpression(args[0]);
+            if (hasFailed())
+                return;
+            _asm.inst("movq", "%rax", "%rcx"); // k
+            const std::string panicLabel = _asm.newLabel("split_panic");
+            const std::string doneLabel = _asm.newLabel("split_done");
+            _asm.mov(contSlot, "%rdx"); // 头指针
+            // 越界检查：k<0 或 k>len 一律 panic（有符号比较，负下标不会漏）
+            _asm.cmp("$0", "%rcx");
+            _asm.inst("jl", panicLabel);
+            _asm.cmp("(%rdx)", "%rcx");
+            _asm.inst("jg", panicLabel);
+            _asm.inst("movq", "24(%rdx)", "%rax"); // data
+            if (isFrom)
+            {
+                // 后段从 k 起：data + k*8
+                _asm.inst("movq", "%rcx", "%r8");
+                _asm.inst("imulq", "$8, %r8");
+                _asm.inst("addq", "%r8", "%rax");
+            }
+            _asm.jmp(doneLabel);
+            _asm.label(panicLabel);
+            {
+                const auto msg = _asm.internStrValue(isFrom
+                                                         ? std::string("split_from index out of range")
+                                                         : std::string("split_at index out of range"));
+                _asm.lea(msg.first + "+16(%rip)", "%rcx");
+                _asm.movImm(static_cast<long long>(msg.second), "%rdx");
+                _asm.subRsp(32);
+                _asm.call("core_panic_raise");
+                _asm.addRsp(32);
+            }
+            _asm.label(doneLabel);
             return;
         }
         // P13-2/L3-C（决议 §2.3）：Pool 内建 release(x) ——

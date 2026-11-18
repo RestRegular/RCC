@@ -1,0 +1,11 @@
+// 决议 D：两段视图各自能改自己区间内的元素。
+fun main(): void {
+    var xs = [1, 2, 3, 4]
+    var a = xs.split_at(2)
+    var b = xs.split_from(2)
+    a[0] = 10
+    b[0] = 30
+    sout(xs[0])
+    sout(xs[2])
+}
+main()

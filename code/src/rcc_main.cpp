@@ -32,6 +32,40 @@ namespace
         return std::filesystem::exists(path, ec) &&
                std::filesystem::is_regular_file(path, ec);
     }
+
+    // 决议 C（2026-11-18 用户裁决第 2、3 条）：扫描**文件级**注释指令
+    // `// @allow-cond-destroy`。
+    //
+    // 为什么在驱动层扫原始文本、而不在词法器里做：词法器（rcc_lexer.cpp）
+    // 明确**丢弃**注释文本、不产 token，让词法器为一条指令改契约得不偿失；
+    // 而「放行」本质是构建配置层面的决定，本来就不该进语法树。
+    //
+    // 只在**主文件**里找：指令是文件级的，import 进来的模块不该能替调用方
+    // 放行 —— 否则「放行」会顺着 import 链悄悄扩散到所有使用者。
+    bool scanCondDestroyDirective(const std::string& path)
+    {
+        std::ifstream in(path, std::ios::binary);
+        if (!in)
+            return false;
+        std::string line;
+        while (std::getline(in, line))
+        {
+            // 允许行首缩进与尾随空白；指令本身必须整体出现。
+            const auto at = line.find("//");
+            if (at == std::string::npos)
+                continue;
+            std::string tail = line.substr(at + 2);
+            // 去掉行尾的 \r（Windows 换行）与首尾空白。
+            while (!tail.empty() && (tail.back() == '\r' || tail.back() == ' ' || tail.back() == '\t'))
+                tail.pop_back();
+            const auto first = tail.find_first_not_of(" \t");
+            if (first == std::string::npos)
+                continue;
+            if (tail.substr(first) == "@allow-cond-destroy")
+                return true;
+        }
+        return false;
+    }
 }
 
 // 全局参数变量
@@ -56,6 +90,9 @@ bool __build_flag__ = false;
 bool __emit_lib_flag__ = false;
 // 调试：打印 AST 树后退出，不进入后端
 bool __dump_ast_flag__ = false;
+// 决议 C（2026-11-18）：启用「扫描文件级 `// @allow-cond-destroy` 指令」。
+// 默认关闭 —— 关闭时文件里写了该指令也等于没写（用户裁决第 3 条）。
+bool __allow_cond_destroy_flag__ = false;
 
 // 参数解析器实例
 ProgArgParser argParser{};
@@ -135,6 +172,14 @@ void initializeArgumentParser() {
                       "without running the backend.",
                       {"dump-ast"})
     .addDependent("dump-ast", "path", ProgArgParser::CheckDir::UniDir);
+
+    argParser.addFlag("allow-cond-destroy", &__allow_cond_destroy_flag__, false, true,
+                      "Enable scanning of the file-level directive `// @allow-cond-destroy`. "
+                      "A scope exit that needs a conditional destroy is a compile error by "
+                      "default; it is released only when this switch is on AND the source file "
+                      "carries the directive. Neither one alone releases it.",
+                      {"acd"})
+    .addDependent("allow-cond-destroy", "build", ProgArgParser::CheckDir::UniDir);
 
     argParser.addFlag("time-info", &__time_info__, false, true,
                       "Enables timing information during execution. "
@@ -347,6 +392,11 @@ void handleBuildFlag()
     backend::Win64AbiInfo abi;
     backend::CodeGen codeGen(abi);
     codeGen.setLibraryMode(__emit_lib_flag__);
+    // 决议 C：命令行开关只是「允不允许读指令」；文件里还得真有那条指令。
+    // 两者都满足才放行条件销毁出口。
+    codeGen.setAllowCondDestroy(__allow_cond_destroy_flag__);
+    codeGen.setCondDestroyDirectiveSeen(__allow_cond_destroy_flag__ &&
+                                        scanCondDestroyDirective(sourcePath));
     // 模块名 + 别名都要交给 codegen：isModuleName 用它识别 `mod.fn` / `u.fn`。
     codeGen.setModuleNames(merged.moduleNames, merged.moduleAliases);
     std::string codegenError;

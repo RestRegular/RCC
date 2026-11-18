@@ -138,8 +138,9 @@
 
 ### 4.3 split / get_mut / 不等事实
 
-- `split(k)` / `get_mut(i)` 返回时登记路径。
-- `get_mut(i)` 带 `xs[*]` + 下标 i。
+- `split_at(k)` / `split_from(k)` / `get_mut(i)` 返回时登记路径。
+- `get_mut(i)` 带 `xs.items[*]` + 下标 i；`split_at` / `split_from` 带区间
+  `xs.items[0..k)` / `xs.items[k..len)`，两段可共存。
 - 不等事实 `i≠j` 作为事实表一维，消费时放宽冲突。
 
 ### 4.4 实现细节

@@ -225,6 +225,20 @@ function Invoke-RioSuite {
             $expect = $expect -replace '\s+', ''
         }
 
+        # stderrContains：panic 之类的诊断走 stderr，PowerShell 的 2>&1 会把它
+        # 连同调用栈噪声一起并进 stdout，没法用 expect 做等值比对。这里只要求
+        # 原始输出里出现该片段（字面子串），用于「必须 panic 且消息正确」的用例。
+        if ($case.stderrContains) {
+            if (-not ($runOut -like ("*" + $case.stderrContains + "*"))) {
+                Write-RioSuiteFail $id ("输出不含 '{0}'" -f $case.stderrContains)
+                Write-Host ("         实际：{0}" -f (($runOut -replace "`n", ' / '))) -ForegroundColor DarkGray
+                $fail++; $failedIds += $id; continue
+            }
+            Write-RioSuitePass $id
+            $pass++
+            continue
+        }
+
         if ($actual -eq $expect) {
             Write-RioSuitePass $id
             $pass++

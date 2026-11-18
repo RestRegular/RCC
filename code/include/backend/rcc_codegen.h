@@ -63,6 +63,18 @@ namespace backend
             _moduleNames.insert(_moduleNames.end(), aliases.begin(), aliases.end());
         }
 
+        // 决议 C（2026-11-18 用户裁决）：条件销毁出口的诊断级别。
+        //
+        // 默认：需要「条件销毁」的出口是**编译错误**（不是警告、不是静默）。
+        // 放行需要**双重条件**同时成立：
+        //   1. 命令行带 --allow-cond-destroy（即本开关为 true，启用指令扫描）；
+        //   2. 文件级注释指令 `// @allow-cond-destroy` 存在。
+        // 缺一仍报错。这样「放行」既是代码里的显式人为决定，也是构建配置
+        // 层面的显式决定，不会因为粘贴代码而悄悄生效。
+        void setAllowCondDestroy(bool on) { _allowCondDestroy = on; }
+        // 文件级放行指令是否已被扫描到（由前端/驱动在读取源文件后告知）。
+        void setCondDestroyDirectiveSeen(bool seen) { _condDestroyDirectiveSeen = seen; }
+
         // 生成完整汇编文本。失败时 errorMsg 非空。
         std::string generate(const std::shared_ptr<ast::ProgramNode>& program, std::string& errorMsg);
 
@@ -271,7 +283,8 @@ namespace backend
         // 记录「这个作用域里哪些变量需要销毁」，popScope 时据此发调用。
         // addr 是该变量的槽位寻址串（`-8(%rbp)` 或 `_g_x(%rip)`）。
         void registerDropVar(const std::string& name, const std::string& addr,
-                             const sema::TypePtr& type);
+                             const sema::TypePtr& type,
+                             const utils::Pos& pos = utils::Pos{});
         // P13-2/L3：独立的移动状态表（F/E/X），与 _scopeDrops 平行但只登记
         // 内存模型类型变量（含 Body 别名 ClassType）。D14 下 ClassType 不进
         // drop 表，但决议 §6/§11 要求这类变量也能 take/移动，故单独跟踪。
@@ -368,6 +381,9 @@ namespace backend
             // D9 规则 C：借用（初始化表达式是已有变量/元素，或来自形参）
             // 不拥有资源，不能 ret、不能入容器、不能存进外层变量。
             bool borrowed = false;
+            // 决议 C：登记点的位置，用于「条件销毁」诊断报出准确坐标。
+            // 借用项不参与该诊断（borrowed=true 直接跳过），留空即可。
+            utils::Pos pos;
         };
         // 与 _scopes 同长、同生命周期。popScope 时同步弹出。
         std::vector<std::vector<DropEntry>> _scopeDrops;
@@ -421,6 +437,16 @@ namespace backend
         void restoreMoveStates(const MoveStateSnapshot& snap);
         // 把若干条路径的出口快照按格上界逐层合并后写回 _moveStates。
         void joinMoveStatePaths(const std::vector<MoveStateSnapshot>& paths);
+        // 决议 C：出口处的「条件销毁」诊断。凡该作用域登记了销毁项、而它的
+        // 壳子状态在出口是 `?`（各条控制流路径不一致），就意味着这个所有者
+        // 可能在块结束时仍持有内容 —— 唯一所有权不允许，默认是编译错误。
+        // 放行需同时满足：命令行 --allow-cond-destroy 且文件里有
+        // `// @allow-cond-destroy` 指令（两者缺一仍报错）。
+        void checkCondDestroyAtExit(const size_t scopeIndex);
+        // 命令行开关：启用「扫描文件级放行指令」。
+        bool _allowCondDestroy = false;
+        // 文件级放行指令是否真的被扫描到。
+        bool _condDestroyDirectiveSeen = false;
         // 只算合并结果、不写回（循环要先把回边/出口各自合并再取上界）。
         // 深度取所有路径的最小值：更深层是分支/循环体内的局部量，不参与。
         [[nodiscard]] MoveStateSnapshot
@@ -462,6 +488,10 @@ namespace backend
             // P13-2/L3-E（决议 §4.3）：动态下标表达式文本（get_mut(i) 的 i）。
             // 空 = 静态精确路径（如 &p.name）。
             std::string indexExpr;
+            // P13-2/L3-D（决议 §4.2）：区间视图的边界文本（split_at / split_from）。
+            // 空 = 非区间视图。hiText 为 "len" 表示无上界（split_from 的尾段）。
+            // 只有两段能**证明**不相交时才允许共存，见 rangesDisjoint。
+            std::string loText, hiText;
         };
         std::vector<ActiveRef> _activeRefs;
         // P13-2/L3-F（决议 §4.2 / §9.3）：函数写效果表。
@@ -503,10 +533,26 @@ namespace backend
                                              const std::string& displayName,
                                              const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
                                              const utils::Pos& pos);
+        // P13-2/L3-D（决议 §4.2）：内置列表增长例程（listAppend 等）会移动
+        // 元素缓冲区，与活跃的元素子引用冲突。泛型调用不走 applyWriteEffects，
+        // 故在调用入口按名字单独拦一道。
+        [[nodiscard]] bool checkGrowthEffects(const std::string& name,
+                                              const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                              const utils::Pos& pos);
         // 登记子引用；检查 owner 是否有活跃子引用（冲突时报错）。
         void registerActiveRef(const std::string& path, const std::string& owner,
                                const std::string& refVar, const utils::Pos& pos,
-                               const std::string& indexExpr = "");
+                               const std::string& indexExpr = "",
+                               const std::string& loText = "",
+                               const std::string& hiText = "");
+        // P13-2/L3-D（决议 §4.2）：两段区间视图是否**可证明**不相交。
+        // 只有 [0,k) 与 [k,len) 这种「同一下界文本相接」才算证明；其余保守冲突。
+        [[nodiscard]] static bool rangesDisjoint(const std::string& loA, const std::string& hiA,
+                                                 const std::string& loB, const std::string& hiB);
+        // P13-2/L3-D：区间视图登记前的冲突检查（能证明不相交则放行）。
+        [[nodiscard]] bool hasConflictingRangeRef(const std::string& owner,
+                                                  const std::string& loText,
+                                                  const std::string& hiText) const;
         // P13-2/L3-E：把最后登记的子引用的 refVar 补成绑定变量名
         // （var r = &p.name 里的 r），供 NLL 追踪最后使用。
         void bindLastActiveRef(const std::string& refVar);

@@ -13,8 +13,8 @@
 |---|---|---|---|---|
 | **A** | 值语义 `struct` | 最高（挡着 D19，且挡着 B） | ✅ 已裁决 | ✅ 已实现 |
 | **B** | `Maybe` / `if var` 窄化 | 最高（与 A 同批） | ✅ 已裁决 | ✅ 已实现 |
-| **C** | 条件销毁的诊断级别 | 中 | ✅ 已裁决 | ⬜ 未开始 |
-| **D** | `split(k)` 两段视图的绑定形态 | 中 | ✅ 已裁决 | ⬜ 未开始 |
+| **C** | 条件销毁的诊断级别 | 中 | ✅ 已裁决 | ✅ 已实现 |
+| **D** | `split(k)` 两段视图的绑定形态 | 中 | ✅ 已裁决 | ✅ 已实现 |
 | **E** | 异常对象的出生地与归属 | 低 | ✅ 已裁决（推迟） | ⬜ 推迟 |
 
 原文档提到的另有 4 项属**后续阶段**或**长期悬置**，仍列在 §6 供全貌了解，不阻塞当前。
@@ -113,7 +113,7 @@ Error: Compilation failed: syntax errors.
 
 ---
 
-## C. 条件销毁的诊断级别（已裁决）
+## C. 条件销毁的诊断级别（已裁决、已实现）
 
 ### 背景
 
@@ -137,9 +137,21 @@ Error: Compilation failed: syntax errors.
 
 5. **改写规范 §8.4**：原写"默认警告 + `#[strict_destroy]` 升级为错误"，现改为"默认错误 + 文件级注释指令放行 + 命令行开关控制指令是否生效"。
 
+### 实现状态（2026-11-18 已完成）
+
+判据落在 `CodeGen::checkCondDestroyAtExit(scopeIndex)`：遍历该作用域登记的销毁项，跳过 `moved`/`borrowed`，只对「壳子状态是 `?` **且** 是控制流合流产生的 `?`」（`isMergedUnknown`，排除 Take 形参入口那种编译器不做承诺的 `?`）报错。调用点有两个 —— `emitScopeDrops` 与 `popScope` —— 覆盖全部 8 个销毁点，不会漏。
+
+放行需 `_allowCondDestroy && _condDestroyDirectiveSeen` 同时成立，缺一仍报错，且诊断文本会明确说**缺的是哪一半**（"the command line switch -allow-cond-destroy is not enabled" / "the file has no `// @allow-cond-destroy` directive"）。
+
+- 命令行：`-allow-cond-destroy`（RCC 的 flag 是**单横线**，与 `--path`/`--output` 这类取值选项不同）。
+- 指令扫描：`rcc_main.cpp` 的 `scanCondDestroyDirective()` 在**原始文本**上做，不看 lexer —— 因为 `rcc_lexer.cpp` 只跟踪注释类型、**丢弃注释正文**，改 lexer 会破坏既有契约。只扫主文件，不扫被 import 的模块。
+- 代码生成未改：`emitScopeDrops` 仍无条件销毁每个非 `moved` 项。放行只表示"接受这个模棱两可"，不表示插 flag 位图 —— 真正的条件销毁 codegen 属后续阶段。
+
+回归：`tests/agent/p13-2-regression` 的 `L3-cond-destroy`（默认必须报错）。
+
 ---
 
-## D. `split(k)` 两段视图的绑定形态（已裁决）
+## D. `split(k)` 两段视图的绑定形态（已裁决、已实现）
 
 ### 背景
 
@@ -175,6 +187,20 @@ Error: Cannot determine the object type of method call
 5. **子引用路径需支持区间** `xs.items[lo..hi)`（现有只有 `items`/`items[*]` 两档）——这是"两段共存"的前提，用户接受该实现量。
 
 > 实施提示：若区间子引用实现量超预期，可与用户再权衡"保两段共存"还是"退化成两段互斥（保守登记在 `xs.items`）"。
+
+### 实现状态（2026-11-18 已完成，两段共存方案）
+
+按裁决原样实现，**没有退化成互斥**。落地要点：
+
+- **语法零新增**：`xs.split_at(k)` / `xs.split_from(k)` 是 `emitMethodCall` 里的内建方法分支（与 `get_mut(i)` 同级），不走用户方法解析，所以不需要在标准库里定义 `split_at`/`split_from`。返回类型由 `inferType` 的方法调用分支给出 `Mut[elem]`。
+- **视图值 = 该段首元素槽地址**：`split_at` 取 `data`，`split_from` 取 `data + k*8`。`b[i]` 于是就是 `*(view + i*8)`，读写在 `emitIndexExpression` / `emitIndexAssignValue` 里各加一个 `TK_MEMORY + MUT` 分支。视图本身不带长度 —— 边界由建视图时的检查保证，元素下标不再重复检查。
+- **越界 panic**：`k<0 || k>len` 走 `core_panic_raise`，消息用 `internStrValue` 物化（cap==0 的静态头，`core_free` 静默忽略，不会漏放）。实测退出码 3，stderr 打出 `split_at index out of range` / `split_from index out of range`。
+- **区间路径**：登记成 `xs.items[0..k)` / `xs.items[k..len)`。`pathIsPrefixOf` 按路径段比较（`[` 与 `.` 都是段边界），所以 `xs.items` 是它们的共同前缀 —— 增长路径天然命中。
+- **共存判据** `rangesDisjoint`：只认"同一下界文本相接"（`hiA == loB` 或反向），即 `[0,k)` 与 `[k,len)`。其余形状（符号边界、同侧两段、交叉）一律保守冲突。边界文本取整数字面量或标识符名，其余留空 → 必然冲突。
+- **增长冲突**：`listAppend`/`listRemove` 是泛型，泛型调用不经过 `applyWriteEffects`（效果表按实例 mangling 登记，调用点拿的是未 mangling 的名字），所以在 `emitFunctionCall` 入口加了 `checkGrowthEffects`，按被调者名字拦一道，写路径是第一个实参的 `.items`。裸名与 `ds.listAppend(...)` 两种写法都覆盖。
+- **`get_mut` 路径下移**：从 `xs[*]` 改为 `xs.items[*]`，与区间视图、增长路径统一到同一层，否则增长冲突打不到元素视图。
+
+回归：`tests/agent/p13-2-regression` 的 `L3-split-coexist` / `L3-split-write` / `L3-split-panic-at` / `L3-split-panic-from` / `L3-split-overlap` / `L3-split-growth` / `L3-get_mut-growth`。
 
 ---
 
@@ -234,19 +260,19 @@ Error: Cannot determine the object type of method call
 ```
 A + B 的设计文档（✅ 已出，本文）
         ↓
-实现 struct + if-var（两者互相独立，可并行）
+实现 struct + if-var（✅ 2026-11-18 已完成，提交 9f5333e）
         ↓
-C（条件销毁诊断）—— 顺带，取决于 A/B 落地后状态格的复杂度
+C（条件销毁诊断）—— ✅ 2026-11-18 已完成
         ↓
-D（split 两段绑定）—— 收尾项，最小改动（含子引用区间档）
+D（split 两段绑定）—— ✅ 2026-11-18 已完成（含子引用区间档）
         ↓
 P13-2 完整版收尾，进 P13-3
 ```
 
-当前 P13-2 主体（L0–L3 全部 + std 重写）已可交付，测试 718/720 通过。A–E 是"完整版"与"主体版"的差额，现已全部裁决，可进入实施。
+当前 P13-2 主体（L0–L3 全部 + std 重写）已可交付，测试 718/720 通过。A–E 是"完整版"与"主体版"的差额，现已**全部裁决并实施完毕**（E 项按裁决推迟）。
 
 ---
 
 ## 9. 一句话总结
 
-**A–E 五项设计全部裁决完毕**：值语义 `struct`（标量字段、值拷贝、不进状态格）+ `if var` 窄化（复用 `T?`、不做 match）解除 P13-2 完整版的两大阻塞；条件销毁默认报错、由文件级注释指令配合命令行开关放行；`split` 用两次调用返回不重叠的两段视图；异常对象归属推迟。可以直接进入实施。
+**A–E 五项设计全部裁决并实施完毕**：值语义 `struct`（标量字段、值拷贝、不进状态格）+ `if var` 窄化（复用 `T?`、不做 match）解除 P13-2 完整版的两大阻塞；条件销毁默认报错、由文件级注释指令配合命令行开关放行；`split` 用 `split_at(k)` / `split_from(k)` 两次调用返回不重叠的两段视图；异常对象归属推迟。

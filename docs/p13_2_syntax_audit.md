@@ -177,6 +177,8 @@ Body 默认方法 `ref()`/`mut()`/`take()`、挂起态、落定四位置、语�
 
 根因：`list`/`dict` 是**内置类型，没有方法表**，任何 `.method()` 都落到「无法确定对象类型」。所以 `split`/`get_mut`/`clone` 三个方法需要先在 list 上开方法分发通道。
 
+> **2026-11-18 已全部解决**：三个方法都在 `emitMethodCall` 里开了内建分支。`split` 最终定为 `split_at(k)` / `split_from(k)` 两次调用（Rio 没有元组），各返回一个 `Mut` 视图，路径 `xs.items[lo..hi)`，两段可共存，越界 panic。见 `pending_designs.md` §D。
+
 NLL、路径登记、不等事实——全部为零。
 
 ---

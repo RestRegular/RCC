@@ -217,9 +217,9 @@ var c: Content[Player] pool = bob.take()
 - 子引用创建统一用 `&`：`&p.name`、`&p.team.captain`；`&p`（p 是 Body）是壳子引用。不引入 `name_ref()` 这类专门方法。
 - 冲突检查用 **NLL**（活跃到最后使用），不是词法块末尾。
 - 结构体字段存子引用按整个内容登记，用户语法不变，编译器内部保守处理。
-- `List` 和 `Pool` 都有 `split`，方法名统一；不提供按谓词拆的 `split_if`。
-- `xs.split(k)` 按下标拆成两段 `Mut` 视图，路径 `xs[0..k)` / `xs[k..)`，互不相交。
-- `xs.get_mut(i)` 返回单元素 `Mut`，路径登记为 `xs[*]` + 运行时下标标记；与不同下标不冲突需证明 `i≠j`（不等事实）。
+- `List` 和 `Pool` 都有 `split_at(k)` / `split_from(k)` 两个方法，命名统一；不提供按谓词拆的 `split_if`。
+- `xs.split_at(k)` 取前段 `[0,k)`、`xs.split_from(k)` 取后段 `[k,len)`，各返回**一个** `Mut` 视图（Rio 没有元组，故分两次调用）。路径 `xs.items[0..k)` / `xs.items[k..len)`，两段互不相交、可共存。越界 panic，不夹取。
+- `xs.get_mut(i)` 返回单元素 `Mut`，路径登记为 `xs.items[*]` + 运行时下标标记（挂在 `items` 之下，才能被列表增长的写路径命中）；与不同下标不冲突需证明 `i≠j`（不等事实）。
 - 路径语法与 §4 对齐：静态部分精确，动态下标保守，靠不等事实放宽。
 
 ---
