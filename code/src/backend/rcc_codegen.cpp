@@ -715,7 +715,22 @@ namespace backend{
         //
         // 这与 D14 对 `list[Foo]` 的处置完全一致（那里写的是「只释放缓冲区，
         // 不释放元素」），这里把同一口径推广到全部元素类型。
-        _asm.global(fnName);
+        //
+        // **不发 .globl**：drop glue 是编译器在每个翻译单元内部生成的私有
+        // 辅助函数，不是库导出的 API。修前这里发了 `.globl __rio_drop_<mangle>`，
+        // 而 `release/lib/rt/rt.o` 会被链接进**每一个**程序 —— 只要用户程序里
+        // 也出现 str / list / dict 变量（几乎必然），两边就各定义一份同名全局
+        // 符号，链接直接失败：
+        //
+        //   multiple definition of `__rio_drop_K';
+        //   ...rt.o: first defined here / user.o: first defined here
+        //
+        // 2026-11-18 实测：`var s: str = "hi"` 这样的最小程序都编不过。
+        // 早先没暴露是因为 `rt.o` 是 P13-1 之前的陈旧产物（不含 drop glue），
+        // 重建 rt 层之后才浮出来 —— 属既有缺陷，与本次改动无关。
+        //
+        // 去掉 .globl 后每个 TU 各有一份**局部**符号，互不干扰；
+        // 它们是纯函数，重复存在没有语义代价。
         _asm.label(fnName);
         _asm.push("%rbp");
         _asm.mov("%rsp", "%rbp");
@@ -7471,6 +7486,31 @@ namespace backend{
             if (!node) continue;
             const auto body = std::dynamic_pointer_cast<ast::BlockRangerNode>(node->getBodyNode());
             if (!body) continue;
+            // 泛型类的形参（`class Box[T]` 里的 T）在字段类型里是合法的「洞」，
+            // 不是未知类型。
+            //
+            // 修前这里直接用了 `_currentGenericParams` —— 那是**实例化发射**阶段
+            // 才被赋值的成员，而本校验发生在 registerClass 之前，恒为空。于是
+            // 泛型类的字段 `var v: T` 被当成未知类型，报
+            // "L0-2: unknown type 'T' of field 'v'"（2026-11-18 实测，
+            // 直接导致 test_p10_generics 的 6 条泛型类用例全挂）。
+            // 正确做法是按**这个类自己**的形参列表解析。
+            std::vector<std::string> classGenerics;
+            if (const auto nameIndex =
+                    std::dynamic_pointer_cast<ast::IndexExpressionNode>(node->getNameNode()))            {
+                if (const auto bracket =
+                        std::dynamic_pointer_cast<ast::BracketExpressionNode>(nameIndex->getIndexNode()))                {
+                    std::vector<std::shared_ptr<ast::ExpressionNode>> nodes;
+                    flattenTypeArgs(bracket->getBodyNode(), nodes);
+                    for (const auto& n : nodes)                    {
+                        if (!n) continue;
+                        if (const auto pid = std::dynamic_pointer_cast<ast::IdentifierNode>(n))
+                            classGenerics.push_back(pid->getName());
+                        else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(n))
+                            classGenerics.push_back(lbl->getFullLabel());
+                    }
+                }
+            }
             for (const auto& stmt : body->getBodyExpressions())            {
                 const auto varDef = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(stmt);
                 if (!varDef) continue;
@@ -7496,7 +7536,7 @@ namespace backend{
                         // 报 "L0-2: unknown type 'static' of field '_number'" ——
                         // P0 重写把 static 字段的解析整个丢了。
                         if (isLifecycleLabel(full)) continue;
-                        const auto t = typeFromLabelNode(label, _currentGenericParams);
+                        const auto t = typeFromLabelNode(label, classGenerics);
                         if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN)                        {
                             failAt(def->getNameNode()->getPos(),
                                    "L0-2: unknown type '" + full + "' of field '" +
