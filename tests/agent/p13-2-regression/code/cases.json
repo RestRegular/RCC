@@ -1020,6 +1020,35 @@
                       "id":  "L3-indirect-scalar-ret",
                       "file":  "code/L3-indirect-scalar-ret.rio",
                       "expect":  "42"
+                  },
+                  {
+                      "id":  "L3-list-struct-elem",
+                      "file":  "code/L3-list-struct-elem.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot be a container element type",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-dict-struct-elem",
+                      "file":  "code/L3-dict-struct-elem.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot be a dict key or value type",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-param-struct-elem",
+                      "file":  "code/L3-param-struct-elem.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot be a container element type",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-container-scalar-elem",
+                      "file":  "code/L3-container-scalar-elem.rio",
+                      "expect":  "1\na\n9\n1.5"
                   }
               ]
 }

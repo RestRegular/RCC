@@ -9726,6 +9726,22 @@ namespace backend
                 // 关键：`list[float]` 的元素类型必须真的来自标注。
                 // P9 的缺陷就是这里一律给 int，导致 float 元素被当整数打印。
                 const auto elem = args.empty() ? sema::getIntType() : args[0];
+                // 容器元素不支持 struct（2026-11-18 用户裁决）：struct 在容器里的
+                // 元素布局、`[]` 取值、`.get()`、字段访问全部没接，且越界时
+                // `var p: Pt = xs[99]` 会**静默返回垃圾地址**、不报错 —— 属静默
+                // 错误值，必须在这里堵住。指引改用 list[Ref[Pt]] 或对象包装。
+                if (elem && elem->getKind() == sema::TypeKind::TK_STRUCT)
+                {
+                    const_cast<CodeGen*>(this)->failAt(
+                        node->getPos(),
+                        "struct '" + elem->toString() +
+                            "' cannot be a container element type; struct elements are not "
+                            "implemented (element layout, indexing and field access are missing, and "
+                            "an out-of-range index would silently yield a garbage address) — use "
+                            "list[Ref<" + elem->toString() + ">] or wrap the struct in a class "
+                            "instead");
+                    return sema::getUnknownType();
+                }
                 return std::make_shared<sema::ListType>(
                     (elem && elem->getKind() != sema::TypeKind::TK_UNKNOWN) ? elem : sema::getIntType());
             }
@@ -9733,6 +9749,22 @@ namespace backend
             {
                 const auto key = args.size() > 0 ? args[0] : sema::getStrType();
                 const auto val = args.size() > 1 ? args[1] : sema::getIntType();
+                // 同上：dict 的键和值都不能是 struct。
+                for (const auto& part : {key, val})
+                {
+                    if (part && part->getKind() == sema::TypeKind::TK_STRUCT)
+                    {
+                        const_cast<CodeGen*>(this)->failAt(
+                            node->getPos(),
+                            "struct '" + part->toString() +
+                                "' cannot be a dict key or value type; struct elements are not "
+                                "implemented (element layout, indexing and field access are missing, "
+                                "and a missing key would silently yield a garbage address) — use "
+                                "dict[str, Ref<" + part->toString() + ">] or wrap the struct in a "
+                                "class instead");
+                        return sema::getUnknownType();
+                    }
+                }
                 return std::make_shared<sema::DictType>(
                     (key && key->getKind() != sema::TypeKind::TK_UNKNOWN) ? key : sema::getStrType(),
                     (val && val->getKind() != sema::TypeKind::TK_UNKNOWN) ? val : sema::getIntType());
@@ -9910,6 +9942,22 @@ namespace backend
             // 只有真的没写元素类型（`list` 裸名）才是 nullptr，
             // 那条路径走 resolveTypeName，不会到这里。
             const auto elem = args.empty() ? sema::getUnknownType() : args[0];
+            // 容器元素不支持 struct（2026-11-18 用户裁决 A）：struct 在容器里的
+            // 元素布局、`[]` 取值、`.get()`、字段访问全部没接，且越界时
+            // `var p: Pt = xs[99]` 会**静默返回垃圾地址**、不报错 —— 属静默
+            // 错误值，必须在这里堵住。指引改用 list[Ref[Pt]] 或对象包装。
+            if (elem && elem->getKind() == sema::TypeKind::TK_STRUCT)
+            {
+                // failAt 不是 const 成员（它要写失败标志），这里只能转一下。
+                const_cast<CodeGen*>(this)->failAt(
+                    label->getPos(),
+                    "struct '" + elem->toString() +
+                        "' cannot be a container element type; struct elements are not implemented "
+                        "(element layout, indexing and field access are missing, and an "
+                        "out-of-range index would silently yield a garbage address) — use "
+                        "list[Ref<" + elem->toString() + ">] or wrap the struct in a class instead");
+                return sema::getUnknownType();
+            }
             return std::make_shared<sema::ListType>(elem ? elem : sema::getUnknownType());
         }
         if (base == "dict" || base == "map")
@@ -9925,6 +9973,22 @@ namespace backend
             // 与形参标注无关。
             const auto key = args.size() > 0 ? args[0] : nullptr;
             const auto val = args.size() > 1 ? args[1] : nullptr;
+            // 同上：dict 的键和值都不能是 struct（2026-11-18 用户裁决 A）。
+            for (const auto& part : {key, val})
+            {
+                if (part && part->getKind() == sema::TypeKind::TK_STRUCT)
+                {
+                    const_cast<CodeGen*>(this)->failAt(
+                        label->getPos(),
+                        "struct '" + part->toString() +
+                            "' cannot be a dict key or value type; struct elements are not "
+                            "implemented (element layout, indexing and field access are missing, "
+                            "and a missing key would silently yield a garbage address) — use "
+                            "dict[str, Ref<" + part->toString() + ">] or wrap the struct in a "
+                            "class instead");
+                    return sema::getUnknownType();
+                }
+            }
             return std::make_shared<sema::DictType>(key, val);
         }
         // `Box[int]`：泛型类按需单态化，类型指向 mangled 实例名。

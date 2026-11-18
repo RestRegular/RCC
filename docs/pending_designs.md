@@ -309,6 +309,14 @@ Error: Cannot determine the object type of method call
    >
    > 实现：`emitIndirectCall` 入口按「变量槽类型 → `inferType` 回退」取被调用者的 `FunctionType`，返回类型为 `TK_STRUCT` 时报 `indirect calls cannot return a struct value ('Pt'); ... call it directly, or return a reference/pointer instead`。回归：`L3-indirect-struct-ret`（编译期报错）、`L3-indirect-scalar-ret`（闭包返回标量不受影响，确认没有误伤间接调用本身）。
 
+4. **容器元素为 struct**（`list[Pt]` / `dict[str, Pt]`）：整个不可用，且比上一条更危险。
+
+   > **2026-11-18 已按用户裁决 A 处理（编译期显式拒绝）**：实测 `var xs: list[Pt] = [Pt(1,2)]` 后，`xs.size()` / `xs[0].x` / `xs.get(0).x` **全部**报 `Cannot determine the object type of attribute access`（容器里 struct 的元素布局、`[]` 取值、字段访问都没接）；而 `var p: Pt = xs[99]` 越界时**静默返回垃圾地址**、不报错 —— 比间接调用 struct 返回更危险，因为那条至少会因类型不匹配报错。
+   >
+   > 裁决理由：①静默错误值不可接受；②`list[Pt]` 在实践中可以用 `list[Ref[Pt]]` 或对象包装替代；③将来有真实需求再实现，那时要定 struct 在堆缓冲区的布局、逐元素拷贝语义、`get()` 返回什么。**否决「仅记录为已知缺口」**。
+   >
+   > 实现：在两个类型解析入口各加一道校验 —— `typeFromLabelNodeNonNull`（变量/形参标注 `var xs: list[Pt]`、`fun f(xs: list[Pt])`）与 `typeFromTypeArgNode`（泛型实参、`func` 签名里的类型位置），命中 `TK_STRUCT` 时报错并指引 `list[Ref<Pt>]` 或对象包装；dict 的键和值同样拦。回归 +4：`L3-list-struct-elem` / `L3-dict-struct-elem` / `L3-param-struct-elem`（三条必须报错）、`L3-container-scalar-elem`（非 struct 元素全部正常，确认没误伤）。
+
 **2026-11-18 补记**：另有三处 struct 返回 ABI 缺陷（泛型 / 重载 / 方法三条调用
 路径没给返回缓冲区留位置，其中方法路径会把 struct 值写进接收者对象本身）
 已修复，详见 `docs/p13_2_status.md`「L3-P」一节。同轮补了 9 条 struct 回归用例
