@@ -70,7 +70,7 @@
 
 ```
 let a = Body.new(Player("Ann", 50, [])) in local     // 当前栈帧，作用域末尾销毁
-let b = pool.add(Player("Bob", 30, []))              // 出生在 pool，pool 结束时销毁
+let b = pool.new[Player]("Bob", 30, [])              // 出生在 pool，pool 结束时销毁
 return Content.new(...) in result                    // 出生在调用者预留的位置
 ```
 
@@ -163,7 +163,7 @@ bob.fill(c)                          // 等价于 pool.move_into(bob, c)；c: X�
 - `move_into` / `fill` 的目标必须是**确定 Empty**；目标为 F 时须先显式 `clear()`（销毁点在 `clear` 调用处）；目标为 `?` 时须先窄化或归一。
 - 函数接收 `Content` 参数 = 消耗它。要保留内容，必须落进某个壳子或 `in result`。
 - Content 不能被引用；需要被引用时，先 `move_into` 一个壳子。
-- `pool.add(x)` 的 `x` 可以是值，也可以是 Content（消耗）。
+- `pool.new[T](...)` 的实参直接喂给 `T` 的构造器；出生地由标签区决定（`var p: T pool = ...`）。
 
 ---
 
@@ -246,14 +246,15 @@ Pool 的壳子地址必须永不改变，不允许整体搬迁的连续数组：
 | 实现 | 特点 |
 |---|---|
 | `Pool.chunked(block: N)`（默认） | 分块追加，旧块不动 |
-| `Pool.fixed(capacity: N)` | 一整块，最快；满了 `add` 返回 `Maybe` |
+| `Pool.fixed(capacity: N)` | 一整块，最快；满了 `pool.new[T]` 中止（abort） |
 | `Pool.boxed()` | 逐个单独分配，最简单 |
 
 ### 6.2 槽位回收
 
 - `pool.release(x)`：回收壳子，槽位可被复用。要求**没有任何活跃引用**（壳子引用、子引用都不行）。
 - **不引入版本号机制**（避免重新引入运行时失效检查）。
-- 不想 release 时，可用 `take` + `fill` 原槽位复用（引用的含义本来就是"这个槽位"），或 `pool.add_reusing(...)` 优先填空槽。
+- 不想 release 时，可用 `take` + `fill` 原槽位复用（引用的含义本来就是"这个槽位"）。
+- **不存在 `pool.add_reusing(...)`**（2026-11-18 用户裁决）：空槽复用是分配器的**内部策略**，不是用户可见原语。用户只持有 Body 句柄，看不到槽地址，也看不到迭代顺序差异，所以「复用空槽」与「追加新槽」对外不可观察，没有成为原语的资格。出生地操作统一走 `pool.new[T](...)`（见 §6.1）。
 
 操作约束一览：
 
@@ -465,7 +466,7 @@ pool.release(bob)
 
 窄化的对象是 **slot**，不是变量。
 
-- **身份已知**：来自 `pool.add(..)` 的结果、`let r2 = r` 的拷贝。窄化对所有这些别名同时生效。
+- **身份已知**：来自 `pool.new[T](..)` 的结果、`var r2 = r` 的拷贝。窄化对所有这些别名同时生效。
 - **身份未知**：来自容器元素、函数返回值。窄化只记在该变量及其拷贝上。
 
 **失效规则**：窄化事实回到 `?`，当且仅当：
@@ -712,8 +713,8 @@ fn step(pool: Take<Pool<Particle>>, cfg: Ref<Config>) {
 fn main() {
     let pool: Pool<Player> = Pool.chunked(block: 64) in local
     let team: List<Ref<Player>> = List.new() in local    // 在 pool 之后声明
-    let ann = pool.add(Player("Ann", 50, []))
-    let bob = pool.add(Player("Bob", 30, []))
+    let ann = pool.new[Player]("Ann", 50, [])
+    let bob = pool.new[Player]("Bob", 30, [])
     team.push(ann); team.push(bob)
 
     heal(ann)                                // F → F
@@ -736,9 +737,9 @@ fn main() {
 
 ```
 let pool: Pool<User> = Pool.chunked(block: 64) in local
-let ann = pool.add(User("Ann"))
-let bob = pool.add(User("Bob"))
-let cat = pool.add(User("Cat"))
+let ann = pool.new[User]("Ann")
+let bob = pool.new[User]("Bob")
+let cat = pool.new[User]("Cat")
 ann.follows.add(bob)
 bob.follows.add(cat)
 cat.follows.add(ann)                         // 环：无需特殊处理，销毁点唯一（pool）

@@ -291,7 +291,11 @@ Error: Cannot determine the object type of method call
 1. `release(x)` 全局函数形态：决议 §6.4 标题写 `release(x)`，但 §2.1 明确方法形态 `pool.release(x)`。实测全局 `release(p)` 能过类型检查但**链接失败**（`undefined reference to 'release'`）。
 
    > **2026-11-18 已按用户裁决 A 处理**：删掉这个伪符号，改为在 `emitFunctionCall` 的裸名分支拦截 —— 未定义过的 `release(...)` 一律编译期报错 `release(x) is not a function; release is a Pool primitive, write it in method form: pool.release(x) (decision L3)`，不再拖到链接阶段。诊断依据是「`release` 不在 `_functionParams` / `_functionReturns` / `_genericFunctions` / `_overloadedNames` 任何一张表里」，所以用户自己写的 `fun release(x: int)` 不受影响（保留名只拦「没定义过」的情况）。不实现全局形态：那要从出生地反推 Pool，等于打开隐式推断 Pool 的口子，与「跨池 release 必须显式」的既有裁决方向相反，且默认出生地的 Body 根本没有 Pool 可反推。回归：`L3-release-bare-name`（编译期报错）、`L3-release-user-func`（同名函数不被误伤）。
-2. `pool.add_reusing(...)`：§3.1 提到"或 `pool.add_reusing(...)` 优先填空槽"，但语法层完全没有。需要确认这是**必做**还是**可选优化**。
+2. `pool.add_reusing(...)`：spec §6.2「槽位回收」提到"或 `pool.add_reusing(...)` 优先填空槽"（原文把位置写成 §3.1，实为 §6.2），但语法层完全没有。
+
+   > **2026-11-18 已按用户裁决 A 处理**：判定为**分配器内部策略**，不是用户可见原语，已从 spec 删掉这个假 API。依据：池的槽位复用对外不可观察（用户只持有 Body 句柄，看不到槽地址，也看不到迭代顺序差异），所以它没有成为用户原语的资格。否决"实现为用户可见原语"：那需要先定义它与出生地操作的语义差异（地址稳定性？迭代顺序？），而这两点 spec 都没说，凭空造语义违反项目硬规则。
+   >
+   > **同轮连带发现（比 add_reusing 严重得多）**：spec 里 `pool.add(...)` 出现了 8 处（§2.2 示例、§3.5、§8.3、§11 示例三连），而 `pool.add` **已被既有裁决砍掉** —— 它违反"出生后地址不变"，由 `pool.new[T](...)` + 出生地标签区取代（见上表「出生地标签区」行）。实测 `p.add(Player("a"))` 直接报 `Cannot determine the object type of method call`，`var a: Player = p.add(...)` 报 `cannot assign a value of type int`。也就是说 spec 通篇用的是一个已被否决的语法。本轮已把 spec 的 8 处全部改为 `pool.new[T](...)`，§6.1 的「满了 `add` 返回 `Maybe`」改为「满了 `pool.new[T]` 中止（abort）」，与 `pending_designs.md` 上表记录的实现状态对齐。
 
 **2026-11-18 补记**：另有三处 struct 返回 ABI 缺陷（泛型 / 重载 / 方法三条调用
 路径没给返回缓冲区留位置，其中方法路径会把 struct 值写进接收者对象本身）
