@@ -479,3 +479,55 @@ var r = f(p, p.mut())   // 报 'p' is in Empty state —— take 已把它移走
 语义错误，是用不了）；`writes[this.x]` 的方法路径没进校验是**校验覆盖
 不全**；`throw` 出口和 try/catch 是**出口枚举不全**（只枚举了正常出口）。
 这些都属实现缺口，不涉语言设计变更。
+
+## L3-M：两处回归修复（2026-11-18，提交 59359cf）
+
+### 1. 泛型类字段的 `T` 被报成未知类型
+
+`validateL0FieldTypes` 用 `_currentGenericParams` 解析字段标签，但那是
+**实例化发射**阶段才被赋值的成员，而本校验发生在 `registerClass` 之前，
+恒为空。于是：
+
+```rio
+class Box[T] { var v: T  ctor(val: T) { this.v = val } }
+// 报 L0-2: unknown type 'T' of field 'v'
+```
+
+这是 L0-2 去伪校验（16c5cf6）引入的回归 —— `test_p10_generics` 的 6 条
+泛型类用例全挂。修法：按**这个类自己**的形参列表（`class Box[T]` 的 `[...]`）
+解析，而不是全局成员。
+
+### 2. drop glue 发 `.globl` 导致与 rt.o 重复定义
+
+`__rio_drop_<mangle>` 是编译器在每个翻译单元内部生成的**私有**辅助函数，
+却发了 `.globl`；而 `release/lib/rt/rt.o` 会链接进**每一个**程序。只要用户
+程序里出现 str / list / dict 变量（几乎必然），两边各定义一份同名全局符号：
+
+```
+ld: ...rt.o:(.text+0xc5e): multiple definition of `__rio_drop_K';
+    ...user.o:(.text+0x36f): first defined here
+```
+
+最小复现：`var s: str = "hi"` 编不过。**早先没暴露**是因为 `rt.o` 是 P13-1
+之前的陈旧产物（不含 drop glue）；重建 rt 层之后才浮出来，属既有缺陷。
+
+修法：不发 `.globl`，各 TU 各持一份局部符号 —— drop glue 是纯函数，重复
+存在没有语义代价。修后 `test_p13_memory` 由 12/28 回到 **28/28**，
+`test_p12_g9g10_str` / `test_p12_g3g4_concat` 等全部恢复。
+
+### 验证
+
+| 套件 | 结果 |
+|---|---|
+| `tests/p13_2_regression.ps1` | 108 / 108 PASS |
+| `tests/_probe/verify_fixes.ps1` | 43 / 43 PASS |
+| `test_scripts/test_p13_memory.ps1` | 28 / 28 PASS |
+| `test_scripts/test_p12_g9g10_str.ps1` | 16 / 16 PASS |
+| `test_scripts/test_p10_generics.ps1` | 31 / 34（余 3 条见下） |
+| 全量 `test_all.ps1` | 25 套件 / 19 通过 |
+
+`test_p10_generics` 剩下的 3 条（`pos_identity_str` / `pos_pair_two_params` /
+`pos_generic_default_str`）与 `test_p11_overload` 的 3 条是**同一个**既有
+问题：`fun identity[T](x: T): T { ret x }` 被 P13-1 的 D9 严格借用规则判成
+「'x' is a borrowed value and cannot be returned」。这是用户 2026-11-17 明确
+裁决的口径（**严格报错、不造近似**），不是回归，也不是本次改动引入。
