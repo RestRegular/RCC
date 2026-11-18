@@ -167,6 +167,43 @@ Test-Case "L3-H ensures 单写 !t 未消费仍报错" "$classP`nfun f(t: Take[Pl
 Test-Case "L3-H ensures 单写 ?t 仍合法" "$classP`nfun f(t: Take[Player]): int ensures[?t] { ret 1 }`nfun main(): void { }" $true ""
 
 Write-Host ""
+Write-Host "=== L3-I：方法子句 + try/catch 状态（决议 §9.2 / §9.3 / §9.4） ==="
+# 方法上的 writes / from / ensures 必须像普通函数一样进校验。
+# 修前 emitClassBodies 既不登记 _functionParamNames、也不设 _currentSignatureClauses，
+# 于是方法上的三种子句整片跳过（普通函数会报，方法静默通过）。
+# 注意这些 fun 必须写在类体内 —— 写在外面就是顶层函数，没有 this。
+$clsHp = "class P2 {`n var name: str`n var hp: int`n ctor(n: str) { this.name = n this.hp = 100 }`n BODY`n}"
+Test-Case "L3-I 方法 writes[zzz.name] 非形参报错" `
+    ($clsHp.Replace('BODY', "fun bad(): int writes[zzz.name] { ret 1 }") + "`nfun main(): void { }") $false "not a parameter"
+# `writes[this.x]` 是决议明文允许的（方法内写自身字段），不能被当成「非形参」拒绝。
+Test-Case "L3-I 方法 writes[this.hp] 合法" `
+    ($clsHp.Replace('BODY', "fun hit(): int writes[this.hp] { this.hp = this.hp - 1 ret this.hp }") + "`nfun main(): void { }") $true ""
+# `writes[o.name]`（o 是方法形参）也须认得出来。
+Test-Case "L3-I 方法 writes[形参.字段] 合法" `
+    ($clsHp.Replace('BODY', "fun cmp(o: P2): bool writes[o.name] { ret this.name == o.name }") + "`nfun main(): void { }") $true ""
+# from[this.x] + ret &this.x：方法里 this 等价于形参，不该报「reference to local 'this'」。
+Test-Case "L3-I 方法 from[this.name] + ret &this.name 合法" `
+    ($clsHp.Replace('BODY', "fun refSelf(): Ref[str] from[this.name] { ret &this.name }") + "`nfun main(): void { }") $true ""
+# 方法上的 from 来源不在声明集合里仍要报错。
+Test-Case "L3-I 方法 ret &this.name 不在 from 集合报错" `
+    ($clsHp.Replace('BODY', "fun refOther(o: P2): Ref[str] from[o.name] { ret &this.name }") + "`nfun main(): void { }") $false "not listed"
+
+# try/catch：catch 之后 Take 形参状态回到 ?，不沿用 try 体的承诺（§9.2）。
+# 修前 try 里 take、catch 后 ret，ensures[!t] 被沿用而通过。
+$tryTakeCatchRet = "$classP`nfun f(t: Take[Player]): int ensures[!t] {`n try {`n  var c = t.take()`n } catch (e: str) {`n  ret 2`n }`n ret 1`n}`nfun main(): void { }"
+Test-Case "L3-I catch 后 ret 不沿用 try 的 take" $tryTakeCatchRet $false "unknown state"
+# 但正常路径不受 catch 分支影响：try 里 take、正常走完后 ret，ensures[!t] 仍成立。
+# 修前若只做 catch 复位不做合流，正常路径会被 catch 写的 ? 盖掉而误报。
+$tryTakeNormalRet = "$classP`nfun f(t: Take[Player]): int ensures[!t] {`n try {`n  var c = t.take()`n } catch (e: str) {`n  throw `"rethrow`"`n }`n ret 1`n}`nfun main(): void { }"
+Test-Case "L3-I 正常路径不受 catch 的 ? 污染" $tryTakeNormalRet $true ""
+# catch 里 ? 态仍可 take（§7.3：Take 形参的 ? 是不透明的）。
+$catchTake = "$classP`nfun f(t: Take[Player]): int ensures[?t] {`n try {`n  var c = t.take()`n } catch (e: str) {`n  var d = t.take()`n  ret 2`n }`n ret 1`n}`nfun main(): void { }"
+Test-Case "L3-I catch 里 ? 态仍可 take" $catchTake $true ""
+# catch 里 ? 态仍可读字段。
+$catchRead = "$classP`nfun f(t: Take[Player]): str ensures[?t] {`n try {`n  var c = t.take()`n  ret `"ok`"`n } catch (e: str) {`n  ret t.name`n }`n}`nfun main(): void { }"
+Test-Case "L3-I catch 里 ? 态仍可读字段" $catchRead $true ""
+
+Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
 Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 if ($script:fail -gt 0) { exit 1 }

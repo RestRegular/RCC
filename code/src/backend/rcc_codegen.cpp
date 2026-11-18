@@ -984,6 +984,14 @@ namespace backend{
         }
     }
     bool CodeGen::isFunctionParam(const std::string& name) const    {
+        // P13-2/L3-I（决议 §9.3/§9.4）：方法里的 `this` 等价于一个形参 ——
+        // `writes[this.x]` 与 `from[this.x]` 是决议明文允许的写法，
+        // 但它既不在形参表里，也不是普通局部变量。修前把它当普通局部：
+        //   fun refSelf(): Ref[str] from[this.name] { ret &this.name }
+        //   → 误报「cannot return a reference to local 'this'」
+        //   fun hit(): int writes[this.hp] { this.hp = this.hp - 1 ... }
+        //   → 被当成「不是形参的路径」
+        if (name == "this" && !_currentClass.empty()) return true;
         const auto it = _functionParamNames.find(_functionName);
         if (it == _functionParamNames.end()) return false;
         for (const auto& p : it->second) if (p == name) return true;
@@ -4826,6 +4834,9 @@ namespace backend{
 
         const std::string resumeLabel = _asm.newLabel("eh_resume");
         const std::string endLabel = _asm.newLabel("eh_end");
+        // P13-2/L3-I：catch 体节点留到后面判发散用（catch 里 ret/throw 时
+        // 这条路径到不了汇合点，不能参与状态合流）。
+        std::shared_ptr<ast::ExpressionNode> catchBodyForDivergence;
 
         // ---- 建立帧 ----
         // prev 由 core_eh_push 填；rbp/rsp 保存当前值；resume 存标签地址。
@@ -4853,10 +4864,16 @@ namespace backend{
 
         // ---- try 体 ----
         pushScope();
+        // P13-2/L3-I（决议 §9.2）：catch 之后 Take 形参状态回到 `?`，不沿用承诺。
+        // 记下 try 体的**入口**快照，异常落地时拿它复原再推成 `?`。
+        const auto tryEntryStates = snapshotMoveStates();
         if (tryNode->getTryBody())        {
             for (const auto& e : tryNode->getTryBody()->getBodyExpressions()) emitStatement(e);
         }
         popScope();
+        // 正常走完这条路径的状态，要在 finally / catch 之前先存下来 ——
+        // 后面两条路径共用一份编译期状态表，不隔离就会互相污染。
+        const auto normalExitStates = snapshotMoveStates();
 
         // 正常走完：先摘掉自己的帧，再跑 finally。
         emitEhPop(frameOffset);
@@ -4879,6 +4896,23 @@ namespace backend{
         _asm.mov(field(32), "%rax");
 
         if (hasCatch)        {
+            // P13-2/L3-I（决议 §9.2）：catch 之后 Take 形参状态回到 `?`。
+            //
+            // 语义：`ensures` 是「正常返回时我保证成这样」的承诺。异常路径上
+            // try 体可能在任何一条语句处中断 —— 它后面那些 take / clear 有没有
+            // 执行过是**不确定**的，所以不能在 catch 里沿用 try 体走完后的状态。
+            // 实测（修前）：try 里 take、catch 后 ret，`ensures[!t]` 被沿用而通过。
+            //
+            // 做法：先用 try 入口快照把状态复原（抹掉 try 体里可能只执行了一半的
+            // 改动），再把**入口时就已经是 Take 形参**的那些变量统一推成 `?`。
+            restoreMoveStates(tryEntryStates);
+            for (auto& [name, state] : _moveStates.back())            {
+                if (_ensuresMarks.count(name) == 0) continue; // 只管 ensures 里的 Take 形参
+                state = BodyState::UNKNOWN;
+                // 入口 `?` 本来就是不透明的，此时不能被当成「合流出来的 ?」拒绝。
+                _opaqueMoveVars.insert(name);
+            }
+            // 决议 §7.3 / §9.2：`?` 对 Take 形参是不透明的 —— 字段/方法/take 仍合法。
             // Rio 的 catch 只有 `catch(e)` 一种形式，没有类型匹配，
             // 所以命中第一个分支即可（多写几个 catch 时后面的永远不生效）。
             const auto& first = catchBodies.front();
@@ -4893,6 +4927,7 @@ namespace backend{
             }
             for (const auto& e : first.second->getBodyExpressions()) emitStatement(e);
             popScope();
+            catchBodyForDivergence = first.second;
         }
 
         // finally 在正常路径和 catch 路径上都要跑。
@@ -4900,6 +4935,30 @@ namespace backend{
             pushScope();
             for (const auto& e : finallyBody->getBodyExpressions()) emitStatement(e);
             popScope();
+        }
+
+        // P13-2/L3-I（决议 §9.2）：把「正常走完」和「异常落地」两条路径的状态合流。
+        //
+        // 两条路径共用同一份编译期状态表，catch 里为 §9.2 推的 `?` 会直接
+        // 盖掉正常路径上已经确定的状态 —— 实测（只做 catch 复位时）：
+        //   try { var c = t.take() } catch (e: str) { throw "rethrow" }
+        //   ret 1
+        // 正常路径上 t 明明是 E，却因为 catch 分支写了 ? 而误报
+        // 「unknown state at function exit」。
+        //
+        // 合流规则与 L3-G 的分支合流一致：任一出口发散则该出口不参与；
+        // 只剩一条路径时直接用它的状态，不会平白升成 ?。
+        if (hasCatch)        {
+            std::vector<MoveStateSnapshot> exits;
+            // 异常路径：catch 体走完之后的状态（已含 catch 里的 take 等改动）。
+            if (!statementDiverges(catchBodyForDivergence))
+                exits.push_back(snapshotMoveStates());
+            // 正常路径：try 体走完后、进 finally 之前存下的那份。
+            exits.push_back(normalExitStates);
+            if (!exits.empty())            {
+                joinMoveStatePaths(exits);
+                refreshOpaqueAfterMerge(exits);
+            }
         }
 
         // 没有 catch：异常必须继续往外传。**finally 已经跑过了**，
@@ -7858,6 +7917,19 @@ namespace backend{
             if (defs.size() >= 2)            {
                 methodSymbolName = mangleOverload(name + "." + mname, paramTypes);
             }
+            // P13-2/L3-I（决议 §9.2/§9.3/§9.4）：方法上的 writes / from / ensures
+            // 子句必须像普通函数一样进校验。
+            //
+            // 修前这里既不登记 _functionParamNames，也不设 _currentSignatureClauses，
+            // 于是三件事同时失效：
+            //   ① validateWritesFromClauses 遍历的是空表 → 方法上的 writes 整片跳过，
+            //      `fun bad(): int writes[zzz.name]` 静默通过（普通函数会报）；
+            //   ② isFunctionParam 查不到形参名（键是符号名，方法从没登记过）→
+            //      `writes[o.name]` 里 o 明明是形参也报「not a parameter」；
+            //   ③ validateEnsuresClauses 同样是空表 → 方法上的 ensures 不生效。
+            // 登记用**发射名**做键，与 _functionParams / _functionParamAnnotated 一致。
+            _functionParamNames[methodSymbolName] = paramNames;
+            _currentSignatureClauses = def ? def->getSignatureClauses() : std::vector<std::shared_ptr<ast::LabelNode>>{};
             emitFunctionBody(methodSymbolName, paramNames, paramTypes, ret,
                              def->getBodyNode(), true, {}, {}, "", true);
           }

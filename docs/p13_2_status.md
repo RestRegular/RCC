@@ -41,14 +41,16 @@
 > 「L3-G」一节。
 > **`throw` 出口不检查 `ensures`、`ensures` 重复项已不在本表**：2026-11-18
 > 已实现，见下文「L3-H」一节。
+> **方法上的 `writes`/`from`/`ensures` 校验、try/catch 后 `Take` 回 `?` 已不在本表**：
+> 2026-11-18 已实现，见下文「L3-I」一节。
 
 | 项 | 决议依据 | 实测表现 |
 |---|---|---|
 | `Link[T][peer][cardinality]` | §7.1、§9.3 的 `release` 前置含 Link 检查 | 类型不存在：`unknown type 'Link' of field` |
 | `clone()`（深拷贝） | §11「拷贝用显式 `clone()`（深拷贝，P13-1 起）」 | `Class Player has no method named 'clone'` |
 | 缺省 `writes` 的函数体推断 | §9.3「用户写的函数：缺省 `writes` 按函数体推断记」 | 退化为「没写就不检查」；用户已明确**暂不补** |
-| `writes[this.x]` 的方法内校验 | §9.3「`writes[this.x]` 允许（方法内写自身字段）」 | 方法上写 `writes[zzz.name]` 不报错（普通函数会报）—— 方法路径整体没进校验 |
-| try/catch 后 `Take` 状态回 `?` | §9.2 | try 里 take、catch 后 `ret`，承诺被沿用（不报错） |
+
+
 
 ### C. 实现缺陷（与决议不符，属 bug）
 
@@ -101,7 +103,7 @@
 | §4.2 writes 调用点效果缺失 | `writes` 只在泛型定义处做形态校验，调用点从不读 | 效果表 + 调用点映射 + §4.1 前缀冲突检查 |
 | take / mut / 字段赋值不查活跃子引用 | 冲突检查只在 `get_mut` / `release` / `clear` 三处 | 三处本地写路径统一走 `checkWriteConflicts` |
 
-验证：`tests/p13_2_regression.ps1` 85 条全 PASS（L3-G 15 条 + L3-H 10 条）；
+验证：`tests/p13_2_regression.ps1` 94 条全 PASS（L3-G 15 + L3-H 10 + L3-I 9 条）；
 `tests/_probe/verify_fixes.ps1` 43 条全 PASS。
 
 ## L3-G：分支 / 循环的状态合流（2026-11-18 实现）
@@ -214,6 +216,74 @@ fun f(t: Take[Player]): int ensures[!t] { throw "x" }   // 只有 throw 一个�
 | `ensures[!t, +t]`（不同状态） | exit=0 静默通过 | 报 more than once |
 | 单写 `!t` 未消费 / 单写 `?t` | 正确 | 正确 |
 
+## L3-I：方法上的子句校验 + try/catch 的 Take 复位（2026-11-18 实现）
+
+### 1. 方法上的 `writes` / `from` / `ensures` 从未进校验
+
+`emitClassBodies` 发射方法体时只调了 `emitFunctionBody`，既没登记
+`_functionParamNames`，也没设 `_currentSignatureClauses`。后果是三件事同时失效：
+
+| 现象 | 根因 |
+|---|---|
+| `fun bad(): int writes[zzz.name]` 静默通过（顶层函数会报） | `validateWritesFromClauses` 遍历空表 |
+| `fun cmp(o: P): bool writes[o.name]` 误报「o 不是形参」 | `isFunctionParam` 的键是符号名，方法从没登记过 |
+| 方法上的 `ensures` 完全不生效 | `validateEnsuresClauses` 同样是空表 |
+
+修法：在 `emitClassBodies` 里用**发射名**做键登记形参名（与 `_functionParams`
+/ `_functionParamAnnotated` 一致），并把 `def->getSignatureClauses()` 装进
+`_currentSignatureClauses` 后再调 `emitFunctionBody`。
+
+同时 `isFunctionParam` 要认得 `this`：决议 §9.3 明文允许 `writes[this.x]`
+（方法内写自身字段），§9.4 的 `from[this.x]` 同理。修前把 `this` 当普通局部：
+
+```rio
+fun refSelf(): Ref[str] from[this.name] { ret &this.name }
+// 误报：cannot return a reference to local 'this'
+```
+
+现在 `this` 在方法体内等价于一个形参（判据：`_currentClass` 非空）。
+
+### 2. try/catch 后 `Take` 形参状态回到 `?`（§9.2）
+
+决议：`ensures` 是「正常返回时我保证成这样」的承诺；异常路径上 try 体可能在
+任何一条语句处中断，后面那些 take / clear 有没有执行过是**不确定**的，
+所以 catch 里不能沿用 try 体走完后的状态。
+
+修前 try 里 take、catch 后 `ret`，`ensures[!t]` 被沿用而通过。
+
+修法：进 catch 前先用 **try 入口快照**复原状态（抹掉可能只执行了一半的改动），
+再把 `ensures` 里那些 Take 形参统一推成 `?`，并加入 `_opaqueMoveVars`
+（`?` 对 Take 形参是不透明的，字段 / 方法 / `take()` 仍合法 —— 与 L3-G 一致）。
+
+### 3. 两条路径必须合流（否则正常路径被污染）
+
+只做 catch 复位会引入新 bug：正常路径和异常路径共用同一份编译期状态表，
+catch 里为 §9.2 写的 `?` 会直接盖掉正常路径上已经确定的状态。
+
+```rio
+fun f(t: Take[Player]): int ensures[!t] {
+ try { var c = t.take() } catch (e: str) { throw "rethrow" }
+ ret 1                                   // 正常路径上 t 明明是 E
+}
+```
+
+实测（只做 catch 复位时）：误报「unknown state at function exit」。
+
+修法：正常路径的状态在进 finally / catch **之前**先快照一份，末尾按 L3-G
+同一套规则合流（发散路径不参与；只剩一条路径时直接用它的状态，不平白升成 `?`）。
+
+### 实测（`tests/p13_2_regression.ps1` L3-I 9 条）
+
+| 用例 | 修前 | 修后 |
+|---|---|---|
+| 方法 `writes[zzz.name]`（非形参） | exit=0 静默通过 | 报 not a parameter |
+| 方法 `writes[this.hp]` | 报 not a parameter | 通过 |
+| 方法 `writes[o.name]`（o 是形参） | 报 not a parameter | 通过 |
+| 方法 `from[this.name]` + `ret &this.name` | 误报 reference to local 'this' | 通过 |
+| 方法 `ret &this.name` 不在 from 集合 | 误报 local 'this' | 报 not listed |
+| catch 后 `ret` 不沿用 try 的 take | exit=0（承诺被沿用） | 报 unknown state |
+| 正常路径不受 catch 的 `?` 污染 | — | 通过 |
+| catch 里 `?` 态仍可 take / 读字段 | — | 通过 |
 ## 未实现项清单（2026-11-18 复核，逐项实测）
 
 > 本节是上文「剩余项与状态」的补充说明。所有结论均由 `tests/_probe/fix/`
