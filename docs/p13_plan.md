@@ -190,6 +190,10 @@ git grep -n "in local\|in result\|in pool" -- code/ lib/                        
 
 ### P13-3：能力类型 `Ref` / `Mut` / `Take`
 
+> **当前状态（2026-11-18 实测）：只完成 1/3。** 三种类型都能作为形参标注
+> 通过解析，但**降级链 `Take → Mut → Ref` 一行都没实现**，三者互不兼容；
+> 规范 §3.3 的 `f(take x)` 实参语法也是语法错误。详见 §9.2。
+
 | 项 | 内容 |
 |---|---|
 | 新增 | 三种能力类型 + 降级规则（只能 Take→Mut→Ref） |
@@ -212,12 +216,20 @@ git grep -n "in local\|in result\|in pool" -- code/ lib/                        
 
 ### P13-6：Pool 与成员集合
 
+> **当前状态（2026-11-18 实测）：基本未实现。** 只有 `Pool` 的类型名识别
+> （`if (name == "Pool")`）；成员集合追踪（重数 `1`/`many`、`*@L`）检索
+> `cardinality` / `membership` **零命中**。
+
 | 项 | 内容 |
 |---|---|
 | 新增 | `Pool` 三档实现、成员集合追踪（重数 `1`/`many`、`*@L`）、`release` 判据 |
 | 验收 | §6.3 原语效果表、§6.4 `release` 判据 |
 
 ### P13-7：Link 成对引用
+
+> **当前状态（2026-11-18 实测）：完全未实现。** `Link` 只存在于 lexer
+> （`TOKEN_LINK`），类型系统里没有这个类型：`var l: Link[int][int][one] = null`
+> 报 `Unknown type 'Link'`。这是 P13 里唯一一个**零代码**的阶段。
 
 | 项 | 内容 |
 |---|---|
@@ -671,11 +683,11 @@ S1 **不阻塞 P13-1**：不批就永远不写这个后缀，语义完全一样�
 | 1b | P13-1 别名的编译期检查（D9 规则 C）：拥有者/借用判定 + 借用逃逸报错 + H/X 状态 | ✅ 已完成 |
 | 1c | P13-1 异常边规则（D13）：`try` 体内禁止移动外层拥有者 + 销毁顺序 | ✅ 已完成 |
 | 2 | P13-1 收尾：ABI v2（header/data 分离 + 移除 `rc`）、`listAppend` 原地追加、`copy` 深拷贝、`test_p13_memory.ps1` | ✅ 已完成（28/28） |
-| 3 | P13-2 Body/Content + `in pool` + 值语义 struct + Maybe 窄化（完整版） | 🟡 裁决已定（D19 / Q1：突破内置类型边界）；⏸ **Q2/Q3/Q4 语法设计待用户提供文档，未到不得实施** |
-| 4 | P13-3 `Ref`/`Mut`/`Take` | ⬜ |
-| 5 | P13-4 子引用 + P13-5 签名标注 | ⬜ |
-| 6 | P13-6 Pool/成员集合 | ⬜ |
-| 7 | P13-7 Link | ⬜ |
+| 3 | P13-2 Body/Content + `in pool` + 值语义 struct + Maybe 窄化（完整版） | ✅ 已完成（153 + 43 用例；A–E 五项裁决全部实施，E 项按裁决推迟） |
+| 4 | P13-3 `Ref`/`Mut`/`Take` | 🟡 **只完成 1/3**：`Ref` 可用；降级链未接通（详见 §9.2） |
+| 5 | P13-4 子引用 + P13-5 签名标注 | 🟡 **部分完成**：路径冲突检查与 `writes`/`from`/`ensures` 已可用，`dict.clone()` 等仍缺 |
+| 6 | P13-6 Pool/成员集合 | ⬜ 只有 `Pool` 类型名识别，成员集合追踪未实现 |
+| 7 | P13-7 Link | ⬜ **完全未实现**：只有 lexer 的 `TOKEN_LINK`，类型系统无 `Link` |
 | — | P13-8 并发 → **建议推 P14** | ⏸ |
 
 **G6 插入点**：会话 4（P13-3）完成后可启动。
@@ -744,6 +756,58 @@ S1 **不阻塞 P13-1**：不批就永远不写这个后缀，语义完全一样�
 |---|---|
 | `for` 遍历期间禁止增删 | D6 + D12 的配套保守规则，**当前没有静态落点**：Rio 没有 `for-in` 语法（`buildForExpression` 只接受 C 风格 `for ({init};{cond};{update})`），所以「遍历某变量」这件事在语法层不存在，也就无处检查。规则保留给 P13-4（那时 `ds.iter` 的子引用路径会让「遍历」变成可判定的）。`listAppend` 已能原地追加，`for` 循环里追加**不会崩**（header 不变、data 换块），只是语义上可能漏元素 |
 | `core_win64.c` | `core.rio` 头部注释提到「汇编 + 少量 `core_win64.c`」，但仓库里只有 `.s`。注释与事实不符，属文档欠账 |
+
+
+### 9.2 全阶段真实进度盘点（2026-11-18 实测）
+
+> 上一版把 P13-2 记作「待实施」、P13-3 之后一律记作空白，与事实不符。
+> 本节是**逐阶段实测**的结果（探针 + 源码检索 + 用例计数），用于回答
+> 「P13 到底做完没有」。结论：**P13-2 已完成，P13 整体约完成一半**。
+
+| 阶段 | 判定 | 实测依据 |
+|---|---|---|
+| P13-0 | ✅ 完成 | D1–D19 全部裁决 |
+| P13-1 | ✅ 完成 | `p13-memory` 28 用例；drop glue / `core_free` / ABI v2 |
+| P13-2 | ✅ 完成 | `p13-2-regression` 153 + `p13-verify-fixes` 43 用例 |
+| P13-3 | ⚠️ **1/3** | 只有 `Ref` 可用；降级链未接通（见下） |
+| P13-4 | ⚠️ 部分 | 路径前缀冲突检查已生效；`dict` 深拷贝等仍缺 |
+| P13-5 | ⚠️ 部分 | `writes` / `from` / `ensures` 可用；缺省 `writes` 推断未做 |
+| P13-6 | ❌ 未实现 | 只有 `if (name == "Pool")` 的类型名识别 |
+| P13-7 | ❌ 未实现 | 只有 lexer `TOKEN_LINK`，类型系统无 `Link` |
+| P13-8 | ⏸ 推 P14 | 已裁决 |
+
+#### P13-3 的具体缺口：能力类型的降级链没接通
+
+规范 §3.2 规定三种能力类型只能**降级**（`Take → Mut → Ref`），§3.3 规定
+`Take` 实参语法是 `f(take x)`。实测：
+
+| 写法 | 结果 |
+|---|---|
+| `fun show(p: Ref[Player]): str { ret p.name }` + `show(&p)` | ✅ 输出 `bob` |
+| `fun heal(p: Mut[Player])` + `heal(&p)` | ❌ `cannot assign Ref[Player] to Mut[Player]: different memory roles` |
+| `fun eat(p: Take[Player])` + `eat(take p)` | ❌ `Compilation failed: syntax errors`（`take` 不是语法） |
+| `fun eat(p: Take[Player])` + `eat(p.take())` | ❌ `cannot assign Content[Player] to Take[Player]` |
+
+也就是说：**三种能力类型目前互不兼容**，规范里的降级链一行都没实现。
+唯一可用的 `Take` 入口是 Content 的 `x.take()`（取内容，不是能力类型实参），
+而 `Mut` 目前只能从容器的 `get_mut()` 拿到，无法从 `&x` 转换。
+
+#### P13-6 / P13-7 的证据
+
+- 成员集合追踪：检索 `cardinality` / `membership` / `重数`，**零命中**。
+- `Link`：`code/src/rcc_base.cpp` 与 `rcc_core.cpp` 里有 `TOKEN_LINK`，
+  但 `var l: Link[int][int][one] = null` 报 `Unknown type 'Link'`。
+
+#### 附带发现的小缺陷（未修）
+
+```rio
+fun refSelf(): Ref[str] from[this.name] { ret &this.name }
+var r = p.refSelf()
+sout(r)     // 输出 0x0000019ba2d39040，不是字符串内容
+```
+
+`Ref[str]` 传给 `sout` 时打印指针地址而非内容。属于 P13-3 能力类型的
+表示问题（引用值与内容值的区分），留到接通降级链时一并处理。
 
 
 ---
