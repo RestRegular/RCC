@@ -1,0 +1,9 @@
+// 裁决（2026-11-18 用户裁决 A）：裸名 release(x) 是保留名，不是函数。
+// 修前会一路生成 `call release`，直到链接阶段才炸 undefined reference，
+// 用户看到的信息指不到正确写法。现在必须编译期就报错并给出方法形式。
+fun main(): void {
+    var pool: Pool = Pool.fixed(4)
+    var a = 1
+    release(a)
+}
+main()

@@ -1,9 +1,9 @@
-# P13-2 回归
+﻿# P13-2 回归
 
-P13-2 已实施成果回归：语法/类型/所有权/生命周期各层的编译期行为，以及决议 A（值语义 struct）与决议 C（条件销毁放行）的运行期行为（145 条）。
+P13-2 已实施成果回归：语法/类型/所有权/生命周期各层的编译期行为，以及决议 A（值语义 struct）与决议 C（条件销毁放行）的运行期行为（147 条）。
 
 - 类型: regression
-- 用例数: 145
+- 用例数: 147
 - 入口: `execute.ps1`（转接 `tests/agent/_shared/driver.ps1`）
 
 ## compileOnly
@@ -27,6 +27,8 @@ P13-2 已实施成果回归：语法/类型/所有权/生命周期各层的编�
 | `L3-struct-ret-method` | 方法返回 struct，且不破坏接收者对象 |
 | `L3-struct-ret-method-spill` | 方法返回 struct 且实参跨越寄存器/栈边界 |
 | `L3-struct-scalar-fields` | `int`/`float`/`bool`/`char` 四种标量字段 |
+| `L3-release-bare-name` | 裸名 `release(x)` 是保留名，编译期报错并指到 `pool.release(x)` |
+| `L3-release-user-func` | 用户自定义同名函数不被保留名误伤 |
 
 后四条是 2026-11-18 修掉的三处 ABI 缺陷的回归：泛型路径、重载路径、方法路径都没有给返回缓冲区留位置（方法路径还让 `this` 和 `__p5_retbuf` 撞同一个寄存器，`ret p` 会把 struct 值写进接收者对象本身）。
 

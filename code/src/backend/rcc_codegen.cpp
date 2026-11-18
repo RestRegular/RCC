@@ -8952,6 +8952,30 @@ namespace backend
             }
             else
             {
+                // 决议（2026-11-18 用户裁决 A）：`release(x)` 是保留名，不是函数。
+                //
+                // release 只有方法形式 `pool.release(x)`（docs/memory-model-syntax-
+                // resolutions.md §10.3）。修前裸名 `release(p)` 会落到下面的直接
+                // 调用路径，代码生成照常发 `call release`，直到**链接阶段**才炸
+                // `undefined reference to 'release'` —— 用户看到的是「我是不是忘了
+                // 定义 release 函数」，完全指不到正确写法。
+                //
+                // 这里把诊断前移到编译期。不实现「从出生地反推 Pool」的全局形式：
+                // 那等于打开隐式推断 Pool 的口子，与「跨池 release 必须显式」的
+                // 既有裁决方向相反，且默认出生地的 Body 根本没有 Pool 可反推。
+                //
+                // 只拦「没定义过」的情况：用户真写了 `fun release(x: int)` 时
+                // 那就是他自己的函数，不能被保留名误伤（走下面的正常调用）。
+                if (n == "release" && _functionParams.find("release") == _functionParams.end() &&
+                    _functionReturns.find("release") == _functionReturns.end() &&
+                    _genericFunctions.find("release") == _genericFunctions.end() &&
+                    _overloadedNames.find("release") == _overloadedNames.end())
+                {
+                    failAt(node->getPos(),
+                           "release(x) is not a function; release is a Pool primitive, "
+                           "write it in method form: pool.release(x) (decision L3)");
+                    return;
+                }
                 // P13-2（docs/p13_2_status.md §B）：自由函数形式 `clone(x)`。
                 // 与 `x.clone()` 等价，都是把借用转成拥有（见 emitMethodCall
                 // 里 clone 的派发规则）。必须有这一支：泛型函数体里

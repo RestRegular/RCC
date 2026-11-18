@@ -1,4 +1,4 @@
-{
+﻿{
     "cases":  [
                   {
                       "id":  "L0-1",
@@ -994,6 +994,19 @@
                       "expectFailure":  true,
                       "mustMatch":  "the command line switch -allow-cond-destroy is not enabled",
                       "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-release-bare-name",
+                      "file":  "code/L3-release-bare-name.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "release(x) is not a function",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-release-user-func",
+                      "file":  "code/L3-release-user-func.rio",
+                      "expect":  "42"
                   }
               ]
 }

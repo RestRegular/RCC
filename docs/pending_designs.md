@@ -1,4 +1,4 @@
-# 设计裁决记录（原「待设计项清单」）
+﻿# 设计裁决记录（原「待设计项清单」）
 
 > 原生成时间：2026-11-18；改写时间：2026-11-18。
 > 性质：**已裁决**。A–E 五项由用户于 2026-11-18 逐项讨论确认，逐条结论见各节「用户裁决」小节。
@@ -284,11 +284,13 @@ Error: Cannot determine the object type of method call
 | 四态状态格 | E/F/H/X 是**编译期事实表**，不是运行时元数据（**不是 ABI 变更**） | ✅ 已实现 |
 | take 挂起态 | `pending_take` 集合；同一语句 = 同一 AST 节点；独立 take 警告不阻断 | ✅ 独立 `take()` 出 warning；挂起态检查工作 |
 | 子引用 / NLL | 路径穿透引用展开；过程内 NLL + 跨函数保守 | ✅ `var r: Ref[str] = &p.name` 工作 |
-| 签名标注校验 | `ensures` 逐出口、`from` 子集、`writes` 泛型上界 | ✅ 145 条回归全过 |
+| 签名标注校验 | `ensures` 逐出口、`from` 子集、`writes` 泛型上界 | ✅ 147 条回归全过 |
 
 **另外两处实现与决议不一致，已记为待修缺陷（不涉设计，不需要裁决）**：
 
-1. `release(x)` 全局函数形态：决议 §6.4 标题写 `release(x)`，但 §2.1 明确方法形态 `pool.release(x)`。实测全局 `release(p)` 能过类型检查但**链接失败**（`undefined reference to 'release'`）。应删掉这个伪符号或补上实现。
+1. `release(x)` 全局函数形态：决议 §6.4 标题写 `release(x)`，但 §2.1 明确方法形态 `pool.release(x)`。实测全局 `release(p)` 能过类型检查但**链接失败**（`undefined reference to 'release'`）。
+
+   > **2026-11-18 已按用户裁决 A 处理**：删掉这个伪符号，改为在 `emitFunctionCall` 的裸名分支拦截 —— 未定义过的 `release(...)` 一律编译期报错 `release(x) is not a function; release is a Pool primitive, write it in method form: pool.release(x) (decision L3)`，不再拖到链接阶段。诊断依据是「`release` 不在 `_functionParams` / `_functionReturns` / `_genericFunctions` / `_overloadedNames` 任何一张表里」，所以用户自己写的 `fun release(x: int)` 不受影响（保留名只拦「没定义过」的情况）。不实现全局形态：那要从出生地反推 Pool，等于打开隐式推断 Pool 的口子，与「跨池 release 必须显式」的既有裁决方向相反，且默认出生地的 Body 根本没有 Pool 可反推。回归：`L3-release-bare-name`（编译期报错）、`L3-release-user-func`（同名函数不被误伤）。
 2. `pool.add_reusing(...)`：§3.1 提到"或 `pool.add_reusing(...)` 优先填空槽"，但语法层完全没有。需要确认这是**必做**还是**可选优化**。
 
 **2026-11-18 补记**：另有三处 struct 返回 ABI 缺陷（泛型 / 重载 / 方法三条调用
