@@ -7,7 +7,7 @@
     "description":  "函数定义、调用、默认参数、递归、返回值",
     "entry":  "execute.ps1",
     "timeoutSec":  300,
-    "caseCount":  10,
+    "caseCount":  13,
     "expected":  {
                      "exitCode":  0,
                      "outputFile":  "expected/output.txt",

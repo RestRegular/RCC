@@ -1,0 +1,23 @@
+// 2026-11-18 用户裁决 A：闭包可以比外层栈帧活得久。
+//
+// 这是「必须装箱到堆上」的理由：makeCounter 返回后它自己的栈帧就没了，
+// 如果捕获变量还留在那块栈内存里，闭包下次调用就会读到被别人覆盖的
+// 垃圾（甚至直接崩溃）。装箱到堆上之后，堆块独立于栈帧存活。
+//
+// 这里连续造两个独立计数器，验证它们各自的堆块互不干扰。
+fun makeCounter(start: int): func[][int] {
+    var n: int = start
+    ret () -> {
+        n += 1
+        ret n
+    }
+}
+fun main(): void {
+    var a = makeCounter(10)
+    var b = makeCounter(100)
+    sout(a())
+    sout(b())
+    sout(a())
+    sout(b())
+}
+main()

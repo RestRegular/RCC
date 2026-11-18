@@ -49,6 +49,21 @@
                       "id":  "anon_multi_args",
                       "file":  "code/anon_multi_args.rio",
                       "expect":  "30"
+                  },
+                  {
+                      "id":  "anon_capture_writeback",
+                      "file":  "code/anon_capture_writeback.rio",
+                      "expect":  "1\n2\n3"
+                  },
+                  {
+                      "id":  "anon_capture_shared",
+                      "file":  "code/anon_capture_shared.rio",
+                      "expect":  "1\n1\n2\n2"
+                  },
+                  {
+                      "id":  "anon_capture_outlives_frame",
+                      "file":  "code/anon_capture_outlives_frame.rio",
+                      "expect":  "11\n101\n12\n102"
                   }
               ]
 }

@@ -3013,6 +3013,48 @@ namespace backend
             return slot.globalLabel + "(%rip)";
         return std::to_string(slot.stackOffset) + "(%rbp)";
     }
+    bool CodeGen::isBoxed(const VarSlot& slot)
+    {
+        return slot.boxed;
+    }
+    void CodeGen::emitValueAddr(const VarSlot& slot)
+    {
+        // 普通槽：值的地址就是槽本身的地址，直接 lea。
+        // 装箱槽：槽里存的是堆块地址，值在堆块里，所以要 load 一次。
+        if (!slot.boxed)
+        {
+            _asm.lea(addrOf(slot), "%rax");
+            return;
+        }
+        _asm.mov(addrOf(slot), "%rax");
+    }
+    void CodeGen::boxCapturedVar(const std::string& name)
+    {
+        // 2026-11-18 用户裁决 A：闭包按引用捕获。
+        //
+        // 把变量搬进堆块，栈槽改存堆块地址。之后闭包体与外层都通过这个
+        // 地址读写同一份值，于是 `n += 1` 能真正写回。
+        //
+        // 必须装箱而不是直接用栈地址：闭包可能比栈帧活得久
+        // （makeCounter 返回后外层帧就没了）。
+        auto* slot = lookupVar(name);
+        if (!slot || slot->boxed)
+            return;
+        const auto type = slot->type ? slot->type : sema::getIntType();
+        const size_t bytes = type->getSize() < 8 ? 8 : ((type->getSize() + 7) & ~static_cast<size_t>(7));
+        // 分配堆块。旧值此刻还在栈槽里，core_alloc 不会碰我们的帧，
+        // 所以调用后再从槽里取旧值即可，不需要提前保存到别处。
+        _asm.movImm(static_cast<long long>(bytes), "%rcx");
+        _asm.movImm(8, "%rdx");
+        _asm.subRsp(32);
+        _asm.call("core_alloc");
+        _asm.addRsp(32);
+        // %rax = 新堆块。把旧值拷进去，再把堆块地址存回栈槽。
+        _asm.mov(addrOf(*slot), "%rcx");
+        _asm.inst("movq", "%rcx", "(%rax)");
+        _asm.mov("%rax", addrOf(*slot));
+        slot->boxed = true;
+    }
     std::string CodeGen::allocateGlobal(const std::string& name, const sema::TypePtr& type, size_t size)
     {
         // 全局槽必须至少 8 字节，保证对齐；.bss 天然零初始化，
@@ -4618,6 +4660,16 @@ namespace backend
                        "(P13-2: fill it first if Empty)");
             return;
         }
+        // 2026-11-18 用户裁决 A：装箱槽（被闭包按引用捕获）里存的是堆块
+        // 地址，值在堆块里。先解引用拿到值的地址，再按类型加载。
+        if (slot->boxed)
+        {
+            _asm.mov(addrOf(*slot), "%rax");
+            if (slot->type && slot->type->isFloat())
+                _asm.inst("movsd", "(%rax)", "%xmm0");
+            _asm.mov("(%rax)", "%rax");
+            return;
+        }
         const std::string src = addrOf(*slot);
         // 决议 A：struct 变量在表达式里的「值」是它那块内存的**地址**
         // （见 emitStructConstructor / emitStructCopy 的约定）。
@@ -5014,7 +5066,10 @@ namespace backend
             fail("Undefined variable in ++/--: " + id->getName());
             return;
         }
-        const std::string addr = addrOf(*slot);
+        // 2026-11-18 用户裁决 A：装箱槽里存的是堆块地址，读写都要经过它。
+        const std::string addr = slot->boxed ? std::string("(%r11)") : addrOf(*slot);
+        if (slot->boxed)
+            _asm.mov(addrOf(*slot), "%r11");
         _asm.mov(addr, "%rax");
         if (postfix->getPostfixType() == ast::NodeType::INCREMENT)
         {
@@ -5099,7 +5154,17 @@ namespace backend
             fail("Undefined variable in compound assignment: " + id->getName());
             return;
         }
-        const std::string addr = addrOf(*slot);
+        // 2026-11-18 用户裁决 A：装箱槽里存的是堆块地址，读写都要经过它。
+        // 把堆块地址常驻 %r11，addr 指向堆块内的值。下面多处会 call
+        // （emitStrConcat / emitListConcat 等），%r11 是调用者保存寄存器，
+        // 所以每次 call 之后都要重新装载 —— 用 lambda 统一处理。
+        const bool boxedSlot = slot->boxed;
+        auto reloadAddr = [&]() {
+            if (boxedSlot)
+                _asm.mov(addrOf(*slot), "%r11");
+        };
+        reloadAddr();
+        const std::string addr = boxedSlot ? std::string("(%r11)") : addrOf(*slot);
         // P12/G4：`s += "x"` / `l += [v]` 与 `s = s + "x"` 同义，必须走拼接而不是
         // 整数加法 —— 否则两个指针相加，写回后一读就崩（G3/G4 只在 emitBinary
         // 的 TOKEN_PLUS 分支处理了拼接，复合赋值是另一条路径）。
@@ -5167,6 +5232,8 @@ namespace backend
             {
                 emitListConcat(lhsSlot, rhsSlot);
             }
+            // 拼接调用破坏了 %r11，写回前重新装载堆块地址。
+            reloadAddr();
             _asm.mov("%rax", addr);
             return;
         }
@@ -5208,6 +5275,7 @@ namespace backend
             fail("Unsupported compound assignment: " + infix->getOpToken().getValue());
             return;
         }
+        reloadAddr();
         _asm.mov("%rax", addr);
     }
     void CodeGen::emitAssignment(const std::shared_ptr<ast::ExpressionNode>& node)
@@ -5277,7 +5345,18 @@ namespace backend
         emitExpression(rhs);
         if (hasFailed())
             return;
-        const std::string dest = addrOf(*slot);
+        // 2026-11-18 用户裁决 A：装箱槽里存的是堆块地址，赋值要写进堆块。
+        //
+        // 这里把堆块地址取进 %r11。注意 %r11 是**调用者保存**寄存器，
+        // 下面的 drop 调用会破坏它 —— 所以 drop 之后必须重新取一次
+        // （见 dropFn 调用之后的 reloadBoxedDest）。
+        const bool boxedDest = slot->boxed;
+        auto reloadBoxedDest = [&]() {
+            if (boxedDest)
+                _asm.mov(addrOf(*slot), "%r11");
+        };
+        reloadBoxedDest();
+        const std::string dest = boxedDest ? std::string("(%r11)") : addrOf(*slot);
         const auto rhsType = inferType(rhs);
         // P9：赋值是「把值塞进一个有静态类型的槽」，必须检查。
         // 之前 `var x = 1` 之后 `x = "str"` 会把字符串指针塞进整型槽，
@@ -5315,10 +5394,15 @@ namespace backend
                 _asm.inst("movsd", "%xmm0", savedSlot);
             else
                 _asm.mov("%rax", savedSlot);
-            _asm.lea(dest, "%rcx");
+            if (slot->boxed)
+                _asm.mov("%r11", "%rcx");
+            else
+                _asm.lea(dest, "%rcx");
             _asm.subRsp(32);
             _asm.call(dropFn);
             _asm.addRsp(32);
+            // drop 调用破坏了 %r11（调用者保存寄存器），重新装载堆块地址。
+            reloadBoxedDest();
             // drop 已把槽写成 null，重新装回右值
             if (srcFloat2)
                 _asm.inst("movsd", savedSlot, "%xmm0");
@@ -8743,9 +8827,15 @@ namespace backend
             _asm.lea(closureLabel + "(%rip)", "%rax");
             return;
         }
-        // 有捕获：运行时分配一个 { fnptr, env } 块，再把捕获值写进 env。
-        // 布局：[0]=fnptr, [8]=env 指针, [16..]=捕获值（每项 8 字节）。
-        // 这样 env 也能被内层闭包继续捕获（多层闭包按值传递）。
+        // 有捕获：运行时分配一个 { fnptr, env } 块，再把捕获变量的
+        // **地址**写进 env（2026-11-18 用户裁决 A：按引用捕获）。
+        //
+        // 先把每个被捕获变量装箱到堆上（boxCapturedVar 幂等）。必须放在
+        // 分配闭包块之前：装箱会 call core_alloc，而闭包块地址正压在栈上，
+        // 提前装箱可避免嵌套调用期间帧错位。
+        for (const auto& nm : capturedNames)
+            boxCapturedVar(nm);
+        // 布局：[0]=fnptr, [8]=env 指针, [16..]=捕获变量的地址（每项 8 字节）。
         const size_t envBytes = capturedNames.size() * 8;
         _asm.movImm(static_cast<long long>(16 + envBytes), "%rcx");
         _asm.movImm(8, "%rdx");
@@ -8760,12 +8850,13 @@ namespace backend
         // [8] = env = 块内 16 字节处
         _asm.lea("16(%rax)", "%rcx");
         _asm.inst("movq", "%rcx", "8(%rax)");
-        // 逐项拷贝捕获值
+        // 逐项写入捕获变量的**地址**
         for (size_t i = 0; i < capturedNames.size(); ++i)
         {
             const auto slot = lookupVar(capturedNames[i]);
             if (!slot)
                 continue;
+            // 装箱后槽里存的就是堆块地址，直接拷这个指针进 env。
             const std::string src = addrOf(*slot);
             const std::string dst = std::to_string(16 + i * 8) + "(%rax)";
             _asm.inst("movq", src, "%rcx");
@@ -13875,6 +13966,12 @@ namespace backend
             const std::string slot = std::to_string(offset) + "(%rbp)";
             _asm.inst("movq", std::to_string(i * 8) + "(%r10)", "%rax");
             _asm.inst("movq", "%rax", slot);
+            // 2026-11-18 用户裁决 A：按引用捕获。
+            // env 里存的是捕获变量的**地址**（指向堆块），所以这个本地槽
+            // 装的是指针，必须标记 boxed —— 之后所有取值/赋值都会先解引用，
+            // 与外层看到的是同一份值，`n += 1` 才能写回。
+            if (auto* capturedSlot = lookupVar(capturedNames[i]))
+                capturedSlot->boxed = true;
         }
         // 函数体
         if (bodyNode)

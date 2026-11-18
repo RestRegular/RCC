@@ -656,6 +656,16 @@ namespace backend
             // P12/G1a：顶层 `var` 不再占栈槽，而是放进 .bss 的全局槽。
             // 非空时 stackOffset 无意义，取地址一律走 addrOf()。
             std::string globalLabel;
+            // 2026-11-18 用户裁决 A：被闭包捕获的变量要「按引用」共享。
+            //
+            // 为什么必须装箱到堆上、而不是直接指向栈槽：闭包可以比外层栈帧
+            // 活得久（`fun makeCounter(): func[][int] { var n = 0  ret () -> {...} }`
+            // 返回时外层帧就没了），指向栈槽的引用会立刻悬空。所以捕获时把
+            // 变量搬进一块堆内存，栈槽改为存放**那个堆块的地址**。
+            //
+            // 置位后该槽存的是指针，取值/赋值都要多一次解引用，
+            // 一律走 valueOperand()，不要再用 addrOf() 直接当值地址。
+            bool boxed = false;
             [[nodiscard]] bool isGlobal() const { return !globalLabel.empty(); }
         };
 
@@ -667,6 +677,17 @@ namespace backend
         std::string allocateGlobal(const std::string& name, const sema::TypePtr& type, size_t size);
         // 把一个槽变成可直接嵌进指令的操作数地址（`-8(%rbp)` 或 `_g_x(%rip)`）。
         [[nodiscard]] static std::string addrOf(const VarSlot& slot);
+        // 槽里**值的地址**：普通槽就是 addrOf；装箱槽要先从槽里取出堆指针。
+        // 装箱后 `addrOf(slot)` 指向的是「存指针的那个栈格」，不是值本身，
+        // 直接拿它当值地址会读到指针而不是值。凡是「读写变量的值」都必须
+        // 用这个，只有「读写那个指针本身」才用 addrOf。
+        // 返回的是内存操作数；装箱情形需要先装进寄存器，因此额外提供
+        // materializeBoxedAddr() 把地址放进 %rax。
+        [[nodiscard]] static bool isBoxed(const VarSlot& slot);
+        // 把「值的地址」装进 %rax（装箱槽多一次 load）。调用后 %rax = 值地址。
+        void emitValueAddr(const VarSlot& slot);
+        // 把被闭包捕获的变量装箱到堆上（幂等：已装箱则直接返回）。
+        void boxCapturedVar(const std::string& name);
 
         // ---------- 辅助 ----------
         [[nodiscard]] sema::TypePtr inferType(const std::shared_ptr<ast::ExpressionNode>& node) const;
