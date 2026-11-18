@@ -826,6 +826,57 @@ namespace backend{
         }
         return false;
     }
+    void CodeGen::collectEnsuresItems(const std::shared_ptr<ast::ExpressionNode>& node,
+                                      std::optional<BodyState> inherited,
+                                      std::vector<std::pair<std::string, std::optional<BodyState>>>& out)    {
+        // P13-2/L3-H（决议 §9.2）：`ensures` 的展平不能直接用 flattenTypeArgs。
+        //
+        // 原因：`!` / `?` / `+` 是前缀运算符，而 parser 让前缀的优先级**低于**逗号，
+        // 所以 `ensures[!t, !t]` 被解析成 `!(t, !t)` —— 整个 `t, !t` 是 `!` 的操作数。
+        // 直接展平只会看到一个节点，名字解析为空后被静默跳过，于是整条子句
+        // 既不登记也不报错。实测（修前）：`ensures[!t, !t]` 与 `ensures[?t, ?t]`
+        // 都 exit=0，而 `ensures[!t]` 单写却能正确报错。
+        //
+        // 正确做法：把「前缀标记」当作**继承状态**往下传，逗号每一项各自继承，
+        // 这样 `!(t, !t)` 会被还原成 `(!t, !t)`。
+        if (!node) return;
+        if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))        {
+            if (infix->getOpToken().getType() == core::TokenType::TOKEN_COMMA)            {
+                collectEnsuresItems(infix->getLeftNode(), inherited, out);
+                collectEnsuresItems(infix->getRightNode(), inherited, out);
+                return;
+            }
+        }
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))        {
+            collectEnsuresItems(paren->getRangerNode(), inherited, out);
+            return;
+        }
+        if (const auto list = std::dynamic_pointer_cast<ast::ListExpressionNode>(node))        {
+            collectEnsuresItems(list->getBodyNode(), inherited, out);
+            return;
+        }
+        if (const auto unary = std::dynamic_pointer_cast<ast::UnaryExpressionNode>(node))        {
+            const auto op = unary->getOpToken().getType();
+            const auto st = (op == core::TokenType::TOKEN_NOT)
+                                ? BodyState::EMPTY :
+                                (op == core::TokenType::TOKEN_QUESTION ? BodyState::UNKNOWN : BodyState::FULL);
+            collectEnsuresItems(unary->getRightNode(), st, out);
+            return;
+        }
+        if (const auto prefix = std::dynamic_pointer_cast<ast::PrefixExpressionNode>(node))        {
+            const auto op = prefix->getMainToken().getType();
+            const auto st = (op == core::TokenType::TOKEN_NOT)
+                                ? BodyState::EMPTY :
+                                (op == core::TokenType::TOKEN_QUESTION ? BodyState::UNKNOWN : BodyState::FULL);
+            collectEnsuresItems(prefix->getNode(), st, out);
+            return;
+        }
+        std::string name;
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node)) name = id->getName();
+        else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(node)) name = lbl->getFullLabel();
+        if (name.empty()) return;
+        out.emplace_back(name, inherited);
+    }
     void CodeGen::validateEnsuresClauses(const std::vector<std::string>& paramNames,
                                          const std::vector<sema::TypePtr>& paramTypes)    {
         _ensuresMarks.clear();
@@ -833,42 +884,18 @@ namespace backend{
             if (!clause || clause->getFullLabel() != "ensures") continue;
             const auto des = clause->getLabelDesNodes();
             if (des.empty() || !des[0] || !des[0]->getBodyNode()) continue;
-            // 展平 ensures[a, ?b, !c] 的每一项
-            std::vector<std::shared_ptr<ast::ExpressionNode>> items;
-            flattenTypeArgs(des[0]->getBodyNode(), items);
-            for (const auto& item : items)            {
-                std::string name;
-                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(item))            {
-                    name = id->getName();
-                } else if (const auto unary = std::dynamic_pointer_cast<ast::UnaryExpressionNode>(item))            {
-                    // +a / ?a / !a：取操作数的标识符名（前缀是标记）
-                    const auto op = unary->getOpToken().getType();
-                    const auto rhs = unary->getRightNode();
-                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(rhs)) name = id->getName();
-                    else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(rhs)) name = lbl->getFullLabel();
-                    // 决议 §9.2：!a = Empty，+a/裸名 = Full
-                    if (!name.empty())
-                        _ensuresMarks[name] = (op == core::TokenType::TOKEN_NOT)
-                            ? BodyState::EMPTY :
-                            (op == core::TokenType::TOKEN_QUESTION ? BodyState::UNKNOWN : BodyState::FULL);
-                } else if (const auto prefix = std::dynamic_pointer_cast<ast::PrefixExpressionNode>(item))            {
-                    // P13-2/L3-F（决议 §9.2）：`+a` 走的是 PrefixExpressionNode，
-                    // 不是 UnaryExpressionNode（`!a` / `?a` 才是）。修前只匹配了
-                    // Unary，`ensures[+t]` 被整项静默丢弃 —— 既不登记也不报错，
-                    // 于是 ensures[+p]（p 非 Take）、ensures[+zzz]（无此形参）
-                    // 全都 exit=0 通过。
-                    const auto op = prefix->getMainToken().getType();
-                    if (const auto rhs = prefix->getNode())                    {
-                        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(rhs)) name = id->getName();
-                        else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(rhs)) name = lbl->getFullLabel();
-                    }
-                    if (!name.empty())                        _ensuresMarks[name] = (op == core::TokenType::TOKEN_NOT)
-                            ? BodyState::EMPTY :
-                            (op == core::TokenType::TOKEN_QUESTION ? BodyState::UNKNOWN : BodyState::FULL);
-                } else if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(item))            {
-                    name = lbl->getFullLabel();
+            std::vector<std::pair<std::string, std::optional<BodyState>>> items;
+            collectEnsuresItems(des[0]->getBodyNode(), std::nullopt, items);
+            for (const auto& [name, explicitState] : items)            {
+                // 决议 §9.2：每条形参只能有一个状态。修前 `ensures[!t, !t]` 静默通过
+                // —— 前缀标记吞掉了逗号，整条子句根本没被登记。
+                if (_ensuresMarks.find(name) != _ensuresMarks.end())                {
+                    failAt(clause->getMainToken().getPos(),
+                           "L3: ensures lists parameter '" + name +
+                           "' more than once; each parameter may have only one state "
+                           "(P13-2 / §9.2)");
+                    return;
                 }
-                if (name.empty()) continue;
                 // 决议 §9.2：只对 Take[T] 形参生效，列其他类型报错。
                 size_t idx = paramNames.size();
                 for (size_t i = 0; i < paramNames.size(); ++i)
@@ -884,8 +911,7 @@ namespace backend{
                     return;
                 }
                 // 裸名 = Full（决议 §9.2）
-                if (_ensuresMarks.find(name) == _ensuresMarks.end())
-                    _ensuresMarks[name] = BodyState::FULL;
+                _ensuresMarks[name] = explicitState.value_or(BodyState::FULL);
             }
         }
         _currentSignatureClauses.clear(); // 消费后清空，避免泄漏到后续函数体
@@ -9385,7 +9411,15 @@ namespace backend{
         else        {
             _asm.movImm(0, "%rax");
         }
-        checkEnsuresAtExit(bodyNode ? bodyNode->getPos() : utils::Pos{});
+        // P13-2/L3-H（决议 §9.2）：`throw` 出口不检查 ensures。
+        // 这里的末尾检查只对应「走到函数末尾」这一个正常出口；若函数体的最后
+        // 一条语句是发散的（throw / return / 全分支发散且有 else 的 if），
+        // 就根本没有这条出口，不能拿它去校验 ensures。
+        // 实测（修前）：`fun f(t: Take[P]): int ensures[!t] { throw "x" }`
+        // 只有 throw 一个出口，却被末尾检查误报「unknown state at function exit」。
+        // 显式 ret 出口由 emitReturn 自己逐出口校验，不受影响。
+        if (!statementDiverges(bodyNode))
+            checkEnsuresAtExit(bodyNode ? bodyNode->getPos() : utils::Pos{});
         _asm.label(_returnLabel);
         _asm.mov("%rbp", "%rsp");
         _asm.pop("%rbp");

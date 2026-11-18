@@ -16,6 +16,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -610,6 +611,12 @@ namespace backend
         // 出口检查（决议 §9.2：逐出口验证，throw 不检查）。
         void checkEnsuresAtExit(const utils::Pos& pos);
         // P13-2/L3-F（决议 §9.2）：ensures 语法校验——只能列 Take[T] 形参。
+        // P13-2/L3-H：把前缀标记（`!` / `?` / `+`）当继承状态逐项收集。
+        // parser 让前缀优先级低于逗号，`ensures[!t, !t]` 实际是 `!(t, !t)`，
+        // 不能直接 flattenTypeArgs（那样只会看到一个节点，整条子句被静默丢弃）。
+        void collectEnsuresItems(const std::shared_ptr<ast::ExpressionNode>& node,
+                                 std::optional<BodyState> inherited,
+                                 std::vector<std::pair<std::string, std::optional<BodyState>>>& out);
         void validateEnsuresClauses(const std::vector<std::string>& paramNames,
                                     const std::vector<sema::TypePtr>& paramTypes);
         // P13-2/L3-F（决议 §9.3/§9.4）：writes / from 子句的每一项必须是形参路径。

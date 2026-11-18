@@ -39,6 +39,8 @@
 
 > **分支 / 循环的状态合流已不在本表**：2026-11-18 已实现，语义与实测见下文
 > 「L3-G」一节。
+> **`throw` 出口不检查 `ensures`、`ensures` 重复项已不在本表**：2026-11-18
+> 已实现，见下文「L3-H」一节。
 
 | 项 | 决议依据 | 实测表现 |
 |---|---|---|
@@ -46,9 +48,7 @@
 | `clone()`（深拷贝） | §11「拷贝用显式 `clone()`（深拷贝，P13-1 起）」 | `Class Player has no method named 'clone'` |
 | 缺省 `writes` 的函数体推断 | §9.3「用户写的函数：缺省 `writes` 按函数体推断记」 | 退化为「没写就不检查」；用户已明确**暂不补** |
 | `writes[this.x]` 的方法内校验 | §9.3「`writes[this.x]` 允许（方法内写自身字段）」 | 方法上写 `writes[zzz.name]` 不报错（普通函数会报）—— 方法路径整体没进校验 |
-| `throw` 出口不检查 `ensures` | §9.2「`throw` 出口不检查 `ensures`；catch 之后 `Take` 形参状态回到 `?`」 | `fun f(t: Take[P]): int ensures[!t] { throw "x" }` 报「unknown state at function exit」 |
 | try/catch 后 `Take` 状态回 `?` | §9.2 | try 里 take、catch 后 `ret`，承诺被沿用（不报错） |
-| `ensures` 重复列同一形参 | §9.2 每条形参只能有一个状态 | `ensures[!t, !t]` 不报错 |
 
 ### C. 实现缺陷（与决议不符，属 bug）
 
@@ -101,7 +101,7 @@
 | §4.2 writes 调用点效果缺失 | `writes` 只在泛型定义处做形态校验，调用点从不读 | 效果表 + 调用点映射 + §4.1 前缀冲突检查 |
 | take / mut / 字段赋值不查活跃子引用 | 冲突检查只在 `get_mut` / `release` / `clear` 三处 | 三处本地写路径统一走 `checkWriteConflicts` |
 
-验证：`tests/p13_2_regression.ps1` 75 条全 PASS（新增 L3-G 15 条）；
+验证：`tests/p13_2_regression.ps1` 85 条全 PASS（L3-G 15 条 + L3-H 10 条）；
 `tests/_probe/verify_fixes.ps1` 43 条全 PASS。
 
 ## L3-G：分支 / 循环的状态合流（2026-11-18 实现）
@@ -155,6 +155,64 @@
 | 循环体 clear+fill（回边回到 F） | 漏报 | 通过 |
 | break 出口参与合流（F⊔E=?） | 出口被丢 | 报 `? state` |
 | `Take` 形参入口 `?` 读字段 / take | — | 通过 |
+
+## L3-H：ensures 的出口枚举与重复项（2026-11-18 实现）
+
+### 1. `throw` 出口不检查 `ensures`（§9.2）
+
+决议 §9.2 明文：「**每条正常出口**（`ret`、走到末尾）都必须满足 `ensures`；
+**`throw` 出口不检查 `ensures`**」。
+
+修前的实现只在两个地方调用 `checkEnsuresAtExit`：`emitReturn`（显式 `ret`）
+和函数体末尾。后者对应「走到末尾」这个正常出口 —— 但当函数体最后一条语句
+本身是发散的（`throw` / `return` / 全分支发散且有 `else` 的 `if`）时，
+根本不存在这条出口，却仍被拿去做校验：
+
+```rio
+fun f(t: Take[Player]): int ensures[!t] { throw "x" }   // 只有 throw 一个出口
+```
+
+修前报 `Take parameter 't' has unknown state at function exit`，修后通过。
+
+修法是复用 L3-G 已有的 `statementDiverges`：只在函数体**可能**走到末尾时
+才做末尾校验。`if (c) { throw } ret 1` 这种「有 throw 但也有正常出口」的
+仍然必须报错（`ret 1` 那条出口上 `t` 未被消费），这条也加了对照用例。
+
+### 2. `ensures` 重复列同一形参（§9.2）
+
+§9.2：每条形参只能有一个状态。修前 `ensures[!t, !t]` 静默通过。
+
+根因不在「没写查重」，而在**整条子句根本没被解析出来**：`!` / `?` / `+`
+是前缀运算符，而 parser 让前缀优先级**低于**逗号，所以 `ensures[!t, !t]`
+被解析成 `!(t, !t)` —— 整个 `t, !t` 是 `!` 的操作数。原来的展平直接用
+`flattenTypeArgs`，只会看到一个 `UnaryExpressionNode`，其操作数是逗号表达式
+而非标识符，名字解析为空后被 `continue` 跳过，于是整条子句既不登记也不报错。
+
+对比实测（修前）：
+
+| 写法 | 修前 | 原因 |
+|---|---|---|
+| `ensures[!t]` | 正确报错 | 单项，名字能解析 |
+| `ensures[!t, !t]` | **exit=0** | `!(t, !t)`，名字解析为空被跳过 |
+| `ensures[?t, ?t]` | **exit=0** | 同上 |
+| `ensures[t, t]` | 报「more than once」 | 无前缀，逗号正常展平 |
+
+修法：新增 `collectEnsuresItems`，把前缀标记当作**继承状态**往下递归传递，
+逗号每一项各自继承 —— 这样 `!(t, !t)` 会被还原成 `(!t, !t)`，重复检测
+才有机会看到两项。
+
+### 实测（`tests/p13_2_regression.ps1` L3-H 10 条）
+
+| 用例 | 修前 | 修后 |
+|---|---|---|
+| 只有 `throw`，`ensures[!t]` / `[+t]` | 误报 unknown state | 通过 |
+| `throw` 之后仍有 `ret` 出口 | 报错 | 报错（正确，不能整体豁免） |
+| `throw` 之后 `ret` 前已消费 | — | 通过 |
+| `ensures[!t, !t]` | exit=0 静默通过 | 报 more than once |
+| `ensures[?t, ?t]` | exit=0 静默通过 | 报 more than once |
+| `ensures[t, t]` | 报 more than once | 报 more than once |
+| `ensures[!t, +t]`（不同状态） | exit=0 静默通过 | 报 more than once |
+| 单写 `!t` 未消费 / 单写 `?t` | 正确 | 正确 |
 
 ## 未实现项清单（2026-11-18 复核，逐项实测）
 

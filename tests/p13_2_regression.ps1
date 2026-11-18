@@ -148,6 +148,25 @@ Test-Case "L3-G Take 形参入口 ? 仍可读字段" "$classP`nfun f(t: Take[Pla
 Test-Case "L3-G Take 形参入口 ? 仍可 take" "$classP`nfun f(t: Take[Player]): int ensures[!t] { var c = t.take() ret 1 }`nfun main(): void { }" $true ""
 
 Write-Host ""
+Write-Host "=== L3-H：ensures 出口枚举与重复项（决议 §9.2） ==="
+# throw 出口不检查 ensures：整个函数体只有 throw 时，没有「走到末尾」这个正常出口。
+Test-Case "L3-H 只有 throw 时不校验 ensures" "$classP`nfun f(t: Take[Player]): int ensures[!t] { throw `"x`" }`nfun main(): void { }" $true ""
+Test-Case "L3-H 只有 throw 时 +t 也不校验" "$classP`nfun f(t: Take[Player]): int ensures[+t] { throw `"x`" }`nfun main(): void { }" $true ""
+# 但 throw 之后还有正常出口时，正常出口仍须满足 ensures（不能因有 throw 就整体豁免）。
+Test-Case "L3-H throw 之后仍有 ret 出口须满足 ensures" "$classP`nfun f(t: Take[Player]): int ensures[!t] { if (1 > 0) { throw `"x`" }; ret 1 }`nfun main(): void { }" $false "unknown state"
+Test-Case "L3-H throw 之后 ret 前已消费则合法" "$classP`nfun f(t: Take[Player]): int ensures[!t] { if (1 > 0) { throw `"x`" }; var c = t.take(); ret 1 }`nfun main(): void { }" $true ""
+# 重复列同一形参：每项必须只能有一个状态（§9.2）。
+# 注意 `!` 的优先级低于逗号，`ensures[!t, !t]` 在 AST 里是 `!(t, !t)`，
+# 修前整条子句被静默丢弃（exit=0），必须逐项继承前缀标记才认得出来。
+Test-Case "L3-H ensures 重复 !t, !t 报错" "$classP`nfun f(t: Take[Player]): int ensures[!t, !t] { var c = t.take() ret 1 }`nfun main(): void { }" $false "more than once"
+Test-Case "L3-H ensures 重复 ?t, ?t 报错" "$classP`nfun f(t: Take[Player]): int ensures[?t, ?t] { ret 1 }`nfun main(): void { }" $false "more than once"
+Test-Case "L3-H ensures 重复 t, t 报错" "$classP`nfun f(t: Take[Player]): int ensures[t, t] { var c = t.take() ret 1 }`nfun main(): void { }" $false "more than once"
+Test-Case "L3-H ensures 重复 !t, +t 报错（不同状态也算重复）" "$classP`nfun f(t: Take[Player]): int ensures[!t, +t] { var c = t.take() ret 1 }`nfun main(): void { }" $false "more than once"
+# 单写仍正常：!t 未消费报错、?t 合法。
+Test-Case "L3-H ensures 单写 !t 未消费仍报错" "$classP`nfun f(t: Take[Player]): int ensures[!t] { ret 1 }`nfun main(): void { }" $false "unknown state"
+Test-Case "L3-H ensures 单写 ?t 仍合法" "$classP`nfun f(t: Take[Player]): int ensures[?t] { ret 1 }`nfun main(): void { }" $true ""
+
+Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
 Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 if ($script:fail -gt 0) { exit 1 }
