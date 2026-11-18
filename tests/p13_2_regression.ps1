@@ -118,6 +118,36 @@ Test-Case "L3 泛型定义禁 writes[p.field]（决议 §5.3）" "fun setv[T](b:
 Test-Case "L3 泛型定义允许 writes[p]" "fun setv[T](b: T, x: T): int writes[b] { ret 1 }`nfun main(): void { }" $true ""
 
 Write-Host ""
+Write-Host "=== L3-G：分支/循环状态合流（决议 §8.1 / §14） ==="
+# 互斥分支各 take 一次 → 合流 E，不再假报错（修前 inner 写穿外层，第二个分支误判）。
+Test-Case "L3-G 互斥分支各 take 一次合法" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); if (1 > 0) { var x = bob.take() } else { var y = bob.take() } }" $true ""
+# 一个分支 take、另一个不动 → 合流 ?，后续直接读被拒（§3.4）。
+Test-Case "L3-G 分支只一侧 take 后读报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); if (1 > 0) { var x = bob.take() }; sout(bob.name) }" $false "? state"
+Test-Case "L3-G 分支只一侧 take 后 take 报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); if (1 > 0) { var x = bob.take() }; var y = bob.take() }" $false "? state"
+# 两侧都 clear → 合流 E，后续 fill 合法（这是最典型的「合流不能退化成 ?」反例）。
+Test-Case "L3-G 两侧都 clear 后 fill 合法" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); if (1 > 0) { bob.clear() } else { bob.clear() }; var c: Content[Player] = null; bob.fill(c) }" $true ""
+Test-Case "L3-G 嵌套 if 两侧都 clear 后 fill 合法" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); if (1 > 0) { if (2 > 0) { bob.clear() } else { bob.clear() } } else { bob.clear() }; var c: Content[Player] = null; bob.fill(c) }" $true ""
+# 三分支（if/elif/else）全 clear → E；缺 else 时保留 fall-through 路径 → ?。
+Test-Case "L3-G 三分支全 clear 后 fill 合法" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); if (1 > 0) { bob.clear() } else if (2 > 0) { bob.clear() } else { bob.clear() }; var c: Content[Player] = null; bob.fill(c) }" $true ""
+Test-Case "L3-G 缺 else 时合流为 ? 后 fill 报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); if (1 > 0) { bob.clear() } else if (2 > 0) { bob.clear() }; var c: Content[Player] = null; bob.fill(c) }" $false "? state"
+Test-Case "L3-G 分支内 take 后 ? 态 clear 报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); if (1 > 0) { var x = bob.take() }; bob.clear() }" $false "? state"
+# 分支内声明的同名局部变量不得把状态泄漏到外层同名变量（q6 反例）。
+Test-Case "L3-G 分支内同名局部不污染外层" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); if (1 > 0) { var bob: Player = Player(`"z`") }; var c: Content[Player] = null; bob.fill(c) }" $false "not Empty"
+# 循环：体内 clear 且回边不恢复 → 不动点 ?（§14），循环后直接读报错。
+Test-Case "L3-G 循环体 clear 后读报错" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); var i = 0; while i < 2 { i += 1 bob.clear() }; sout(bob.name) }" $false "? state"
+# 循环：体内 clear 后 fill，回边回到 F = 入口 F，不动点仍是 F，读合法。
+Test-Case "L3-G 循环体 clear+fill 后读合法" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); var i = 0; while i < 2 { i += 1 bob.clear() var c: Content[Player] = null bob.fill(c) }; sout(bob.name) }" $true ""
+# break/ret 出口参与合流（§14：不动点 = 入口 ⊔ 回边 ⊔ break 出口）。
+# 入口 F、出口 E → 合流 ?，报的是「? state」而不是「not Empty」，
+# 后者说明 break 出口被丢了（那样只会看到入口的 F）。
+Test-Case "L3-G break 出口参与合流（F⊔E=?)" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); var i = 0; while i < 2 { i += 1 bob.clear() ret }; var c: Content[Player] = null; bob.fill(c) }" $false "? state"
+# 入口已 E、出口也 E → 合流 E，fill 合法。
+Test-Case "L3-G break 出口与入口同为 E" "$classP`nfun main(): void { var bob: Player = Player(`"bob`"); bob.clear(); var i = 0; while i < 2 { i += 1 bob.clear() ret }; var c: Content[Player] = null; bob.fill(c) }" $true ""
+# Take 形参入口 ? 不透明：读字段/调方法/take 仍合法（§7.3 / §9.2），不被合流检查误伤。
+Test-Case "L3-G Take 形参入口 ? 仍可读字段" "$classP`nfun f(t: Take[Player]): str { ret t.name }`nfun main(): void { }" $true ""
+Test-Case "L3-G Take 形参入口 ? 仍可 take" "$classP`nfun f(t: Take[Player]): int ensures[!t] { var c = t.take() ret 1 }`nfun main(): void { }" $true ""
+
+Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
 Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 if ($script:fail -gt 0) { exit 1 }

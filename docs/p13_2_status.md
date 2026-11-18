@@ -37,9 +37,11 @@
 
 ### B. 决议已定但未实现（真实缺口）
 
+> **分支 / 循环的状态合流已不在本表**：2026-11-18 已实现，语义与实测见下文
+> 「L3-G」一节。
+
 | 项 | 决议依据 | 实测表现 |
 |---|---|---|
-| **分支 / 循环的状态合流** | §5「循环外变量在循环体内 take/fill，状态合流取格上界（循环后 `?`）」 | 见下「分支状态不分叉」——这是当前最严重的语义缺陷 |
 | `Link[T][peer][cardinality]` | §7.1、§9.3 的 `release` 前置含 Link 检查 | 类型不存在：`unknown type 'Link' of field` |
 | `clone()`（深拷贝） | §11「拷贝用显式 `clone()`（深拷贝，P13-1 起）」 | `Class Player has no method named 'clone'` |
 | 缺省 `writes` 的函数体推断 | §9.3「用户写的函数：缺省 `writes` 按函数体推断记」 | 退化为「没写就不检查」；用户已明确**暂不补** |
@@ -52,8 +54,6 @@
 
 | 缺陷 | 根因 | 实测 |
 |---|---|---|
-| **分支状态不分叉** | `emitIf` 里 `pushScope()` 只压入空 map，而 `getBodyState` 从内向外回退查找；then 分支写的状态被 else 分支和后继代码看到 | `if c { var x = p.take() } else { var y = p.take() }` → 报「take target 'p' is Empty」（互斥分支误报）；`if c { var x = p.take() }` 之后 `sout(p.name)` → 报 Empty（本应 `?`）；`if c { p.take() } p.clear()` → **通过**（本应报 `?`） |
-| 循环体状态不合流 | 同上，`while` 体也是 pushScope/popScope | `while i<3 { var c = p.take() i=i+1 }` 之后 `sout(p.n)` → 报 Empty（本应 `?`）；`while { p.fill(...) }` 静默通过 |
 | §6.4 独占未检查 | 只有「同一语句二次 take」查了 pending_take；`mut()` 之间、`Ref` 与 `Mut` 之间没有重数检查 | `var m1 = p.mut() var m2 = p.mut()` 通过；`var m = p.mut() var r = &p` 通过 |
 | 未声明的出生地标签不报错 | 标签只做「最多一个」检查，没查是否对应真实 Pool 变量 | `var p: Player nosuchpool = Player("a")` 通过 |
 | 类赋值类型检查弱 | `var a: Enemy = Player("x")` 无继承关系也通过 | 通过（P13-1 遗留，非 P13-2 引入） |
@@ -101,26 +101,72 @@
 | §4.2 writes 调用点效果缺失 | `writes` 只在泛型定义处做形态校验，调用点从不读 | 效果表 + 调用点映射 + §4.1 前缀冲突检查 |
 | take / mut / 字段赋值不查活跃子引用 | 冲突检查只在 `get_mut` / `release` / `clear` 三处 | 三处本地写路径统一走 `checkWriteConflicts` |
 
-验证：`tests/p13_2_regression.ps1` 60 条仍全 PASS；
-`tests/_probe/verify_fixes.ps1` 扩到 43 条（含每项的正反对照）全 PASS。
+验证：`tests/p13_2_regression.ps1` 75 条全 PASS（新增 L3-G 15 条）；
+`tests/_probe/verify_fixes.ps1` 43 条全 PASS。
+
+## L3-G：分支 / 循环的状态合流（2026-11-18 实现）
+
+### 语义（依据 §8.1 格上界、§14 循环不动点）
+
+状态格 `F ⊔ E = ?`、`X ⊔ X = X`、`HELD ⊔ FULL = FULL`（HELD 是 FULL 的子态）。
+
+| 位置 | 合流路径 |
+|---|---|
+| `if` / `elif` / `else` | 每个分支出口的状态快照 + （无 `else` 时）入口状态 |
+| `while` / `for` | 入口状态 ⊔ 回边状态（含 `continue` 与 for-update）⊔ `break`/`ret` 出口状态 |
+| 发散的分支 | `return` / `throw` / `break` / `continue` 到不了汇合点，**不参与**合流 |
+
+`?` 态在 §3.4 下禁止直接读，§6.1 / §10.2 / §10.3 下禁止 `take` / `fill` / `clear` / `release`。
+
+### 实现
+
+- `_moveStates` 仍是作用域分层 map 栈，但 `emitIf` / `emitLoop` 现在显式做
+  快照与合并：`snapshotMoveStates` / `restoreMoveStates` /
+  `joinMoveStateSnapshots` / `joinMoveStatePaths`。
+- 合并按 `depth = min(所有路径的层数)` 对齐，逐层按格上界合并；只在某条路径
+  出现的条目取该条目的值（其余路径视为「未改动」），从而保证分支内声明的
+  同名局部变量不会把状态泄漏到外层同名变量。
+- `statementDiverges` 判定发散语句（含块尾递归、if 全分支发散且有 `else`）。
+- 循环的出口/回边路径用 `_loopExitStates` / `_loopBackStates` 两个栈收集，
+  随函数体进出清空。
+
+### 一个必须区分的细节：`Take` 形参的入口 `?` 不是合流 `?`
+
+§9.2 规定 `Take[T]` 形参进入函数时状态是 `?`（编译器不做承诺），此时
+`t.name` / `t.greet()` / `t.take()` 都是合法的（§7.3 独占取内容）。
+这与「控制流合流后不确定」的 `?` 语义完全不同，不能共用一条拒绝规则。
+
+实现上用 `_opaqueMoveVars` 记录这类变量，所有 `?` 拒绝统一走
+`isMergedUnknown(name)`（= 状态是 `UNKNOWN` 且不在不透明集合里）。一旦某条
+路径把它推到过确定状态，`refreshOpaqueAfterMerge` 就把它移出集合 —— 此后
+合流出来的 `?` 是真正的不确定。
+
+### 实测（`tests/p13_2_regression.ps1` L3-G 15 条）
+
+| 用例 | 修前 | 修后 |
+|---|---|---|
+| 互斥分支各 take 一次 | 误报 Empty | 通过 |
+| 分支只一侧 take，之后读 / take | 漏报 | 报 `? state` |
+| 两侧都 clear 后 fill | 误报 | 通过 |
+| 嵌套 if / 三分支全 clear | 误报 | 通过 |
+| 缺 else（有 fall-through） | 漏报 | 报 `? state` |
+| 分支内同名局部变量 | 污染外层 | 不污染 |
+| 循环体 clear 后读 | 报 Empty（本应 `?`） | 报 `? state` |
+| 循环体 clear+fill（回边回到 F） | 漏报 | 通过 |
+| break 出口参与合流（F⊔E=?） | 出口被丢 | 报 `? state` |
+| `Take` 形参入口 `?` 读字段 / take | — | 通过 |
 
 ## 未实现项清单（2026-11-18 复核，逐项实测）
 
 > 本节是上文「剩余项与状态」的补充说明。所有结论均由 `tests/_probe/fix/`
 > 下的最小用例实测得出，不是从文档推断。
 
-**最严重的一条是分支/循环的状态合流。** `_moveStates` 是「按作用域分层的
-map 栈」，`getBodyState` 从最内层向外回退查找第一个同名项 —— 这意味着
-**内层作用域写的状态会泄漏到外层和兄弟分支**，因为 `popScope()` 只是
-把内层的 map 丢掉，外层那份从头到尾没被更新过。于是：
-
-- 互斥分支各 take 一次 → 第二个分支看到第一个分支写的 E，误报
-- `if { take }` 之后本应合流成 `?`，实际外层仍是 F（漏报）或直接 E（误报）
-- 循环体同理，且循环体状态从未与外层合流
-
-决议 §5 明确要求「状态合流取格上界（循环后 `?`）」，这条完全没实现。
-正确做法是在 `emitIf` / `emitWhile` 的分支出入口做状态快照与上界合并，
-而不是靠作用域栈的遮蔽。
+**分支/循环的状态合流已在 2026-11-18 实现**（见上文「L3-G」一节）。
+当时的根因分析保留在此供溯源：`_moveStates` 是「按作用域分层的 map 栈」，
+`getBodyState` 从最内层向外回退查找第一个同名项 —— 这意味着**内层作用域写的
+状态会泄漏到外层和兄弟分支**，因为 `popScope()` 只是把内层的 map 丢掉，外层
+那份从头到尾没被更新过。正确做法是在 `emitIf` / `emitLoop` 的分支出入口做
+状态快照与上界合并，而不是靠作用域栈的遮蔽 —— 这正是最终采用的方案。
 
 **其余缺口的性质**：`Link` / `clone()` 是**类型与方法整体不存在**（不是
 语义错误，是用不了）；`writes[this.x]` 的方法路径没进校验是**校验覆盖

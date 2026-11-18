@@ -979,6 +979,103 @@ namespace backend{
         }
         (void)pos; (void)action; // 未登记变量：静默忽略（非 Body 变量）
     }
+    CodeGen::BodyState CodeGen::joinBodyStates(BodyState a, BodyState b)    {
+        // 决议 §8.1：合流逐项取格上界。相同状态保持不变（X ⊔ X = X）。
+        if (a == b) return a;
+        // H 是 F 的子态（take 挂起期间内容位置没动，只是当前语句不能用），
+        // 所以 H ⊔ F = F —— 一条路径把它留在挂起、另一条回到满，取满即可。
+        if ((a == BodyState::HELD && b == BodyState::FULL) ||
+            (a == BodyState::FULL && b == BodyState::HELD))
+            return BodyState::FULL;
+        // 其余不同组合（F ⊔ E / F ⊔ X / E ⊔ X …）一律降为 ?：
+        // 编译期不能再假定是哪一种，后续只能走 get() 之类的安全入口。
+        return BodyState::UNKNOWN;
+    }
+    CodeGen::MoveStateSnapshot
+    CodeGen::joinMoveStateSnapshots(const std::vector<MoveStateSnapshot>& paths) const    {
+        if (paths.empty()) return _moveStates;
+        // 深度取最小：更深层的 map 属于分支/循环体内的局部量，popScope 后
+        // 已随作用域消失，不能把它们带到外面来。
+        size_t depth = _moveStates.size();
+        for (const auto& p : paths) depth = std::min(depth, p.size());
+        MoveStateSnapshot acc(paths.front().begin(), paths.front().begin() + depth);
+        for (size_t p = 1; p < paths.size(); ++p)        {
+            const auto& other = paths[p];
+            for (size_t i = 0; i < depth; ++i)            {
+                for (auto& entry : acc[i])                {
+                    const auto it = other[i].find(entry.first);
+                    // 该路径没碰过这项 = 它保持入口状态，与入口一致，保持原状。
+                    if (it == other[i].end()) continue;
+                    entry.second = joinBodyStates(entry.second, it->second);
+                }
+                for (const auto& entry : other[i])                {
+                    if (acc[i].find(entry.first) == acc[i].end())
+                        acc[i][entry.first] = entry.second;
+                }
+            }
+        }
+        return acc;
+    }
+    void CodeGen::refreshOpaqueAfterMerge(const std::vector<MoveStateSnapshot>& paths)    {
+        // 决议 §9.2 的 Take 形参入口态 `?` 是「编译器不做承诺」；一旦某条路径
+        // 把它推到了确定状态（take→E / fill→F），合流出来的 `?` 就变成真正的
+        // 「不确定」了，不再享有无条件放行。
+        auto stateIn = [](const MoveStateSnapshot& snap, const std::string& name) -> const BodyState* {
+            for (auto it = snap.rbegin(); it != snap.rend(); ++it)            {
+                const auto found = it->find(name);
+                if (found != it->end()) return &found->second;
+            }
+            return nullptr;
+        };
+        for (auto oit = _opaqueMoveVars.begin(); oit != _opaqueMoveVars.end();)        {
+            bool narrowed = false;
+            for (const auto& p : paths)            {
+                const auto* st = stateIn(p, *oit);
+                if (st && *st != BodyState::UNKNOWN)                {
+                    narrowed = true;
+                    break;
+                }
+            }
+            if (narrowed) oit = _opaqueMoveVars.erase(oit);
+            else          ++oit;
+        }
+    }
+    void CodeGen::joinMoveStatePaths(const std::vector<MoveStateSnapshot>& paths)    {
+        if (paths.empty()) return;
+        _moveStates = joinMoveStateSnapshots(paths);
+    }
+    bool CodeGen::isAlwaysTrueCondition(const std::shared_ptr<ast::ExpressionNode>& cond)    {
+        // parser 把 `else` 造成「条件 = BooleanLiteralNode(true)」的分支
+        // （buildConditionExpression），所以字面 true 就是无条件 else。
+        const auto lit = std::dynamic_pointer_cast<ast::BooleanLiteralNode>(cond);
+        return lit && lit->literalString() == "true";
+    }
+    bool CodeGen::statementDiverges(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        // 判断一条语句之后是否**不可能**再往下走（ret / throw / break / continue）。
+        // 分支出入口做状态合流时，发散的分支不会到达汇合点，不能参与合流，
+        // 否则 `if c { return } else { bob.clear() }` 之后会把 bob 误判成 ?。
+        if (!node) return false;
+        if (std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node)) return true;
+        if (std::dynamic_pointer_cast<ast::ThrowNode>(node)) return true;
+        if (std::dynamic_pointer_cast<ast::BreakExpressionNode>(node)) return true;
+        if (std::dynamic_pointer_cast<ast::ContinueExpressionNode>(node)) return true;
+        if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))        {
+            const auto& body = block->getBodyExpressions();
+            return !body.empty() && statementDiverges(body.back());
+        }
+        if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(node))        {
+            // if/elif 链：只有存在「无条件 else」且每个分支都发散，整体才发散。
+            bool hasElse = false;
+            for (const auto& branchExpr : cond->getBranchNodes())            {
+                const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(branchExpr);
+                if (!branch) continue;
+                if (isAlwaysTrueCondition(branch->getConditionNode())) hasElse = true;
+                if (!statementDiverges(branch->getBodyNode())) return false;
+            }
+            return hasElse;
+        }
+        return false;
+    }
     bool CodeGen::isVarMoved(const std::string& name) const    {
         // P13-2/L3：先查独立的移动状态表（含 ClassType/Body 别名等
         // D14 不进 drop 表但参与 take/移动的变量）。
@@ -1227,10 +1324,17 @@ namespace backend{
     }
     bool CodeGen::isVarUnavailable(const std::string& name) const    {
         for (auto it = _moveStates.rbegin(); it != _moveStates.rend(); ++it)        {
-            if (const auto found = it->find(name); found != it->end())
+            if (const auto found = it->find(name); found != it->end())            {
                 // 决议 §3.4：HELD（挂起）期间允许通过引用读/直接读写字段，
-                // 内容位置没动。只有 EMPTY（空壳）/MOVED 不可直接读。
-                return found->second == BodyState::EMPTY || found->second == BodyState::MOVED;
+                // 内容位置没动。EMPTY（空壳）/MOVED 不可直接读。
+                if (found->second == BodyState::EMPTY || found->second == BodyState::MOVED)
+                    return true;
+                // UNKNOWN（?）：只有「因控制流合流而不确定」的才拒绝；
+                // Take 形参入口那种不透明 `?`（§9.2）仍然允许直接访问。
+                if (found->second == BodyState::UNKNOWN && isMergedUnknown(name))
+                    return true;
+                return false;
+            }
         }
         return isVarMoved(name); // 回退 drop 表（str/list 等 moved）
     }
@@ -3129,6 +3233,14 @@ namespace backend{
         // E 状态的壳要先用 fill 装回内容（决议 §6.1/§10.1）。
         if (isVarUnavailable(id->getName()))        {
             const auto st = bodyStateName(id->getName());
+            if (st == "?")            {
+                // 决议 §3.4：? 状态无法判定内容是否还在，直接读值不安全，
+                // 提示改用 get()（会走运行时判空/兜底）。
+                failAt(node->getPos(), "'" + id->getName() +
+                       "' is in ? state (control flow merged to an unknown body state) and "
+                       "cannot be used directly (P13-2: use get() instead)");
+                return;
+            }
             failAt(node->getPos(), "'" + id->getName() +
                    "' is in " + st + " state and cannot be used directly "
                    "(P13-2: fill it first if Empty)");
@@ -4250,6 +4362,10 @@ namespace backend{
                 else              _asm.mov("%rax", ctx.valueSlot);
             }
         }
+        // P13-2/L3-G（决议 §13.1）：`ret` 在循环里等价 `break value`，
+        // 因此它也是循环的一类出口，状态必须和 emitBreak 一样参与合流。
+        if (!_loopExitStates.empty())
+            _loopExitStates.back().push_back(snapshotMoveStates());
         _asm.jmp(ctx.breakLabel);
     }
     void CodeGen::emitRetFromIf(const std::shared_ptr<ast::ExpressionNode>& node)    {
@@ -4311,14 +4427,26 @@ namespace backend{
             if (annotatedType->isFloat()) _asm.inst("movsd", "%xmm0", ifValueSlot);
             else                          _asm.mov("%rax", ifValueSlot);
         }
+        // P13-2/L3-G（决议 §8.1）：分支出入口做状态快照 + 格上界合流。
+        // 每条分支都从入口状态出发（兄弟分支互不污染），到得了汇合点的
+        // 分支各留一份出口快照，最后逐项取上界写回。
+        const MoveStateSnapshot entryStates = snapshotMoveStates();
+        std::vector<MoveStateSnapshot> exitPaths;
+        bool hasUnconditionalElse = false;
         for (const auto& branchExpr : cond->getBranchNodes())        {
             const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(branchExpr);
             if (!branch) continue;
             const std::string nextLabel = _asm.newLabel("cond_next");
-            if (branch->getConditionNode())            {
+            // else 分支在 AST 里不是「无条件的」，而是带一个合成的
+            // BooleanLiteralNode(true) 条件（见 buildConditionExpression）。
+            // 只认「条件为字面 true」当无条件 else：有它就没有 fall-through 路径。
+            if (!isAlwaysTrueCondition(branch->getConditionNode()))            {
                 emitExpression(branch->getConditionNode());
                 _asm.inst("testq", "%rax", "%rax");
                 _asm.je(nextLabel);
+            }
+ else            {
+                hasUnconditionalElse = true;
             }
             if (annotatedType && !bodyHasRetValue(branch->getBodyNode()))            {
                 const auto valueType = inferBlockValueType(branch->getBodyNode());
@@ -4335,6 +4463,9 @@ namespace backend{
                     return;
                 }
             }
+            // 分支体一律从入口状态出发：不能看见兄弟分支留下的改动。
+            // 必须在 pushScope 之前恢复，否则栈深度对不上。
+            restoreMoveStates(entryStates);
             pushScope();
             if (!ifValueSlot.empty())            {
                 _ifStack.push_back({endLabel, ifValueSlot, annotatedType,
@@ -4343,6 +4474,11 @@ namespace backend{
             emitStatement(branch->getBodyNode());
             if (!ifValueSlot.empty()) _ifStack.pop_back();
             popScope();
+            // 分支体执行后的状态（popScope 已丢弃分支局部那一层，
+            // 深度与入口一致，改的都是外层 map）。
+            // 发散的分支（ret/throw/break/continue）到不了汇合点，不参与合流。
+            if (!statementDiverges(branch->getBodyNode()))
+                exitPaths.push_back(snapshotMoveStates());
             // 分支末值写入结果槽（ret value 出口已由 emitRetFromIf 写入）
             if (!ifValueSlot.empty() && !bodyHasRetValue(branch->getBodyNode()))            {
                 if (annotatedType->isFloat()) _asm.inst("movsd", "%xmm0", ifValueSlot);
@@ -4356,6 +4492,14 @@ namespace backend{
             if (annotatedType->isFloat()) _asm.inst("movsd", ifValueSlot, "%xmm0");
             else                          _asm.mov(ifValueSlot, "%rax");
         }
+        // 没有无条件 else 时，条件全假会直接落到汇合点，那条路径保持入口状态。
+        if (!hasUnconditionalElse) exitPaths.push_back(entryStates);
+        if (!exitPaths.empty())        {
+            joinMoveStatePaths(exitPaths);
+            // 某条路径把不透明的 Take 形参推到了确定状态 → 合流后的 ? 是真的不确定。
+            refreshOpaqueAfterMerge(exitPaths);
+        }
+ else                    restoreMoveStates(entryStates); // 全部分支发散：维持入口
     }
     void CodeGen::emitBlock(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node);
@@ -4441,6 +4585,12 @@ namespace backend{
         }
         _loopStack.push_back({continueLabel, endLabel, _ehStack.size(), _scopeDrops.size(),
                               loopValueSlot, loopAnnotatedType, ++_scopeEnterSeq});
+        // P13-2/L3-G（决议 §8.1/§14）：循环状态不动点。
+        // 进入前状态 S；沿循环体推演得到回边状态 B；循环后 = S ⊔ B ⊔ break 出口。
+        // 循环体可能执行 0 次，所以「没进过循环体」这条路径也必须参与合流。
+        const MoveStateSnapshot entryStates = snapshotMoveStates();
+        _loopExitStates.emplace_back();
+        _loopBackStates.emplace_back();
         pushScope();
         if (loop->getBodyNode())        {
             if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(loop->getBodyNode()))            {
@@ -4450,6 +4600,9 @@ namespace backend{
                 emitStatement(loop->getBodyNode());
             }
         }
+        // 回边状态：循环体正常走完（没被 break/ret 打断）时的状态。
+        if (!statementDiverges(loop->getBodyNode()))
+            _loopBackStates.back().push_back(snapshotMoveStates());
         popScope();
         _loopStack.pop_back();
         // for 的 update 在每轮体末尾、回跳之前求值。
@@ -4457,9 +4610,21 @@ namespace backend{
         if (forLoop && forLoop->getUpdateNode())        {
             _asm.label(continueLabel);
             emitStatement(forLoop->getUpdateNode());
+            // update 每轮都执行，它的出口也是一条回边路径。
+            _loopBackStates.back().push_back(snapshotMoveStates());
         }
         _asm.jmp(condLabel);
         _asm.label(endLabel);
+        // 决议 §8.1/§14：循环后状态 = 进入前状态 ⊔ 回边状态 ⊔ break 出口状态。
+        // 循环体可能一次都不执行，所以入口状态本身就是一条到得了出口的路径；
+        // 任一维不一致就降为 ?（循环后只能走 get() 之类的安全入口）。
+        std::vector<MoveStateSnapshot> exitPaths = _loopBackStates.back();
+        for (const auto& p : _loopExitStates.back()) exitPaths.push_back(p);
+        _loopExitStates.pop_back();
+        _loopBackStates.pop_back();
+        exitPaths.push_back(entryStates);
+        joinMoveStatePaths(exitPaths);
+        refreshOpaqueAfterMerge(exitPaths);
         if (!loopValueSlot.empty())        {
             if (loopAnnotatedType && loopAnnotatedType->isFloat())
                 _asm.inst("movsd", loopValueSlot, "%xmm0");
@@ -4519,6 +4684,10 @@ namespace backend{
             if (valueIsFloat) _asm.inst("movsd", "%xmm0", ctx.valueSlot);
             else              _asm.mov("%rax", ctx.valueSlot);
         }
+        // P13-2/L3-G（决议 §8.1）：break 是循环的另一类出口，它带来的状态
+        // 与「条件为假退出」不同，必须单独记一条路径参与循环后的合流。
+        if (!_loopExitStates.empty())
+            _loopExitStates.back().push_back(snapshotMoveStates());
         _asm.jmp(ctx.breakLabel);
     }
     void CodeGen::emitContinue()    {
@@ -4532,6 +4701,10 @@ namespace backend{
             emitScopeDrops(i - 1, true);
         }
         emitEhUnwindTo(_loopStack.back().ehDepth);
+        // P13-2/L3-G（决议 §8.1）：continue 也是一条回边，它的状态要参与
+        // 循环不动点的合流，否则「只在 continue 之前的路径上改动」会被漏掉。
+        if (!_loopBackStates.empty())
+            _loopBackStates.back().push_back(snapshotMoveStates());
         _asm.jmp(_loopStack.back().continueLabel);
     }
     // ============================================================
@@ -7967,6 +8140,14 @@ namespace backend{
                        "' was born in '" + found->second + "', not '" + poolVar->getName() + "'");
                 return;
             }
+            if (isMergedUnknown(x->getName()))            {
+                // 决议 §3.4/§10.3：? 状态连「是不是空壳」都不确定，release
+                // 会凭空丢掉一块可能还有内容的堆内存，必须拒绝。
+                failAt(args[0]->getPos(), "L3: release target '" + x->getName() +
+                       "' is in ? state (control flow merged to an unknown body state); "
+                       "cannot release");
+                return;
+            }
             if (getBodyState(x->getName()) != BodyState::EMPTY)            {
                 failAt(args[0]->getPos(), "L3: release target '" + x->getName() +
                        "' is not Empty (clear it first)");
@@ -8029,6 +8210,14 @@ namespace backend{
                            "' has been moved and cannot be taken again (P13-2 / §6.1)");
                     return;
                 }
+                if (st == BodyState::UNKNOWN && isMergedUnknown(recv->getName()))                {
+                    // 决议 §6.1：take 只从 F 取。? 表示控制流合流后无法确定
+                    // 是否还有内容，此时 take 可能取到空壳，必须拒绝。
+                    failAt(member->getPos(), "L3: take target '" + recv->getName() +
+                           "' is in ? state (control flow merged to an unknown body state); "
+                           "cannot take");
+                    return;
+                }
             }
             beginPendingTake(recv->getName(), member->getPos());
             // P13-2/L3-F（规范 §4.2）：take 等价于对**根路径**的替换，与任何
@@ -8059,6 +8248,14 @@ namespace backend{
                     return;
                 }
                 const auto st = getBodyState(name);
+                if (st == BodyState::UNKNOWN && isMergedUnknown(name))                {
+                    // 决议 §10.2：clear() 前置是「目标确定 F」。? 不满足确定，
+                    // 此时 clear 可能销毁不了东西，也可能销毁一块不该动的内存。
+                    failAt(member->getPos(), "L3: clear target '" + name +
+                           "' is in ? state (control flow merged to an unknown body state); "
+                           "cannot clear");
+                    return;
+                }
                 if (st == BodyState::FULL)                    setBodyState(name, BodyState::EMPTY, member->getPos(), "cleared");
                 // 决议 §2.2：已 E 时 no-op 幂等；H/X 状态非法操作（D 阶段细化）
                 return;
@@ -8069,6 +8266,13 @@ namespace backend{
                 return;
             }
             const auto st = getBodyState(name);
+            if (st == BodyState::UNKNOWN && isMergedUnknown(name))            {
+                // 决议 §10.1：fill 前置是「目标确定 E」。? 不确定，拒绝。
+                failAt(member->getPos(), "L3: fill target '" + name +
+                       "' is in ? state (control flow merged to an unknown body state); "
+                       "cannot fill");
+                return;
+            }
             if (st != BodyState::EMPTY)            {
                 failAt(member->getPos(), "L3: fill target '" + name +
                        "' is not Empty (call clear() first)");
@@ -8076,7 +8280,8 @@ namespace backend{
             }
             if (const auto src = std::dynamic_pointer_cast<ast::IdentifierNode>(args[0]))            {
                 const auto srcState = getBodyState(src->getName());
-                if (srcState == BodyState::MOVED || srcState == BodyState::HELD)                {
+                if (srcState == BodyState::MOVED || srcState == BodyState::HELD ||
+                    srcState == BodyState::UNKNOWN)                {
                     failAt(args[0]->getPos(), "L3: fill source '" + src->getName() +
                            "' is not available");
                     return;
@@ -9029,6 +9234,8 @@ namespace backend{
         const auto savedActiveRefs = _activeRefs;
         const auto savedBirthPlaces = _birthPlaces;
         const auto savedPendingTakes = _pendingTakes;
+        // P13-2/L3-G：不透明 `?` 集合同样是函数局部的（形参同名也只是巧合）。
+        const auto savedOpaqueMoveVars = _opaqueMoveVars;
         // P13-1：销毁登记表与 _scopes 是**同生共死**的一对，跨函数必须一起清。
         // 只清 _scopes 而不清 _scopeDrops 会让内层函数对**外层帧**的槽位发
         // drop（实测：mk() 帧只有 64 字节，却对 -176(%rbp) 调 core_free，
@@ -9047,6 +9254,11 @@ namespace backend{
         _frameSize = 0;
         _ehStack.clear();
         _loopStack.clear();
+        // P13-2/L3-G：循环状态合流用的出口/回边路径表也随函数体清空，
+        // 否则上一个函数里未闭合的循环会污染下一个函数。
+        _loopExitStates.clear();
+        _loopBackStates.clear();
+        _opaqueMoveVars.clear();
         _scopes.clear();
         _scopeDrops.clear();
         // P13-2：三张内存模型事实表 + 挂起集合随函数体一起清空。
@@ -9099,6 +9311,9 @@ namespace backend{
                 std::dynamic_pointer_cast<sema::MemoryType>(pt)->getRole() == sema::MemoryRole::TAKE)            {
                 registerMoveVar(paramNames[i]);
                 setBodyState(paramNames[i], BodyState::UNKNOWN, utils::Pos{}, "Take parameter");
+                // 决议 §9.2：这个 `?` 是「编译器不做承诺」，不是合流不确定。
+                // 登记进不透明集合，读字段/调方法/take 仍然合法（§7.3）。
+                _opaqueMoveVars.insert(paramNames[i]);
             }
             const size_t pos = argPos + i;
             if (pos < registerSlots)            {
@@ -9203,6 +9418,9 @@ namespace backend{
         _activeRefs = savedActiveRefs;
         _birthPlaces = savedBirthPlaces;
         _pendingTakes = savedPendingTakes;
+        _opaqueMoveVars = savedOpaqueMoveVars;
+        _loopExitStates.clear();
+        _loopBackStates.clear();
         pushScope();          // 与外层入口时的状态对齐（_scopes 与 _scopeDrops 各一层）
     }
 }

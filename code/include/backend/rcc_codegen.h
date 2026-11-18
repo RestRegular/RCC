@@ -368,6 +368,46 @@ namespace backend
         [[nodiscard]] BodyState getBodyState(const std::string& name) const;
         void setBodyState(const std::string& name, BodyState state,
                           const utils::Pos& pos, const std::string& action);
+        // ---- P13-2/L3-G（决议 §8.1）：控制流状态合流 ----
+        //
+        // 事实表是**按作用域分层**的，而 setBodyState 改的是「由内向外第一个
+        // 同名项」——对分支/循环体里修改的外层变量，写的就是外层那张 map。
+        // 于是兄弟分支互相污染、分支出口漏报/误报。修法不是靠作用域遮蔽，
+        // 而是在分支/循环的出口显式做「快照 + 格上界合并」。
+        using MoveStateSnapshot = std::vector<std::map<std::string, BodyState>>;
+        // 状态格上界：相同保持不变；F ⊔ E、F ⊔ X、E ⊔ X 一律 ?；
+        // 与 ? 合流仍是 ?。H 是 F 的子态（内容位置没动），H ⊔ F = F。
+        [[nodiscard]] static BodyState joinBodyStates(BodyState a, BodyState b);
+        [[nodiscard]] MoveStateSnapshot snapshotMoveStates() const { return _moveStates; }
+        void restoreMoveStates(const MoveStateSnapshot& snap) { _moveStates = snap; }
+        // 把若干条路径的出口快照按格上界逐层合并后写回 _moveStates。
+        void joinMoveStatePaths(const std::vector<MoveStateSnapshot>& paths);
+        // 只算合并结果、不写回（循环要先把回边/出口各自合并再取上界）。
+        // 深度取所有路径的最小值：更深层是分支/循环体内的局部量，不参与。
+        [[nodiscard]] MoveStateSnapshot
+        joinMoveStateSnapshots(const std::vector<MoveStateSnapshot>& paths) const;
+        // 该语句之后是否不可能再往下走（ret/throw/break/continue 及其块/if 包装）。
+        // 发散的分支到不了汇合点，不参与状态合流。
+        [[nodiscard]] static bool statementDiverges(const std::shared_ptr<ast::ExpressionNode>& node);
+        // 该分支条件是否是 parser 给 `else` 合成的字面 true（= 无条件 else）。
+        [[nodiscard]] static bool isAlwaysTrueCondition(const std::shared_ptr<ast::ExpressionNode>& cond);
+        // 循环的出口（break）/回边（continue）路径快照，与 _loopStack 同生命周期。
+        // 决议 §8.1：循环后状态 = 进入前状态 ⊔ 回边状态 ⊔ break 出口状态。
+        std::vector<std::vector<MoveStateSnapshot>> _loopExitStates;
+        std::vector<std::vector<MoveStateSnapshot>> _loopBackStates;
+        // 入口状态被故意记成 `?` 的变量名（目前只有 Take 形参，决议 §9.2）。
+        // 这种 `?` 的含义是「编译器不做承诺」，不是「控制流合流后不确定」——
+        // 函数体里对 Take 形参读字段/调方法/take 都是合法的（§7.3 独占取内容）。
+        // 真正因合流而变成 `?` 的变量不进这个集合，会被 §3.4 拒绝。
+        std::set<std::string> _opaqueMoveVars;
+        // 该变量当前是否是「因控制流合流而不确定」的 `?`（要按 §3.4 拒绝直接访问）。
+        // Take 形参入口那种不透明 `?` 不算，除非它已经被推到过确定状态。
+        [[nodiscard]] bool isMergedUnknown(const std::string& name) const
+        {
+            return getBodyState(name) == BodyState::UNKNOWN && _opaqueMoveVars.find(name) == _opaqueMoveVars.end();
+        }
+        // 合流之后重新判定「不透明」：某条路径上被改动过的，就变成真正的 `?`。
+        void refreshOpaqueAfterMerge(const std::vector<MoveStateSnapshot>& paths);
         // P13-2/L3-A（决议 §2）：变量 -> 出生地 Pool 变量名（空=当前块默认出生地）。
         // A 阶段只记录不检查生命周期；完整 R1/R2 检查待后续。
         std::map<std::string, std::string> _birthPlaces;
