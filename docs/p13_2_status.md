@@ -338,6 +338,106 @@ var a: Enemy = Player("x")   // 修前 exit=0
 | 无关类之间赋值 `Enemy = Player` | exit=0 | 报 not the same class |
 | 派生类赋给基类 `Base = Derived` | 通过 | 通过 |
 | 基类赋给派生类 `Derived = Base` | exit=0 | 报 not the same class |
+
+## L3-K：顶层 `var` 的内存模型状态（2026-11-18 修复）
+
+### 缺陷：顶层 var 从不进移动状态表
+
+`emitVariableDefinition` 里有一段 `if (!isGlobalSlot) { ... }`，把
+`registerMoveVar`、`registerBorrow` / `registerDropVar`、出生地校验、
+`_birthPlaces` 记录**全部**包在里面。顶层 `var` 走全局槽
+（`_inTopLevelStatements && _topLevelVarNames.count(name)`），于是整段被跳过：
+
+```
+var bob: Body[Player] pool = Player("bob")
+var c: Content[Player] pool = bob.take()   // bob 实际已是 E，但表里没登记
+sout(bob.name)                             // exit=0 —— 读空壳，静默通过
+```
+
+同一段代码放进 `fun` 里就会正确报 `'bob' is in Empty state`。
+更糟的是 `fill` 方向也反了：`bob.fill(c)` 报
+`L3: fill target 'bob' is not Empty` —— 说明状态表里**根本没有** `bob`
+这一项，而不是记错了状态。
+
+实测对照（`tests/_probe/fix/m1`..`m4`）：
+
+| 写法 | 修前 | 修后 |
+|---|---|---|
+| `fun` 内 take 后读 | exit=1 报 Empty state | exit=1（不变） |
+| 顶层 take 后读 | **exit=0 静默通过** | exit=1 报 Empty state |
+| 顶层 take 后 `sout(bob)` | **exit=0** | exit=1 |
+| 顶层 take 后 `bob.fill(c)` | **exit=1 报 not Empty**（反向错） | exit=0 |
+
+### 修法
+
+把移动状态登记 + 出生地记录移出 `!isGlobalSlot` 分支（全局槽只影响
+`registerDropVar` / `registerBorrow` —— 那两项管的是栈帧清理，顶层 var
+本来就不该进）。改后 `isGlobalSlot` 只包住这两项。
+
+### 实测（`tests/p13_2_regression.ps1` L3-K 4 条）
+
+全部通过，含「函数内同写法」与「顶层未 take 时读」两条对照。
+
+## L3-L：生命周期标签 `static` 字段（2026-11-18 修复）
+
+### 缺陷一：`static` 被当成类型名
+
+`rcc_base.cpp` 的 `DESCRIBE_LABELS` 把标签分成四类，其中：
+
+```cpp
+// life circle label
+"static", "global",
+```
+
+它们和类型标签一样是 `TOKEN_LABEL`、一样进标签区，但语义是
+「这个字段/变量归谁的生命周期」。`validateL0FieldTypes` 修前把标签区
+**每一个**标签都当类型解析，于是原仓库就有的写法：
+
+```rio
+class ID {
+    var _number: int static = 0, num: int
+```
+
+报 `L0-2: unknown type 'static' of field '_number'` —— P0 重写把
+static 字段的解析整个丢了。修法：加 `isLifecycleLabel()` 白名单，
+`static` / `global` 跳过类型解析（与 `any` 同等对待）。
+
+### 缺陷二：`static` 字段被当普通实例字段
+
+`ClassInfo` 里原先的注释写着「static 字段整体不支持，跳过即可」，
+但代码实际把它推进了 `ownFieldNames` / `fieldOffsets`，即**每个实例
+各有一份**。原仓库 `test.rio` 的用法是靠它给实例发号：
+
+```rio
+ctor () { this._number = this._number + 1  this.num = this._number }
+```
+
+修前构造三个 `ID` 输出 `1 1 1`（各自从 0 开始），修后 `1 2 3`。
+
+### 修法
+
+- `ClassInfo` 新增 `staticFieldTypes` / `staticFieldSymbols` /
+  `staticFieldInits`，static 字段**不进** `fieldOrder` / `fieldOffsets`。
+- `emitStaticFieldSlots()` 为每个 static 字段发一块 `.bss` 全局槽，
+  符号名 `<Class>.<field>.static`。
+- `emitStaticFieldInitCode()` 在 `__rio_main` 最开头、任何用户代码之前
+  执行一次初始化器（只认整数字面量，`.bss` 已零初始化，其余保守跳过）。
+- `emitAttribute` / `emitAttributeAssign` 遇到 static 字段直接读写
+  RIP 相对全局槽，**不**对左操作数求值（那是对象指针，与共享槽无关）。
+- 查找沿基类链走，子类与基类共用同一份。
+
+### 实测（`tests/p13_2_regression.ps1` L3-L 4 条）
+
+| 用例 | 修前 | 修后 |
+|---|---|---|
+| `var n: int static = 0` | 报 unknown type 'static' | 通过 |
+| `var n: int global = 0` | 报 unknown type 'global' | 通过 |
+| 普通字段（对照） | 通过 | 通过 |
+| 未知类型标签 `zzz`（对照） | 报错 | 报错（不变） |
+
+运行时验证（`tests/_probe/fix/s8_static_shared.rio`，三个 `ID` 实例）：
+修前 `1 1 1`，修后 `1 2 3`。
+
 ## 修正：`Mut` 的多重别名不是缺口（2026-11-18 复核）
 
 本表原先列过一条「§6.4 独占未检查：`mut()` 之间、`Ref` 与 `Mut` 之间没有

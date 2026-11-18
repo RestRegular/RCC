@@ -815,8 +815,21 @@ namespace backend
             // P12/G11：实例字段的初始化器（`var x: int = 42`），按声明顺序。
             // 原仓库 datatype.rio:50 `var TP_INT: str static = type(0)`、
             // ds.rio:492 `compareHandler: funi[...] private = null` 都靠它。
-            // static 字段整体不支持（见 §1.3，用顶层 var 替代），这里只收实例字段。
+            // static 字段不进这里（见下面的 staticFields）。
             std::vector<std::pair<std::string, std::shared_ptr<ast::ExpressionNode>>> ownFieldInits;
+            // 生命周期标签 `static` 修饰的字段：**不属于实例布局**，全类共享一份。
+            //
+            // 原仓库 tests/test.rio 的 `var _number: int static = 0` 就是这种：
+            // 每个 ID 实例构造时 `this._number += 1`，靠共享槽递增，
+            // 于是各实例拿到 1、2、3…… 修前它被当成普通实例字段，
+            // 每个实例各自从 0 开始，输出恒为 1 1 1。
+            //
+            // 名字 -> 类型；初始化器在 registerClass 阶段单独发进全局槽。
+            std::map<std::string, sema::TypePtr> staticFieldTypes;
+            // static 字段的全局槽符号（`<Class>.<field>` -> asm label）
+            std::map<std::string, std::string> staticFieldSymbols;
+            // static 字段的初始化器（在程序启动、任何用户代码之前跑一次）
+            std::vector<std::pair<std::string, std::shared_ptr<ast::ExpressionNode>>> staticFieldInits;
             // computeLayout 填出来的完整布局（含继承来的字段，基类在前）
             std::vector<std::string> fieldOrder;
             std::map<std::string, long long> fieldOffsets;
@@ -842,6 +855,11 @@ namespace backend
         };
         // 阶段 A：只登记类名、基类、字段、方法，不发射任何指令。
         void registerClass(const std::shared_ptr<ast::ClassDefinitionNode>& node);
+        // 生命周期标签 `static` 的字段：分配 .bss 全局槽。
+        // 必须在 computeLayout 之后调用（那时类表已齐，能沿基类链查）。
+        void emitStaticFieldSlots();
+        // static 字段的初始化器：在用户代码之前跑一次（只发字面量初值）。
+        void emitStaticFieldInitCode();
         // P13-2/L0：语义层"去伪"校验（在 emitProgram 的分流阶段调用）。
         // 这些检查都是"当前静默接受但语义无效"的写法，必须变成编译错误。
         // 返回 true 表示已登记一条错误（hasFailed() 为真），调用方应尽早停止。
@@ -896,6 +914,12 @@ namespace backend
         long long findFieldOffset(const std::string& className, const std::string& field) const;
         // 在类层次里找字段类型，找不到返回 nullptr。
         sema::TypePtr findFieldType(const std::string& className, const std::string& field) const;
+        // 生命周期标签 static 的字段：返回全局槽的 asm 符号，沿基类链找。
+        // 返回空串表示该字段不是 static。
+        std::string findStaticFieldSymbol(const std::string& className,
+                                          const std::string& field) const;
+        sema::TypePtr findStaticFieldType(const std::string& className,
+                                          const std::string& field) const;
         // 把 `Point` 这样的名字解析成 ClassType（不是类就返回 nullptr）。
         sema::TypePtr classTypeOf(const std::string& name) const;
         // 把 `a: Point` 这样的标签文本解析成类型（含类名）。

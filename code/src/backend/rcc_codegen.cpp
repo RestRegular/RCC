@@ -31,6 +31,19 @@ namespace backend{
             bool isCompare;
         }
 ;
+        // 生命周期标签（life circle label）不是类型。
+        //
+        // `rcc_base.cpp` 的 DESCRIBE_LABELS 把标签分四类，其中：
+        //   // life circle label
+        //   "static", "global",
+        // 它们与类型标签同为 TOKEN_LABEL、同样出现在标签区，但语义是
+        // 「这个字段/变量归谁的生命周期」而不是「它是什么类型」。
+        // 原仓库就有的 `var _number: int static = 0`（tests/test.rio）
+        // 正是这种写法 —— P0 重写时把 static 字段的解析整个丢了，
+        // 于是它被当成类型名，报 "unknown type 'static'"。
+        bool isLifecycleLabel(const std::string& name)        {
+            return name == "static" || name == "global";
+        }
         // 从形如 "a: int" 的标签里取类型名。
         //
         // 注意：这个函数**只看裸名字**，`[...]` 里的内容它拿不到 ——
@@ -2823,6 +2836,9 @@ namespace backend{
             if (!id) continue;
             computeLayout(id->getName());
         }
+        // 生命周期标签 `static` 的字段：为每个分配一块 .bss 全局槽。
+        // 它们不属于实例布局，因此必须在 computeLayout 之外单独处理。
+        emitStaticFieldSlots();
         // 函数体在类登记之后发射，这样构造函数/方法调用都能解析。
         for (const auto& fn : functionNodes)        {
             emitFunctionDefinition(fn);
@@ -2857,6 +2873,8 @@ namespace backend{
         // 用一个占位标签包住待回填的帧调整
         const std::string framePlaceholder = _asm.newLabel("frame");
         _asm.label(framePlaceholder);
+        // static 字段的初始化器要在**任何用户代码之前**执行一次。
+        emitStaticFieldInitCode();
         _inTopLevelStatements = true;
         for (const auto& expr : topLevelStatements)        {
             emitStatement(expr);
@@ -4096,8 +4114,19 @@ namespace backend{
  else                {
                     registerDropVar(name, slot, type);
                 }
-                // P13-2/L3：内存模型类型（含 Body 别名 ClassType）进独立移动表，
-                // 以跟踪 F/X 状态（D14 下 ClassType 不进 drop 表，但仍可被 take）。
+            }
+            // P13-2/L3：内存模型类型（含 Body 别名 ClassType）进独立移动表，
+            // 以跟踪 F/X 状态（D14 下 ClassType 不进 drop 表，但仍可被 take）。
+            //
+            // 注意这段**必须**在 isGlobalSlot 判断之外。顶层 `var` 走全局槽，
+            // 修前整段（移动状态登记 + 出生地记录 + pool.new 一致性）都写在
+            // `if (!isGlobalSlot)` 里面，于是顶层的 Body 变量根本没进移动状态表：
+            //   var bob: Body[Player] pool = Player("bob")
+            //   var c: Content[Player] pool = bob.take()   // bob 已是 E
+            //   sout(bob.name)                             // 修前 exit=0，读空壳
+            // 同一段代码放进 fun 里就会正确报 Empty 态错误 —— 行为不一致，
+            // 而顶层恰恰是最容易被当成"能跑就行"的地方。
+            {
                 const bool isMemoryModelVar =
                     (type && type->getKind() == sema::TypeKind::TK_MEMORY) ||
                     (type && type->getKind() == sema::TypeKind::TK_CLASS);
@@ -7453,6 +7482,20 @@ namespace backend{
                         if (full.empty()) continue;
                         // `any` 是合法的通配符标注。
                         if (full == "any") continue;
+                        // 生命周期标签不是类型。
+                        //
+                        // `rcc_base.cpp` 的 DESCRIBE_LABELS 把标签分成四类，
+                        // 其中 "life circle label" 就是 static / global：
+                        //   // life circle label
+                        //   "static", "global",
+                        // 它们与类型标签一样是 TOKEN_LABEL、一样进标签区，
+                        // 但语义是「这个字段/变量的生命周期归属」，不是类型。
+                        //
+                        // 修前这里把标签区**每一个**标签都当类型解析，于是原仓库
+                        // 就有的 `var _number: int static = 0`（tests/test.rio）
+                        // 报 "L0-2: unknown type 'static' of field '_number'" ——
+                        // P0 重写把 static 字段的解析整个丢了。
+                        if (isLifecycleLabel(full)) continue;
                         const auto t = typeFromLabelNode(label, _currentGenericParams);
                         if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN)                        {
                             failAt(def->getNameNode()->getPos(),
@@ -7660,10 +7703,31 @@ namespace backend{
                             ftype = typeFromLabelList(def->getLabelNodes(), _currentGenericParams);
                         }
                         if (!ftype || ftype->getKind() == sema::TypeKind::TK_UNKNOWN) ftype = sema::getIntType();
+                        // 生命周期标签 `static`：全类共享一份，不进实例布局。
+                        // 原仓库 test.rio 的 `var _number: int static = 0` 靠它
+                        // 做「构造计数」，语义是类级变量而非每实例字段。
+                        const bool isStaticField = [&]()                            {
+                            if (!def->hasLabels()) return false;
+                            for (const auto& label : def->getLabelNodes())                            {
+                                if (!label) continue;
+                                if (label->getFullLabel() == "static") return true;
+                            }
+                            return false;
+                        }();
+                        if (isStaticField)                        {
+                            info.staticFieldTypes[fname] = ftype;
+                            info.staticFieldSymbols[fname] = info.name + "." + fname + ".static";
+                            // 初始化器交给 emitStaticFieldInitCode 发进 .bss + 启动代码，
+                            // **不能**进 ownFieldInits —— 那份是每实例初始化，
+                            // 进了就会在每次构造时把共享计数重置回 0。
+                            if (def->hasInitialValue() && def->getValueNode())                            {
+                                info.staticFieldInits.emplace_back(fname, def->getValueNode());
+                            }
+                            continue;
+                        }
                         info.ownFieldNames.push_back(fname);
                         info.ownFieldTypes[fname] = ftype;
                         // P12/G11：收集实例字段初始化器，对象创建时写入。
-                        // static 字段整体不支持，跳过即可（不影响普通字段）。
                         if (def->hasInitialValue() && def->getValueNode())                        {
                             info.ownFieldInits.emplace_back(fname, def->getValueNode());
                         }
@@ -7793,6 +7857,33 @@ namespace backend{
         }
         return nullptr;
     }
+    std::string CodeGen::findStaticFieldSymbol(const std::string& className,
+                                               const std::string& field) const    {
+        // 沿基类链找：`static` 字段属于声明它的那个类，子类共用同一份。
+        std::string cur = className;
+        size_t guard = 0;
+        while (!cur.empty() && guard++ < 64)        {
+            const auto cls = findClass(cur);
+            if (!cls) return std::string();
+            const auto it = cls->staticFieldSymbols.find(field);
+            if (it != cls->staticFieldSymbols.end()) return it->second;
+            cur = cls->baseName;
+        }
+        return std::string();
+    }
+    sema::TypePtr CodeGen::findStaticFieldType(const std::string& className,
+                                               const std::string& field) const    {
+        std::string cur = className;
+        size_t guard = 0;
+        while (!cur.empty() && guard++ < 64)        {
+            const auto cls = findClass(cur);
+            if (!cls) return nullptr;
+            const auto it = cls->staticFieldTypes.find(field);
+            if (it != cls->staticFieldTypes.end()) return it->second;
+            cur = cls->baseName;
+        }
+        return nullptr;
+    }
     std::string CodeGen::classNameFromVariable(const std::string& name) const    {
         const auto slot = const_cast<CodeGen*>(this)->lookupVar(name);
         if (!slot || !slot->type) return std::string();
@@ -7914,6 +8005,70 @@ namespace backend{
             _currentGenericBindings = savedBindings;
         }
     }
+    void CodeGen::emitStaticFieldSlots()    {
+        // 生命周期标签 `static` 的字段：全类共享一份，不在实例布局里。
+        //
+        // 原仓库 tests/test.rio：
+        //     class ID {
+        //         var _number: int static = 0, num: int
+        //         ctor () { this._number = this._number + 1  this.num = this._number }
+        //     }
+        // 靠 `_number` 递增给每个实例发号。修前 static 被当普通实例字段，
+        // 每个实例各自从 0 开始，于是构造三个 ID 全是 1 1 1。
+        //
+        // 这里只发 .bss 槽（天然零初始化）。初始化器 `= 0` 这类**非零**初值
+        // 在 __rio_main 里按源码顺序执行（见 emitStaticFieldInitCode）。
+        for (auto& [cname, info] : _classes)        {
+            for (const auto& [fname, sym] : info.staticFieldSymbols)            {
+                const auto typeIt = info.staticFieldTypes.find(fname);
+                const auto ftype = typeIt != info.staticFieldTypes.end()
+                    ? typeIt->second : sema::getIntType();
+                const size_t raw = ftype ? ftype->getSize() : 8;
+                const size_t slotSize = raw < 8 ? 8 : ((raw + 7) & ~static_cast<size_t>(7));
+                _globalDecls.push_back({sym, slotSize});
+            }
+        }
+    }
+    void CodeGen::emitStaticFieldInitCode()    {
+        // static 字段的初始化器在用户代码之前跑一次。
+        //
+        // 只处理有非零初值的：.bss 已经把它们清成 0，`= 0` 再写一遍没意义，
+        // 而且表达式里可能引用别的东西（顺序/依赖都不确定）。这里保守地
+        // 只发**字面量初值**，其它留给用户显式赋值 —— 静默跳过比乱序执行安全。
+        for (auto& [cname, info] : _classes)        {
+            for (const auto& [fname, initNode] : info.staticFieldInits)            {
+                if (!initNode) continue;
+                const auto symIt = info.staticFieldSymbols.find(fname);
+                if (symIt == info.staticFieldSymbols.end()) continue;
+                // 只认整数字面量（含正负号）。浮点/字符串/表达式初值一律跳过：
+                // .bss 已是 0，静默跳过比乱序执行安全，用户可显式赋值。
+                const std::string text = nodeText(initNode);
+                if (text.empty()) continue;
+                const char c0 = text[0];
+                if (!std::isdigit(static_cast<unsigned char>(c0)) && c0 != '-' && c0 != '+') continue;
+                long long intVal = 0;
+                try                {
+                    intVal = std::stoll(text);
+                }
+                catch (...)                {
+                    continue;
+                }
+                if (intVal == 0) continue; // .bss 已是 0
+                const auto typeIt = info.staticFieldTypes.find(fname);
+                const auto ftype = typeIt != info.staticFieldTypes.end()
+                    ? typeIt->second : sema::getIntType();
+                if (ftype && ftype->isFloat())                {
+                    _asm.movImm(intVal, "%rax");
+                    _asm.inst("cvtsi2sdq", "%rax", "%xmm0");
+                    _asm.inst("movsd", "%xmm0", symIt->second + "(%rip)");
+                }
+ else                {
+                    _asm.movImm(intVal, "%rax");
+                    _asm.mov("%rax", symIt->second + "(%rip)");
+                }
+            }
+        }
+    }
     void CodeGen::emitClassBodies(const std::string& name)    {
         ClassInfo* cls = findClass(name);
         if (!cls) return;
@@ -8030,6 +8185,17 @@ namespace backend{
             fail("Cannot determine the object type of attribute access: " + node->toString());
             return;
         }
+        // 生命周期标签 `static` 的字段不在实例里，读它等于读一个全局槽，
+        // 而且**不能**对左操作数求值 —— 那是对象指针，与共享槽无关。
+        if (const std::string sym = findStaticFieldSymbol(owner, fieldId->getName());
+            !sym.empty())        {
+            const auto ftype = findStaticFieldType(owner, fieldId->getName());
+            if (ftype && ftype->isFloat())            {
+                _asm.inst("movsd", sym + "(%rip)", "%xmm0");
+            }
+            _asm.mov(sym + "(%rip)", "%rax");
+            return;
+        }
         const long long offset = findFieldOffset(owner, fieldId->getName());
         if (offset < 0)        {
             fail("Class " + owner + " has no field named '" + fieldId->getName() + "'");
@@ -8056,6 +8222,29 @@ namespace backend{
         const std::string owner = classNameOf(target->getLeftNode());
         if (owner.empty())        {
             fail("Cannot determine the object type of attribute assignment: " + target->toString());
+            return;
+        }
+        // 生命周期标签 `static` 的字段写的是全局槽，与对象指针无关。
+        if (const std::string sym = findStaticFieldSymbol(owner, fieldId->getName());
+            !sym.empty())        {
+            const auto ftype = findStaticFieldType(owner, fieldId->getName());
+            const bool destIsFloat = ftype && ftype->isFloat();
+            emitExpression(value);
+            if (hasFailed()) return;
+            const auto vtype = inferType(value);
+            const bool srcIsFloat = vtype && vtype->isFloat();
+            if (destIsFloat && !srcIsFloat)            {
+                _asm.inst("cvtsi2sdq", "%rax", "%xmm0");
+            }
+ else if (!destIsFloat && srcIsFloat)            {
+                _asm.inst("cvttsd2siq", "%xmm0", "%rax");
+            }
+            if (destIsFloat)            {
+                _asm.inst("movsd", "%xmm0", sym + "(%rip)");
+            }
+ else            {
+                _asm.mov("%rax", sym + "(%rip)");
+            }
             return;
         }
         const long long offset = findFieldOffset(owner, fieldId->getName());

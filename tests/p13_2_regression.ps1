@@ -221,6 +221,38 @@ Test-Case "L3-J 派生类赋给基类合法" "$baseDerived`nfun main(): void { v
 Test-Case "L3-J 基类赋给派生类报错" "$baseDerived`nfun main(): void { var d: D1 = B1(1) }" $false "not the same class"
 
 Write-Host ""
+Write-Host "=== L3-K：顶层 var 的内存模型状态（决议 §3.3） ==="
+# 顶层 var 走全局槽，修前它的移动状态登记整段被 isGlobalSlot 跳过，
+# 于是 take 之后读空壳不报错、fill 又报「不是 Empty」——与函数内行为相反。
+$topBody = @"
+class Player {
+    var name: str
+    ctor (n: str) { this.name = n }
+}
+var pool = Pool.fixed(2)
+"@
+Test-Case "L3-K 顶层 take 后读报错" "$topBody`nvar bob: Body[Player] pool = Player(`"bob`")`nvar c: Content[Player] pool = bob.take()`nsout(bob.name)" $false "Empty state"
+Test-Case "L3-K 函数内 take 后读报错（对照）" "$topBody`nfun main(): void {`n var bob: Body[Player] pool = Player(`"bob`")`n var c: Content[Player] pool = bob.take()`n sout(bob.name)`n}" $false "Empty state"
+Test-Case "L3-K 顶层 take 后 fill 合法" "$topBody`nvar bob: Body[Player] pool = Player(`"bob`")`nvar c: Content[Player] pool = bob.take()`nbob.fill(c)`nsout(bob.name)" $true ""
+Test-Case "L3-K 顶层未 take 时读合法（对照）" "$topBody`nvar bob: Body[Player] pool = Player(`"bob`")`nsout(bob.name)" $true ""
+
+Write-Host ""
+Write-Host "=== L3-L：生命周期标签 static 字段（rcc_base.cpp DESCRIBE_LABELS） ==="
+# `static` / `global` 在 DESCRIBE_LABELS 里归为 "life circle label"，
+# 与类型标签同为 TOKEN_LABEL、同样进标签区，但语义不是类型。
+# 修前 validateL0FieldTypes 把它当类型名，报 "unknown type 'static'"。
+$staticCls = @"
+class ID {
+    var _number: int static = 0, num: int
+    ctor () { this._number = this._number + 1  this.num = this._number }
+}
+"@
+Test-Case "L3-L static 字段声明合法" "$staticCls`nfun main(): void { var a: ID = ID() }" $true ""
+Test-Case "L3-L global 字段声明合法" "class G {`n var n: int global = 0`n}`nfun main(): void { var g: G = G() }" $true ""
+Test-Case "L3-L static 不破坏普通字段（对照）" "class A {`n var n: int = 0`n}`nfun main(): void { var a: A = A() }" $true ""
+Test-Case "L3-L 未知类型标签仍报错（对照）" "class A {`n var n: int zzz = 0`n}`nfun main(): void { var a: A = A() }" $false "unknown type 'zzz'"
+
+Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
 Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 if ($script:fail -gt 0) { exit 1 }
