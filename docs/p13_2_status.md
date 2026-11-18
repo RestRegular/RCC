@@ -28,6 +28,8 @@
 | M 回归修复 | 59359cf | 泛型类字段 `T`；drop glue 不发 `.globl` |
 | N 块表达式 | L3-N | 右值位置的裸块作可返回值作用域（`var a: int = { ret 10 }`） |
 | O 方法 ret | L3-O | 类方法漏传 `retTypeAnnotated`，`ret` 类型校验与返回值转换整段被跳过 |
+| P std 重写 | 29f6e07 | 标准库（str/io/ops/math/ds）按内存模型规范重写完成；期间修掉四个编译器缺陷，见「C-2」一节 |
+| Q clone() | 29f6e07 | `x.clone()` / `clone(x)` 按静态类型派发（str/list/值类型；dict 待 P13-4） |
 
 **验证**：`tests/p13_2_regression.ps1`，**126 条用例全 PASS**；每次提交后回归。
 另有 `tests/_probe/verify_fixes.ps1`（43 条），覆盖审阅中发现的实现缺陷及其对照用例。
