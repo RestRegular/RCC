@@ -7,7 +7,7 @@
     "description": "决议 B：可空类型 T?、if var 取值、容器 get() 的静态返回类型按元素类型分化",
     "entry": "execute.ps1",
     "timeoutSec": 300,
-    "caseCount": 16,
+    "caseCount":  20,
     "expected": {
         "exitCode": 0,
         "outputFile": "expected/output.txt",

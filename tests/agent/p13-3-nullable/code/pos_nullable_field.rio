@@ -7,5 +7,13 @@ class Box {
 fun id(b: Box): Box? {
     ret b
 }
+// 裁决 B（2026-11-18 用户裁决 A）：可空值必须先窄化才能访问字段。
+// 修前这里直接写 `sout(p.v)` 也能过 —— 但那是静默解引用，一旦 id()
+// 真的返回 null 就是访问违例；而且编译器完全没在调用点检查，
+// 能不能跑通取决于被调用方法碰不碰接收者，属于运气。
 var p: Box? = id(Box(7))
-sout(p.v)
+if var q = p {
+    sout(q.v)
+} else {
+    sout(-1)
+}

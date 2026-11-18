@@ -744,6 +744,21 @@ namespace backend
         //   值类型元素 -> elem 本身（非可空），越界给零值，与 `[i]` 完全一致
         // 返回类型是编译期事实，运行时只按这个事实去取值。
         [[nodiscard]] static sema::TypePtr containerGetReturnType(const sema::TypePtr& elemType);
+        // 决议 B / 2026-11-18 用户裁决 A：可空值**必须先窄化**才能使用。
+        //
+        // 可空类型的全部价值就是「编译期强制处理 null」。漏一处就前功尽弃：
+        // 修前 `var o: Object? = null; o.toStr()` 能编译通过，运行时是否崩
+        // 完全取决于被调用方法碰不碰 `this` —— `fun toStr(): str { ret "[Object]" }`
+        // 只返回常量、不解引用接收者，于是静默成功（实测 exit=0）；
+        // 同一份代码把方法体改成 `ret this.tag` 就立刻访问违例
+        // （0xC0000005）。缺陷藏在被调用方的实现细节里，调用方无从判断
+        // 自己的代码安不安全 —— 这比直接崩溃更危险。
+        //
+        // 本函数用于**所有**使用可空值的位置（方法调用、字段访问、运算、
+        // 作实参等）：静态类型是 NullableType 就报错并提示用 `if var` 取出。
+        // 返回 true 表示已登记错误，调用方应立即返回。
+        bool rejectUnnarrowedNullable(const std::shared_ptr<ast::ExpressionNode>& node,
+                                      const std::string& what);
         // 表达式是否是**空容器字面量**（`[]` / `{}`，包括带括号的 `([])`）。
         //
         // 这类字面量不携带元素类型信息：inferListLiteralType 把空列表兜底成

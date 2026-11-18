@@ -1,0 +1,17 @@
+class Box {
+    var v: int
+    ctor(v: int) {
+        this.v = v
+    }
+    fun get(): int {
+        ret this.v
+    }
+}
+fun id(b: Box): Box? {
+    ret b
+}
+// 裁决 B：可空值不得直接作为方法调用的接收者。
+// 这是最阴险的一条 —— 方法体若不碰 this，null 接收者也能「正常」返回，
+// 让人误以为可空类型可以随便用。
+var p: Box? = id(Box(7))
+sout(p.get())

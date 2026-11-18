@@ -10,11 +10,15 @@
     { "id": "pos_ref_dict_get", "file": "code/pos_ref_dict_get.rio", "expect": "x\nMISS" },
     { "id": "pos_null_ret", "file": "code/pos_null_ret.rio", "expect": "4\n-1" },
     { "id": "pos_nullable_field", "file": "code/pos_nullable_field.rio", "expect": "7" },
+    { "id": "pos_null_test", "file": "code/pos_null_test.rio", "expect": "a is not null\nb is null" },
     { "id": "pos_index_still_zero", "file": "code/pos_index_still_zero.rio", "expect": "0" },
     { "id": "neg_if_var_value_elem", "file": "code/neg_if_var_value_elem.rio", "expectFailure": true, "mustMatch": "requires a nullable value" },
     { "id": "neg_if_var_non_nullable", "file": "code/neg_if_var_non_nullable.rio", "expectFailure": true, "mustMatch": "requires a nullable value" },
     { "id": "neg_value_type_nullable", "file": "code/neg_value_type_nullable.rio", "expectFailure": true, "mustMatch": "cannot be nullable" },
     { "id": "neg_nullable_to_nonnull", "file": "code/neg_nullable_to_nonnull.rio", "expectFailure": true, "mustMatch": "cannot assign a nullable value" },
-    { "id": "neg_scope_leak", "file": "code/neg_scope_leak.rio", "expectFailure": true, "mustMatch": "Undefined variable: p" }
+    { "id": "neg_scope_leak", "file": "code/neg_scope_leak.rio", "expectFailure": true, "mustMatch": "Undefined variable: p" },
+    { "id": "neg_unnarrowed_field", "file": "code/neg_unnarrowed_field.rio", "expectFailure": true, "mustMatch": "as a field-access receiver" },
+    { "id": "neg_unnarrowed_method", "file": "code/neg_unnarrowed_method.rio", "expectFailure": true, "mustMatch": "as a method-call receiver" },
+    { "id": "neg_unnarrowed_operand", "file": "code/neg_unnarrowed_operand.rio", "expectFailure": true, "mustMatch": "as an operand of" }
   ]
 }

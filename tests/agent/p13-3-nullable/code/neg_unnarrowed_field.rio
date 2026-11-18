@@ -1,0 +1,14 @@
+class Box {
+    var v: int
+    ctor(v: int) {
+        this.v = v
+    }
+}
+fun id(b: Box): Box? {
+    ret b
+}
+// 裁决 B（2026-11-18 用户裁决 A）：可空值不得直接访问字段。
+// 修前这一行能编译通过；运行时是否崩溃取决于有没有真的解引用，
+// 属于静默错误值 / 访问违例，必须在编译期拦住。
+var p: Box? = id(Box(7))
+sout(p.v)

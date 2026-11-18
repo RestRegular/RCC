@@ -1,0 +1,26 @@
+class Box {
+    var v: int
+    ctor(v: int) {
+        this.v = v
+    }
+}
+fun maybe(n: int): Box? {
+    if n > 0 {
+        ret Box(n)
+    }
+    ret null
+}
+// 裁决 B：`== null` / `!= null` 是判空的唯一合法写法，必须放行。
+// 拦截可空值参与运算时不能连它一起拦，否则连「有没有值」都问不出来。
+var a: Box? = maybe(4)
+if a == null {
+    sout("a is null")
+} else {
+    sout("a is not null")
+}
+var b: Box? = maybe(0)
+if b == null {
+    sout("b is null")
+} else {
+    sout("b is not null")
+}

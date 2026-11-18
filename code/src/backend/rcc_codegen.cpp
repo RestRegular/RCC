@@ -610,6 +610,20 @@ namespace backend
             return elemType;
         return std::make_shared<sema::NullableType>(elemType);
     }
+    bool CodeGen::rejectUnnarrowedNullable(const std::shared_ptr<ast::ExpressionNode>& node,
+                                           const std::string& what)
+    {
+        if (!node)
+            return false;
+        const auto t = inferType(node);
+        if (!t || t->getKind() != sema::TypeKind::TK_NULLABLE)
+            return false;
+        failAt(node->getPos(),
+               "cannot use a nullable value of type '" + t->toString() + "' as " + what +
+                   "; it may be null — narrow it first with `if var p = <expr> { ... }`, then use 'p' "
+                   "(decision B: nullable values must be narrowed before use)");
+        return true;
+    }
     std::string CodeGen::checkAssignable(const sema::TypePtr& target, const sema::TypePtr& source) const
     {
         // 宽松原则：只挡「值类别根本不同」的错配，不做数值族内部的挑刺。
@@ -4666,6 +4680,19 @@ namespace backend
         // 浮点运算走 XMM
         const auto lt = inferType(infix->getLeftNode());
         const auto rt = inferType(infix->getRightNode());
+        // 裁决 B（2026-11-18 用户裁决 A）：可空值不能直接参与运算。
+        // 修前 `var s: str? = null; s + "!"` 编译通过，运行时把 null 指针
+        // 当整数打印（实测 140695311048736）。
+        // 比较运算 `== null` / `!= null` 是**判空的唯一合法写法**，必须放行。
+        const bool isNullTest = (op == core::TokenType::TOKEN_EQUAL || op == core::TokenType::TOKEN_NOT_EQUAL);
+        if (!isNullTest)
+        {
+            const std::string opStr = infix->getOpToken().getValue();
+            if (rejectUnnarrowedNullable(infix->getLeftNode(), "an operand of '" + opStr + "'"))
+                return;
+            if (rejectUnnarrowedNullable(infix->getRightNode(), "an operand of '" + opStr + "'"))
+                return;
+        }
         // P12/G3 + G4：`str + str` / `list + list` 是**拼接**，不是整数加法。
         // 之前这里无条件走 addq，于是 `"a" + "b"` 把两个指针相加，
         // 结果按 int 解释（原仓库 str.rio:111 的 `[""] + result + ""`、
@@ -11429,6 +11456,10 @@ namespace backend
             fail("Class " + owner + " has no field named '" + fieldId->getName() + "'");
             return;
         }
+        // 裁决 B（2026-11-18 用户裁决 A）：可空接收者的字段访问必须先窄化。
+        // 修前 `var p: Pt? = null; p.x` 编译通过、运行时访问违例。
+        if (rejectUnnarrowedNullable(infix->getLeftNode(), "a field-access receiver"))
+            return;
         emitExpression(infix->getLeftNode());
         if (hasFailed())
             return;
@@ -12036,6 +12067,11 @@ namespace backend
             fail("Method name must be an identifier: " + member->toString());
             return;
         }
+        // 裁决 B（2026-11-18 用户裁决 A）：可空接收者必须先窄化。
+        // 修前 `var o: Object? = null; o.toStr()` 编译通过，运行时是否崩溃
+        // 取决于方法体碰不碰 this（碰则访问违例，不碰则静默成功）。
+        if (rejectUnnarrowedNullable(member->getLeftNode(), "a method-call receiver"))
+            return;
         // P13-2（docs/p13_2_status.md §B）：内建 clone() ——
         // 把借用值转成自己拥有的新值，是 std 里「泛型形参要返回」的唯一
         // 合法手段（D9 规则 C 不放宽）。
