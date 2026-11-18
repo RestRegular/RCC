@@ -142,6 +142,11 @@ std 按内存模型规范重写时暴露出来的四个编译器缺陷，全部�
   L0 去伪、L1 语法地基、L2 结构语义、L3 内存模型主体、L4 诊断（from/ensures/writes 语法层）。
 - L4 的「可选类型」部分已实现（`T?` / `if var`）；split 绑定形态与条件销毁
   于 2026-11-18 按用户裁决实现，不再是缺口。
+- 容器 `get()` 的静态返回类型按元素类型分化（2026-11-18 用户裁决 A）：
+  引用型元素给 `T?`（越界 null），值类型元素给非可空 `T`（越界零值，与 `[i]`
+  一致）。判据唯一（`isNullableCapable` / `containerGetReturnType`），
+  `inferType`、`T?` 标注解析、`if var` 允许性三处共用，详见
+  `docs/pending_designs.md` §B「补充裁决」。
 - **writes 调用点效果（决议 §4.2）曾整块缺失，现已实现。**
   早先的判断（「NLL 已在引用最后使用后将其移除，writes 要影响的活跃引用
   本就不存在」）经实测证伪：`_activeRefs` 的清理只发生在 `drainActiveRefs`
@@ -841,7 +846,7 @@ sout(p.x) sout(p.y) sout(b.v) sout(b.w)   // 修前：11 22 11 22
 | `L3-struct-ret-method-spill`（实参跨寄存器/栈） | 实参与 this 撞位 | `103 12 100` |
 
 **回归**：`p13-2-regression` 134 → **145/145**（新增 9 条 struct + 2 条条件销毁用例）；
-全量 `tests/user/run-all.ps1` **27 套件 903 用例全过，0 失败**。
+全量 `tests/user/run-all.ps1` **27 套件 907 用例全过，0 失败**。
 
 ### 仍未覆盖
 

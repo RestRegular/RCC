@@ -1,0 +1,6 @@
+var xs = [0, 5]
+sout(xs.get(0))
+var bs = [true, false]
+sout(bs.get(1))
+var fs = [0.0, 1.5]
+sout(fs.get(0))

@@ -1,3 +1,3 @@
-var xs = [10, 20]
-var v: int = xs.get(0)
-sout(v)
+var ss = ["a", "b"]
+var s: str = ss.get(0)
+sout(s)

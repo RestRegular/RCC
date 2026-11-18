@@ -1,5 +1,5 @@
-var xs = [10, 20]
-if var p = xs.get(0) {
+var ss = ["a", "b"]
+if var p = ss.get(0) {
     sout(p)
 }
 sout(p)

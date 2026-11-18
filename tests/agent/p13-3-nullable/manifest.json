@@ -1,13 +1,13 @@
-{
+﻿{
     "name": "p13-3-nullable",
     "version": "1.0",
     "createdAt": "2026-11-18T09:45:00.0000000Z",
     "author": "agent",
     "type": "regression",
-    "description": "决议 B：可空类型 T?、if var 取值、容器 get() 越界返回 null",
+    "description": "决议 B：可空类型 T?、if var 取值、容器 get() 的静态返回类型按元素类型分化",
     "entry": "execute.ps1",
     "timeoutSec": 300,
-    "caseCount": 12,
+    "caseCount": 16,
     "expected": {
         "exitCode": 0,
         "outputFile": "expected/output.txt",

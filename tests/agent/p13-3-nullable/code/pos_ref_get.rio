@@ -1,0 +1,11 @@
+var ss = ["a", "b"]
+if var s = ss.get(0) {
+    sout(s)
+} else {
+    sout("MISS")
+}
+if var t = ss.get(99) {
+    sout(t)
+} else {
+    sout("MISS")
+}

@@ -1,0 +1,4 @@
+var xs = [1, 2, 3]
+if var v = xs.get(0) {
+    sout(v)
+}

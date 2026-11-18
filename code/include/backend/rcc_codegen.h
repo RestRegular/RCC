@@ -150,13 +150,16 @@ namespace backend
         // 寄存器参数落在 shadow space 内（pos*8，0..24），
         // 溢出参数落在 shadow space 之后（shadow + (pos-4)*8）。
         size_t argSlotOffset(size_t pos) const;
-        // 决议 B：容器内建 get() —— 返回 `T?`，越界/未命中给 null（不 panic）。
-        void emitListGetOrNull(const std::shared_ptr<ast::ExpressionNode>& receiver,
-                               const std::shared_ptr<ast::ExpressionNode>& indexExpr,
-                               const sema::TypePtr& elemType);
-        void emitDictGetOrNull(const std::shared_ptr<ast::ExpressionNode>& receiver,
-                               const std::shared_ptr<ast::ExpressionNode>& keyExpr,
-                               const sema::TypePtr& valType);
+        // 决议 B / 用户裁决 A：容器内建 get()。
+        // 越界/未命中一律给 0（与 `[i]` 同一套取值代码），**静态**返回类型
+        // 由 containerGetReturnType 决定：引用型元素是 T?，值类型元素是 T。
+        // 运行时不需要分支 —— 值类型的「0」就是零值，引用型的「0」就是 null。
+        void emitListGet(const std::shared_ptr<ast::ExpressionNode>& receiver,
+                         const std::shared_ptr<ast::ExpressionNode>& indexExpr,
+                         const sema::TypePtr& elemType);
+        void emitDictGet(const std::shared_ptr<ast::ExpressionNode>& receiver,
+                         const std::shared_ptr<ast::ExpressionNode>& keyExpr,
+                         const sema::TypePtr& valType);
         // 把实参求值并装进 ABI 参数寄存器，超出的写进调用者预留的栈槽，
         // 最后**自己**把整块调用区（shadow space + 溢出槽）从 %rsp 上预留出来。
         // 返回值是预留的字节数，调用点负责 `call` 之后 `addRsp(该值)`。
@@ -725,6 +728,22 @@ namespace backend
                                                   const sema::TypePtr& source) const;
         // P9：两个类型是否「同一族」，用于 ret / 实参等只关心值类别的场合。
         [[nodiscard]] bool sameValueFamily(const sema::TypePtr& a, const sema::TypePtr& b) const;
+        // 决议 B（2026-11-18 用户裁决 A）：某个元素/值类型**能否**写成 `T?`。
+        //
+        // 唯一判据：只有「空」能被表示的类型才可空。当前就是指针族
+        // （str/list/dict/class/ptr/Ref/Mut/Take/Pool，null = 空指针）。
+        // 值类型（int/float/bool/char）的零值是合法值，没有「没有」这个状态，
+        // 因此不可空 —— 这也正是裁决 a87037d8 否决「零值当 null」的理由。
+        //
+        // 凡是「要不要包一层 NullableType」的地方都必须走这里，不要在别处
+        // 再写一份等价判断：容器 get()、`T?` 标注解析、if var 的允许性
+        // 全部共用同一口径，否则静态类型会和运行时表示脱节。
+        [[nodiscard]] static bool isNullableCapable(const sema::TypePtr& inner);
+        // 容器内建 `get()` 的**静态**返回类型（决议 B / 用户裁决 A）。
+        //   引用型元素 -> NullableType(elem)，越界给 null，可用 if var 取出
+        //   值类型元素 -> elem 本身（非可空），越界给零值，与 `[i]` 完全一致
+        // 返回类型是编译期事实，运行时只按这个事实去取值。
+        [[nodiscard]] static sema::TypePtr containerGetReturnType(const sema::TypePtr& elemType);
         // 表达式是否是**空容器字面量**（`[]` / `{}`，包括带括号的 `([])`）。
         //
         // 这类字面量不携带元素类型信息：inferListLiteralType 把空列表兜底成

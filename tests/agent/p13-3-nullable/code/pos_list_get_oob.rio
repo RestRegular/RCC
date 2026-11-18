@@ -1,6 +1,2 @@
 var xs = [10, 20, 30]
-if var p = xs.get(99) {
-    sout(p)
-} else {
-    sout(-1)
-}
+sout(xs.get(99))

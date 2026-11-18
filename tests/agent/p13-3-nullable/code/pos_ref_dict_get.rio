@@ -1,0 +1,11 @@
+var d = {"a": "x"}
+if var v = d.get("a") {
+    sout(v)
+} else {
+    sout("MISS")
+}
+if var w = d.get("zz") {
+    sout(w)
+} else {
+    sout("MISS")
+}

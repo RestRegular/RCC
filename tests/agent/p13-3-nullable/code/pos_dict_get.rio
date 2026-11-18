@@ -1,6 +1,2 @@
 var d = {"a": 5, "b": 6}
-if var v = d.get("b") {
-    sout(v)
-} else {
-    sout(-1)
-}
+sout(d.get("b"))

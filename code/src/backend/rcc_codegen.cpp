@@ -579,6 +579,37 @@ namespace backend
             return true;
         return false;
     }
+    bool CodeGen::isNullableCapable(const sema::TypePtr& inner)
+    {
+        // 决议 B / 用户裁决 A（2026-11-18）：可空的唯一判据是
+        // 「这个类型有没有『没有』这个状态」。
+        //
+        // 指针族的「空」就是空指针，与任何合法值都不冲突，所以可空。
+        // 值类型的零值（0 / false / 0.0 / '\0'）是**合法值**，把它当 null
+        // 会让 `list[int]` 里真实的 0 静默变成「越界」—— 这正是裁决
+        // a87037d8 证伪零值方案的那条理由，不能在容器返回值上重演。
+        if (!inner)
+            return false;
+        // struct 是纯值语义（决议 A：逐字节拷贝，标量字段），没有空状态。
+        return inner->isPointerLike();
+    }
+    sema::TypePtr CodeGen::containerGetReturnType(const sema::TypePtr& elemType)
+    {
+        // 决议 B / 用户裁决 A：get() 的返回类型按**元素静态类型**分化。
+        //
+        //   引用型元素（str/list/dict/类/ptr/Ref/Mut/Take/Pool）
+        //       -> T?   越界给 null，if var 可用
+        //   值类型元素（int/float/bool/char、struct）
+        //       -> T    越界给零值，与 `[i]` 完全一致，if var 不可用
+        //
+        // 这里是唯一事实源：inferType、if var 的允许性判断、sout 的类型
+        // 检查全都读它，所以「静态类型」与「能不能 if var」不会各说各话。
+        if (!elemType)
+            return sema::getIntType();
+        if (!isNullableCapable(elemType))
+            return elemType;
+        return std::make_shared<sema::NullableType>(elemType);
+    }
     std::string CodeGen::checkAssignable(const sema::TypePtr& target, const sema::TypePtr& source) const
     {
         // 宽松原则：只挡「值类别根本不同」的错配，不做数值族内部的挑刺。
@@ -3106,19 +3137,25 @@ namespace backend
                         }
                         if (mid && mid->getName() == "get")
                         {
-                            // 决议 B：list/dict 的 get(i)/get(k) 返回 `T?`。
+                            // 决议 B / 用户裁决 A：get(i)/get(k) 的返回类型按
+                            // **元素静态类型**分化，由 containerGetReturnType
+                            // 统一决定 —— 值类型元素返回非可空的 T（越界给
+                            // 零值），引用型元素才返回 T?。这里不许再无条件
+                            // 包 NullableType，否则 `list[int].get()` 的静态
+                            // 类型会和运行时表示脱节（用户 2026-11-18 明确
+                            // 要求：不能只修 if var，类型系统本身必须一致）。
                             // 必须在 clone 分支附近、owner 判空之前判掉 ——
                             // list/dict 是内置类型，classNameOf 为空。
                             const auto rt = inferType(member->getLeftNode());
                             if (rt && rt->getKind() == sema::TypeKind::TK_LIST)
                             {
                                 const auto elem = std::static_pointer_cast<sema::ListType>(rt)->getElemType();
-                                return std::make_shared<sema::NullableType>(elem ? elem : sema::getIntType());
+                                return containerGetReturnType(elem);
                             }
                             if (rt && rt->getKind() == sema::TypeKind::TK_DICT)
                             {
                                 const auto val = std::static_pointer_cast<sema::DictType>(rt)->getValueType();
-                                return std::make_shared<sema::NullableType>(val ? val : sema::getIntType());
+                                return containerGetReturnType(val);
                             }
                         }
                         // P13-2/L3-A：Pool 静态方法返回 Pool 类型
@@ -6281,6 +6318,10 @@ namespace backend
                 const auto nullableType = inferType(branch->getConditionNode());
                 if (!nullableType || nullableType->getKind() != sema::TypeKind::TK_NULLABLE)
                 {
+                    // 用户裁决 A（2026-11-18）：if var 的**允许性只看静态类型**，
+                    // 不在运行时检查寄存器是不是零。值类型元素的 get() 静态
+                    // 返回非可空 T，所以这里必须拒绝 —— 拒绝的依据是类型，
+                    // 不是值。
                     failAt(branch->getConditionNode()->getPos(),
                            "'if var " + branch->getBindingName() +
                                " = ...' requires a nullable "
@@ -8066,18 +8107,19 @@ namespace backend
         }
         fail("Index access on a non-container value: " + node->toString());
     }
-    // 决议 B：`xs.get(i)` —— 返回 `T?`，越界给 null，不 panic。
+    // 决议 B / 用户裁决 A：`xs.get(i)` —— 越界给 0，不 panic。
     //
-    // 与 `xs[i]` 的分工（用户裁决）：`[i]` 保持原语义「越界读零值」，
-    // get() 才是能表达「没有」的那个。两者的返回值在 %rax 里都是
-    // 8 字节指针/值，区别只在类型层面（`T?` 不能直接当 `T` 用，
-    // 必须 `if var p = xs.get(i)` 取出），所以这里不需要额外的标签位。
+    // 与 `xs[i]` 的分工：`[i]` 保持原语义「越界读零值」；get() 对**引用型
+    // 元素**额外提供「没有」这个状态（0 是空指针），对**值类型元素**则与
+    // `[i]` 完全一致（0 就是零值，不表达「没有」）。这个区别只存在于
+    // 类型层面（containerGetReturnType），运行时两者共用同一套取值代码，
+    // 所以这里不需要额外的标签位。
     //
     // 越界与负下标都返回 0：`cmpq` + `jae` 是无符号比较，负下标会
     // 变成巨大的无符号数，同样被拦下。
-    void CodeGen::emitListGetOrNull(const std::shared_ptr<ast::ExpressionNode>& receiver,
-                                    const std::shared_ptr<ast::ExpressionNode>& indexExpr,
-                                    const sema::TypePtr& elemType)
+    void CodeGen::emitListGet(const std::shared_ptr<ast::ExpressionNode>& receiver,
+                              const std::shared_ptr<ast::ExpressionNode>& indexExpr,
+                              const sema::TypePtr& elemType)
     {
         const auto recvTypeForSlot = inferType(receiver);
         const std::string contSlot = allocateTemp(recvTypeForSlot ? recvTypeForSlot : sema::getIntType());
@@ -8105,12 +8147,12 @@ namespace backend
             _asm.inst("movq", "%rax", "%xmm0");
         }
     }
-    // 决议 B：`d.get(k)` —— 同 list 版，未命中给 null。
-    // 查找逻辑与 `d[k]` 完全一致（键可能是 str 也可能是数值），
-    // 差别只在未命中时返回 0 而不是零值 —— 其实两者一样，
-    // 真正区别是类型层面：get 返回 `V?`。
-    void CodeGen::emitDictGetOrNull(const std::shared_ptr<ast::ExpressionNode>& receiver,
-                                    const std::shared_ptr<ast::ExpressionNode>& keyExpr, const sema::TypePtr& valType)
+    // 决议 B / 用户裁决 A：`d.get(k)` —— 同 list 版。
+    // 查找逻辑与 `d[k]` 完全一致（键可能是 str 也可能是数值），未命中给 0。
+    // 类型层面的差别由 containerGetReturnType 决定：引用型 value 给 `V?`，
+    // 值类型 value 给非可空 `V`（此时 0 就是零值，与 `d[k]` 一致）。
+    void CodeGen::emitDictGet(const std::shared_ptr<ast::ExpressionNode>& receiver,
+                              const std::shared_ptr<ast::ExpressionNode>& keyExpr, const sema::TypePtr& valType)
     {
         // 直接复用下标读取的实现：它的未命中分支本来就返回 0。
         // 这里造不出 IndexExpressionNode（节点要 mainToken），所以
@@ -9706,7 +9748,9 @@ namespace backend
             const auto inner = typeFromLabelNodeNonNull(label, genericParams);
             if (!inner || inner->getKind() == sema::TypeKind::TK_UNKNOWN)
                 return inner;
-            if (!inner->isPointerLike() && inner->getKind() != sema::TypeKind::TK_NULLABLE)
+            // 与 containerGetReturnType 共用同一个判据（isNullableCapable）：
+            // 「能写 T?」和「get() 会不会返回 T?」必须是同一条规则。
+            if (!isNullableCapable(inner) && inner->getKind() != sema::TypeKind::TK_NULLABLE)
             {
                 // failAt 不是 const 成员（它要写失败标志），这里只能转一下。
                 // 语义上没副作用之外的东西：它只是登记一条诊断。
@@ -11920,12 +11964,14 @@ namespace backend
                 return;
             }
         }
-        // 决议 B：list/dict 内建 get(i) / get(k) —— 返回 `T?`，越界给 null，
-        // **不 panic**（用户明确否决了「get() 越界 panic」的提案）。
+        // 决议 B / 用户裁决 A（2026-11-18）：list/dict 内建 get(i) / get(k)。
         //
-        // 与 `xs[i]` 的区别就在这一点：`[i]` 保持原语义（越界读零值），
-        // get() 才能表达「没有」。所以 get 的返回类型是 NullableType，
-        // 只能配 `if var p = xs.get(i)` 使用。
+        // 返回类型按**元素静态类型**分化（containerGetReturnType）：
+        //   引用型元素 -> T?  越界给 null，配 `if var p = xs.get(i)` 使用
+        //   值类型元素 -> T   越界给零值，与 `xs[i]` **完全一致**
+        //
+        // 用户明确否决了「get() 越界 panic」的提案，也否决了「值类型用零值
+        // 冒充 null」（那会让 list[int] 里真实的 0 变成「越界」）。
         //
         // 必须在 owner 检查之前：receiver 是 list/dict（内置类型，
         // classNameOf 为空），落到后面会报 "Cannot determine the object type"。
@@ -11936,13 +11982,13 @@ namespace backend
             if (recvKind == sema::TypeKind::TK_LIST)
             {
                 const auto elemType = std::static_pointer_cast<sema::ListType>(recvType)->getElemType();
-                emitListGetOrNull(member->getLeftNode(), args[0], elemType);
+                emitListGet(member->getLeftNode(), args[0], elemType);
                 return;
             }
             if (recvKind == sema::TypeKind::TK_DICT)
             {
                 const auto valType = std::static_pointer_cast<sema::DictType>(recvType)->getValueType();
-                emitDictGetOrNull(member->getLeftNode(), args[0], valType);
+                emitDictGet(member->getLeftNode(), args[0], valType);
                 return;
             }
             failAt(member->getPos(),
