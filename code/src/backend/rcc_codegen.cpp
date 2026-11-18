@@ -44,6 +44,32 @@ namespace backend{
         bool isLifecycleLabel(const std::string& name)        {
             return name == "static" || name == "global";
         }
+        // 标签区里**不是类型、也不是出生地**的那些标签。
+        //
+        // DESCRIBE_LABELS 的四类里，只有 "data type label" 那一类是类型，
+        // 其余三类都是修饰语：
+        //   // access permission label   public / private / protected / builtin
+        //   // restrict label            const / quote
+        //   // life circle label         static / global
+        //   // object-oriented label     overwrite / interface / virtual
+        // 它们和类型标签一样是 TOKEN_LABEL、一样进标签区，但不参与类型解析，
+        // 更不可能是出生地（出生地只认 Pool 变量名）。
+        //
+        // 为什么必须显式列出来：L3-J 补「未声明的出生地标签报错」时只按
+        // 「能解析成类型吗 / 是 Pool 变量吗」两问判定，于是 `const` 这种修饰
+        // 标签两头都不占，被当成拼错的出生地 —— 实测 lib/std/math.rio:25 的
+        // `var pi: float const = 3.141593` 报
+        //   L3: unknown label 'const' in declaration of 'pi'
+        // 这是 L3-J 引入的回归（math 模块因此整个导入失败）。
+        bool isNonTypeLabel(const std::string& name)        {
+            if (isLifecycleLabel(name)) return true;
+            static const std::unordered_set<std::string> kModifiers = {
+                "public", "private", "protected", "builtin",
+                "const", "quote",
+                "overwrite", "interface", "virtual"
+            };
+            return kModifiers.count(name) > 0;
+        }
         // 从形如 "a: int" 的标签里取类型名。
         //
         // 注意：这个函数**只看裸名字**，`[...]` 里的内容它拿不到 ——
@@ -871,7 +897,15 @@ namespace backend{
     }
     void CodeGen::registerBorrow(const std::string& name, const sema::TypePtr& type,
                                  const std::string& addr)    {
-        if (!needsDrop(type)) return;
+        // D14：ptr 不进 drop 表（裸指针的所有权不在语言层），所以下面
+        // needsDrop 会把它挡掉。但**借用标记本身必须登记**：`var s: str = p`
+        // 要判断 p 是不是形参（借用）来决定所有权是否转移。
+        // 修前不登记，`fun f(scratch: ptr) { var s: str = scratch }` 里
+        // scratch 既不是拥有者也不是借用，包装出的 s 被当成新拥有者，
+        // 函数退出时 free 掉调用方的缓冲区（ds 的 dictKeys/dictValues 崩溃）。
+        // 登记成借用的 ptr 仍不会进 drop 路径：emitScopeDrops 里
+        // moved=true 的项直接跳过。
+        if (!needsDrop(type) && (!type || type->getKind() != sema::TypeKind::TK_PTR)) return;
         if (_scopeDrops.empty()) _scopeDrops.emplace_back();
         // 借用也进登记表（这样 isBorrowed 能找到它），但 moved=true 表示
         // 「出口不销毁」—— 借用本来就不拥有资源。
@@ -1090,35 +1124,71 @@ namespace backend{
     }
     CodeGen::MoveStateSnapshot
     CodeGen::joinMoveStateSnapshots(const std::vector<MoveStateSnapshot>& paths) const    {
-        if (paths.empty()) return _moveStates;
+        if (paths.empty()) return snapshotMoveStates();
+        MoveStateSnapshot result;
         // 深度取最小：更深层的 map 属于分支/循环体内的局部量，popScope 后
         // 已随作用域消失，不能把它们带到外面来。
         size_t depth = _moveStates.size();
-        for (const auto& p : paths) depth = std::min(depth, p.size());
-        MoveStateSnapshot acc(paths.front().begin(), paths.front().begin() + depth);
+        for (const auto& p : paths) depth = std::min(depth, p.states.size());
+        result.states.assign(paths.front().states.begin(), paths.front().states.begin() + depth);
         for (size_t p = 1; p < paths.size(); ++p)        {
-            const auto& other = paths[p];
+            const auto& other = paths[p].states;
             for (size_t i = 0; i < depth; ++i)            {
-                for (auto& entry : acc[i])                {
+                for (auto& entry : result.states[i])                {
                     const auto it = other[i].find(entry.first);
                     // 该路径没碰过这项 = 它保持入口状态，与入口一致，保持原状。
                     if (it == other[i].end()) continue;
                     entry.second = joinBodyStates(entry.second, it->second);
                 }
                 for (const auto& entry : other[i])                {
-                    if (acc[i].find(entry.first) == acc[i].end())
-                        acc[i][entry.first] = entry.second;
+                    if (result.states[i].find(entry.first) == result.states[i].end())
+                        result.states[i][entry.first] = entry.second;
                 }
             }
         }
-        return acc;
+        // drop 表的 (moved, borrowed) 同理合流。
+        //
+        // moved：取**或**（任一条路径移走了就算移走）。这一位有两个消费方：
+        // emitScopeDrops（跳过销毁）与 isVarMoved（禁止再读），两者的安全方向
+        // 都是「宁可保守」。
+        //
+        // 修前取的是**与**，注释写「代价只是某条路径拥有却没销毁 = 漏一次
+        // 释放」。这是错的：`split` 里
+        //     var front: str = subStr(rest, 0, idx)
+        //     if ... { result += [front] }        // 只有这一条路径移动
+        // 合流后 moved = true && false = false，于是循环体出口照样 drop front
+        // —— 而 front 已经作为元素进了 result 容器，drop 等于把容器里的元素
+        // 释放掉。实测 `split("a,b", ",")` 返回 ["", ""]：元素槽指向已释放的
+        // 头，读出来是空串；并且容器元素成了悬空指针。
+        //
+        // 取或的代价是「一条路径没移动、合流后也不再销毁」= 漏一次释放，
+        // 按 D17 的既有取舍（漏放可容忍、重复释放不可）这正是要的方向。
+        // 读限制同理偏保守：条件移动之后不能再假定槽里还有效。
+        //
+        // borrowed：取**或**（有一条路径上它是借用，合流后就不能假定它拥有
+        // 内容）。这一位必须单独合流，不能靠 moved 推断 —— `x = <新值>` 的
+        // 升格会把两位一起改，只用 moved 一个 bit 表达不了「借用（不销毁）」
+        // 与「已移走（不销毁）」这两种不同的「不销毁」。
+        result.drops = paths.front().drops;
+        for (size_t p = 1; p < paths.size(); ++p)        {
+            const auto& other = paths[p].drops;
+            const size_t n = std::min(result.drops.size(), other.size());
+            for (size_t s = 0; s < n; ++s)            {
+                const size_t m = std::min(result.drops[s].size(), other[s].size());
+                for (size_t i = 0; i < m; ++i)                {
+                    result.drops[s][i].moved = result.drops[s][i].moved || other[s][i].moved;
+                    result.drops[s][i].borrowed = result.drops[s][i].borrowed || other[s][i].borrowed;
+                }
+            }
+        }
+        return result;
     }
     void CodeGen::refreshOpaqueAfterMerge(const std::vector<MoveStateSnapshot>& paths)    {
         // 决议 §9.2 的 Take 形参入口态 `?` 是「编译器不做承诺」；一旦某条路径
         // 把它推到了确定状态（take→E / fill→F），合流出来的 `?` 就变成真正的
         // 「不确定」了，不再享有无条件放行。
         auto stateIn = [](const MoveStateSnapshot& snap, const std::string& name) -> const BodyState* {
-            for (auto it = snap.rbegin(); it != snap.rend(); ++it)            {
+            for (auto it = snap.states.rbegin(); it != snap.states.rend(); ++it)            {
                 const auto found = it->find(name);
                 if (found != it->end()) return &found->second;
             }
@@ -1137,9 +1207,39 @@ namespace backend{
             else          ++oit;
         }
     }
+    CodeGen::MoveStateSnapshot CodeGen::snapshotMoveStates() const    {
+        MoveStateSnapshot snap;
+        snap.states = _moveStates;
+        snap.drops.reserve(_scopeDrops.size());
+        for (const auto& scope : _scopeDrops)        {
+            std::vector<MoveStateSnapshot::DropBits> bits;
+            bits.reserve(scope.size());
+            for (const auto& e : scope) bits.push_back({e.moved, e.borrowed});
+            snap.drops.push_back(std::move(bits));
+        }
+        return snap;
+    }
+    void CodeGen::restoreMoveStates(const MoveStateSnapshot& snap)    {
+        _moveStates = snap.states;
+        // drop 表只回滚 (moved, borrowed) 两位：名字/地址/类型是词法事实，
+        // 不随控制流变化；层数按当前作用域栈为准（snap 只可能更浅或等深）。
+        const size_t depth = std::min(snap.drops.size(), _scopeDrops.size());
+        for (size_t s = 0; s < depth; ++s)        {
+            const auto& bits = snap.drops[s];
+            auto& entries = _scopeDrops[s];
+            const size_t n = std::min(bits.size(), entries.size());
+            for (size_t i = 0; i < n; ++i)            {
+                entries[i].moved = bits[i].moved;
+                entries[i].borrowed = bits[i].borrowed;
+            }
+        }
+    }
     void CodeGen::joinMoveStatePaths(const std::vector<MoveStateSnapshot>& paths)    {
         if (paths.empty()) return;
-        _moveStates = joinMoveStateSnapshots(paths);
+        // 合流结果要**两处一起**写回（状态表 + drop 表的 moved 位），
+        // 只写状态表会让 drop 表停在「已移走」，实测导致
+        // `if c { ret xs } ... ret xs` 在汇合点后误报 'xs' is in Full state。
+        restoreMoveStates(joinMoveStateSnapshots(paths));
     }
     bool CodeGen::isAlwaysTrueCondition(const std::shared_ptr<ast::ExpressionNode>& cond)    {
         // parser 把 `else` 造成「条件 = BooleanLiteralNode(true)」的分支
@@ -1452,6 +1552,13 @@ namespace backend{
     bool CodeGen::checkBorrowNotEscaping(const std::string& name, const utils::Pos& pos,
                                          const std::string& action) const    {
         if (!isBorrowed(name)) return true;
+        // D14：裸指针没有语言层所有权，借用语义对它不适用 —— `ret p`
+        // （p 是 ptr 形参）返回的是位模式，调用方拿到后照用即可，
+        // 谈不上「把别人的资源搬走」。ptr 之所以登记借用，只是为了
+        // 让 `var s: str = p` 能判出「源是形参、所有权不能转移」。
+        if (const auto slot = const_cast<CodeGen*>(this)->lookupVar(name);
+            slot && slot->type && slot->type->getKind() == sema::TypeKind::TK_PTR)
+            return true;
         const_cast<CodeGen*>(this)->failAt(
             pos, "'" + name + "' is a borrowed value and cannot be " + action +
                      " (P13-1 / D9 rule C: only an owner can be moved)");
@@ -2298,6 +2405,13 @@ namespace backend{
                         }
                     }
                     const std::string owner = classNameOf(member->getLeftNode());
+                    // P13-2（docs §B）：`x.clone()` 的静态类型就是接收者类型。
+                    // 必须排在 classNameOf 之后、owner 判空之前：str/list 是
+                    // 内置类型（owner 为空），落到 return int 会让
+                    // `var ys: list[int] = xs.clone()` 赋值处报类型不符。
+                    if (mid && mid->getName() == "clone")                    {
+                        if (const auto rt = inferType(member->getLeftNode())) return rt;
+                    }
                     if (mid && !owner.empty())                    {
                         // P13-2/L3（决议 §7.1）：Body 内建 ref()/mut() ——
                         // p.ref() ≡ &p → Ref[Owner]，p.mut() → Mut[Owner]。
@@ -2358,6 +2472,18 @@ namespace backend{
                 // core 种子层：extern fun 不进 _functionReturns，返回值类型
                 // 只能由这张静态表给（否则 clone 出来的 str/list 会被当成 int）。
                 if (const auto coreRet = coreReturnType(id->getName())) return coreRet;
+                // P13-2（docs §B）：内建 `clone(x)` 的返回类型就是实参类型。
+                // 不登记这条的话，`var t: str = clone(s)` 的结果槽会按 int
+                // 分配，赋值处报 "cannot assign a value of type int"。
+                if (id->getName() == "clone")                {
+                    std::vector<std::shared_ptr<ast::ExpressionNode>> cloneArgs;
+                    if (const auto argsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))                    {
+                        collectArgs(argsNode, cloneArgs);
+                    }
+                    if (cloneArgs.size() == 1)                    {
+                        if (const auto at = inferType(cloneArgs[0])) return at;
+                    }
+                }
                 // 经由函数值调用：变量槽里存着 fun(...): T，结果类型就是 T。
                 // 槽位类型是函数类型这一点，由 `var f = (..)->{..}` 的初始化
                 // （inferType 对匿名函数返回 FunctionType）自动带来，不需要额外登记表。
@@ -2394,6 +2520,12 @@ namespace backend{
             // P6：成员读取的类型就是这个字段的静态类型
             if (t == core::TokenType::TOKEN_DOT)            {
                 const auto fieldId = std::dynamic_pointer_cast<ast::IdentifierNode>(infix->getRightNode());
+                // P13-2（docs §B）：`x.clone()` 的静态类型就是接收者类型。
+                // 必须在 findFieldType 之前判：str/list 是内置类型，没有字段表，
+                // 落到下面会返回 int，于是 `var t: str = s.clone()` 赋值处报错。
+                if (fieldId && fieldId->getName() == "clone")                {
+                    if (const auto rt = inferType(infix->getLeftNode())) return rt;
+                }
                 const std::string owner = classNameOf(infix->getLeftNode());
                 if (fieldId && !owner.empty())                {
                     const auto ft = findFieldType(owner, fieldId->getName());
@@ -3927,9 +4059,10 @@ namespace backend{
             // 右值是「已有变量 / 元素 / 字段」= 已经有人管着它的生命周期，
             // 接收方只是又多了一个壳子别名 -> 借用。否则是新值 -> 拥有者。
             //
-            // 与 emitVariableDefinition 的 isBorrowInit 同一口径，且同样要求
-            // **同类型**：`var r: str = p`（p 是 ptr）是位模式转换，堆块所有权
-            // 经 ptr 中转交给 r，r 是新的所有者，不是别名。
+            // 与 emitVariableDefinition 的 isBorrowInit 同一口径。ptr 源一律
+            // 按别名处理（D14：ptr 不承担所有权），否则 `slot = scratch`
+            // （scratch 是 ptr）会把 slot 里**同一个**堆块先 free 再写回去，
+            // 下一轮读就是 use-after-free —— str 的 dict toStr 就是这么崩的。
             bool rhsIsAlias = false;
             const auto rhsSlot = [&]() -> const CodeGen::VarSlot*                {
                 const auto rid = std::dynamic_pointer_cast<ast::IdentifierNode>(rhs);
@@ -3937,7 +4070,10 @@ namespace backend{
                 return const_cast<CodeGen*>(this)->lookupVar(rid->getName());
             }();
             if (rhsSlot)            {
-                rhsIsAlias = !(rhsSlot->type && slot->type) || rhsSlot->type->equals(slot->type);
+                if (rhsSlot->type && rhsSlot->type->getKind() == sema::TypeKind::TK_PTR)
+                    rhsIsAlias = true;
+                else
+                    rhsIsAlias = !(rhsSlot->type && slot->type) || rhsSlot->type->equals(slot->type);
             }
             else if (std::dynamic_pointer_cast<ast::IndexExpressionNode>(rhs))            {
                 rhsIsAlias = true;
@@ -4127,10 +4263,29 @@ namespace backend{
                     }
                     // 只有**同类型**的 `var b = a` 才是借用（两个槽引用同一条
                     // 堆对象）。`var r: str = p`（p 是 ptr）是**位模式转换**：
-                    // 堆块的所有权经 ptr 中转交给 r，r 是新的所有者 ——
-                    // std 里到处是这种写法（_strSlice / _dsLoadI64 的伪造头）。
+                    // 两个槽的位模式相同，但 ptr 按 D14 **不承担所有权**，
+                    // 所以经 ptr 包装出来的 str 只能是**借用视图**，不能销毁。
+                    //
+                    // 这条判据的两次反复值得记下来：
+                    //   ① 只看类型是否相等 -> `_dsLoadI64` 把形参 scratch 当拥有者，
+                    //      函数退出 free 掉调用方缓冲区（dictValues 崩）。
+                    //   ② 改成「源是 ptr 就借用」-> `_strSlice` 的
+                    //      `var p: ptr = _strNew(n); var r: str = p` 泄漏，
+                    //      因为 _strNew 返回的新堆块再没人管。
+                    //   ③ 改成「源是 ptr 且是借用形参」-> `_strSlice` 修好，
+                    //      但 `toStr[T,K](dict)` 里 `var slot: str = scratch`
+                    //      之后 `slot = scratch` 的重新赋值仍按拥有者销毁旧值，
+                    //      而旧值就是 scratch 本身 —— 循环第二轮读到已释放内存。
+                    //
+                    // 最终口径回到 D14 的字面意思：**ptr 永远不转移所有权**。
+                    // _strSlice 那种「ptr 是新分配块」的写法由返回值承担所有权
+                    // （`ret r` 时 r 是借用，必须显式 clone；见下面的诊断），
+                    // 而不是靠 ptr 隐式升级。
                     const auto srcSlot = const_cast<CodeGen*>(this)->lookupVar(initId->getName());
                     if (srcSlot && srcSlot->type && type)                    {
+                        if (srcSlot->type->getKind() == sema::TypeKind::TK_PTR) return true;
+                        if (!srcSlot->type->equals(type) &&
+                            isBorrowed(initId->getName())) return true;
                         return srcSlot->type->equals(type);
                     }
                     // 类型取不到（形参未标注等）时保守按借用处理
@@ -4197,6 +4352,10 @@ namespace backend{
                         if (!label) continue;
                         const auto full = label->getFullLabel();
                         if (full.empty() || full == "any") continue;
+                        // 修饰标签（const / static / public / virtual …）既不是
+                        // 类型也不是出生地，直接跳过。不跳的话 L3-J 的出生地
+                        // 校验会把它们当拼错的 Pool 名报错（见 isNonTypeLabel）。
+                        if (isNonTypeLabel(full)) continue;
                         bool isGenericParam = false;
                         for (const auto& g : _currentGenericParams)                        {
                             if (g == full) { isGenericParam = true; break; }
@@ -6718,6 +6877,40 @@ namespace backend{
                 indirect = true;
             }
  else            {
+                // P13-2（docs/p13_2_status.md §B）：自由函数形式 `clone(x)`。
+                // 与 `x.clone()` 等价，都是把借用转成拥有（见 emitMethodCall
+                // 里 clone 的派发规则）。必须有这一支：泛型函数体里
+                // `ret clone(trueValue)` 比方法形式更自然，且 `T` 没有方法表。
+                if (n == "clone" && args.size() == 1)                {
+                    const auto recvType = inferType(args[0]);
+                    if (!recvType)                    {
+                        failAt(node->getPos(), "clone(): cannot infer the argument type");
+                        return;
+                    }
+                    const char* cloneFn = nullptr;
+                    switch (recvType->getKind())                    {
+                    case sema::TypeKind::TK_STR:   cloneFn = "core_clone_str"; break;
+                    case sema::TypeKind::TK_LIST:  cloneFn = "core_clone_list"; break;
+                    case sema::TypeKind::TK_INT:
+                    case sema::TypeKind::TK_FLOAT:
+                    case sema::TypeKind::TK_BOOL:
+                    case sema::TypeKind::TK_CHAR:
+                    case sema::TypeKind::TK_PTR:
+                        emitExpression(args[0]);   // 值语义：原样返回
+                        return;
+                    default:
+                        failAt(node->getPos(),
+                               "clone(): unsupported argument type (only str/list/value types)");
+                        return;
+                    }
+                    emitExpression(args[0]);
+                    if (hasFailed()) return;
+                    _asm.inst("movq", "%rax", "%rcx");
+                    _asm.subRsp(32);
+                    _asm.call(cloneFn);
+                    _asm.addRsp(32);
+                    return;
+                }
                 // P10：裸名泛型调用 `identity(42)` —— 类型实参从实参类型推。
                 if (tryEmitGenericCall(n, callee, node, args)) return;
                 // P11：重载名在**这里**决议，符号由决议结果决定；
@@ -7680,7 +7873,7 @@ namespace backend{
                         // 就有的 `var _number: int static = 0`（tests/test.rio）
                         // 报 "L0-2: unknown type 'static' of field '_number'" ——
                         // P0 重写把 static 字段的解析整个丢了。
-                        if (isLifecycleLabel(full)) continue;
+                        if (isNonTypeLabel(full)) continue;
                         const auto t = typeFromLabelNode(label, classGenerics);
                         if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN)                        {
                             failAt(def->getNameNode()->getPos(),
@@ -8599,6 +8792,53 @@ namespace backend{
         if (!methodId)        {
             fail("Method name must be an identifier: " + member->toString());
             return;
+        }
+        // P13-2（docs/p13_2_status.md §B）：内建 clone() ——
+        // 把借用值转成自己拥有的新值，是 std 里「泛型形参要返回」的唯一
+        // 合法手段（D9 规则 C 不放宽）。
+        //
+        // 必须在 owner 检查之前：receiver 是 str/list（内置类型，
+        // classNameOf 为空），落到后面会报 "Cannot determine the object type"。
+        //
+        // 派发规则（按接收者**静态类型**，单遍 codegen 无运行期标签）：
+        //   str  -> core_clone_str(s)   深拷贝内容
+        //   list -> core_clone_list(xs) 容器自身独立，元素槽浅拷贝（D14）
+        //   dict -> 暂不支持（P13-4 之前没有 dict 的 clone 原语）
+        //   int/float/bool/char -> 值语义，原样返回
+        if (methodId->getName() == "clone" && args.empty())        {
+            const auto recvType = inferType(member->getLeftNode());
+            if (!recvType)            {
+                failAt(member->getPos(), "clone(): cannot infer the receiver type");
+                return;
+            }
+            switch (recvType->getKind())            {
+            case sema::TypeKind::TK_STR:
+            case sema::TypeKind::TK_LIST:
+                {
+                    const char* cloneFn = recvType->getKind() == sema::TypeKind::TK_STR
+                                              ? "core_clone_str" : "core_clone_list";
+                    emitExpression(member->getLeftNode());
+                    if (hasFailed()) return;
+                    _asm.inst("movq", "%rax", "%rcx");
+                    _asm.subRsp(32);
+                    _asm.call(cloneFn);
+                    _asm.addRsp(32);
+                    return;
+                }
+            case sema::TypeKind::TK_INT:
+            case sema::TypeKind::TK_FLOAT:
+            case sema::TypeKind::TK_BOOL:
+            case sema::TypeKind::TK_CHAR:
+            case sema::TypeKind::TK_PTR:
+                // 值语义 / 裸指针：clone 就是原样返回，不分配。
+                emitExpression(member->getLeftNode());
+                return;
+            default:
+                failAt(member->getPos(),
+                       "clone(): unsupported receiver type (only str/list/value types; "
+                       "dict and memory-model types need a dedicated primitive)");
+                return;
+            }
         }
         // P13-2/L3-E（决议 §4.3）：list 内建 get_mut(i) ——
         // 返回元素槽的 Mut 视图（元素地址），登记 xs[*]+i 路径。

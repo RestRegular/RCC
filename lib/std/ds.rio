@@ -369,10 +369,14 @@ fun _dsDictRemoveAt(d: dict, idx: int): void {
 
 // 从 8 字节槽还原一个 str 键：槽里是指针位模式，经 ptr 中转。
 // 直接 `var ks: str = slot` 会被标注校验拦下 —— 那不是值转换而是位复用。
+//
+// 返回值必须 **clone**：kp 是 ptr，按 D14 不承担所有权，所以 ks 只是借用
+// 视图；`ret ks` 是「把别人的值带出函数」，D9 规则 C 不允许。调用方要的是
+// 一个能独立存进 list 的键，clone 正好给出独立的新 str。
 fun _dsSlotToStr(slot: int): str {
     var kp: ptr = slot
     var ks: str = kp
-    ret ks
+    ret clone(ks)
 }
 
 /**
@@ -611,7 +615,10 @@ fun slice[T](xs: list[T], start: int, end: int): list[T] {
  * @example concat([1,2], [3]) 得到 [1,2,3]
  */
 fun concat[T](a: list[T], b: list[T]): list[T] {
-    var r: list[T] = a
+    // `var r: list[T] = a` 是壳子赋值 = r 降级成 a 的借用（D9 规则 C），
+    // 返回 r 等于把借用带出函数。用 core_clone_list 拿一份自己拥有的容器
+    // （规范 §11「拷贝用显式 clone()」；元素槽浅复制，D14 口径）。
+    var r: list[T] = core_clone_list(a)
     var i: int = 0
     while i < _dsLen(b) {
         r += [b[i]]
@@ -649,7 +656,9 @@ fun sum(xs: list[int]): int {
  * @example sort([3,1,2]) 得到 [1,2,3]；sort([3,1,2], true) 得到 [3,2,1]
  */
 fun sort[T](xs: list[T], reverse: bool = false): list[T] {
-    var r: list[T] = xs
+    // 同 concat：`var r: list[T] = xs` 会让 r 成为 xs 的借用，
+    // 排序是「改自己的副本」，必须先用 core_clone_list 拿到拥有权。
+    var r: list[T] = core_clone_list(xs)
     var n: int = _dsLen(r)
     var i: int = 1
     while i < n {

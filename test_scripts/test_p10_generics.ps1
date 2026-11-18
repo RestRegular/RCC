@@ -83,7 +83,7 @@ $positive = [ordered]@{
     }
     # 同一个泛型函数的 str 实例（单态化：两份独立的机器码）。
     'pos_identity_str' = @{
-        Body   = "fun identity[T](x: T): T { ret x }`nfun main(): void {`n    sout(identity[str](`"rio`"))`n}`nmain()`n"
+        Body   = "fun identity[T](x: T): T { ret clone(x) }`nfun main(): void {`n    sout(identity[str](`"rio`"))`n}`nmain()`n"
         Expect = 'rio'
     }
     # float 实例必须真的按 double 走，不能把位模式当整数打出来。
@@ -93,7 +93,7 @@ $positive = [ordered]@{
     }
     # 两个类型形参，各按实参单态化。
     'pos_pair_two_params' = @{
-        Body   = "fun pair[A, B](a: A, b: B): B { ret b }`nfun main(): void {`n    sout(pair[int, str](7, `"x`"))`n}`nmain()`n"
+        Body   = "fun pair[A, B](a: A, b: B): B { ret clone(b) }`nfun main(): void {`n    sout(pair[int, str](7, `"x`"))`n}`nmain()`n"
         Expect = 'x'
     }
     # 泛型类：字段与方法的类型都随实例走。
@@ -140,7 +140,7 @@ $positive = [ordered]@{
     }
     # 默认值是 str：曾经会把整段内存（含环境变量）打出来。
     'pos_generic_default_str' = @{
-        Body   = "fun tag[T](x: T, s: str = `"DEF`"): str { ret s }`nfun main(): void {`n    sout(tag(1))`n    sout(tag(2, `"X`"))`n}`nmain()`n"
+        Body   = "fun tag[T](x: T, s: str = `"DEF`"): str { ret clone(s) }`nfun main(): void {`n    sout(tag(1))`n    sout(tag(2, `"X`"))`n}`nmain()`n"
         Expect = "DEF`nX"
     }
     # 默认值是 bool：曾经碰巧返回 true，掩盖了缺陷。

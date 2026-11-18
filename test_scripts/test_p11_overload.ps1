@@ -110,7 +110,7 @@ $positive = [ordered]@{
     }
     # 重载函数之间互相调用（决议发生在函数体里，不是只在 main 里）。
     'pos_nested_call' = @{
-        Body   = "fun h(x: int): int { ret x + 1 }`nfun h(x: str): str { ret x }`nfun twice(x: int): int { ret h(h(x)) }`nfun main(): void {`n    sout(twice(40))`n}`nmain()`n"
+        Body   = "fun h(x: int): int { ret x + 1 }`nfun h(x: str): str { ret clone(x) }`nfun twice(x: int): int { ret h(h(x)) }`nfun main(): void {`n    sout(twice(40))`n}`nmain()`n"
         Expect = '42'
     }
     # 单一名字（非重载）必须保持裸名符号，行为与 P10 完全一致。
@@ -136,12 +136,12 @@ $resolution = [ordered]@{
     }
     # 默认值参与候选过滤：只给一个实参也能匹配两形参的那一份。
     'res_default_arg' = @{
-        Body   = "fun f(a: int, b: int = 10): int { ret a + b }`nfun f(a: str): str { ret a }`nfun main(): void {`n    sout(f(5))`n    sout(f(`"x`"))`n}`nmain()`n"
+        Body   = "fun f(a: int, b: int = 10): int { ret a + b }`nfun f(a: str): str { ret clone(a) }`nfun main(): void {`n    sout(f(5))`n    sout(f(`"x`"))`n}`nmain()`n"
         Expect = "15`nx"
     }
     # 命名实参参与绑定：b= 指定到第二个形参上。
     'res_named_arg' = @{
-        Body   = "fun f(a: int, b: int): int { ret a * 100 + b }`nfun f(s: str): str { ret s }`nfun main(): void {`n    sout(f(b=2, a=1))`n    sout(f(`"z`"))`n}`nmain()`n"
+        Body   = "fun f(a: int, b: int): int { ret a * 100 + b }`nfun f(s: str): str { ret clone(s) }`nfun main(): void {`n    sout(f(b=2, a=1))`n    sout(f(`"z`"))`n}`nmain()`n"
         Expect = "102`nz"
     }
     # 三个重载里选唯一最佳（同族优先）。

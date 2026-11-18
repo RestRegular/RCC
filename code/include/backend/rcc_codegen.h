@@ -380,12 +380,36 @@ namespace backend
         // 同名项」——对分支/循环体里修改的外层变量，写的就是外层那张 map。
         // 于是兄弟分支互相污染、分支出口漏报/误报。修法不是靠作用域遮蔽，
         // 而是在分支/循环的出口显式做「快照 + 格上界合并」。
-        using MoveStateSnapshot = std::vector<std::map<std::string, BodyState>>;
+        //
+        // 快照必须**同时**带上 `_scopeDrops` 的 moved 位，不能只有 `_moveStates`：
+        // 「已移走」这个事实在两处都有记录（P13-1 的 drop 表 + P13-2 的状态表），
+        // 只回滚后者会让两者脱钩。实测（2026-11-18）：
+        //   fun f(del: str): list[str] {
+        //       var result: list[str] = []
+        //       if core_str_len(del) == 0 { result += ["x"] ret result }   // 发散分支
+        //       result += ["y"]
+        //       ret result            // ← 报 'result' is in Full state ...
+        //   }
+        // 发散分支里的 `ret result` 把 drop 表的 moved 置真，分支出口只回滚了
+        // 状态表，于是状态是 Full、drop 表却说已移走 —— isVarUnavailable 回退
+        // 到 drop 表判定为「不可用」，报出来的状态名却是 Full，自相矛盾。
+        struct MoveStateSnapshot {
+            std::vector<std::map<std::string, BodyState>> states;
+            // 与 _scopeDrops 同形：每层每项的 (moved, borrowed) 两位。
+            // borrowed 也必须进快照：`x = <新值>` 会把借用升格成拥有者
+            // （setDropAlias 同时改这两位），不跟着回滚就会让「入口是借用、
+            // 循环体里升格成拥有者」的两条路径在汇合点脱钩。
+            struct DropBits {
+                bool moved = false;
+                bool borrowed = false;
+            };
+            std::vector<std::vector<DropBits>> drops;
+        };
         // 状态格上界：相同保持不变；F ⊔ E、F ⊔ X、E ⊔ X 一律 ?；
         // 与 ? 合流仍是 ?。H 是 F 的子态（内容位置没动），H ⊔ F = F。
         [[nodiscard]] static BodyState joinBodyStates(BodyState a, BodyState b);
-        [[nodiscard]] MoveStateSnapshot snapshotMoveStates() const { return _moveStates; }
-        void restoreMoveStates(const MoveStateSnapshot& snap) { _moveStates = snap; }
+        [[nodiscard]] MoveStateSnapshot snapshotMoveStates() const;
+        void restoreMoveStates(const MoveStateSnapshot& snap);
         // 把若干条路径的出口快照按格上界逐层合并后写回 _moveStates。
         void joinMoveStatePaths(const std::vector<MoveStateSnapshot>& paths);
         // 只算合并结果、不写回（循环要先把回边/出口各自合并再取上界）。

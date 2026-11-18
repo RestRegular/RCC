@@ -58,8 +58,19 @@
 | 项 | 决议依据 | 实测表现 |
 |---|---|---|
 | `Link[T][peer][cardinality]` | §7.1、§9.3 的 `release` 前置含 Link 检查 | 类型不存在：`unknown type 'Link' of field` |
-| `clone()`（深拷贝） | §11「拷贝用显式 `clone()`（深拷贝，P13-1 起）」 | `Class Player has no method named 'clone'` |
 | 缺省 `writes` 的函数体推断 | §9.3「用户写的函数：缺省 `writes` 按函数体推断记」 | 退化为「没写就不检查」；用户已明确**暂不补** |
+
+> **`clone()` 已不在本表**：2026-11-18 已实现。方法形式 `x.clone()` 与自由
+> 函数形式 `clone(x)` 都可用，按接收者的**静态类型**派发：
+> `str` → `core_clone_str`、`list` → `core_clone_list`、
+> `int`/`float`/`bool`/`char`/`ptr` → 原样返回（值语义，不分配）。
+> 派发在 `emitMethodCall` / 自由函数调用两处，类型推断在 `inferType`
+> 的 DOT 分支与裸名调用分支各补一条（否则结果槽会按 int 分配，
+> `var t: str = clone(s)` 赋值处报类型不符）。
+> `dict` 暂不支持：P13-4 之前没有 dict 的 clone 原语，显式报错而不是静默浅拷贝。
+>
+> 这是 std 里「泛型形参要返回」的唯一合法手段（D9 规则 C 不放宽）：
+> `ops.rio` 的 `ternary` / `orLazy` 已改为 `ret clone(...)`。
 
 
 
@@ -70,6 +81,50 @@
 > `var p: Player nosuchpool = Player("a")` 报 `unknown label 'nosuchpool'`；
 > `var a: Enemy = Player("x")` 报 `not the same class or a derived class`。
 > 其余回归修复见「L3-M」一节。
+
+### C-2. 2026-11-18 标准库重写期间修掉的编译器缺陷
+
+std 按内存模型规范重写时暴露出来的四个编译器缺陷，全部已修：
+
+1. **`return` 在循环里返回的是循环值而非函数值**
+   `fun f(): int { while i < 3 { if i == 1 { return 42 } ... } ret -1 }`
+   打印 `-1`，期望 `42`。根因在
+   `builder/rcc_prefix_builder.cpp` 的 `buildReturnExpression()`：
+   `exitsFunction` 用 `currentToken()` 求值，而那时代码已把表达式解析完，
+   游标早就不在 `return` 上 —— 每个带值的 `return` 都被当成 `ret`。
+   改用 `returnToken.getType()` 后，`ret`（退出最近的带值作用域，
+   循环里等价于 `break v`）与 `return`（退出函数）各归其位。
+   这一个修复连带解决了 `find`/`replace`/`split`/`trim` 整片 std 错误。
+
+2. **`ptr` 包装成 `str`/`list` 时所有权判定错误**
+   两个方向都踩过：只看类型相等时，`_dsLoadI64` 把形参 `scratch` 当拥有者，
+   函数退出 `core_free` 掉**调用方**的缓冲区（`dictValues` 崩
+   `exit=-1073741819`）；反过来让 ptr 一律转移所有权时，
+   `toStr[T,K](dict)` 里 `var slot: str = scratch` 之后 `slot = scratch`
+   会把同一个堆块先 free 再写回，循环第二轮读 use-after-free。
+   最终口径回到 D14 的字面意思：**ptr 永远不承担所有权**，
+   经 ptr 包装出来的一律是借用视图。因此 `_strNew` 的返回类型从
+   `ptr` 改成 `str`（分配点直接产出拥有者），`io.sin()` 的缓冲区同理；
+   确实需要把借用转成独立值的 `_dsSlotToStr` 用 `clone`。
+
+3. **控制流合流时 drop 表的 `moved` 取了「与」**
+   注释原写「代价只是某条路径拥有却没销毁 = 漏一次释放」，实际相反：
+   `split` 里 `var front: str = subStr(...)` 之后
+   `if ... { result += [front] }` 只有一条路径移动，合流后
+   `moved = true && false = false`，循环体出口照样 drop `front` ——
+   而它已经作为元素进了容器。实测 `split("a,b", ",")` 返回 `["", ""]`，
+   元素槽指向已释放的头。改成取「或」（漏放可容忍、重复释放不可，
+   与 D17 的既有取舍一致）后正常。
+
+4. **`ret` 形参被误当成「ptr 形参」放行**
+   为修 (2) 给 `registerBorrow` 加了 ptr 登记后，
+   `fun asInt(p: ptr): int { ret p }` 被借用检查拦下。
+   ptr 没有语言层所有权，借用语义对它不适用（`ret p` 只是返回位模式），
+   已在 `checkBorrowNotEscaping` 里显式放行 ptr。
+
+修后实测：`test_scripts/test_all.ps1` 25 套件全过（718 用例通过，
+仅 `test_legacy_all` 两个 G6 已延期的用例失败）；
+`tests/p13_2_regression.ps1` 126/126；`tests/_probe/verify_fixes.ps1` 43/43。
 
 ## 判断
 

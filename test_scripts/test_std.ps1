@@ -664,16 +664,17 @@ sout(core_str_len(c))
 '@) "3`n7`n7`n0`n0" @('ds.repList')
 
     # 内存：listAppend 返回**新**列表，原列表不能被改（索引写有越界检查，无法原地追加）。
+    # P13 起 listAppend 是**原地追加**（返回 void），见
+    # docs/p12_3c_ds_design.md §6.4「P13 落地后 ds 的变化」。
     Invoke-RioCase 'behavior' 'ds' 'b_ds_listAppend' ($dsImp + @'
 var a: list[int] = [1, 2]
-var b: list[int] = listAppend(a, 3)
+listAppend(a, 3)
 sout(core_str_len(a))
-sout(core_str_len(b))
-sout(b[2])
+sout(a[2])
 var e: list[int] = []
-var f: list[int] = listAppend(e, 1)
-sout(core_str_len(f))
-'@) "2`n3`n3`n1" @('ds.listAppend')
+listAppend(e, 1)
+sout(core_str_len(e))
+'@) "3`n3`n1" @('ds.listAppend')
 
     Invoke-RioCase 'behavior' 'ds' 'b_ds_listRemove' ($dsImp + @'
 var a: list[int] = [10, 20, 30]

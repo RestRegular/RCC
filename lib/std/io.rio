@@ -65,7 +65,7 @@ fun sin(): str {
     // ABI v2：str 头是 { len@0, cap@8, data@16 }（P13-1，见 docs/p13_plan.md D11/D12）。
     // cap 必须写成非 0（这里是 n）：缓冲区是堆分配的，将来要能被 core_free
     // 释放；cap == 0 是「静态只读、不可释放」的标记。
-    var p: ptr = core_alloc(2080, 8)
+    var p: str = core_alloc(2080, 8)
     _ioSetLen(p, 0)
     _ioSetCap(p, 2048)
     var n: int = core_io_read(0, p + 16, 2048)
@@ -74,8 +74,10 @@ fun sin(): str {
     }
     _ioSetLen(p, n)
     _ioSetCap(p, n)
-    var r: str = p
-    ret r
+    // p 直接声明成 str：缓冲区是本函数新分配的，所有权就在这里产生。
+    // 声明成 ptr 再 `var r: str = p` 会得到借用视图（D14：ptr 不承担
+    // 所有权），`ret r` 就被 D9 规则 C 拦下。
+    ret p
 }
 
 // 打印提示（若有）后读一行。

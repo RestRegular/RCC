@@ -525,7 +525,15 @@ namespace parser {
         }
         // P13-2/L1：`return` 只退函数（exitsFunction=true），
         // `ret` 退最近可返回值作用域（exitsFunction=false）。
-        const bool exitsFunction = currentTokenIs(TokenType::TOKEN_RETURN);
+        //
+        // 必须用**进入时记下的** returnToken 判断，不能看 currentToken：
+        // 上面已经把游标推到表达式之后了，那里既不是 return 也不是 ret。
+        // 修前 `return 42`（带值）永远被判成 exitsFunction=false，
+        // 于是它在循环里退的是循环（等价 break value）而不是函数 ——
+        // 实测 `fun f(): int { while true { return 42 } ret -1 }` 返回 -1。
+        // 只有不带值的 `return` 和「不在循环里」的 `return` 才碰巧正常，
+        // 所以这个缺陷被 `if` 里的用法掩盖了很久（普通 if 不压 _ifStack）。
+        const bool exitsFunction = returnToken.getType() == TokenType::TOKEN_RETURN;
         return std::make_shared<ReturnExpressionNode>(returnToken, expression, exitsFunction);
     }
 

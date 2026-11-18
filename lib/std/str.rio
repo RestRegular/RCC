@@ -77,8 +77,17 @@ fun _strPow256(k: int): int {
 //
 // cap 必须写成 **n**（不是 0）：这里分配的是堆内存，将来要被 core_free
 // 释放；而 cap == 0 是「静态只读、不可释放」的标记（D11）。
-fun _strNew(n: int): ptr {
-    var p: ptr = core_alloc(n + 32, 8)
+// 返回类型是 **str** 而不是 ptr：这个函数分配的是一块完整的 str 缓冲区，
+// 所有权从分配点直接落到调用方手里。
+//
+// 返回 ptr 的话，按 D14「ptr 不承担所有权」，`var r: str = p` 只能得到
+// 借用视图，`ret r` 就会被 D9 规则 C 拦下 —— 实测 _strSlice /
+// toLowerCase / toUpperCase 三处全部编译不过；而反过来让 ptr 转移所有权，
+// `var slot: str = scratch` 之后 `slot = scratch` 就会把同一个堆块先 free
+// 再写回，下一轮读是 use-after-free（str 的 dict toStr 就是这么崩的）。
+// 让分配点直接产出 str，两个坑都不存在。
+fun _strNew(n: int): str {
+    var p: str = core_alloc(n + 32, 8)
     _strSetLen(p, n)
     _strSetCap(p, n)
     core_mem_set(p + 16 + n, 0, 1)
@@ -97,10 +106,9 @@ fun _strSetCap(p: ptr, n: int): void {
 // 取 src 从 i 开始的 n 个字节，构造新 str。
 // 这是「没有解引用运算符」时构造字符串的通用手段。
 fun _strSlice(src: str, i: int, n: int): str {
-    var p: ptr = _strNew(n)
+    var p: str = _strNew(n)
     core_mem_copy(p + 16, src + 16 + i, n)
-    var r: str = p
-    ret r
+    ret p
 }
 
 // ============================ 长度 ============================
@@ -204,7 +212,12 @@ fun toStr(arg: bool): str {
 }
 
 fun toStr(arg: str): str {
-    ret arg
+    // D9 规则 C：形参是**借用**，借用不能 ret（调用方拥有那个值，直接返回
+    // 会让两边都以为自己在管这块内存）。规范 §11 给的合法手段就是显式深拷贝：
+    // 「拷贝用显式 clone()」。core_clone_str 是 core 层已冻结的克隆原语
+    // （core.rio / core_win64.s），返回一个**新分配**、可释放的 str 头，
+    // 语义上与原串内容相同、所有权独立 —— 不需要放宽任何借用规则。
+    ret core_clone_str(arg)
 }
 
 fun toStr(arg: char): str {
@@ -355,7 +368,7 @@ fun find(content: str, part: str, startIndex: int = 0): int {
 // 只处理 ASCII。UTF-8 多字节字符原样保留（按字节拷贝，不会切坏）。
 fun toLowerCase(data: str): str {
     var n: int = core_str_len(data)
-    var p: ptr = _strNew(n)
+    var p: str = _strNew(n)
     var i: int = 0
     while i < n {
         var b: int = data[i]
@@ -365,13 +378,12 @@ fun toLowerCase(data: str): str {
         core_mem_set(p + 16 + i, b, 1)
         i += 1
     }
-    var r: str = p
-    ret r
+    ret p
 }
 
 fun toUpperCase(data: str): str {
     var n: int = core_str_len(data)
-    var p: ptr = _strNew(n)
+    var p: str = _strNew(n)
     var i: int = 0
     while i < n {
         var b: int = data[i]
@@ -381,18 +393,23 @@ fun toUpperCase(data: str): str {
         core_mem_set(p + 16 + i, b, 1)
         i += 1
     }
-    var r: str = p
-    ret r
+    ret p
 }
 
 // ============================ 替换 ============================
 
 fun replace(content: str, old: str, new: str, once: bool = false): str {
     if core_str_len(old) == 0 {
-        ret content
+        // 没有可替换的东西 = 原样返回。形参是借用，不能直接 ret（D9 规则 C），
+        // 按规范 §11 用显式 clone 把「借来的值」变成「自己拥有的新值」。
+        ret core_clone_str(content)
     }
     var res: str = ""
-    var rest: str = content
+    // rest 必须是**拥有者**而不是 content 的别名：`var rest: str = content`
+    // 是壳子赋值，rest 会降级成借用（D9 规则 C），循环 0 次迭代时它还是
+    // 借用，后面 `ret res + rest` 就把借用带出了函数。用 clone 拿一份自己
+    // 拥有的副本（规范 §11「拷贝用显式 clone()」）。
+    var rest: str = core_clone_str(content)
     var idx: int = find(rest, old)
     while idx >= 0 {
         res += subStr(rest, 0, idx)
@@ -420,7 +437,9 @@ fun split(content: str, del: str, keepDel: bool = false, keepEmpty: bool = false
         }
         return result
     }
-    var rest: str = content
+    // 同 replace：rest 要是拥有者，否则「一次都没切」那条路径上它仍是
+    // content 的别名，最后 `result += [rest]` 会把借用存进容器（D9 规则 C）。
+    var rest: str = core_clone_str(content)
     var delLen: int = core_str_len(del)
     while true {
         var idx: int = find(rest, del)
@@ -432,7 +451,10 @@ fun split(content: str, del: str, keepDel: bool = false, keepEmpty: bool = false
             result += [front]
         }
         if keepDel {
-            result += [del]
+            // `del` 是形参 = 借用，借用不能存进容器（D9 规则 C：只有拥有者
+            // 才能被移动/存入）。这里要的是「分隔符本身的一份独立副本」，
+            // 显式 clone 正好是规范 §11 给的手段。
+            result += [core_clone_str(del)]
         }
         rest = subStr(rest, idx + delLen)
     }

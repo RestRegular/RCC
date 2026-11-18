@@ -24,10 +24,13 @@
  * @example ternary(true, "a", "b") == "a"，ternary(false, 1, 2) == 2
  */
 fun ternary[T](condition: bool, trueValue: T, falseValue: T): T {
+    // 形参一律是借用（D9 规则 C），`ret 形参` 会把别人的值带出函数，
+    // 必须先用 clone() 转成自己拥有的新值（规范 §11 / docs §B）。
+    // clone 对值类型（int/float/bool/char）是原样返回，不分配。
     if condition {
-        ret trueValue
+        ret clone(trueValue)
     }
-    ret falseValue
+    ret clone(falseValue)
 }
 
 /**
@@ -61,7 +64,8 @@ fun orLazy[T](front: T, back: func[][T]): T {
     if front == null || front == false {
         ret back()
     }
-    ret front
+    // front 是形参（借用），返回前先 clone 成自己拥有的值。
+    ret clone(front)
 }
 
 export(ternary, ternaryLazy, orVal, orLazy)
