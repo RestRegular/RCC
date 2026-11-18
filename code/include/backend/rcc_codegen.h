@@ -479,6 +479,11 @@ namespace backend
         // P13-2/L3-A（决议 §2）：变量 -> 出生地 Pool 变量名（空=当前块默认出生地）。
         // A 阶段只记录不检查生命周期；完整 R1/R2 检查待后续。
         std::map<std::string, std::string> _birthPlaces;
+        // P13-7（§7.4 状态格「Link 是否确定为空」）：变量 -> 其 Link 是否确定为空。
+        // EMPTY=已 unlink_all / 尚未连接；NONEMPTY=做过 add/set；UNKNOWN=跨函数/不可判定。
+        // 取值缺项时按「含 Link 字段则 UNKNOWN」处理（保守拒绝 take/release）。
+        enum class LinkEmptyFact { EMPTY, NONEMPTY, UNKNOWN };
+        std::map<std::string, LinkEmptyFact> _linkEmptyFacts;
         // P13-3/Q4（§8.5 rule 1 · 不重叠）：引用语义变量的别名根。
         // `var q = pl`（class 拷贝=同一对象）登记 q->pl；新建 `var p = C()` 登记 p->p。
         // aliasRoot 做传递解析，mayAlias 判据：根相同，或一条路径是另一条的前缀。
@@ -508,6 +513,26 @@ namespace backend
             std::string loText, hiText;
         };
         std::vector<ActiveRef> _activeRefs;
+        // P13-6/Q2（规范 §6.3）：成员集合最小集 —— 编译期对「哪些 Body 引用
+        // 还留在活跃容器里」的重数追踪，用于 release 判据（§6.4）。
+        // 只服务 release，不做 *@L / 嵌套展平 / 闭包捕获 / 函数边界（Q2=A 限定）。
+        enum class MemberMult { ZERO = 0, ONE = 1, MANY = 2, TOP = 3 }; // 格：ONE+ONE=MANY，MANY+n=MANY，TOP 吸收
+        struct MemberSetEntry {
+            std::string container;   // 容器路径（局部变量名，如 "team"）
+            std::string member;      // 成员 Body 变量名（如 "a"）
+            MemberMult mult = MemberMult::ZERO;
+            bool live = true;        // 容器是否仍活跃（未被 clear / 未被证明死亡）
+            utils::Pos at;           // 最近一次加入点（诊断用）
+        };
+        std::vector<MemberSetEntry> _memberSets;
+        // 成员集合操作（Q2 四原语效果 + release 判据）。
+        static MemberMult memberSaturateAdd(MemberMult a, MemberMult b);
+        void memberAdd(const std::string& container, const std::string& member, const utils::Pos& pos);
+        void memberRemoveAll(const std::string& container, const std::string& member);
+        void memberClearContainer(const std::string& container);
+        void memberSnapshot(const std::string& srcContainer, const std::string& dstContainer);
+        [[nodiscard]] bool memberBlocksRelease(const std::string& member, std::string& outContainer,
+                                               MemberMult& outMult) const;
         // P13-2/L3-F（决议 §4.2 / §9.3）：函数写效果表。
         // 决议要求「调用时按 writes / from 更新活跃集合」—— 修前 writes 只在
         // 泛型定义处做形态校验，调用点从不读它，于是下面这些全部静默通过：
@@ -529,6 +554,12 @@ namespace backend
         void registerSignatureEffects(const std::string& emitName,
                                       const std::shared_ptr<ast::FunctionDefinitionNode>& def,
                                       const std::vector<std::string>& paramNames);
+        // P13-4/Q3（规范 §4.3）：从函数体推断写效果（缺省口径）。
+        // 扫描 bodyNode 里对形参路径的字段赋值 / 复合赋值 / take / mut，
+        // 追加到 out。签名没写 writes 的函数据此在调用点也能检查。
+        void inferWriteEffectsFromBody(const std::shared_ptr<ast::ExpressionNode>& bodyNode,
+                                       const std::vector<std::string>& paramNames,
+                                       std::vector<WriteEffect>& out) const;
         // 把形参名 + 路径后缀解析成调用点的实际路径（"p.name" / "a" / ""=无法解析）。
         [[nodiscard]] std::string resolveEffectPath(const std::string& root,
                                                     const std::string& suffix,
@@ -705,6 +736,13 @@ namespace backend
         // P13-2/L2(Q-C)：取块/分支最后一条语句的推断类型（末值语义）。
         // P13-2/L3(决议 §6)：识别 `X.take()` 形态，返回接收者变量名（空=不是）。
         [[nodiscard]] static std::string takeReceiverName(const std::shared_ptr<ast::ExpressionNode>& node);
+        // P13-7：识别 `a.L.add(b)` / `a.unlink_all()` 这类 Link 原语调用。
+        // 返回 true 时 out 填好 receiver 变量名、Link 字段名、方法名。
+        bool parseLinkMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
+                                 std::string& outReceiver, std::string& outField,
+                                 std::string& outMethod) const;
+        // P13-7：变量所属类是否声明了 Link 字段（决定 take/release 是否要查 Link 空）。
+        [[nodiscard]] bool hasLinkFields(const std::string& varName) const;
         // P13-2/L3-B：识别 `pool.new[T](...)` 形态，返回池变量名（空=不是）。
         [[nodiscard]] static std::string poolNewReceiverName(const std::shared_ptr<ast::ExpressionNode>& node);
         [[nodiscard]] sema::TypePtr inferBlockValueType(const std::shared_ptr<ast::ExpressionNode>& body) const;
@@ -1079,6 +1117,9 @@ namespace backend
             const std::vector<std::shared_ptr<ast::ClassDefinitionNode>>& classNodes);
         bool validateL0FieldTypes(
             const std::vector<std::shared_ptr<ast::ClassDefinitionNode>>& classNodes);
+        // P13-7：对偶声明校验（peer 字段存在、互相指向、elem 类型一致、基数相容）。
+        // 必须在所有类登记完成后跑（前向引用对端类）。
+        bool validateLinkDeclarations();
         bool validateL0LabelConflicts(const std::shared_ptr<ast::ProgramNode>& program);
         // P13-2/L3(决议 §7.3)：Take[T] 只能作函数形参，不可作变量/字段/返回类型。
         bool validateL3TakeUsage(const std::shared_ptr<ast::ProgramNode>& program);
@@ -1102,7 +1143,8 @@ namespace backend
         // 构造调用 `Point(10, 20)`：分配并清零对象，再调 <Class>.__init__。
         void emitConstructorCall(const std::string& className,
                                  const std::shared_ptr<ast::ExpressionNode>& callNode,
-                                 const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+                                 const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                 const std::string& poolVarName = std::string());
         // ── 决议 A：值语义 struct 的发射 ────────────────────────────────────
         // `Pt(1, 2)`：按字段声明顺序位置初始化。结果不是堆指针，而是
         // **一块栈上的值**；因为寄存器装不下多字宽的值，这里把它落在
@@ -1348,6 +1390,10 @@ namespace backend
         std::string _currentClass;
         // 类登记表
         std::map<std::string, ClassInfo> _classes;
+        // P13-7：所有已声明的类名（含尚未 registerClassBody 完成登记的）。
+        // Link 字段的元素类型在类体解析阶段就要解析，此时 _classes 还没插入本类，
+        // resolveTypeName 靠这个集合识别自引用/前向引用类名。
+        std::unordered_set<std::string> _declaredClassNames;
         // 决议 A：值语义 struct 登记表
         std::map<std::string, StructInfo> _structs;
 

@@ -1,0 +1,23 @@
+// §11.2 含环图：a→b→c→a，环无需特殊处理，正常运行
+class U {
+    var v: int
+    var peers: Link[U][peers][many]
+    ctor(x: int) { this.v = x }
+}
+fun main(): void {
+    var pl = Pool.chunked(4)
+    var a: U pl = pl.new[U](1)
+    var b: U pl = pl.new[U](2)
+    var c: U pl = pl.new[U](3)
+    a.peers.add(b)
+    b.peers.add(c)
+    c.peers.add(a)
+    sout(a.peers.count())
+    sout(b.peers.count())
+    sout(c.peers.count())
+    a.unlink_all()
+    b.unlink_all()
+    c.unlink_all()
+    sout(a.peers.count())
+}
+main()

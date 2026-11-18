@@ -1,0 +1,18 @@
+// 声明 + 单次 add 建立对称边，两端都看到
+class U {
+    var v: int
+    var peers: Link[U][peers][many]
+    ctor(x: int) { this.v = x }
+}
+fun main(): void {
+    var pl = Pool.chunked(4)
+    var a: U pl = pl.new[U](1)
+    var b: U pl = pl.new[U](2)
+    sout(a.peers.count())
+    a.peers.add(b)
+    sout(a.peers.count())
+    sout(b.peers.count())
+    sout(a.peers.has(b))
+    sout(b.peers.has(a))
+}
+main()

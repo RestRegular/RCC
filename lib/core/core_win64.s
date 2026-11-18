@@ -998,9 +998,619 @@ core_time_ns:
     ret
 
 /* ============================================================
+ * P13-6：Pool 三档真实分配器（Q1=A，默认 chunked）
+ *
+ * 池头 48 字节（8 字节对齐，地址稳定，永不搬动）：
+ *   0  mode      1=fixed 2=boxed 3=chunked
+ *   8  cap       fixed=容量 / chunked=每块槽数 / boxed=忽略
+ *   16 elem_size 首个 new[T] 时写入（0=未定）
+ *   24 used_in_chunk 当前块已用槽数
+ *   32 current_chunk 当前块指针（0=未分配）；块布局 [prev_ptr][slots...]
+ *   40 total     已分配槽总数
+ *
+ * 槽地址 = current_chunk + 8 + used_in_chunk*elem_size，一旦分配永不搬家。
+ * 所有档位共用一套块链代码，fixed 与 boxed 只在「何时开新块」上分化。
+ * ============================================================ */
+
+/* void* core_pool_new(mode, cap) — rcx=mode, rdx=cap -> rax=池头 */
+    .globl  core_pool_new
+core_pool_new:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    subq    $64, %rsp
+    movq    %rcx, %rbx          /* rbx = mode */
+    movq    %rdx, %rsi          /* rsi = cap / block */
+    movq    $48, %rcx
+    movq    $8, %rdx
+    call    core_alloc
+    testq   %rax, %rax
+    je      .Lpn_fail
+    movq    %rax, %rdi          /* rdi = pool */
+    movq    %rax, %rcx
+    xorl    %edx, %edx
+    movq    $48, %r8
+    call    core_mem_set        /* 池头清零 */
+    movq    %rbx, 0(%rdi)
+    movq    %rsi, 8(%rdi)
+    movq    %rdi, %rax
+    jmp     .Lpn_out
+.Lpn_fail:
+    xorl    %eax, %eax
+.Lpn_out:
+    addq    $64, %rsp
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* void* core_pool_alloc(pool, elem_size) — rcx=pool, rdx=elem_size -> rax=槽地址
+ * 满（fixed 达容量）分配失败返回 0，由 codegen 报诊断。 */
+    .globl  core_pool_alloc
+core_pool_alloc:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    subq    $64, %rsp
+    movq    %rcx, %rbx          /* rbx = pool */
+    movq    %rdx, %rsi          /* rsi = elem_size */
+    testq   %rbx, %rbx
+    je      .Lpa_fail
+    testq   %rsi, %rsi
+    je      .Lpa_fail
+    movq    16(%rbx), %rax      /* 首个 new[T] 时定下 elem_size */
+    testq   %rax, %rax
+    jne     .Lpa_have_size
+    movq    %rsi, 16(%rbx)
+.Lpa_have_size:
+    movq    16(%rbx), %rsi      /* rsi = 已定 elem_size */
+    movq    0(%rbx), %rax       /* mode */
+    cmpq    $2, %rax
+    je      .Lpa_boxed
+    movq    8(%rbx), %rdi       /* fixed/chunked: 每块槽数 = cap */
+    jmp     .Lpa_slots_ready
+.Lpa_boxed:
+    movq    $1, %rdi
+.Lpa_slots_ready:
+    movq    %rdi, 56(%rsp)      /* slots_per_chunk 栈槽 */
+    movq    32(%rbx), %rax      /* current_chunk */
+    testq   %rax, %rax
+    je      .Lpa_new_chunk
+    movq    24(%rbx), %rax      /* used_in_chunk */
+    cmpq    56(%rsp), %rax
+    jb      .Lpa_have_slot      /* used < slots -> 复用当前块 */
+    movq    0(%rbx), %rax
+    cmpq    $1, %rax            /* fixed 满了 -> 失败 */
+    je      .Lpa_fail
+.Lpa_new_chunk:
+    movq    56(%rsp), %rcx
+    imulq   %rsi, %rcx          /* slots * elem_size */
+    addq    $8, %rcx            /* + prev 指针 */
+    movq    $8, %rdx
+    call    core_alloc
+    testq   %rax, %rax
+    je      .Lpa_fail
+    movq    %rax, %rdi          /* rdi = 新块 */
+    movq    32(%rbx), %rax
+    movq    %rax, 0(%rdi)       /* 新块->prev = 旧块 */
+    movq    %rdi, 32(%rbx)      /* current = 新块 */
+    movq    $0, 24(%rbx)        /* used_in_chunk = 0 */
+.Lpa_have_slot:
+    movq    32(%rbx), %rdi
+    addq    $8, %rdi            /* 跳过 prev 指针 */
+    movq    24(%rbx), %rax
+    imulq   %rsi, %rax
+    addq    %rax, %rdi          /* slot = chunk + 8 + used*elem_size */
+    incq    24(%rbx)
+    incq    40(%rbx)
+    movq    %rdi, %rax
+    jmp     .Lpa_out
+.Lpa_fail:
+    xorl    %eax, %eax
+.Lpa_out:
+    addq    $64, %rsp
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* void core_pool_release(pool, slot) — rcx=pool, rdx=slot
+ * 运行时只做记账；§6.4 的成员集合判据在编译期。boxed 档顺带释放单槽块。 */
+    .globl  core_pool_release
+core_pool_release:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    subq    $64, %rsp
+    movq    %rcx, %rbx
+    movq    %rdx, %rsi
+    testq   %rbx, %rbx
+    je      .Lpr_out
+    testq   %rsi, %rsi
+    je      .Lpr_out
+    decq    40(%rbx)
+    movq    0(%rbx), %rax
+    cmpq    $2, %rax
+    jne     .Lpr_out
+    movq    %rsi, %rcx
+    subq    $8, %rcx
+    call    core_free
+.Lpr_out:
+    addq    $64, %rsp
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* ============================================================
+ * P13-7：Link 成对引用运行时（规范 §7）
+ *
+ * 用一张全局边表存所有 Link 边。每条边 32 字节：
+ *   +0  aSlot      +8  aField
+ *   +16 bSlot      +24 bField
+ * 其中 aSlot/bSlot 是池槽地址，aField/bField 是 Link 字段索引（编译期分配）。
+ * 边守恒：a.L 含 b ⟺ b.L' 含 a —— add/remove/clear 都同时维护两端。
+ * 容量固定 4096 条（P13-7 不做动态扩容；够覆盖回归用例与典型图）。
+ * ============================================================ */
+    .data
+    .align 8
+    .globl  core_link_edges
+core_link_edges:
+    .space  131072                  /* 4096 * 32 */
+    .globl  core_link_edge_count
+core_link_edge_count:
+    .quad   0
+
+    .section .rdata,"dr"
+core_link_msg_crosspool:
+    .ascii  "cross-pool link"
+core_link_msg_full:
+    .ascii  "link endpoint not Full"
+core_link_msg_dup:
+    .ascii  "link already connected"
+core_link_msg_overflow:
+    .ascii  "link table overflow"
+
+    .text
+/* 内部：panic 辅助。rcx = msg, rdx = len。 */
+core_link_panic:
+    subq    $40, %rsp
+    movq    %rcx, %r9
+    movq    %rdx, %r10
+    call    core_panic_raise
+    addq    $40, %rsp
+    ret
+
+/* 内部：int core_link_slot_in_pool(pool, slot)
+ *   rcx=pool, rdx=slot -> rax=1 属于该池 / 0 不属于。
+ * 沿池头的块链（+32 current，块 +0 prev，槽从 +8 起，每块 cap=+8 个 elem_size=+16 字节槽）。 */
+core_link_slot_in_pool:
+    pushq   %rbx
+    pushq   %rsi
+    movq    %rcx, %rbx            /* rbx = pool */
+    movq    %rdx, %rsi            /* rsi = slot */
+    movq    16(%rbx), %r8         /* r8 = elem_size */
+    movq    8(%rbx), %r9          /* r9 = cap (slots per chunk) */
+    imulq   %r9, %r8              /* r8 = chunk 数据区字节数 */
+    movq    32(%rbx), %rdx        /* rdx = current chunk */
+.Llsip_loop:
+    testq   %rdx, %rdx
+    je      .Llsip_no
+    leaq    8(%rdx), %rax         /* 数据区起点 */
+    cmpq    %rax, %rsi
+    jb      .Llsip_next           /* slot < start */
+    leaq    8(%rdx), %rax
+    addq    %r8, %rax             /* 数据区末尾 */
+    cmpq    %rax, %rsi
+    jae     .Llsip_next           /* slot >= end */
+    movq    $1, %rax
+    jmp     .Llsip_out
+.Llsip_next:
+    movq    0(%rdx), %rdx         /* prev chunk */
+    jmp     .Llsip_loop
+.Llsip_no:
+    xorl    %eax, %eax
+.Llsip_out:
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* void core_link_add(pool, aSlot, aField, bSlot, bField)
+ *   rcx=pool, rdx=aSlot, r8=aField, r9=bSlot, 5th=bField (stack) */
+    .globl  core_link_add
+core_link_add:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    pushq   %r12
+    pushq   %r13
+    subq    $64, %rsp
+    movq    %rcx, %rbx             /* rbx = pool */
+    movq    %rdx, %rsi             /* rsi = aSlot */
+    movq    %r8, %rdi              /* rdi = aField */
+    movq    %r9, %r12              /* r12 = bSlot */
+    /* 5th 栈参 bField：入口 rsp+40，现 rsp 已下移 5*8+64=104 */
+    movq    144(%rsp), %rax
+    movq    %rax, %r10             /* r10 = bField */
+    /* Q6=A：同池校验 —— 两端槽都必须落在本 pool 的块链里，否则 cross-pool panic。 */
+    movq    %rbx, %rcx
+    movq    %rsi, %rdx
+    call    core_link_slot_in_pool
+    testq   %rax, %rax
+    je      .Llkadd_crosspanic
+    movq    %rbx, %rcx
+    movq    %r12, %rdx
+    call    core_link_slot_in_pool
+    testq   %rax, %rax
+    je      .Llkadd_crosspanic
+    /* 去重：扫描边表，若 (a,aField,b,bField) 已存在则 panic */
+    movq    core_link_edge_count(%rip), %r13  /* 循环计数 */
+    testq   %r13, %r13
+    je      .Llkadd_append
+    leaq    core_link_edges(%rip), %r11
+.Llkadd_dup_loop:
+    /* 正向 */
+    movq    0(%r11), %rax
+    cmpq    %rsi, %rax
+    jne     .Llkadd_dup_rev
+    movq    8(%r11), %rax
+    cmpq    %rdi, %rax
+    jne     .Llkadd_dup_rev
+    movq    16(%r11), %rax
+    cmpq    %r12, %rax
+    jne     .Llkadd_dup_rev
+    movq    24(%r11), %rax
+    cmpq    %r10, %rax
+    je      .Llkadd_duppanic
+.Llkadd_dup_rev:
+    /* 反向（对称边只存一条，b→a 也算已连） */
+    movq    0(%r11), %rax
+    cmpq    %r12, %rax
+    jne     .Llkadd_dup_next
+    movq    8(%r11), %rax
+    cmpq    %r10, %rax
+    jne     .Llkadd_dup_next
+    movq    16(%r11), %rax
+    cmpq    %rsi, %rax
+    jne     .Llkadd_dup_next
+    movq    24(%r11), %rax
+    cmpq    %rdi, %rax
+    je      .Llkadd_duppanic
+.Llkadd_dup_next:
+    addq    $32, %r11
+    decq    %r13
+    testq   %r13, %r13
+    jne     .Llkadd_dup_loop
+.Llkadd_append:
+    movq    core_link_edge_count(%rip), %rax
+    cmpq    $4096, %rax
+    jae     .Llkadd_overflow
+    leaq    core_link_edges(%rip), %r11
+    imulq   $32, %rax
+    addq    %rax, %r11
+    movq    %rsi, 0(%r11)
+    movq    %rdi, 8(%r11)
+    movq    %r12, 16(%r11)
+    movq    %r10, 24(%r11)
+    incq    core_link_edge_count(%rip)
+    jmp     .Llkadd_out
+.Llkadd_crosspanic:
+    leaq    core_link_msg_crosspool(%rip), %rcx
+    movq    $15, %rdx
+    call    core_link_panic
+.Llkadd_duppanic:
+    leaq    core_link_msg_dup(%rip), %rcx
+    movq    $22, %rdx
+    call    core_link_panic
+.Llkadd_overflow:
+    leaq    core_link_msg_overflow(%rip), %rcx
+    movq    $19, %rdx
+    call    core_link_panic
+.Llkadd_out:
+    addq    $64, %rsp
+    popq    %r13
+    popq    %r12
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* 内部：删除第 i 条边（把最后一条搬过来），rcx=i */
+core_link_remove_at:
+    movq    core_link_edge_count(%rip), %rax
+    decq    %rax
+    cmpq    %rax, %rcx
+    je      .Llkra_done
+    leaq    core_link_edges(%rip), %rdx
+    imulq   $32, %rcx
+    addq    %rcx, %rdx            /* 目标槽 */
+    imulq   $32, %rax
+    leaq    core_link_edges(%rip), %r8
+    addq    %r8, %rax            /* 最后一条槽 */
+    movq    0(%rax), %r8
+    movq    %r8, 0(%rdx)
+    movq    8(%rax), %r8
+    movq    %r8, 8(%rdx)
+    movq    16(%rax), %r8
+    movq    %r8, 16(%rdx)
+    movq    24(%rax), %r8
+    movq    %r8, 24(%rdx)
+.Llkra_done:
+    decq    core_link_edge_count(%rip)
+    ret
+
+/* void core_link_remove(pool, aSlot, aField, bSlot, bField)
+ * 删除两端对应的那一条边（成对，单边不可构造）。 */
+    .globl  core_link_remove
+core_link_remove:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    pushq   %r12
+    subq    $64, %rsp
+    movq    %rdx, %rsi
+    movq    %r8, %rdi
+    movq    %r9, %r12
+    movq    136(%rsp), %r10        /* 5th 栈参 bField（4 push + 64 sub = 96） */
+    movq    core_link_edge_count(%rip), %rax
+    testq   %rax, %rax
+    je      .Llkrm_out
+    leaq    core_link_edges(%rip), %r11
+    xorl    %ebx, %ebx            /* i */
+.Llkrm_loop:
+    /* 正向匹配 (a,aF)-(b,bF) */
+    movq    0(%r11), %rax
+    cmpq    %rsi, %rax
+    jne     .Llkrm_reverse
+    movq    8(%r11), %rax
+    cmpq    %rdi, %rax
+    jne     .Llkrm_reverse
+    movq    16(%r11), %rax
+    cmpq    %r12, %rax
+    jne     .Llkrm_reverse
+    movq    24(%r11), %rax
+    cmpq    %r10, %rax
+    je      .Llkrm_found
+.Llkrm_reverse:
+    /* 反向匹配 (b,bF)-(a,aF) */
+    movq    0(%r11), %rax
+    cmpq    %r12, %rax
+    jne     .Llkrm_next
+    movq    8(%r11), %rax
+    cmpq    %r10, %rax
+    jne     .Llkrm_next
+    movq    16(%r11), %rax
+    cmpq    %rsi, %rax
+    jne     .Llkrm_next
+    movq    24(%r11), %rax
+    cmpq    %rdi, %rax
+    jne     .Llkrm_next
+.Llkrm_found:
+    movq    %rbx, %rcx
+    call    core_link_remove_at
+    jmp     .Llkrm_out              /* swap-remove 后索引变化，直接结束 */
+.Llkrm_next:
+    addq    $32, %r11
+    incq    %rbx
+    movq    core_link_edge_count(%rip), %rax
+    cmpq    %rbx, %rax
+    ja      .Llkrm_loop
+.Llkrm_out:
+    addq    $64, %rsp
+    popq    %r12
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* void core_link_clear(pool, aSlot, aField, bField)
+ * 删除所有以 (aSlot, aField) 为一端的边（每条边同时代表对端，删一次即两端同步）。
+ * bField 参数保留在签名里以保持接口统一，实现里不需要。 */
+    .globl  core_link_clear
+core_link_clear:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    subq    $40, %rsp
+    movq    %rdx, %rsi            /* aSlot */
+    movq    %r8, %rdi             /* aField */
+.Llkclr_restart:
+    movq    core_link_edge_count(%rip), %rax
+    testq   %rax, %rax
+    je      .Llkclr_out
+    leaq    core_link_edges(%rip), %r11
+    xorl    %ebx, %ebx
+.Llkclr_loop:
+    movq    0(%r11), %rax
+    cmpq    %rsi, %rax
+    jne     .Llkclr_next
+    movq    8(%r11), %rax
+    cmpq    %rdi, %rax
+    je      .Llkclr_found
+.Llkclr_next:
+    addq    $32, %r11
+    incq    %rbx
+    movq    core_link_edge_count(%rip), %rax
+    cmpq    %rbx, %rax
+    ja      .Llkclr_loop
+    jmp     .Llkclr_out
+.Llkclr_found:
+    movq    %rbx, %rcx
+    call    core_link_remove_at
+    jmp     .Llkclr_restart          /* swap-remove 后重扫，直到无匹配 */
+.Llkclr_out:
+    addq    $40, %rsp
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* 直接删除所有 (aSlot==rcx) 或 (bSlot==rcx) 的边 —— core_link_unlink_all。
+ * 规范 §7.2：清空 a 的所有 Link 字段，两端同步。 */
+    .globl  core_link_unlink_all
+core_link_unlink_all:
+    pushq   %rbx
+    pushq   %rsi
+    subq    $40, %rsp
+    /* 签名 (pool, a)：a 是第 2 参 %rdx（%rcx 是 pool，这里不用） */
+    movq    %rdx, %rsi            /* target slot */
+.Llkua_restart:
+    movq    core_link_edge_count(%rip), %rax
+    testq   %rax, %rax
+    je      .Llkua_out
+    leaq    core_link_edges(%rip), %r11
+    xorl    %ebx, %ebx
+.Llkua_loop:
+    movq    0(%r11), %rax
+    cmpq    %rsi, %rax
+    je      .Llkua_found
+    movq    16(%r11), %rax
+    cmpq    %rsi, %rax
+    je      .Llkua_found
+.Llkua_next:
+    addq    $32, %r11
+    incq    %rbx
+    movq    core_link_edge_count(%rip), %rax
+    cmpq    %rbx, %rax
+    ja      .Llkua_loop
+    jmp     .Llkua_out
+.Llkua_found:
+    /* 内联 swap-remove，避免嵌套 call 破坏 rcx/栈约定 */
+    movq    core_link_edge_count(%rip), %rax
+    decq    %rax
+    cmpq    %rax, %rbx
+    je      .Llkua_pop
+    leaq    core_link_edges(%rip), %rdx
+    imulq   $32, %rbx
+    addq    %rbx, %rdx
+    imulq   $32, %rax
+    leaq    core_link_edges(%rip), %r8
+    addq    %r8, %rax
+    movq    0(%rax), %r8
+    movq    %r8, 0(%rdx)
+    movq    8(%rax), %r8
+    movq    %r8, 8(%rdx)
+    movq    16(%rax), %r8
+    movq    %r8, 16(%rdx)
+    movq    24(%rax), %r8
+    movq    %r8, 24(%rdx)
+.Llkua_pop:
+    decq    core_link_edge_count(%rip)
+    jmp     .Llkua_restart
+.Llkua_out:
+    addq    $40, %rsp
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* int core_link_count(slot, field) — rcx=slot, rdx=field -> rax=该字段的链接数 */
+    .globl  core_link_count
+core_link_count:
+    pushq   %rbx
+    movq    %rcx, %rbx            /* slot */
+    xorl    %eax, %eax            /* count */
+    movq    core_link_edge_count(%rip), %r8
+    testq   %r8, %r8
+    je      .Llkcnt_out
+    leaq    core_link_edges(%rip), %r9
+.Llkcnt_loop:
+    /* 匹配 (slot,field) 在边的任一端（对称边只存一条） */
+    movq    0(%r9), %rcx
+    cmpq    %rbx, %rcx
+    jne     .Llkcnt_as_b
+    movq    8(%r9), %rcx
+    cmpq    %rdx, %rcx
+    je      .Llkcnt_match
+.Llkcnt_as_b:
+    movq    16(%r9), %rcx
+    cmpq    %rbx, %rcx
+    jne     .Llkcnt_next
+    movq    24(%r9), %rcx
+    cmpq    %rdx, %rcx
+    jne     .Llkcnt_next
+.Llkcnt_match:
+    incq    %rax
+.Llkcnt_next:
+    addq    $32, %r9
+    decq    %r8
+    testq   %r8, %r8
+    jne     .Llkcnt_loop
+.Llkcnt_out:
+    popq    %rbx
+    ret
+
+/* int core_link_has(slot, field, peerSlot) — rcx=slot, rdx=field, r8=peerSlot -> rax=1/0 */
+    .globl  core_link_has
+core_link_has:
+    movq    core_link_edge_count(%rip), %r9
+    testq   %r9, %r9
+    je      .Llkhas_no
+    leaq    core_link_edges(%rip), %r10
+.Llkhas_loop:
+    /* slot/field 在任一端，peer 在对端 */
+    movq    0(%r10), %rax
+    cmpq    %rcx, %rax
+    jne     .Llkhas_as_b
+    movq    8(%r10), %rax
+    cmpq    %rdx, %rax
+    jne     .Llkhas_as_b
+    movq    16(%r10), %rax
+    cmpq    %r8, %rax
+    je      .Llkhas_yes
+    jmp     .Llkhas_next
+.Llkhas_as_b:
+    movq    16(%r10), %rax
+    cmpq    %rcx, %rax
+    jne     .Llkhas_next
+    movq    24(%r10), %rax
+    cmpq    %rdx, %rax
+    jne     .Llkhas_next
+    movq    0(%r10), %rax
+    cmpq    %r8, %rax
+    je      .Llkhas_yes
+.Llkhas_next:
+    addq    $32, %r10
+    decq    %r9
+    testq   %r9, %r9
+    jne     .Llkhas_loop
+.Llkhas_no:
+    xorl    %eax, %eax
+    ret
+.Llkhas_yes:
+    movq    $1, %rax
+    ret
+
+/* int core_link_is_empty(slot) — rcx=slot -> rax: 1 空 / 0 非空 */
+    .globl  core_link_is_empty
+core_link_is_empty:
+    movq    core_link_edge_count(%rip), %rdx
+    testq   %rdx, %rdx
+    je      .Llkie_empty
+    leaq    core_link_edges(%rip), %r11
+.Llkie_loop:
+    movq    0(%r11), %rax
+    cmpq    %rcx, %rax
+    je      .Llkie_nonempty
+    movq    16(%r11), %rax
+    cmpq    %rcx, %rax
+    je      .Llkie_nonempty
+    addq    $32, %r11
+    decq    %rdx
+    testq   %rdx, %rdx
+    jne     .Llkie_loop
+.Llkie_empty:
+    movq    $1, %rax
+    ret
+.Llkie_nonempty:
+    xorl    %eax, %eax
+    ret
+
+/* ============================================================
  * void core_sys_breakpoint(void)
  * ============================================================ */
     .globl  core_sys_breakpoint
 core_sys_breakpoint:
     int3
     ret
+
+

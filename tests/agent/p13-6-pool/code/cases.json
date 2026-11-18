@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "id": "pos_q1_chunked",
+      "file": "code/pos_q1_chunked.rio",
+      "expect": "a\n20\nc\n99"
+    },
+    {
+      "id": "pos_q1_boxed",
+      "file": "code/pos_q1_boxed.rio",
+      "expect": "99\n20"
+    },
+    {
+      "id": "pos_q1_fixed",
+      "file": "code/pos_q1_fixed.rio",
+      "expect": "1\n2"
+    },
+    {
+      "id": "pos_q1_fixed_full_panic",
+      "file": "code/pos_q1_fixed_full_panic.rio",
+      "expect": "",
+      "exitCode": 3,
+      "stderrContains": "pool is full"
+    },
+    {
+      "id": "neg_q2_member_release",
+      "file": "code/neg_q2_member_release.rio",
+      "expectFailure": true,
+      "mustMatch": "still a member of live container 'team'"
+    },
+    {
+      "id": "neg_q2_member_many",
+      "file": "code/neg_q2_member_many.rio",
+      "expectFailure": true,
+      "mustMatch": "mult=many"
+    },
+    {
+      "id": "pos_q2_no_member",
+      "file": "code/pos_q2_no_member.rio",
+      "compileOnly": true,
+      "expect": ""
+    }
+  ]
+}

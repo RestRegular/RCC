@@ -1,0 +1,11 @@
+// Q1: boxed 档每槽独立分配
+class Player { var hp: int  ctor(h: int) { this.hp = h } }
+fun main(): void {
+    var pl = Pool.boxed()
+    var a: Player pl = pl.new[Player](10)
+    var b: Player pl = pl.new[Player](20)
+    a.hp = 99
+    sout(a.hp)
+    sout(b.hp)
+}
+main()

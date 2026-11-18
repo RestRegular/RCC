@@ -1,0 +1,6 @@
+// Q1: 写 p.team.captain（P 是前缀）与 &p.team.captain.name（Q）→ 冲突
+class Captain { var name: str  ctor(n: str) { this.name = n } }
+class Team { var captain: Captain  ctor(c: Captain) { this.captain = c } }
+class Player { var team: Team  ctor() { this.team = Team(Captain("ace")) } }
+fun main(): void { var p = Player(); var r = &p.team.captain.name; p.team.captain = Captain("x") }
+main()

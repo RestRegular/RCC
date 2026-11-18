@@ -1,0 +1,17 @@
+// 规范自带范例：parent:opt ↔ children:many，Q5=B 相容表应放行
+class Node {
+    var v: int
+    var parent: Link[Node][children][opt]
+    var children: Link[Node][parent][many]
+    ctor(x: int) { this.v = x }
+}
+fun main(): void {
+    var pl = Pool.chunked(4)
+    var root: Node pl = pl.new[Node](1)
+    var leaf: Node pl = pl.new[Node](2)
+    leaf.parent.add(root)   // leaf.parent = root，root.children 自动含 leaf
+    sout(root.children.count())
+    sout(leaf.parent.count())
+    sout(root.children.has(leaf))
+}
+main()

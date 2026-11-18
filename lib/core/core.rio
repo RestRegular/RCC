@@ -130,3 +130,21 @@ extern fun core_dbg_frees(): int
 //     不是堆块大小）。
 extern fun core_dbg_double_frees(): int
 extern fun core_dbg_poison_bytes(): int
+
+// ==================== P13-6：Pool 三档真实分配器（Q1=A）====================
+// 池头固定 48 字节、地址稳定；槽位惰性分配（Pool 无类型参数，elem_size 只在
+// pool.new[T] 时才知道）。三档共用块链，fixed 满时 core_pool_alloc 返回 null。
+extern fun core_pool_new(mode: int, cap: int): ptr
+extern fun core_pool_alloc(pool: ptr, elem_size: int): ptr
+extern fun core_pool_release(pool: ptr, slot: ptr): void
+
+// ==================== P13-7：Link 成对引用原语 ====================
+// 全局边表维护成对关系（a.L 含 b ⟺ b.L' 含 a）。field 参数是编译期分配的
+// Link 字段索引。所有原语两端同步，用户代码拿不到单边接口。
+extern fun core_link_add(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void
+extern fun core_link_remove(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void
+extern fun core_link_clear(pool: ptr, a: ptr, aField: int, bField: int): void
+extern fun core_link_unlink_all(pool: ptr, a: ptr): void
+extern fun core_link_is_empty(a: ptr): int
+extern fun core_link_count(a: ptr, field: int): int
+extern fun core_link_has(a: ptr, field: int, peer: ptr): int

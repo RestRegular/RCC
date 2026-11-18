@@ -1,0 +1,4 @@
+// 负向：peer 字段不存在 -> 对偶校验拒绝
+class U { var f: Link[U][ghost][many] }
+fun main(): void { sout("ok") }
+main()

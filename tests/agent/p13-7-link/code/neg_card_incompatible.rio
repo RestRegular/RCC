@@ -1,0 +1,4 @@
+// 负向：基数不相容 one↔many（Q5=B）-> 对偶校验拒绝
+class U { var a: Link[U][b][one]  var b: Link[U][a][many] }
+fun main(): void { sout("ok") }
+main()

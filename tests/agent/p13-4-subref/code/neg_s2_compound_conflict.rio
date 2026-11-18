@@ -1,0 +1,4 @@
+// Q2: 字段复合赋值写回也走 §4.1 冲突检查：持 &p.hp 时 p.hp += 1 报冲突
+class Player { var hp: int  ctor() { this.hp = 10 } }
+fun main(): void { var p = Player(); var r = &p.hp; p.hp += 1 }
+main()

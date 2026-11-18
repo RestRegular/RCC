@@ -1,0 +1,9 @@
+// Q1: fixed 档满时运行时 panic（退出码 3 + 诊断）
+class Player { var hp: int  ctor(h: int) { this.hp = h } }
+fun main(): void {
+    var pl = Pool.fixed(2)
+    var a: Player pl = pl.new[Player](1)
+    var b: Player pl = pl.new[Player](2)
+    var c: Player pl = pl.new[Player](3)   // 超容量 -> panic
+}
+main()

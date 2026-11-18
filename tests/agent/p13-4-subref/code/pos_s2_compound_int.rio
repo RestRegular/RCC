@@ -1,0 +1,11 @@
+// Q2: 字段复合赋值 int 五种运算
+class Player { var hp: int  ctor() { this.hp = 10 } }
+fun main(): void {
+    var p = Player()
+    p.hp += 10   sout(p.hp)
+    p.hp -= 3    sout(p.hp)
+    p.hp *= 2    sout(p.hp)
+    p.hp /= 4    sout(p.hp)
+    p.hp %= 3    sout(p.hp)
+}
+main()

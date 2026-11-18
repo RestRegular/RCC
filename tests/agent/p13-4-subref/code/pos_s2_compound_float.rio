@@ -1,0 +1,10 @@
+// Q2: 字段复合赋值 float 四种运算
+class Player { var s: float  ctor() { this.s = 1.5 } }
+fun main(): void {
+    var p = Player()
+    p.s += 1.5   sout(p.s)
+    p.s *= 2.0   sout(p.s)
+    p.s -= 1.0   sout(p.s)
+    p.s /= 2.0   sout(p.s)
+}
+main()

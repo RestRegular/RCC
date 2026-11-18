@@ -1,0 +1,5 @@
+// Q3: 推断效果只写 p.score，与 &p.name 不相交 → 放行
+class Player { var name: str  var score: int  ctor(n: str) { this.name = n  this.score = 0 } }
+fun setScore(p: Player): void { p.score = 5 }
+fun main(): void { var p = Player("bob"); var r = &p.name; setScore(p); sout(p.score) }
+main()

@@ -1,0 +1,16 @@
+{
+    "name":  "p13-7-link",
+    "version":  "1.0",
+    "createdAt":  "2026-11-19T04:50:00Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "P13-7 Link 成对引用：声明/对偶校验/成对原语/基数/含环图/自环/take-release 判据/跨池 panic（11 条）",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  11,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

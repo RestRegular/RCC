@@ -438,7 +438,8 @@ namespace backend
         sema::TypePtr coreReturnType(const std::string& name)
         {
             // 指针族（ptr）：分配器入口
-            if (name == "core_alloc" || name == "core_realloc")
+            if (name == "core_alloc" || name == "core_realloc" ||
+                name == "core_pool_new" || name == "core_pool_alloc")
                 return sema::getPtrType();
             // 容器族：clone 出来的就是原容器
             if (name == "core_clone_str")
@@ -450,14 +451,19 @@ namespace backend
                 return sema::getBoolType();
             if (name == "core_str_len" || name == "core_io_read" || name == "core_io_write" || name == "core_time_ns" ||
                 name == "core_dbg_allocations" || name == "core_dbg_frees" || name == "core_dbg_double_frees" ||
-                name == "core_dbg_poison_bytes")
+                name == "core_dbg_poison_bytes" ||
+                // P13-7
+                name == "core_link_is_empty" || name == "core_link_count" || name == "core_link_has")
                 return sema::getIntType();
             if (name == "core_mem_copy" || name == "core_mem_move" || name == "core_mem_set" || name == "core_free" ||
                 name == "core_list_append" || name == "core_io_flush" || name == "core_io_write_byte" ||
                 name == "core_proc_exit" || name == "core_proc_abort" || name == "core_panic_raise" ||
                 name == "core_stack_probe" || name == "core_eh_pop" || name == "core_eh_throw" ||
                 name == "core_dbg_reset" || name == "core_dbg_bump_alloc" || name == "core_dbg_bump_free" ||
-                name == "core_sys_breakpoint")
+                name == "core_pool_release" || name == "core_sys_breakpoint" ||
+                // P13-7：Link 原语（void，除 is_empty）
+                name == "core_link_add" || name == "core_link_remove" || name == "core_link_clear" ||
+                name == "core_link_unlink_all")
                 return sema::getVoidType();
             return nullptr; // 不在表里：交给调用点原来的 int 兜底
         }
@@ -1780,6 +1786,85 @@ namespace backend
         }
         return true;
     }
+    // ── P13-6/Q2：成员集合最小集（规范 §6.3 / §6.4）────────────────────────
+    CodeGen::MemberMult CodeGen::memberSaturateAdd(MemberMult a, MemberMult b)
+    {
+        // 格：ZERO 是单位元；TOP 吸收；ONE+ONE=MANY；其余涉 MANY 即 MANY。
+        if (a == MemberMult::TOP || b == MemberMult::TOP)
+            return MemberMult::TOP;
+        if (a == MemberMult::ZERO)
+            return b;
+        if (b == MemberMult::ZERO)
+            return a;
+        return MemberMult::MANY; // ONE+ONE / ONE+MANY / MANY+MANY
+    }
+    void CodeGen::memberAdd(const std::string& container, const std::string& member, const utils::Pos& pos)
+    {
+        if (container.empty() || member.empty())
+            return;
+        for (auto& e : _memberSets)
+        {
+            if (e.container == container && e.member == member)
+            {
+                e.mult = memberSaturateAdd(e.mult, MemberMult::ONE);
+                e.live = true;
+                e.at = pos;
+                return;
+            }
+        }
+        _memberSets.push_back({container, member, MemberMult::ONE, true, pos});
+    }
+    void CodeGen::memberRemoveAll(const std::string& container, const std::string& member)
+    {
+        for (auto& e : _memberSets)
+            if (e.container == container && e.member == member)
+                e.mult = MemberMult::ZERO; // remove_all 精确归零（规范 §6.3）
+    }
+    void CodeGen::memberClearContainer(const std::string& container)
+    {
+        for (auto& e : _memberSets)
+            if (e.container == container)
+            {
+                e.mult = MemberMult::ZERO;
+                e.live = false; // clear 后该容器集合为空（§6.3）
+            }
+    }
+    void CodeGen::memberSnapshot(const std::string& srcContainer, const std::string& dstContainer)
+    {
+        if (srcContainer.empty() || dstContainer.empty())
+            return;
+        std::vector<MemberSetEntry> adds;
+        for (const auto& e : _memberSets)
+            if (e.container == srcContainer && e.mult != MemberMult::ZERO)
+                adds.push_back({dstContainer, e.member, e.mult, e.live, e.at});
+        for (const auto& a : adds)
+        {
+            bool found = false;
+            for (auto& e : _memberSets)
+                if (e.container == a.container && e.member == a.member)
+                {
+                    e.mult = memberSaturateAdd(e.mult, a.mult);
+                    e.live = e.live || a.live;
+                    found = true;
+                    break;
+                }
+            if (!found)
+                _memberSets.push_back(a);
+        }
+    }
+    bool CodeGen::memberBlocksRelease(const std::string& member, std::string& outContainer,
+                                      MemberMult& outMult) const
+    {
+        for (const auto& e : _memberSets)
+        {
+            if (!e.live || e.member != member || e.mult == MemberMult::ZERO)
+                continue;
+            outContainer = e.container;
+            outMult = e.mult;
+            return true; // 只要有任一活跃容器重数非 0 就拦（§6.4）
+        }
+        return false;
+    }
     std::string CodeGen::resolveEffectPath(const std::string& root, const std::string& suffix,
                                            const std::vector<std::string>& paramNames,
                                            const std::vector<std::shared_ptr<ast::ExpressionNode>>& args) const
@@ -1799,6 +1884,115 @@ namespace backend
             return base + suffix;
         }
         return std::string();
+    }
+    void CodeGen::inferWriteEffectsFromBody(const std::shared_ptr<ast::ExpressionNode>& node,
+                                            const std::vector<std::string>& paramNames,
+                                            std::vector<WriteEffect>& out) const
+    {
+        // P13-4/Q3（规范 §4.3）：函数写效果默认由编译器从函数体推断。
+        // 这里只登记「对形参路径的替换/重分配」——赋值到形参的字段、
+        // 字段复合赋值、take/mut 本身就是 P13-2 已认定为替换的操作。
+        // 纯局部写、返回、条件、循环体都递归下去；无法解析成形参路径的一律跳过。
+        if (!node)
+            return;
+        const auto isParam = [&](const std::string& root) {
+            for (const auto& p : paramNames)
+                if (p == root)
+                    return true;
+            return false;
+        };
+        const auto addPath = [&](const std::string& full) {
+            if (full.empty())
+                return;
+            const auto dot = full.find('.');
+            const std::string root = dot == std::string::npos ? full : full.substr(0, dot);
+            if (!isParam(root))
+                return;
+            WriteEffect eff{root, dot == std::string::npos ? std::string() : full.substr(dot)};
+            for (const auto& e : out)
+                if (e.root == eff.root && e.suffix == eff.suffix)
+                    return;
+            out.push_back(std::move(eff));
+        };
+        // 赋值 p.field = v
+        if (const auto asn = std::dynamic_pointer_cast<ast::AssignmentNode>(node))
+        {
+            const auto [lhs, rhs] = asn->getAssignPair();
+            addPath(exprPathText(lhs));
+            inferWriteEffectsFromBody(lhs, paramNames, out);
+            inferWriteEffectsFromBody(rhs, paramNames, out);
+            return;
+        }
+        // 复合赋值 p.field += v（DOT 左值）与 take/mut 方法调用
+        if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
+        {
+            const auto t = inf->getOpToken().getType();
+            if (t == core::TokenType::TOKEN_DOT)
+            {
+                // 字段访问本身不写；递归两侧覆盖其内可能的调用。
+            }
+            else if (t == core::TokenType::TOKEN_PLUS_ASSIGN || t == core::TokenType::TOKEN_MINUS_ASSIGN ||
+                     t == core::TokenType::TOKEN_STAR_ASSIGN || t == core::TokenType::TOKEN_SLASH_ASSIGN ||
+                     t == core::TokenType::TOKEN_MODULO_ASSIGN)
+            {
+                addPath(exprPathText(inf->getLeftNode()));
+            }
+            inferWriteEffectsFromBody(inf->getLeftNode(), paramNames, out);
+            inferWriteEffectsFromBody(inf->getRightNode(), paramNames, out);
+            return;
+        }
+        if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node))
+        {
+            // p.take() / p.mut() 是根替换；p.ref() 只读。
+            const std::string taken = takeReceiverName(node);
+            if (!taken.empty())
+                addPath(taken);
+            inferWriteEffectsFromBody(call->getLeftNode(), paramNames, out);
+            inferWriteEffectsFromBody(call->getRightNode(), paramNames, out);
+            return;
+        }
+        if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(node))
+        {
+            inferWriteEffectsFromBody(idx->getLeftNode(), paramNames, out);
+            inferWriteEffectsFromBody(idx->getIndexNode(), paramNames, out);
+            return;
+        }
+        if (const auto vd = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(node))
+        {
+            for (const auto& def : vd->getVarDefs())
+                if (def && def->hasInitialValue())
+                    inferWriteEffectsFromBody(def->getValueNode(), paramNames, out);
+            return;
+        }
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))
+        {
+            inferWriteEffectsFromBody(paren->getRangerNode(), paramNames, out);
+            return;
+        }
+        if (const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node))
+        {
+            inferWriteEffectsFromBody(ret->getReturnNode(), paramNames, out);
+            return;
+        }
+        if (const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(node))
+        {
+            inferWriteEffectsFromBody(branch->getConditionNode(), paramNames, out);
+            inferWriteEffectsFromBody(branch->getBodyNode(), paramNames, out);
+            return;
+        }
+        if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(node))
+        {
+            inferWriteEffectsFromBody(loop->getConditionNode(), paramNames, out);
+            inferWriteEffectsFromBody(loop->getBodyNode(), paramNames, out);
+            return;
+        }
+        if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))
+        {
+            for (const auto& e : block->getBodyExpressions())
+                inferWriteEffectsFromBody(e, paramNames, out);
+            return;
+        }
+        // ParenRangerNode 上面被 RangerNode 分支覆盖；其余节点无子结构可走。
     }
     void CodeGen::registerSignatureEffects(const std::string& emitName,
                                            const std::shared_ptr<ast::FunctionDefinitionNode>& def,
@@ -1862,6 +2056,11 @@ namespace backend
                     _fromEffects[emitName].push_back(eff);
             }
         }
+        // P13-4/Q3（规范 §4.3）：缺省效果 = 从函数体推断。显式 writes 是
+        // 「最小声明」，推断出的路径作为补集加进去（infer 内部去重），
+        // 这样即使函数没写 writes，调用点也能按 body 实际写路径检查。
+        if (def)
+            inferWriteEffectsFromBody(def->getBodyNode(), paramNames, _writeEffects[emitName]);
     }
     void CodeGen::registerActiveRef(const std::string& path, const std::string& owner, const std::string& refVar,
                                     const utils::Pos& pos, const std::string& indexExpr,
@@ -4011,6 +4210,22 @@ namespace backend
         // registerClass 之前做，否则重复类会被静默覆盖、类名冲突静默生效。
         if (validateL0ClassDeclarations(classNodes))
             return;
+        // P13-7：先把所有类名记入集合，让 Link 字段的元素类型在类体解析阶段
+        // 就能识别自引用/前向引用（此时 _classes 尚未逐个插入）。
+        _declaredClassNames.clear();
+        for (const auto& cls : classNodes)
+        {
+            if (!cls)
+                continue;
+            std::string cname;
+            if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(cls->getNameNode()))
+                cname = id->getName();
+            else if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(cls->getNameNode()))
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode()))
+                    cname = id->getName();
+            if (!cname.empty())
+                _declaredClassNames.insert(cname);
+        }
         // P6 阶段 A：登记所有类的名字、基类、字段、方法（不发射指令）。
         for (const auto& cls : classNodes)
         {
@@ -4049,6 +4264,10 @@ namespace backend
         // P13-2/L0-2 + L0-4：类字段类型 + 多类型标签冲突校验
         // （此时类表已齐，前向引用不成问题）。
         if (validateL0FieldTypes(classNodes))
+            return;
+        // P13-7：Link 对偶声明校验（peer 互指 / 类型一致 / 基数相容），
+        // 此时 _classes/_structs 已齐，可对前向对端类做交叉校验。
+        if (validateLinkDeclarations())
             return;
         if (validateL0LabelConflicts(program))
             return;
@@ -4394,12 +4613,28 @@ namespace backend
                     return;
                 }
                 const long long offset = findFieldOffset(owner, field->getName());
-                // 决议 §4.1：ownerName 是根变量名（p 或引用变量 q），
-                // path 完整路径；穿透展开在 registerActiveRef 内部处理。
-                const std::string ownerName = dotRoot ? dotRoot->getName() : owner;
-                // 决议 §4.1：path 用完整路径 "p.name"（穿透展开在
-                // registerActiveRef 内部按 refVar 替换前缀）。
-                registerActiveRef(ownerName + "." + field->getName(), ownerName, "",
+                // P13-4/Q1（规范 §4.1）：登记**完整**字段路径，而不是只取一层 DOT。
+                // 修前这里用 `dotRoot ? dotRoot->getName() : owner` 当 owner，
+                // 多级 `&p.team.captain.name` 的左节点是嵌套 DOT，dotRoot 为空，
+                // owner 退成类名 → 登记成 "Captain.name"，与真实写路径
+                // "p.team.captain.name" 对不上，前缀冲突判据整块漏检
+                // （探针 k/p/q/r：写 p.team / p.team.captain 全部静默放行）。
+                // 用 exprPathText 还原任意深度的 DOT 链，根变量名取首段。
+                // 单层 p.name 结果与修前完全一致（严格泛化）。
+                std::string fullPath = exprPathText(operand);
+                std::string ownerName;
+                if (!fullPath.empty())
+                {
+                    const auto cut = fullPath.find('.');
+                    ownerName = cut == std::string::npos ? fullPath : fullPath.substr(0, cut);
+                }
+                else
+                {
+                    // 无法还原（如根是调用）：退回老的保守登记
+                    ownerName = dotRoot ? dotRoot->getName() : owner;
+                    fullPath = ownerName + "." + field->getName();
+                }
+                registerActiveRef(fullPath, ownerName, "",
                                   node->getPos()); // refVar 由 var 绑定处补全
                 emitExpression(dot->getLeftNode()); // 对象指针 -> %rax
                 if (hasFailed())
@@ -5165,6 +5400,118 @@ namespace backend
         const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(infix->getLeftNode());
         if (!id)
         {
+            // P13-4/Q2（用户裁决）：字段复合赋值 `p.hp += 10`。
+            // 降低成 `emitExpression(p.hp)` 读旧值 + 按 op 合并 + `emitAttributeAssign`
+            // 写回。写回走 emitAttributeAssign，因而自动复用它的 §4.1 路径冲突检查
+            // （`&p.hp` 活跃时写 p.hp 报冲突），与简单赋值口径一致。
+            if (const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(infix->getLeftNode());
+                member && member->getOpToken().getType() == core::TokenType::TOKEN_DOT)
+            {
+                const auto fieldType = inferType(infix->getLeftNode());
+                const bool isFloat = fieldType && fieldType->isFloat();
+                // 读旧值（emitExpression 的 DOT 分支 → emitAttribute 读字段）
+                emitExpression(infix->getLeftNode());
+                if (hasFailed())
+                    return;
+                const std::string oldSlot = allocateTemp(isFloat ? sema::getFloatType() : sema::getIntType());
+                if (isFloat)
+                    _asm.inst("movsd", "%xmm0", oldSlot);
+                else
+                    _asm.mov("%rax", oldSlot);
+                // 右值（整数与 float 分别处理）
+                emitExpression(infix->getRightNode());
+                if (hasFailed())
+                    return;
+                const std::string rhsSlot = allocateTemp(isFloat ? sema::getFloatType() : sema::getIntType());
+                if (isFloat)
+                    _asm.inst("movsd", "%xmm0", rhsSlot);
+                else
+                    _asm.mov("%rax", rhsSlot);
+                // 合并：old 在 %rax/%xmm0，rhs 从槽取到另一寄存器。
+                if (isFloat)
+                {
+                    _asm.inst("movsd", oldSlot, "%xmm0");
+                    _asm.inst("movsd", rhsSlot, "%xmm1");
+                    switch (infix->getOpToken().getType())
+                    {
+                    case core::TokenType::TOKEN_PLUS_ASSIGN:  _asm.inst("addsd", "%xmm1", "%xmm0"); break;
+                    case core::TokenType::TOKEN_MINUS_ASSIGN: _asm.inst("subsd", "%xmm1", "%xmm0"); break;
+                    case core::TokenType::TOKEN_STAR_ASSIGN:  _asm.inst("mulsd", "%xmm1", "%xmm0"); break;
+                    case core::TokenType::TOKEN_SLASH_ASSIGN: _asm.inst("divsd", "%xmm1", "%xmm0"); break;
+                    default:
+                        fail("Unsupported float field compound assignment: " + infix->getOpToken().getValue());
+                        return;
+                    }
+                }
+                else
+                {
+                    _asm.mov(oldSlot, "%rax");
+                    _asm.mov(rhsSlot, "%rcx");
+                    switch (infix->getOpToken().getType())
+                    {
+                    case core::TokenType::TOKEN_PLUS_ASSIGN:  _asm.add("%rcx", "%rax"); break;
+                    case core::TokenType::TOKEN_MINUS_ASSIGN: _asm.sub("%rcx", "%rax"); break;
+                    case core::TokenType::TOKEN_STAR_ASSIGN:  _asm.imul("%rcx", "%rax"); break;
+                    case core::TokenType::TOKEN_SLASH_ASSIGN: // old(%rax)/rhs(%rcx)：除数放 %r10，被除数留在 %rax
+                        _asm.mov("%rcx", "%r10");
+                        _asm.inst("cqto");
+                        _asm.inst("idivq", "%r10");
+                        break;
+                    case core::TokenType::TOKEN_MODULO_ASSIGN:
+                        _asm.mov("%rcx", "%r10");
+                        _asm.inst("cqto");
+                        _asm.inst("idivq", "%r10");
+                        _asm.mov("%rdx", "%rax");
+                        break;
+                    default:
+                        fail("Unsupported field compound assignment: " + infix->getOpToken().getValue());
+                        return;
+                    }
+                }
+                // 写回：构造一个临时的 AssignmentNode(member, 结果) 复用 emitAttributeAssign
+                // 的冲突检查与地址计算；结果已在 %rax（float 在 %xmm0），
+                // emitAttributeAssign 会重新求值 value，故这里不能直接传节点。
+                // 改为内联写回：先做冲突检查，再算字段地址写值。
+                if (const std::string targetPath = exprPathText(member); !targetPath.empty())
+                {
+                    if (!checkWriteConflicts(targetPath, member->getPos(), "field compound assignment to"))
+                        return;
+                }
+                const std::string valSlot = allocateTemp(isFloat ? sema::getFloatType() : sema::getIntType());
+                if (isFloat)
+                    _asm.inst("movsd", "%xmm0", valSlot);
+                else
+                    _asm.mov("%rax", valSlot);
+                const auto fieldId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+                const std::string owner = classNameOf(member->getLeftNode());
+                if (!fieldId || owner.empty())
+                {
+                    fail("Cannot resolve field compound assignment target: " + infix->getLeftNode()->toString());
+                    return;
+                }
+                const long long offset = findFieldOffset(owner, fieldId->getName());
+                if (offset < 0)
+                {
+                    fail("Class " + owner + " has no field named '" + fieldId->getName() + "'");
+                    return;
+                }
+                emitExpression(member->getLeftNode()); // 对象指针 -> %rax
+                if (hasFailed())
+                    return;
+                _asm.mov("%rax", "%r10");
+                const std::string addr = std::to_string(offset) + "(%r10)";
+                if (isFloat)
+                {
+                    _asm.inst("movsd", valSlot, "%xmm0");
+                    _asm.inst("movsd", "%xmm0", addr);
+                }
+                else
+                {
+                    _asm.mov(valSlot, "%rax");
+                    _asm.mov("%rax", addr);
+                }
+                return;
+            }
             // P12/G2：`a[i] += v` —— 元素复合赋值。
             // 降低成 `a[i] = a[i] <op> v` 再走 emitIndexAssign，避免为
             // 「读旧值 + 写回」再复制一份地址计算逻辑（dict 的写回还要
@@ -6005,6 +6352,80 @@ namespace backend
             return std::string();
         const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
         return recv ? recv->getName() : std::string();
+    }
+    // P13-7：识别 Link 原语调用的两种形状：
+    //   (1) `a.L.add(b)` —— member.left = Infix(DOT, a, L)，member.right = add
+    //   (2) `a.unlink_all()` —— member.left = Identifier(a)，member.right = unlink_all
+    // 只有字段名确实是 var 所属类的 Link 字段时才返回 true。
+    bool CodeGen::parseLinkMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
+                                      std::string& outReceiver, std::string& outField,
+                                      std::string& outMethod) const
+    {
+        if (!member || member->getOpToken().getType() != core::TokenType::TOKEN_DOT)
+            return false;
+        const auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+        if (!method)
+            return false;
+        const std::string mname = method->getName();
+
+        // 形状 (2)：unlink_all —— 接收者是变量本身。
+        if (mname == "unlink_all")
+        {
+            const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+            if (!recv)
+                return false;
+            const std::string cls = classNameFromVariable(recv->getName());
+            if (cls.empty())
+                return false;
+            // 该类的字段里至少有一个 Link 才认。
+            const auto c = findClass(cls);
+            if (!c)
+                return false;
+            for (const auto& [fname, ftype] : c->fieldTypes)
+                if (ftype && ftype->getKind() == sema::TypeKind::TK_LINK)
+                {
+                    outReceiver = recv->getName();
+                    outField.clear();
+                    outMethod = mname;
+                    return true;
+                }
+            return false;
+        }
+
+        // 形状 (1)：add/remove/clear/set —— member.left 是 `a.L`。
+        if (mname != "add" && mname != "remove" && mname != "clear" && mname != "set" &&
+            mname != "count" && mname != "has")
+            return false;
+        const auto recvField = std::dynamic_pointer_cast<ast::InfixExpressionNode>(member->getLeftNode());
+        if (!recvField || recvField->getOpToken().getType() != core::TokenType::TOKEN_DOT)
+            return false;
+        const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(recvField->getLeftNode());
+        const auto field = std::dynamic_pointer_cast<ast::IdentifierNode>(recvField->getRightNode());
+        if (!recv || !field)
+            return false;
+        const std::string cls = classNameFromVariable(recv->getName());
+        if (cls.empty())
+            return false;
+        const auto ftype = findFieldType(cls, field->getName());
+        if (!ftype || ftype->getKind() != sema::TypeKind::TK_LINK)
+            return false;
+        outReceiver = recv->getName();
+        outField = field->getName();
+        outMethod = mname;
+        return true;
+    }
+    bool CodeGen::hasLinkFields(const std::string& varName) const
+    {
+        const std::string cls = classNameFromVariable(varName);
+        if (cls.empty())
+            return false;
+        const auto c = findClass(cls);
+        if (!c)
+            return false;
+        for (const auto& [fname, ftype] : c->fieldTypes)
+            if (ftype && ftype->getKind() == sema::TypeKind::TK_LINK)
+                return true;
+        return false;
     }
     sema::TypePtr CodeGen::inferBlockValueType(const std::shared_ptr<ast::ExpressionNode>& body) const
     {
@@ -9044,6 +9465,25 @@ namespace backend
         const std::string base = exprPathText(args[0]);
         if (base.empty())
             return true; // 实参不是可追踪路径：保守跳过
+        // P13-6/Q2（规范 §6.3）：登记成员集合效果（与 checkWriteConflicts 的
+        // 子引用检查并存，二者互不干扰）。只有实参是**可追踪的 Body 变量
+        // 标识符**时才登记——字面量/表达式成员不进入集合。
+        const auto memberId = args.size() >= 2
+                                  ? std::dynamic_pointer_cast<ast::IdentifierNode>(args[1])
+                                  : nullptr;
+        if (name == "listAppend" || name == "listInsert" || name == "listPush")
+        {
+            if (memberId)
+                memberAdd(base, memberId->getName(), pos); // push(x): x 重数 +1（饱和）
+        }
+        else if (name == "listClear")
+        {
+            memberClearContainer(base); // clear(): 容器集合全部清空
+        }
+        else if (name == "listRemove" && memberId)
+        {
+            memberRemoveAll(base, memberId->getName()); // remove_one 保守：精确归零
+        }
         return checkWriteConflicts(base + ".items", pos, "list growth via " + name + " on");
     }
     bool CodeGen::checkTakeArgOverlap(const std::string& fname,
@@ -9164,22 +9604,26 @@ namespace backend
                         const auto& m = fnId->getName();
                         if (m == "fixed" || m == "boxed" || m == "chunked")
                         {
-                            // 求值实参（fixed 容量 / chunked block）后丢弃，A 阶段不存容量。
+                            // P13-6/Q1：求值实参（fixed 容量 / chunked block）并保留。
                             // 命名参数 `block: 64` 在 AST 里是 InfixExpressionNode(op=COLON)，
-                            // 必须只求值右侧 value，不能当变量读左侧名字。
+                            // 只取右侧 value（左侧名字不是变量）。
+                            // 实参进 %rdx（cap/block）：无参的 boxed 传 0。
+                            _asm.movImm(0, "%rdx");
                             for (const auto& a : args)
                             {
+                                std::shared_ptr<ast::ExpressionNode> val = a;
                                 if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(a);
                                     inf && inf->getOpToken().getType() == core::TokenType::TOKEN_COLON)
-                                    emitExpression(inf->getRightNode());
-                                else
-                                    emitExpression(a);
+                                    val = inf->getRightNode();
+                                emitExpression(val);
+                                break; // 三档都至多一个数值参数
                             }
-                            // 最小句柄：分配 8 字节（core_alloc(8, 8) -> ptr）。
-                            _asm.movImm(8, "%rcx");
-                            _asm.movImm(8, "%rdx");
+                            _asm.mov("%rax", "%rdx"); // rdx = cap / block
+                            // mode: fixed=1, boxed=2, chunked=3
+                            const long long mode = m == "fixed" ? 1 : (m == "boxed" ? 2 : 3);
+                            _asm.movImm(mode, "%rcx");
                             _asm.subRsp(32);
-                            _asm.call("core_alloc");
+                            _asm.call("core_pool_new");
                             _asm.addRsp(32);
                             return;
                         }
@@ -9221,7 +9665,8 @@ namespace backend
                                 const auto t = typeFromTypeArgNode(typeArgs[0], _currentGenericParams);
                                 if (t && t->getKind() == sema::TypeKind::TK_CLASS)
                                 {
-                                    emitConstructorCall(t->toString(), node, args);
+                                    // P13-6/Q1：把池变量名交给构造器，让对象分配到池槽。
+                                    emitConstructorCall(t->toString(), node, args, recv->getName());
                                     return;
                                 }
                                 failAt(node->getPos(), "L3: pool.new[T] requires a class type T");
@@ -9929,6 +10374,9 @@ namespace backend
             return sema::getUnknownType();
         if (findClass(name))
             return std::make_shared<sema::ClassType>(name);
+        // P13-7：类体解析阶段本类尚未插入 _classes，靠声明名集合识别自引用。
+        if (_declaredClassNames.count(name))
+            return std::make_shared<sema::ClassType>(name);
         // 决议 A：`x: Pt` 的 Pt 是 struct 时解析成 StructType（携带大小，
         // 这样 allocateSlot 能一次开出正确的槽宽）。
         if (const auto st = structTypeOf(name))
@@ -9966,6 +10414,27 @@ namespace backend
             return;
         }
         out.push_back(node);
+    }
+    // P13-7：从 `[...]` 的 body 取一个标识符字符串（peer 字段名 / 基数关键字）。
+    // 不能走 typeFromTypeArgNode —— 那会把 `fans` / `one` 当类型名查成 UNKNOWN Type，
+    // 丢失字符串身份。这里直接读 IdentifierNode/LabelNode 的原始名字。
+    static std::string labelDesName(const std::shared_ptr<ast::ExpressionNode>& node)
+    {
+        if (!node)
+            return {};
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node))
+            return id->getName();
+        if (const auto lbl = std::dynamic_pointer_cast<ast::LabelNode>(node))
+            return lbl->getFullLabel();
+        return {};
+    }
+    // P13-7：把基数字符串解析成枚举；非法值返回 false。
+    static bool parseLinkCardinality(const std::string& s, sema::LinkCardinality& out)
+    {
+        if (s == "opt")  { out = sema::LinkCardinality::OPT;  return true; }
+        if (s == "one")  { out = sema::LinkCardinality::ONE;  return true; }
+        if (s == "many") { out = sema::LinkCardinality::MANY; return true; }
+        return false;
     }
     sema::TypePtr CodeGen::typeFromTypeArgNode(const std::shared_ptr<ast::ExpressionNode>& node,
                                                const std::vector<std::string>& genericParams) const
@@ -10193,6 +10662,42 @@ namespace backend
                 ret = typeFromTypeArgNode(des[1]->getBodyNode(), genericParams);
             }
             return std::make_shared<sema::FunctionType>(std::move(params), std::move(ret));
+        }
+        // P13-7：`Link[T][peer][cardinality]` —— 三段方括号，其中 peer 与
+        // cardinality 是标识符字符串（不是类型），必须在此拦截、直接读原始
+        // IdentifierNode 名字；若落到下面通用 args 循环会被 resolveTypeName
+        // 查成 UNKNOWN Type 而丢失字符串身份。
+        if (base == "Link")
+        {
+            const auto des = label->getLabelDesNodes();
+            if (des.size() < 3)
+            {
+                const_cast<CodeGen*>(this)->failAt(
+                    label->getPos(),
+                    "Link needs three brackets: Link[Elem][peerField][opt|one|many]");
+                return sema::getUnknownType();
+            }
+            // 第一段：元素类型（走正常的类型解析路径）
+            const auto elem = typeFromTypeArgNode(des[0]->getBodyNode(), genericParams);
+            // 第二段：对端字段名（标识符字符串）
+            const std::string peer = labelDesName(des[1]->getBodyNode());
+            if (peer.empty())
+            {
+                const_cast<CodeGen*>(this)->failAt(
+                    label->getPos(), "Link peer field must be an identifier");
+                return sema::getUnknownType();
+            }
+            // 第三段：基数关键字
+            const std::string cardStr = labelDesName(des[2]->getBodyNode());
+            sema::LinkCardinality card;
+            if (!parseLinkCardinality(cardStr, card))
+            {
+                const_cast<CodeGen*>(this)->failAt(
+                    label->getPos(),
+                    "Link cardinality must be 'opt', 'one' or 'many', got '" + cardStr + "'");
+                return sema::getUnknownType();
+            }
+            return std::make_shared<sema::LinkType>(elem, peer, card);
         }
         // `list[float]` / `dict[str, float]` / `Box[int]`：等价于把它
         // 当成一个「名字 + 类型实参」的复合类型，和 IndexExpressionNode 同构处理。
@@ -10660,6 +11165,132 @@ namespace backend
                         }
                     }
                 }
+            }
+        }
+        return hasFailed();
+    }
+    // P13-7：Link 对偶声明全量校验（裁决 Q4=A / Q5=B）。
+    // 所有类/struct 已登记完毕，可对前向对端类做交叉校验，支持跨类 Link。
+    bool CodeGen::validateLinkDeclarations()
+    {
+        // 收集所有 (owner 类型名, 字段名, LinkType) 三元组。
+        // 键用 "Owner.field"，值带 owner 名与字段所在的 ClassInfo/StructInfo 类型，
+        // 便于按 elem 类型名找到对端字段。
+        struct LinkDecl
+        {
+            std::string owner;
+            std::string field;
+            sema::TypePtr elem;
+            std::string peer;
+            sema::LinkCardinality card;
+            utils::Pos pos;
+        };
+        std::vector<LinkDecl> decls;
+
+        auto collect = [&](const std::string& owner,
+                           const std::map<std::string, sema::TypePtr>& fieldTypes,
+                           const utils::Pos& ownerPos)
+        {
+            for (const auto& [fname, ftype] : fieldTypes)
+            {
+                if (!ftype || ftype->getKind() != sema::TypeKind::TK_LINK)
+                    continue;
+                const auto lt = std::static_pointer_cast<sema::LinkType>(ftype);
+                decls.push_back({owner, fname, lt->getElemType(), lt->getPeer(),
+                                 lt->getCardinality(), ownerPos});
+            }
+        };
+        for (const auto& [name, info] : _classes)
+            collect(name, info.ownFieldTypes, utils::Pos{});
+        for (const auto& [name, info] : _structs)
+            collect(name, info.fieldTypes, utils::Pos{});
+
+        if (decls.empty())
+            return hasFailed();
+
+        // 辅助：解析 elem 类型对应的类名（ClassType/StructType）。
+        auto elemTypeName = [](const sema::TypePtr& t) -> std::string
+        {
+            if (!t) return {};
+            if (t->getKind() == sema::TypeKind::TK_CLASS)
+                return std::static_pointer_cast<sema::ClassType>(t)->getName();
+            if (t->getKind() == sema::TypeKind::TK_STRUCT)
+                return t->toString();
+            return {};
+        };
+        // 查 owner 类型（class 或 struct）里名为 field 的 LinkType。
+        auto findLinkField = [&](const std::string& owner, const std::string& field) -> sema::TypePtr
+        {
+            if (const auto c = findClass(owner); c)
+            {
+                auto it = c->ownFieldTypes.find(field);
+                if (it != c->ownFieldTypes.end()) return it->second;
+            }
+            if (const auto s = findStruct(owner); s)
+            {
+                auto it = s->fieldTypes.find(field);
+                if (it != s->fieldTypes.end()) return it->second;
+            }
+            return nullptr;
+        };
+        // 基数相容表（Q5=B，单向宽松）：
+        //   many ↔ any；opt ↔ {opt,many}；one ↔ {one,opt}
+        auto cardCompatible = [](sema::LinkCardinality a, sema::LinkCardinality b) -> bool
+        {
+            auto compat = [](sema::LinkCardinality self, sema::LinkCardinality other)
+            {
+                if (self == sema::LinkCardinality::MANY) return true;
+                if (self == sema::LinkCardinality::OPT)
+                    return other == sema::LinkCardinality::OPT || other == sema::LinkCardinality::MANY;
+                // ONE
+                return other == sema::LinkCardinality::ONE || other == sema::LinkCardinality::OPT;
+            };
+            return compat(a, b) && compat(b, a);
+        };
+
+        for (const auto& d : decls)
+        {
+            const std::string elemName = elemTypeName(d.elem);
+            if (elemName.empty())
+            {
+                failAt(d.pos, "Link field '" + d.owner + "." + d.field +
+                    "': element type must be a class or struct (got '" +
+                    (d.elem ? d.elem->toString() : "?") + "')");
+                return true;
+            }
+            // peer 字段必须存在于 elem 类型上，且也是 Link。
+            const auto peerType = findLinkField(elemName, d.peer);
+            if (!peerType || peerType->getKind() != sema::TypeKind::TK_LINK)
+            {
+                failAt(d.pos, "Link field '" + d.owner + "." + d.field +
+                    "': peer field '" + elemName + "." + d.peer + "' is not a Link field");
+                return true;
+            }
+            const auto plt = std::static_pointer_cast<sema::LinkType>(peerType);
+            // 对端必须指回本字段（互相指向）。
+            if (plt->getPeer() != d.field)
+            {
+                failAt(d.pos, "Link field '" + d.owner + "." + d.field +
+                    "': peer field '" + elemName + "." + d.peer +
+                    "' points back to '" + plt->getPeer() + "', expected '" + d.field + "'");
+                return true;
+            }
+            // elem 类型一致：对端的 elem 必须就是 owner 类型（跨类时是声明该字段的类）。
+            const std::string peerElemName = elemTypeName(plt->getElemType());
+            if (peerElemName != d.owner)
+            {
+                failAt(d.pos, "Link field '" + d.owner + "." + d.field +
+                    "': peer elem type '" + peerElemName + "' does not match owner '" + d.owner + "'");
+                return true;
+            }
+            // 基数相容表（Q5=B）。
+            if (!cardCompatible(d.card, plt->getCardinality()))
+            {
+                failAt(d.pos, "Link field '" + d.owner + "." + d.field +
+                    "' cardinality '" + sema::LinkType::cardinalityName(d.card) +
+                    "' is incompatible with peer '" + elemName + "." + d.peer +
+                    "' cardinality '" + sema::LinkType::cardinalityName(plt->getCardinality()) + "'");
+                return true;
             }
         }
         return hasFailed();
@@ -12203,7 +12834,8 @@ namespace backend
     }
     void CodeGen::emitConstructorCall(const std::string& className,
                                       const std::shared_ptr<ast::ExpressionNode>& callNode,
-                                      const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)
+                                      const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                      const std::string& poolVarName)
     {
         (void)callNode;
         ClassInfo* cls = findClass(className);
@@ -12223,9 +12855,45 @@ namespace backend
             _currentGenericBindings = b->second.second;
         }
         const long long size = cls->size > 0 ? cls->size : 8;
-        emitAlloc(static_cast<size_t>(size));
-        if (hasFailed())
-            return;
+        if (!poolVarName.empty())
+        {
+            // P13-6/Q1：pool.new[T] —— 对象分配到池槽（地址稳定，永不搬家）。
+            // 池头地址取自池变量的栈槽；elem_size = 对象字节数；返回槽地址。
+            const auto poolSlot = lookupVar(poolVarName);
+            if (!poolSlot)
+            {
+                fail("P13-6: unknown pool variable '" + poolVarName + "'");
+                return;
+            }
+            _asm.mov(addrOf(*poolSlot), "%rcx"); // rcx = pool 头指针
+            _asm.movImm(size, "%rdx");           // rdx = elem_size
+            _asm.subRsp(32);
+            _asm.call("core_pool_alloc");
+            _asm.addRsp(32);
+            // 满（fixed 达容量）时 core_pool_alloc 返回 0 —— 运行时 panic，
+            // 绝不让后续 core_mem_set 往 null 写（那会是静默野指针崩溃）。
+            const auto fullLabel = _asm.newLabel("pool_full");
+            const auto okLabel = _asm.newLabel("pool_alloc_ok");
+            _asm.inst("testq", "%rax", "%rax");
+            _asm.je(fullLabel);
+            _asm.jmp(okLabel);
+            _asm.label(fullLabel);
+            {
+                const auto msg = _asm.internStrValue("pool is full (Pool.fixed capacity exhausted)");
+                _asm.lea(msg.first + "+16(%rip)", "%rcx");
+                _asm.movImm(static_cast<long long>(msg.second), "%rdx");
+                _asm.subRsp(32);
+                _asm.call("core_panic_raise");
+                _asm.addRsp(32);
+            }
+            _asm.label(okLabel);
+        }
+        else
+        {
+            emitAlloc(static_cast<size_t>(size));
+            if (hasFailed())
+                return;
+        }
         // 对象指针全程放栈槽：下面的 core_mem_set 调用、字段初始化器求值、
         // 构造器实参求值都会冲掉 caller-saved 寄存器。
         // 不用 push 暂存：push 的 8 字节偏移会让调用点的 %rsp 失去 16 字节对齐。
@@ -12617,9 +13285,170 @@ namespace backend
                 failAt(args[0]->getPos(), "L3: release target '" + x->getName() + "' is not Empty (clear it first)");
                 return;
             }
+            // P13-6/Q2（规范 §6.4 第 10 步）：成员集合判据 —— 所有活跃集合
+            // 路径中 x 的重数必须为 0。Q3=A 明确不放宽状态规则，这是防御性
+            // 机械检查；Link 条款依赖 P13-7，本阶段不查。
+            {
+                std::string blocker;
+                MemberMult mult = MemberMult::ZERO;
+                if (memberBlocksRelease(x->getName(), blocker, mult))
+                {
+                    static const char* kMultName[] = {"0", "1", "many", "TOP"};
+                    failAt(args[0]->getPos(),
+                           "L3: cannot release '" + x->getName() + "': still a member of live container '" +
+                               blocker + "' (mult=" + kMultName[static_cast<int>(mult)] +
+                               ") (P13-6 / §6.4)");
+                    return;
+                }
+            }
+            // P13-7（规范 §7.4）：release 前必须「不在任何 Link 中」。
+            // 若变量所属类含 Link 字段，其 Link 事实必须为 EMPTY（已 unlink_all
+            // 且其后未再 add）；UNKNOWN/NONEMPTY 一律拒绝。
+            if (hasLinkFields(x->getName()))
+            {
+                const auto lit = _linkEmptyFacts.find(x->getName());
+                const LinkEmptyFact fact = lit == _linkEmptyFacts.end() ? LinkEmptyFact::UNKNOWN : lit->second;
+                if (fact != LinkEmptyFact::EMPTY)
+                {
+                    failAt(args[0]->getPos(),
+                           "L3: cannot release '" + x->getName() +
+                               "': still in a Link (call unlink_all() first) (P13-7 / §7.4)");
+                    return;
+                }
+            }
             _birthPlaces.erase(found);
             setBodyState(x->getName(), BodyState::MOVED, args[0]->getPos(), "released");
             return;
+        }
+        // P13-7：Link 原语 a.L.add(b) / remove / clear / set / a.unlink_all()。
+        // 必须在 owner 检查之前：a.L 是两段 DOT，classNameOf 拿不到类名。
+        {
+            std::string lkRecv, lkField, lkMethod;
+            if (parseLinkMethodCall(member, lkRecv, lkField, lkMethod))
+            {
+                const auto recvSlot = lookupVar(lkRecv);
+                if (!recvSlot)
+                {
+                    failAt(member->getPos(), "Link: unknown receiver '" + lkRecv + "'");
+                    return;
+                }
+                const std::string cls = classNameFromVariable(lkRecv);
+                // 方法参数个数校验
+                const bool isReadOp = (lkMethod == "count" || lkMethod == "has");
+                const size_t wantArgs = (lkMethod == "add" || lkMethod == "remove" || lkMethod == "set" || lkMethod == "has") ? 1 : 0;
+                if (args.size() != wantArgs)
+                {
+                    failAt(member->getPos(), "Link '" + lkMethod + "' expects " +
+                        std::to_string(wantArgs) + " argument(s), got " + std::to_string(args.size()));
+                    return;
+                }
+                // set 仅 opt/one（Q3 冻结：many 无 set）
+                if (lkMethod == "set" && !lkField.empty())
+                {
+                    const auto ft = findFieldType(cls, lkField);
+                    const auto lt = ft ? std::static_pointer_cast<sema::LinkType>(ft) : nullptr;
+                    if (lt && lt->getCardinality() == sema::LinkCardinality::MANY)
+                    {
+                        failAt(member->getPos(), "Link 'set' is only valid for opt/one, not many");
+                        return;
+                    }
+                }
+                // 对端字段名 / 字段索引（用字段偏移作为稳定索引）
+                std::string peerField;
+                long long aFieldOff = 0, bFieldOff = 0;
+                if (!lkField.empty())
+                {
+                    const auto ft = findFieldType(cls, lkField);
+                    if (!ft || ft->getKind() != sema::TypeKind::TK_LINK)
+                    {
+                        failAt(member->getPos(), "Link field '" + cls + "." + lkField + "' not found");
+                        return;
+                    }
+                    const auto lt = std::static_pointer_cast<sema::LinkType>(ft);
+                    peerField = lt->getPeer();
+                    aFieldOff = findFieldOffset(cls, lkField);
+                }
+                // 求值实参 b（对象引用）到临时槽
+                std::string bSlotName;
+                if (wantArgs == 1)
+                {
+                    emitExpression(args[0]);
+                    if (hasFailed())
+                        return;
+                    bSlotName = allocateTemp(sema::getPtrType());
+                    _asm.mov("%rax", bSlotName);
+                    const auto bcls = classNameOf(args[0]);
+                    bFieldOff = findFieldOffset(bcls, peerField);
+                }
+                // a 的对象指针值（Link 两端都是对象地址）
+                const std::string aVal = allocateTemp(sema::getPtrType());
+                _asm.mov(addrOf(*recvSlot), "%rax");
+                _asm.mov("%rax", aVal);
+
+                // ---- 只读原语 count() / has(b)：返回 int ----
+                if (isReadOp)
+                {
+                    const char* readFn = lkMethod == "count" ? "core_link_count" : "core_link_has";
+                    _asm.subRsp(32); // shadow space
+                    _asm.mov(aVal, "%rcx");
+                    _asm.movImm(static_cast<int>(aFieldOff), "%rdx");
+                    if (lkMethod == "has")
+                        _asm.mov(bSlotName, "%r8");
+                    _asm.call(readFn);
+                    _asm.addRsp(32);
+                    // 结果在 %rax；调用方把它当 int。读操作不生成 Link 实参落定。
+                    return;
+                }
+
+                // 更新 §7.4 Link 空状态事实：add/set -> NONEMPTY；clear/unlink_all -> EMPTY
+                if (!isReadOp)
+                {
+                    if (lkMethod == "add" || lkMethod == "set")
+                        _linkEmptyFacts[lkRecv] = LinkEmptyFact::NONEMPTY;
+                    else // clear / unlink_all
+                        _linkEmptyFacts[lkRecv] = LinkEmptyFact::EMPTY;
+                }
+
+                // ---- 变更原语：要求池出生地（Q6 运行时同池检查）----
+                auto bp = _birthPlaces.find(lkRecv);
+                const std::string poolName = bp != _birthPlaces.end() ? bp->second : std::string();
+                const auto poolSlot = poolName.empty() ? nullptr : lookupVar(poolName);
+                if (!poolSlot)
+                {
+                    failAt(member->getPos(),
+                           "Link receiver '" + lkRecv + "' must be created in a Pool "
+                           "(Link requires pool-allocated objects; §7.6)");
+                    return;
+                }
+                const std::string poolVal = allocateTemp(sema::getPtrType());
+                _asm.mov(addrOf(*poolSlot), "%rax");
+                _asm.mov("%rax", poolVal);
+
+                // 选择 core 例程
+                const char* coreFn = nullptr;
+                if (lkMethod == "add")       coreFn = "core_link_add";
+                else if (lkMethod == "remove") coreFn = "core_link_remove";
+                else if (lkMethod == "clear")  coreFn = "core_link_clear";
+                else if (lkMethod == "set")    coreFn = "core_link_add"; // set 简化为 add（见方案偏差）
+                else if (lkMethod == "unlink_all") coreFn = "core_link_unlink_all";
+
+                // 5th 参数（bField）通过栈传递：32 shadow + 8 栈参 + 8 对齐 = 48。
+                _asm.subRsp(48);
+                if (wantArgs == 0)
+                    _asm.movImm(0, "32(%rsp)"); // bField 占位
+                else
+                    _asm.movImm(static_cast<int>(bFieldOff), "32(%rsp)");
+                _asm.mov(poolVal, "%rcx");
+                _asm.mov(aVal, "%rdx");
+                _asm.movImm(static_cast<int>(aFieldOff), "%r8");
+                if (wantArgs == 1)
+                    _asm.mov(bSlotName, "%r9");
+                else
+                    _asm.movImm(0, "%r9");
+                _asm.call(coreFn);
+                _asm.addRsp(48);
+                return;
+            }
         }
         const std::string owner = classNameOf(member->getLeftNode());
         if (owner.empty())
@@ -12693,6 +13522,20 @@ namespace backend
                            "L3: take target '" + recv->getName() +
                                "' is in ? state (control flow merged to an unknown body state); "
                                "cannot take");
+                    return;
+                }
+            }
+            // P13-7（规范 §7.4）：take 要求所有 Link 字段此刻确定为空。
+            // 含 Link 字段且事实为 NONEMPTY/UNKNOWN 时拒绝，须先 unlink_all()。
+            if (hasLinkFields(recv->getName()))
+            {
+                const auto lit = _linkEmptyFacts.find(recv->getName());
+                const LinkEmptyFact fact = lit == _linkEmptyFacts.end() ? LinkEmptyFact::UNKNOWN : lit->second;
+                if (fact != LinkEmptyFact::EMPTY)
+                {
+                    failAt(member->getPos(),
+                           "L3: cannot take '" + recv->getName() +
+                               "': Link fields are not empty (call unlink_all() first) (P13-7 / §7.4)");
                     return;
                 }
             }
@@ -13708,7 +14551,7 @@ namespace backend
                 // resolveTypeName 只认裸名；paramTypes 那条路径已由
                 // typeFromTypeArgNode 正确解析，这里跳过字符串校验即可。
                 if (firstWord == "Body" || firstWord == "Content" || firstWord == "Ref" || firstWord == "Mut" ||
-                    firstWord == "Take")
+                    firstWord == "Take" || firstWord == "Link")
                     continue;
                 const auto t = resolveTypeName(annotations[i]);
                 if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN)
@@ -13959,6 +14802,7 @@ namespace backend
         const auto savedActiveRefs = _activeRefs;
         const auto savedBirthPlaces = _birthPlaces;
         const auto savedPendingTakes = _pendingTakes;
+        const auto savedMemberSets = _memberSets; // P13-6/Q2
         // P13-2/L3-G：不透明 `?` 集合同样是函数局部的（形参同名也只是巧合）。
         const auto savedOpaqueMoveVars = _opaqueMoveVars;
         // P13-1：销毁登记表与 _scopes 是**同生共死**的一对，跨函数必须一起清。
@@ -13993,6 +14837,7 @@ namespace backend
         _activeRefs.clear();
         _birthPlaces.clear();
         _pendingTakes.clear();
+        _memberSets.clear(); // P13-6/Q2：成员集合同样是函数局部事实表
         pushScope();
         if (makeGlobal)
             _asm.global(emitName);
@@ -14231,6 +15076,7 @@ namespace backend
         _activeRefs = savedActiveRefs;
         _birthPlaces = savedBirthPlaces;
         _pendingTakes = savedPendingTakes;
+        _memberSets = savedMemberSets; // P13-6/Q2
         _opaqueMoveVars = savedOpaqueMoveVars;
         _loopExitStates.clear();
         _loopBackStates.clear();

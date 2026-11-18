@@ -1,0 +1,10 @@
+// Q1: fixed 档容量内正常分配
+class Player { var hp: int  ctor(h: int) { this.hp = h } }
+fun main(): void {
+    var pl = Pool.fixed(2)
+    var a: Player pl = pl.new[Player](1)
+    var b: Player pl = pl.new[Player](2)
+    sout(a.hp)
+    sout(b.hp)
+}
+main()

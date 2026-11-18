@@ -1,0 +1,23 @@
+// remove 两端同步；clear 清空某字段的全部邻居
+class U {
+    var v: int
+    var peers: Link[U][peers][many]
+    ctor(x: int) { this.v = x }
+}
+fun main(): void {
+    var pl = Pool.chunked(4)
+    var a: U pl = pl.new[U](1)
+    var b: U pl = pl.new[U](2)
+    var c: U pl = pl.new[U](3)
+    a.peers.add(b)
+    a.peers.add(c)
+    sout(a.peers.count())
+    a.peers.remove(b)
+    sout(a.peers.count())
+    sout(b.peers.count())
+    sout(c.peers.count())
+    a.peers.clear()
+    sout(a.peers.count())
+    sout(c.peers.count())
+}
+main()

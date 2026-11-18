@@ -1,0 +1,9 @@
+// 负向：set 只支持 opt/one，many 上调用应拒绝
+class U { var v: int  var peers: Link[U][peers][many]  ctor(x: int) { this.v = x } }
+fun main(): void {
+    var pl = Pool.chunked(4)
+    var a: U pl = pl.new[U](1)
+    var b: U pl = pl.new[U](2)
+    a.peers.set(b)
+}
+main()

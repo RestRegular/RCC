@@ -35,6 +35,7 @@ namespace sema
         TK_GENERIC,   // P10：泛型形参占位（`fun f[T](x: T)` 里的 T）
         TK_MEMORY,    // P13-2/L3：内存模型特殊类型（Body/Content/Ref/Mut/Take）
         TK_POOL,      // P13-2/L3-A：Pool 类型（标准库普通类型，管理对象出生地）
+        TK_LINK,      // P13-7：Link 成对引用类型（Link[T][peer][card]）
         TK_NULLABLE,  // B：可空类型 `T?`（只有引用型可空）
         TK_UNKNOWN,   // 尚未推导出，用于报错前占位
     };
@@ -65,7 +66,7 @@ namespace sema
             return _kind == TypeKind::TK_STR || _kind == TypeKind::TK_LIST ||
                    _kind == TypeKind::TK_DICT || _kind == TypeKind::TK_CLASS ||
                    _kind == TypeKind::TK_PTR || _kind == TypeKind::TK_MEMORY ||
-                   _kind == TypeKind::TK_POOL;
+                   _kind == TypeKind::TK_POOL || _kind == TypeKind::TK_LINK;
         }
         [[nodiscard]] bool isNumeric() const { return isInteger() || isFloat(); }
 
@@ -109,6 +110,7 @@ namespace sema
             case TypeKind::TK_PTR:   return "ptr";
             case TypeKind::TK_MEMORY: return "memory";
             case TypeKind::TK_POOL:   return "Pool";
+            case TypeKind::TK_LINK:   return "Link";
             case TypeKind::TK_NULLABLE: return "nullable";
             default:              return "unknown";
             }
@@ -381,6 +383,66 @@ namespace sema
         static auto t = std::make_shared<PoolType>();
         return t;
     }
+
+    // ---------- P13-7：Link 成对引用类型 ----------
+    //
+    // `Link[T][peer][cardinality]`：对称关系（反向边、父子、双向链表）的
+    // 唯一内建原语。elem 是对端元素类型，peer 是对端字段名，cardinality
+    // 是基数（opt 至多一个 / one 连接后恰好一个 / many 任意多个）。
+    //
+    // 决议（p13_7_syntax_audit.md §6）：
+    //   Q2=A 独立 LinkType 子类（不动 MemoryType）；
+    //   Q3=A equals/mangle 只比 elem，peer/card 不入签名，对偶校验在 struct 层做。
+    enum class LinkCardinality
+    {
+        OPT,
+        ONE,
+        MANY,
+    };
+
+    class LinkType final : public Type
+    {
+    public:
+        LinkType(TypePtr elem, std::string peer, LinkCardinality card)
+            : Type(TypeKind::TK_LINK), _elem(std::move(elem)),
+              _peer(std::move(peer)), _card(card) {}
+
+        [[nodiscard]] const TypePtr& getElemType() const { return _elem; }
+        [[nodiscard]] const std::string& getPeer() const { return _peer; }
+        [[nodiscard]] LinkCardinality getCardinality() const { return _card; }
+
+        [[nodiscard]] static const char* cardinalityName(LinkCardinality card)
+        {
+            switch (card)
+            {
+            case LinkCardinality::OPT:  return "opt";
+            case LinkCardinality::ONE:  return "one";
+            case LinkCardinality::MANY: return "many";
+            }
+            return "?";
+        }
+
+        [[nodiscard]] std::string toString() const override
+        {
+            return "Link[" + (_elem ? _elem->toString() : "?") + "][" + _peer +
+                   "][" + cardinalityName(_card) + "]";
+        }
+
+        // Q3=A：只有 elem 参与类型相等；peer/card 是对偶关系元数据，
+        // 不影响函数签名形状，对偶一致性在 struct 定义层校验。
+        [[nodiscard]] bool equals(const TypePtr& other) const override
+        {
+            if (!other || other->getKind() != TypeKind::TK_LINK) return false;
+            const auto o = std::static_pointer_cast<LinkType>(other);
+            if (!_elem || !o->_elem) return !_elem && !o->_elem;
+            return _elem->equals(o->_elem);
+        }
+
+    private:
+        TypePtr _elem;
+        std::string _peer;
+        LinkCardinality _card;
+    };
 
     // ---------- P13-2/L3：内存模型特殊类型 ----------
     //

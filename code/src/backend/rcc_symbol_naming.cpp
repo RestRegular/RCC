@@ -85,6 +85,12 @@ namespace backend
                 return "T0";
             case sema::TypeKind::TK_POOL:
                 return "Q";
+            case sema::TypeKind::TK_LINK:
+            {
+                // P13-7 裁决 Q3=A：peek/cardinality 不入符号，只有 elem 入。
+                const auto lt = std::static_pointer_cast<sema::LinkType>(type);
+                return std::string("K") + mangleType(lt->getElemType());
+            }
             case sema::TypeKind::TK_MEMORY:
             {
                 const auto mt = std::static_pointer_cast<sema::MemoryType>(type);

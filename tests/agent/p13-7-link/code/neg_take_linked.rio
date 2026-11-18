@@ -1,0 +1,10 @@
+// 负向：未 unlink_all 就 take -> §7.4 拒绝
+class U { var v: int  var peers: Link[U][peers][many]  ctor(x: int) { this.v = x } }
+fun main(): void {
+    var pl = Pool.chunked(4)
+    var a: U pl = pl.new[U](1)
+    var b: U pl = pl.new[U](2)
+    a.peers.add(b)
+    var c = a.take()
+}
+main()

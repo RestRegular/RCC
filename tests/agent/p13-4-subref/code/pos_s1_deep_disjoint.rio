@@ -1,0 +1,6 @@
+// Q1: 持多级子引用 &p.team.captain.name 时写不相交字段 p.score → 放行
+class Captain { var name: str  ctor(n: str) { this.name = n } }
+class Team { var captain: Captain  ctor(c: Captain) { this.captain = c } }
+class Player { var team: Team  var score: int  ctor() { this.team = Team(Captain("ace"))  this.score = 0 } }
+fun main(): void { var p = Player(); var r = &p.team.captain.name; p.score = 99; sout(p.score) }
+main()

@@ -1,0 +1,14 @@
+// 自环合法（a 连自己）：两个字段路径不相交
+class U {
+    var v: int
+    var peers: Link[U][peers][many]
+    ctor(x: int) { this.v = x }
+}
+fun main(): void {
+    var pl = Pool.chunked(2)
+    var a: U pl = pl.new[U](1)
+    a.peers.add(a)
+    sout(a.peers.count())
+    sout(a.peers.has(a))
+}
+main()

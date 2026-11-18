@@ -1,0 +1,54 @@
+{
+  "cases": [
+    {
+      "id": "pos_s1_deep_disjoint",
+      "file": "code/pos_s1_deep_disjoint.rio",
+      "expect": "99"
+    },
+    {
+      "id": "neg_s1_deep_exact",
+      "file": "code/neg_s1_deep_exact.rio",
+      "expectFailure": true,
+      "mustMatch": "conflicts with the live sub-reference"
+    },
+    {
+      "id": "neg_s1_ancestor_write",
+      "file": "code/neg_s1_ancestor_write.rio",
+      "expectFailure": true,
+      "mustMatch": "conflicts with the live sub-reference"
+    },
+    {
+      "id": "neg_s1_mid_write",
+      "file": "code/neg_s1_mid_write.rio",
+      "expectFailure": true,
+      "mustMatch": "conflicts with the live sub-reference"
+    },
+    {
+      "id": "pos_s2_compound_int",
+      "file": "code/pos_s2_compound_int.rio",
+      "expect": "20\n17\n34\n8\n2"
+    },
+    {
+      "id": "pos_s2_compound_float",
+      "file": "code/pos_s2_compound_float.rio",
+      "expect": "3.0\n6.0\n5.0\n2.5"
+    },
+    {
+      "id": "neg_s2_compound_conflict",
+      "file": "code/neg_s2_compound_conflict.rio",
+      "expectFailure": true,
+      "mustMatch": "conflicts with the live sub-reference"
+    },
+    {
+      "id": "neg_s3_inferred_write",
+      "file": "code/neg_s3_inferred_write.rio",
+      "expectFailure": true,
+      "mustMatch": "conflicts with the live sub-reference"
+    },
+    {
+      "id": "pos_s3_inferred_write_disjoint",
+      "file": "code/pos_s3_inferred_write_disjoint.rio",
+      "expect": "5"
+    }
+  ]
+}

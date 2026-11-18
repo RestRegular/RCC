@@ -1,0 +1,10 @@
+// 负向：跨池 add -> 运行时 panic（Q6=A）
+class U { var peers: Link[U][peers][many] }
+fun main(): void {
+    var pl1 = Pool.chunked(4)
+    var pl2 = Pool.chunked(4)
+    var a: U pl1 = pl1.new[U]()
+    var b: U pl2 = pl2.new[U]()
+    a.peers.add(b)
+}
+main()
