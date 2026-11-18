@@ -1,0 +1,6 @@
+class Player { var name: str  ctor(n: str) { this.name = n } }
+fun pair(t: Take[Player], r: Ref[Player]): void { }
+var pl = Player("bob")
+var q = Player("alice")
+pair(pl, &q)
+sout("ok")

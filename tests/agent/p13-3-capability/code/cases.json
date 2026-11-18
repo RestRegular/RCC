@@ -1,0 +1,110 @@
+{
+  "cases": [
+    {
+      "id": "pos_down_mut_to_ref",
+      "file": "code/pos_down_mut_to_ref.rio",
+      "expect": "bob"
+    },
+    {
+      "id": "pos_down_take_to_ref",
+      "file": "code/pos_down_take_to_ref.rio",
+      "expect": "bob"
+    },
+    {
+      "id": "pos_down_take_to_mut",
+      "file": "code/pos_down_take_to_mut.rio",
+      "expect": "bob"
+    },
+    {
+      "id": "neg_up_ref_to_mut",
+      "file": "code/neg_up_ref_to_mut.rio",
+      "expectFailure": true,
+      "mustMatch": "different memory roles"
+    },
+    {
+      "id": "neg_up_ref_to_take",
+      "file": "code/neg_up_ref_to_take.rio",
+      "expectFailure": true,
+      "mustMatch": "different memory roles"
+    },
+    {
+      "id": "neg_content_to_ref",
+      "file": "code/neg_content_to_ref.rio",
+      "expectFailure": true,
+      "mustMatch": "different memory roles"
+    },
+    {
+      "id": "neg_downgrade_inner_mismatch",
+      "file": "code/neg_downgrade_inner_mismatch.rio",
+      "expectFailure": true,
+      "mustMatch": "inner type mismatch"
+    },
+    {
+      "id": "pos_bare_body_to_take",
+      "file": "code/pos_bare_body_to_take.rio",
+      "expect": "ok"
+    },
+    {
+      "id": "pos_content_take",
+      "file": "code/pos_content_take.rio",
+      "expect": "bob"
+    },
+    {
+      "id": "pos_overlap_distinct",
+      "file": "code/pos_overlap_distinct.rio",
+      "expect": "ok"
+    },
+    {
+      "id": "neg_overlap_same_var",
+      "file": "code/neg_overlap_same_var.rio",
+      "expectFailure": true,
+      "mustMatch": "overlaps with argument"
+    },
+    {
+      "id": "neg_overlap_alias",
+      "file": "code/neg_overlap_alias.rio",
+      "expectFailure": true,
+      "mustMatch": "overlaps with argument"
+    },
+    {
+      "id": "neg_overlap_mut",
+      "file": "code/neg_overlap_mut.rio",
+      "expectFailure": true,
+      "mustMatch": "overlaps with argument"
+    },
+    {
+      "id": "neg_overlap_subpath",
+      "file": "code/neg_overlap_subpath.rio",
+      "expectFailure": true,
+      "mustMatch": "overlaps with argument"
+    },
+    {
+      "id": "pos_escape_passthrough",
+      "file": "code/pos_escape_passthrough.rio",
+      "expect": "ok"
+    },
+    {
+      "id": "pos_escape_downgrade_out",
+      "file": "code/pos_escape_downgrade_out.rio",
+      "expect": "bob"
+    },
+    {
+      "id": "neg_escape_bind",
+      "file": "code/neg_escape_bind.rio",
+      "expectFailure": true,
+      "mustMatch": "cannot be bound to variable"
+    },
+    {
+      "id": "neg_escape_return",
+      "file": "code/neg_escape_return.rio",
+      "expectFailure": true,
+      "mustMatch": "cannot be used as a function return type"
+    },
+    {
+      "id": "neg_escape_closure",
+      "file": "code/neg_escape_closure.rio",
+      "expectFailure": true,
+      "mustMatch": "cannot be captured by a closure"
+    }
+  ]
+}

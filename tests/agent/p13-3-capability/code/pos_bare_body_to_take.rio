@@ -1,0 +1,5 @@
+class Player { var name: str  ctor(n: str) { this.name = n } }
+fun eat(p: Take[Player]): void { }
+var pl = Player("bob")
+eat(pl)
+sout("ok")

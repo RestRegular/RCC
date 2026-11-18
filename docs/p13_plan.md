@@ -684,7 +684,7 @@ S1 **不阻塞 P13-1**：不批就永远不写这个后缀，语义完全一样�
 | 1c | P13-1 异常边规则（D13）：`try` 体内禁止移动外层拥有者 + 销毁顺序 | ✅ 已完成 |
 | 2 | P13-1 收尾：ABI v2（header/data 分离 + 移除 `rc`）、`listAppend` 原地追加、`copy` 深拷贝、`test_p13_memory.ps1` | ✅ 已完成（28/28） |
 | 3 | P13-2 Body/Content + `in pool` + 值语义 struct + Maybe 窄化（完整版） | ✅ 已完成（153 + 43 用例；A–E 五项裁决全部实施，E 项按裁决推迟） |
-| 4 | P13-3 `Ref`/`Mut`/`Take` | 🟡 **只完成 1/3**：`Ref` 可用；降级链未接通（详见 §9.2） |
+| 4 | P13-3 `Ref`/`Mut`/`Take` | ✅ **已完成**（2026-11-19）：降级链 + §8.5 调用规则接通，`p13-3-capability` 19 用例；Q1–Q5 裁决见 `p13_3_syntax_audit.md` §6 |
 | 5 | P13-4 子引用 + P13-5 签名标注 | 🟡 **部分完成**：路径冲突检查与 `writes`/`from`/`ensures` 已可用，`dict.clone()` 等仍缺 |
 | 6 | P13-6 Pool/成员集合 | ⬜ 只有 `Pool` 类型名识别，成员集合追踪未实现 |
 | 7 | P13-7 Link | ⬜ **完全未实现**：只有 lexer 的 `TOKEN_LINK`，类型系统无 `Link` |
@@ -762,35 +762,36 @@ S1 **不阻塞 P13-1**：不批就永远不写这个后缀，语义完全一样�
 
 > 上一版把 P13-2 记作「待实施」、P13-3 之后一律记作空白，与事实不符。
 > 本节是**逐阶段实测**的结果（探针 + 源码检索 + 用例计数），用于回答
-> 「P13 到底做完没有」。结论：**P13-2 已完成，P13 整体约完成一半**。
+> 「P13 到底做完没有」。结论：**P13-0～P13-3 已完成**（P13-3 于 2026-11-19 完成）。
 
 | 阶段 | 判定 | 实测依据 |
 |---|---|---|
 | P13-0 | ✅ 完成 | D1–D19 全部裁决 |
 | P13-1 | ✅ 完成 | `p13-memory` 28 用例；drop glue / `core_free` / ABI v2 |
 | P13-2 | ✅ 完成 | `p13-2-regression` 153 + `p13-verify-fixes` 43 用例 |
-| P13-3 | ⚠️ **1/3** | 只有 `Ref` 可用；降级链未接通（见下） |
+| P13-3 | ✅ 完成 | `p13-3-capability` 19 用例；降级链 + §8.5 调用规则（详见下） |
 | P13-4 | ⚠️ 部分 | 路径前缀冲突检查已生效；`dict` 深拷贝等仍缺 |
 | P13-5 | ⚠️ 部分 | `writes` / `from` / `ensures` 可用；缺省 `writes` 推断未做 |
 | P13-6 | ❌ 未实现 | 只有 `if (name == "Pool")` 的类型名识别 |
 | P13-7 | ❌ 未实现 | 只有 lexer `TOKEN_LINK`，类型系统无 `Link` |
 | P13-8 | ⏸ 推 P14 | 已裁决 |
 
-#### P13-3 的具体缺口：能力类型的降级链没接通
+#### P13-3 已于 2026-11-19 完成（原缺口已闭合）
 
-规范 §3.2 规定三种能力类型只能**降级**（`Take → Mut → Ref`），§3.3 规定
-`Take` 实参语法是 `f(take x)`。实测：
+原缺口（旧版记录）：规范 §3.2 的降级链 `Take → Mut → Ref` 未接通、§3.3 的
+`f(take x)` 是语法错误、三种能力类型互不兼容。这些已按用户逐条裁决全部处理，
+裁决与口径见 [p13_3_syntax_audit.md](p13_3_syntax_audit.md) §6，实施方案见
+[p13_3_implementation_plan.md](p13_3_implementation_plan.md)。落地结果：
 
-| 写法 | 结果 |
+| 裁决 | 结果 |
 |---|---|
-| `fun show(p: Ref[Player]): str { ret p.name }` + `show(&p)` | ✅ 输出 `bob` |
-| `fun heal(p: Mut[Player])` + `heal(&p)` | ❌ `cannot assign Ref[Player] to Mut[Player]: different memory roles` |
-| `fun eat(p: Take[Player])` + `eat(take p)` | ❌ `Compilation failed: syntax errors`（`take` 不是语法） |
-| `fun eat(p: Take[Player])` + `eat(p.take())` | ❌ `cannot assign Content[Player] to Take[Player]` |
+| Q1=A 降级链 | `checkAssignable` 加显式白名单，放行 `Mut→Ref`、`Take→Mut/Ref`，禁止升级 |
+| Q2=A Take/Content 分工 | `Take`=许可（实参位创建）、`Content`=值（`x.take()`），互不混用 |
+| Q3=D 不引入 `f(take x)` | 裸 Body 传 `Take` 形参（`eat(pl)`）已是入口，等价替代，无新语法 |
+| Q4=A §8.5 三条 | 不重叠（别名根分析）、不逃逸（禁绑定/返回/闭包捕获）、后置状态接 `ensures` |
+| Q5 `sout` 保持 | 底层原语不改，输出引用格式；"输出引用所指值的方法"登记为后续待设计 |
 
-也就是说：**三种能力类型目前互不兼容**，规范里的降级链一行都没实现。
-唯一可用的 `Take` 入口是 Content 的 `x.take()`（取内容，不是能力类型实参），
-而 `Mut` 目前只能从容器的 `get_mut()` 拿到，无法从 `&x` 转换。
+回归：`tests/agent/p13-3-capability` 19/19；Q5 引出的值输出方法属新增 API，须单独提案。
 
 #### P13-6 / P13-7 的证据
 

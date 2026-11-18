@@ -664,15 +664,30 @@ namespace backend
             // 裸类名（ClassType）是 Body 的别名；泛型/其他类型不算。
             return t && t->getKind() == sema::TypeKind::TK_CLASS;
         };
+        // P13-3/Q1（2026-11-19 用户裁决 A）：能力类型只允许降级 Take→Mut→Ref，
+        // 禁止一切升级。用显式白名单，不依赖 MemoryRole 枚举的数值顺序
+        // （当前 BODY<CONTENT<REF<MUT<TAKE 恰与权限顺序一致，但不能假设这点）。
+        const auto isCapabilityDowngrade = [](sema::MemoryRole from, sema::MemoryRole to) -> bool
+        {
+            return (from == sema::MemoryRole::MUT  && to == sema::MemoryRole::REF)
+                || (from == sema::MemoryRole::TAKE && to == sema::MemoryRole::MUT)
+                || (from == sema::MemoryRole::TAKE && to == sema::MemoryRole::REF);
+        };
         if (roleOf(target) >= 0 || roleOf(source) >= 0)
         {
             const int tr = roleOf(target), sr = roleOf(source);
-            // 两侧都显式标注角色：角色必须相同，内层再递归比。
+            // 两侧都显式标注角色：角色相同，或 P13-3/Q1 允许的降级（Take→Mut→Ref）。
             if (tr >= 0 && sr >= 0)
             {
                 if (tr != sr)
-                    return "cannot assign " + source->toString() + " to " + target->toString() +
-                        ": different memory roles";
+                {
+                    const auto from = static_cast<sema::MemoryRole>(sr);
+                    const auto to   = static_cast<sema::MemoryRole>(tr);
+                    if (!isCapabilityDowngrade(from, to))
+                        return "cannot assign " + source->toString() + " to " + target->toString() +
+                            ": different memory roles (only Take→Mut→Ref downgrades are allowed)";
+                    // 降级放行后仍要比 inner 类型（与角色相同的路径共用下面的检查）。
+                }
                 const auto ti = std::dynamic_pointer_cast<sema::MemoryType>(target)->getInnerType();
                 const auto si = std::dynamic_pointer_cast<sema::MemoryType>(source)->getInnerType();
                 return (!ti || !si || ti->equals(si))
@@ -1663,6 +1678,24 @@ namespace backend
         }
         if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))
             return exprPathText(paren->getRangerNode());
+        // P13-3/Q4：`&q` / `q.ref()` / `q.mut()` 的源路径就是 q——
+        // 不穿透的话 `pair(pl, &q)` 会把 &q 当无法解析，误判成与 pl 重叠。
+        if (const auto ref = std::dynamic_pointer_cast<ast::RefExpressionNode>(node))
+            return exprPathText(ref->getOperand());
+        if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node))
+        {
+            const std::string taken = takeReceiverName(node);
+            if (!taken.empty())
+                return taken;
+            // q.ref() / q.mut()：方法调用，接收者是点表达式的左值。
+            if (const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
+                member && member->getOpToken().getType() == core::TokenType::TOKEN_DOT)
+            {
+                const auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+                if (method && (method->getName() == "ref" || method->getName() == "mut"))
+                    return exprPathText(member->getLeftNode());
+            }
+        }
         return std::string();
     }
     bool CodeGen::pathIsPrefixOf(const std::string& p, const std::string& q)
@@ -1679,6 +1712,46 @@ namespace backend
             return false;
         // 下一字符必须是路径分隔符（'.' 或 '['），否则是同一个名字的更长拼写
         return q[p.size()] == '.' || q[p.size()] == '[';
+    }
+    std::string CodeGen::aliasRoot(const std::string& name) const
+    {
+        // 传递解析：q->p->root 收敛到 root。带环保护（不应出现，防御性）。
+        std::string cur = name;
+        std::set<std::string> seen;
+        while (true)
+        {
+            const auto it = _aliasRoots.find(cur);
+            if (it == _aliasRoots.end() || it->second == cur)
+                return cur;
+            if (!seen.insert(cur).second)
+                return cur; // 环：停在当前，避免死循环
+            cur = it->second;
+        }
+    }
+    bool CodeGen::mayAlias(const std::string& pathA, const std::string& pathB) const
+    {
+        // P13-3/Q4（§8.5 rule 1）：两条实参路径是否可能指向同一 slot。
+        // 空路径 = 无法解析，保守视为可能重叠。
+        if (pathA.empty() || pathB.empty())
+            return true;
+        // 按第一个 '.'/'[' 拆出根变量名。
+        const auto rootOf = [](const std::string& p) {
+            const auto cut = p.find_first_of(".[");
+            return cut == std::string::npos ? p : p.substr(0, cut);
+        };
+        const std::string rootA = rootOf(pathA);
+        const std::string rootB = rootOf(pathB);
+        const std::string ra = aliasRoot(rootA);
+        const std::string rb = aliasRoot(rootB);
+        // 不同根 = 不同对象（已登记别名根的前提下），可证明不重叠。
+        if (ra != rb)
+            return false;
+        // 同根（含别名收敛：q 是 pl 的别名根时 ra==rb==pl）——视为同一对象的不同视图。
+        // 只有当两条路径都挂在同一个根变量名下、且是明显不相交的子路径时才可证明不同；
+        // 否则（根不同名，如 "pl" vs "q" 但 q 别名为 pl）保守判为可能重叠。
+        if (rootA != rootB)
+            return true; // 根名不同但别名根相同 -> 别名，重叠
+        return pathIsPrefixOf(pathA, pathB) || pathIsPrefixOf(pathB, pathA);
     }
     bool CodeGen::checkWriteConflicts(const std::string& path, const utils::Pos& pos, const std::string& what)
     {
@@ -5482,6 +5555,40 @@ namespace backend
             const std::string name = def->getNameNode()->getName();
             const bool hasInit = def->hasInitialValue() && def->getValueNode() != nullptr;
             const auto initType = hasInit ? inferType(def->getValueNode()) : sema::getUnknownType();
+            // P13-3/Q4（§8.5 rule 2 · 不逃逸）：Take 是二等值，只能在实参位创建，
+            // 不能绑定到变量。`var x = t`（t 是 Take 形参）推断出的 initType 是
+            // Take[T]——显式标注 `var x: Take[T]` 由 validateL3TakeUsage 拦截，
+            // 这里补上推断路径的漏洞。降级传出（show(t)）走实参绑定，不受影响。
+            if (initType && initType->getKind() == sema::TypeKind::TK_MEMORY &&
+                std::dynamic_pointer_cast<sema::MemoryType>(initType)->getRole() == sema::MemoryRole::TAKE)
+            {
+                failAt(def->getNameNode()->getPos(),
+                       "L3: Take[T] is a second-class value and cannot be bound to variable '" + name +
+                           "'; it is only valid at call-argument positions (P13-3 / §8.5 rule 2)");
+                return;
+            }
+            // P13-3/Q4（§8.5 rule 1）：登记别名根，供 take 实参的不重叠检查。
+            // 只有引用语义类型（class/Body/Ref/Mut）的 `var b = a` 才共享对象；
+            // 值语义（int/str/struct/list/dict）各自独立，根就是自己。
+            {
+                const bool refLike = initType &&
+                    (initType->getKind() == sema::TypeKind::TK_CLASS ||
+                     initType->getKind() == sema::TypeKind::TK_MEMORY);
+                if (hasInit && refLike)
+                {
+                    const auto initText = exprPathText(def->getValueNode());
+                    if (!initText.empty())
+                    {
+                        const auto cut = initText.find_first_of(".[");
+                        const std::string initRoot = cut == std::string::npos ? initText : initText.substr(0, cut);
+                        _aliasRoots[name] = aliasRoot(initRoot);
+                    }
+                    else
+                        _aliasRoots[name] = name;
+                }
+                else
+                    _aliasRoots[name] = name;
+            }
             // P9：显式标注成为权威类型。没标注时维持 P1 起的推断行为
             // （legacy 15 个用例全靠它，不能动）。
             sema::TypePtr type = sema::getIntType();
@@ -8806,10 +8913,24 @@ namespace backend
         {
             if (const auto slot = lookupVar(name))
             {
+                // P13-3/Q4（§8.5 rule 2 · 不逃逸）：Take 是二等值，不能被逃逸闭包捕获。
+                // 闭包按引用捕获（2026-11-18 裁决 A）会把形参装箱进堆块、延长其生命期，
+                // 等于让 Take 逃逸——规范明确禁止。这里在捕获收集处拦下。
+                const auto ctype = slot->type;
+                if (ctype && ctype->getKind() == sema::TypeKind::TK_MEMORY &&
+                    std::dynamic_pointer_cast<sema::MemoryType>(ctype)->getRole() == sema::MemoryRole::TAKE)
+                {
+                    failAt(anon->getPos(),
+                           "L3: Take parameter '" + name +
+                               "' cannot be captured by a closure (second-class value; P13-3 / §8.5 rule 2)");
+                    return;
+                }
                 capturedNames.push_back(name);
-                capturedTypes.push_back(slot->type ? slot->type : sema::getIntType());
+                capturedTypes.push_back(ctype ? ctype : sema::getIntType());
             }
         }
+        if (hasFailed())
+            return;
         // 函数体不能就地发射（会打断外层函数的指令流），先排队。
         PendingFunction pending;
         pending.emitName = fnLabel;
@@ -8924,6 +9045,54 @@ namespace backend
         if (base.empty())
             return true; // 实参不是可追踪路径：保守跳过
         return checkWriteConflicts(base + ".items", pos, "list growth via " + name + " on");
+    }
+    bool CodeGen::checkTakeArgOverlap(const std::string& fname,
+                                      const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                      const std::vector<sema::TypePtr>& paramTypes,
+                                      const utils::Pos& pos)
+    {
+        // P13-3/Q4（规范 §8.5 rule 1 · 不重叠）：Take 实参不能与同一调用里的
+        // 其它能力实参重叠——被调函数若通过 Ref 读内容，而 Take 已取走，会读到空壳。
+        // 判据：源路径 mayAlias（同变量/子路径/别名根）。
+        const auto roleOf = [](const sema::TypePtr& t) -> sema::MemoryRole {
+            if (t && t->getKind() == sema::TypeKind::TK_MEMORY)
+                return std::dynamic_pointer_cast<sema::MemoryType>(t)->getRole();
+            return sema::MemoryRole::BODY; // 非能力类型用 BODY 作哨兵（不参与能力比较）
+        };
+        // 每个实参的源路径 + 它是否是能力角色（Ref/Mut/Take/Content）。
+        std::vector<std::string> paths(args.size());
+        std::vector<bool> isCap(args.size(), false);
+        std::vector<bool> isTake(args.size(), false);
+        for (size_t i = 0; i < args.size(); ++i)
+        {
+            const auto role = i < paramTypes.size() ? roleOf(paramTypes[i]) : roleOf(inferType(args[i]));
+            isCap[i] = (role == sema::MemoryRole::REF || role == sema::MemoryRole::MUT ||
+                        role == sema::MemoryRole::TAKE || role == sema::MemoryRole::CONTENT);
+            isTake[i] = (role == sema::MemoryRole::TAKE);
+            // take 源：`X.take()` 取接收者路径；否则取实参自身的路径文本。
+            const std::string taken = takeReceiverName(args[i]);
+            paths[i] = taken.empty() ? exprPathText(args[i]) : taken;
+        }
+        for (size_t t = 0; t < args.size(); ++t)
+        {
+            if (!isTake[t] || paths[t].empty())
+                continue;
+            for (size_t j = 0; j < args.size(); ++j)
+            {
+                if (j == t || !isCap[j])
+                    continue;
+                if (mayAlias(paths[t], paths[j]))
+                {
+                    failAt(pos,
+                           "Argument " + std::to_string(t + 1) + " of '" + fname +
+                               "': take-source '" + paths[t] + "' overlaps with argument " +
+                               std::to_string(j + 1) + " ('" + paths[j] +
+                               "') — both may refer to the same slot (P13-3 / §8.5 rule 1)");
+                    return false;
+                }
+            }
+        }
+        return true;
     }
     void CodeGen::emitFunctionCall(const std::shared_ptr<ast::ExpressionNode>& node)
     {
@@ -9265,6 +9434,10 @@ namespace backend
         {
             paramTypes = found->second;
         }
+        // P13-3/Q4（§8.5 rule 1）：Take 实参不得与其它能力实参重叠。
+        // 必须在求值实参前检查——冲突时直接报错，不发指令。
+        if (!checkTakeArgOverlap(fname, callArgs, paramTypes, node->getPos()))
+            return;
         const std::vector<bool>* annotatedMask = nullptr;
         if (const auto found = _functionParamAnnotated.find(fname); found != _functionParamAnnotated.end())
         {

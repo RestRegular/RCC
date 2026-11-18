@@ -1,0 +1,6 @@
+class Player { var name: str  ctor(n: str) { this.name = n } }
+fun leaf(t: Take[Player]): void { }
+fun inner(t: Take[Player]): void { leaf(t) }
+var pl = Player("bob")
+inner(pl)
+sout("ok")

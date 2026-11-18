@@ -479,6 +479,17 @@ namespace backend
         // P13-2/L3-A（决议 §2）：变量 -> 出生地 Pool 变量名（空=当前块默认出生地）。
         // A 阶段只记录不检查生命周期；完整 R1/R2 检查待后续。
         std::map<std::string, std::string> _birthPlaces;
+        // P13-3/Q4（§8.5 rule 1 · 不重叠）：引用语义变量的别名根。
+        // `var q = pl`（class 拷贝=同一对象）登记 q->pl；新建 `var p = C()` 登记 p->p。
+        // aliasRoot 做传递解析，mayAlias 判据：根相同，或一条路径是另一条的前缀。
+        std::map<std::string, std::string> _aliasRoots;
+        [[nodiscard]] std::string aliasRoot(const std::string& name) const;
+        [[nodiscard]] bool mayAlias(const std::string& pathA, const std::string& pathB) const;
+        // §8.5 rule 1：调用点检查 Take 实参是否与其它能力实参重叠。
+        bool checkTakeArgOverlap(const std::string& fname,
+                                 const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                 const std::vector<sema::TypePtr>& paramTypes,
+                                 const utils::Pos& pos);
         // P13-2/L3-D（决议 §3.1）：当前语句内被 take 挂起的 Body 变量名集合。
         // 不是事务、不是运行时元数据；emitStatement 末统一结算。
         std::set<std::string> _pendingTakes;

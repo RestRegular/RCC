@@ -1,0 +1,5 @@
+class Player { var name: str  ctor(n: str) { this.name = n } }
+fun show(p: Ref[Player]): str { ret p.name }
+fun inner(t: Take[Player]): str { ret show(t) }
+var pl = Player("bob")
+sout(inner(pl))
