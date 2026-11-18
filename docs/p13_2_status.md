@@ -58,7 +58,6 @@
 
 | 缺陷 | 根因 | 实测 |
 |---|---|---|
-| §6.4 独占未检查 | 只有「同一语句二次 take」查了 pending_take；`mut()` 之间、`Ref` 与 `Mut` 之间没有重数检查 | `var m1 = p.mut() var m2 = p.mut()` 通过；`var m = p.mut() var r = &p` 通过 |
 | 未声明的出生地标签不报错 | 标签只做「最多一个」检查，没查是否对应真实 Pool 变量 | `var p: Player nosuchpool = Player("a")` 通过 |
 | 类赋值类型检查弱 | `var a: Enemy = Player("x")` 无继承关系也通过 | 通过（P13-1 遗留，非 P13-2 引入） |
 
@@ -339,6 +338,31 @@ var a: Enemy = Player("x")   // 修前 exit=0
 | 无关类之间赋值 `Enemy = Player` | exit=0 | 报 not the same class |
 | 派生类赋给基类 `Base = Derived` | 通过 | 通过 |
 | 基类赋给派生类 `Derived = Base` | exit=0 | 报 not the same class |
+## 修正：`Mut` 的多重别名不是缺口（2026-11-18 复核）
+
+本表原先列过一条「§6.4 独占未检查：`mut()` 之间、`Ref` 与 `Mut` 之间没有
+重数检查」。复核决议原文后**这条判断是错的，已从缺口表删除**，依据如下：
+
+- spec §3.2 的能力表里，只有 `Take<T>` 写了「独占，同时最多一个」；
+  `Mut<T>` 的限制是「受局部排他约束（**第 4 节**）」—— 第 4 节讲的是
+  子引用**路径前缀**冲突（`p.name` 被替换时 `&p.name` 失效），
+  不是「同一时刻只能有一个 Mut」。
+- 决议 §6.4「独占与挂起」全文只约束 `take`：同一语句二次 take、挂起期间
+  禁 fill/clear/release、挂起期间不得传给 `Take[T]` 形参。没有一条要求
+  两个 `mut()` 互斥。
+- 附录 A 的对照表写「`Take` 独占 + 局部排他」，同样把独占归给 `Take`。
+
+所以 `var m1 = p.mut() var m2 = p.mut()` 通过编译是**符合决议**的，
+不是缺陷。把 `Mut` 改成 Rust 式 `&mut` 独占属于新增语言语义，
+按硬规则 1b1ccafb 必须先向用户提出并获批，不能顺手塞进 P13-2。
+
+已实现且验证过的是 §6.4 的第一条（take 与其余实参中的 Ref/Mut）：
+
+```rio
+fun f(t: Take[Player], m: Mut[Player]): int { ret 1 }
+var p = Player("a")
+var r = f(p, p.mut())   // 报 'p' is in Empty state —— take 已把它移走
+```
 ## 未实现项清单（2026-11-18 复核，逐项实测）
 
 > 本节是上文「剩余项与状态」的补充说明。所有结论均由 `tests/_probe/fix/`
