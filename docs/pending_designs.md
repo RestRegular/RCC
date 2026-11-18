@@ -11,11 +11,11 @@
 
 | 编号 | 议题 | 原优先级 | 裁决状态 | 实现状态 |
 |---|---|---|---|---|
-| **A** | 值语义 `struct` | 最高（挡着 D19，且挡着 B） | ✅ 已裁决 | ✅ 已实现 |
-| **B** | `Maybe` / `if var` 窄化 | 最高（与 A 同批） | ✅ 已裁决 | ✅ 已实现 |
-| **C** | 条件销毁的诊断级别 | 中 | ✅ 已裁决 | ✅ 已实现 |
-| **D** | `split(k)` 两段视图的绑定形态 | 中 | ✅ 已裁决 | ✅ 已实现 |
-| **E** | 异常对象的出生地与归属 | 低 | ✅ 已裁决（推迟） | ⬜ 推迟 |
+| **A** | 值语义 `struct` | 最高（挡着 D19，且挡着 B） |   已裁决 |   已实现 |
+| **B** | `Maybe` / `if var` 窄化 | 最高（与 A 同批） |   已裁决 |   已实现 |
+| **C** | 条件销毁的诊断级别 | 中 |   已裁决 |   已实现 |
+| **D** | `split(k)` 两段视图的绑定形态 | 中 |   已裁决 |   已实现 |
+| **E** | 异常对象的出生地与归属 | 低 |   已裁决（推迟） | ⬜ 推迟 |
 
 原文档提到的另有 4 项属**后续阶段**或**长期悬置**，仍列在 §6 供全貌了解，不阻塞当前。
 
@@ -125,7 +125,7 @@ Error: Compilation failed: syntax errors.
 | `list[int] [0, 5]` → `get(0)` | `0` | `0` | **走 else** |
 | `list[bool] [true, false]` → `get(1)` | `false` | `false` | **走 else** |
 | `list[float] [0.0, 1.5]` → `get(0)` | `0.0` | `0.0` | **走 else** |
-| `list[str] ["", "x"]` → `get(0)` | `""` | `""` | `""` ✅ |
+| `list[str] ["", "x"]` → `get(0)` | `""` | `""` | `""`   |
 
 `str`/`list`/`dict`/类/`ptr` 全对（空指针才是 null，`""` 是有效对象），`int`/`bool`/`float` 三种全错，且**不崩不报错**——静默走 else 分支。这正是裁决 `a87037d8` 判定「零值当 null 不可行」的同一坑，被 `get()` 原样搬到了容器返回值上。
 
@@ -135,7 +135,7 @@ Error: Compilation failed: syntax errors.
 
    | 元素类型 | `get()` 的静态返回类型 | 越界行为 | `if var` |
    |---|---|---|---|
-   | 引用型（`str`/`list`/`dict`/类/`ptr`/`Ref`/`Mut`/`Take`/`Pool`） | `T?` | 给 null | ✅ 允许 |
+   | 引用型（`str`/`list`/`dict`/类/`ptr`/`Ref`/`Mut`/`Take`/`Pool`） | `T?` | 给 null |   允许 |
    | 值类型（`int`/`float`/`bool`/`char`/`struct`） | `T`（非可空） | 给零值，与 `[i]` **完全一致** | ❌ 编译期报错 |
 
    值类型元素的 `get()` 不再提供「有没有」的信息；要判断请用 `size()`。
@@ -280,15 +280,15 @@ Error: Cannot determine the object type of method call
 
 | 项 | 裁决要点 | 实测状态 |
 |---|---|---|
-| Pool 类型 | 标准库普通类型、不做关键字；`fixed`/`boxed`/`chunked` 三种静态方法 | ✅ `Pool.fixed(100)` / `.boxed(100)` / `.chunked(100)` 全部编译运行 |
-| 出生地标签区 | `var p: Player pool = ...`；砍掉 `pool.add`（违反"出生后地址不变"） | ✅ 标签区写法工作，`pool.add` 确实不存在 |
-| `pool.new[T]` | 构造器选择，返回 T，满时 abort | ✅ `pool.new[Player]("a")` 工作 |
-| `fill`/`clear` | 方法形态，与 take/ref/mut 对称 | ✅ `b.clear()` / `b.fill(Box())` 工作 |
-| `pool.release(x)` | 方法形态，x 须先 clear（须为 E 态） | ✅ 存在；未 clear 时报 `release target 'p' is not Empty` |
-| 四态状态格 | E/F/H/X 是**编译期事实表**，不是运行时元数据（**不是 ABI 变更**） | ✅ 已实现 |
-| take 挂起态 | `pending_take` 集合；同一语句 = 同一 AST 节点；独立 take 警告不阻断 | ✅ 独立 `take()` 出 warning；挂起态检查工作 |
-| 子引用 / NLL | 路径穿透引用展开；过程内 NLL + 跨函数保守 | ✅ `var r: Ref[str] = &p.name` 工作 |
-| 签名标注校验 | `ensures` 逐出口、`from` 子集、`writes` 泛型上界 | ✅ 147 条回归全过 |
+| Pool 类型 | 标准库普通类型、不做关键字；`fixed`/`boxed`/`chunked` 三种静态方法 |   `Pool.fixed(100)` / `.boxed(100)` / `.chunked(100)` 全部编译运行 |
+| 出生地标签区 | `var p: Player pool = ...`；砍掉 `pool.add`（违反"出生后地址不变"） |   标签区写法工作，`pool.add` 确实不存在 |
+| `pool.new[T]` | 构造器选择，返回 T，满时 abort |   `pool.new[Player]("a")` 工作 |
+| `fill`/`clear` | 方法形态，与 take/ref/mut 对称 |   `b.clear()` / `b.fill(Box())` 工作 |
+| `pool.release(x)` | 方法形态，x 须先 clear（须为 E 态） |   存在；未 clear 时报 `release target 'p' is not Empty` |
+| 四态状态格 | E/F/H/X 是**编译期事实表**，不是运行时元数据（**不是 ABI 变更**） |   已实现 |
+| take 挂起态 | `pending_take` 集合；同一语句 = 同一 AST 节点；独立 take 警告不阻断 |   独立 `take()` 出 warning；挂起态检查工作 |
+| 子引用 / NLL | 路径穿透引用展开；过程内 NLL + 跨函数保守 |   `var r: Ref[str] = &p.name` 工作 |
+| 签名标注校验 | `ensures` 逐出口、`from` 子集、`writes` 泛型上界 |   147 条回归全过 |
 
 **另外两处实现与决议不一致，已记为待修缺陷（不涉设计，不需要裁决）**：
 
@@ -301,6 +301,14 @@ Error: Cannot determine the object type of method call
    >
    > **同轮连带发现（比 add_reusing 严重得多）**：spec 里 `pool.add(...)` 出现了 8 处（§2.2 示例、§3.5、§8.3、§11 示例三连），而 `pool.add` **已被既有裁决砍掉** —— 它违反"出生后地址不变"，由 `pool.new[T](...)` + 出生地标签区取代（见上表「出生地标签区」行）。实测 `p.add(Player("a"))` 直接报 `Cannot determine the object type of method call`，`var a: Player = p.add(...)` 报 `cannot assign a value of type int`。也就是说 spec 通篇用的是一个已被否决的语法。本轮已把 spec 的 8 处全部改为 `pool.new[T](...)`，§6.1 的「满了 `add` 返回 `Maybe`」改为「满了 `pool.new[T]` 中止（abort）」，与 `pending_designs.md` 上表记录的实现状态对齐。
 
+3. **间接调用（闭包 / 函数值）返回 struct**：`var f = () -> { ret Pt(1, 2) }; var p: Pt = f()` —— 编译能过，运行期拿到的是错误值。
+
+   > **2026-11-18 已按用户裁决 A 处理（编译期显式拒绝）**：struct 返回需要调用方传缓冲区地址（`__p5_retbuf` 占第一个整型寄存器），被调用方拷进去再在 `%rax` 返回缓冲区地址。直接调用 / 方法 / 泛型 / 重载四条路径都已修好，但**间接调用**没接上 —— 它的目标地址在 `%r11`、env 在 `%r10`，`%rax` 是闭包指针本身的来源，没有位置再摆 retbuf，于是返回值被当整数用（`%rax` 里其实是别的地址），属**静默错误值**，正是本项目一直在清理的那类问题。
+   >
+   > 裁决理由：①`func[][Pt]` 这种类型在实践中用途有限（闭包通常返回引用类型或标量）；②先明确拒绝比留一个运行期崩溃的洞好；③将来有真实需求时再实现，那时已知具体用法，可以设计得更准。**否决「保持现状」** —— 静默出错不可接受。
+   >
+   > 实现：`emitIndirectCall` 入口按「变量槽类型 → `inferType` 回退」取被调用者的 `FunctionType`，返回类型为 `TK_STRUCT` 时报 `indirect calls cannot return a struct value ('Pt'); ... call it directly, or return a reference/pointer instead`。回归：`L3-indirect-struct-ret`（编译期报错）、`L3-indirect-scalar-ret`（闭包返回标量不受影响，确认没有误伤间接调用本身）。
+
 **2026-11-18 补记**：另有三处 struct 返回 ABI 缺陷（泛型 / 重载 / 方法三条调用
 路径没给返回缓冲区留位置，其中方法路径会把 struct 值写进接收者对象本身）
 已修复，详见 `docs/p13_2_status.md`「L3-P」一节。同轮补了 9 条 struct 回归用例
@@ -312,13 +320,13 @@ Error: Cannot determine the object type of method call
 ## 8. 建议的推进顺序
 
 ```
-A + B 的设计文档（✅ 已出，本文）
+A + B 的设计文档（  已出，本文）
         ↓
-实现 struct + if-var（✅ 2026-11-18 已完成，提交 9f5333e）
+实现 struct + if-var（  2026-11-18 已完成，提交 9f5333e）
         ↓
-C（条件销毁诊断）—— ✅ 2026-11-18 已完成
+C（条件销毁诊断）——   2026-11-18 已完成
         ↓
-D（split 两段绑定）—— ✅ 2026-11-18 已完成（含子引用区间档）
+D（split 两段绑定）——   2026-11-18 已完成（含子引用区间档）
         ↓
 P13-2 完整版收尾，进 P13-3
 ```

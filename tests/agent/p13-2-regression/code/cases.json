@@ -1007,6 +1007,19 @@
                       "id":  "L3-release-user-func",
                       "file":  "code/L3-release-user-func.rio",
                       "expect":  "42"
+                  },
+                  {
+                      "id":  "L3-indirect-struct-ret",
+                      "file":  "code/L3-indirect-struct-ret.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "indirect calls cannot return a struct value",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-indirect-scalar-ret",
+                      "file":  "code/L3-indirect-scalar-ret.rio",
+                      "expect":  "42"
                   }
               ]
 }

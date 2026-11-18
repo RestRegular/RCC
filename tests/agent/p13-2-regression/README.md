@@ -1,10 +1,10 @@
 ﻿# P13-2 回归
 
-P13-2 已实施成果回归：语法/类型/所有权/生命周期各层的编译期行为，以及决议 A（值语义 struct）与决议 C（条件销毁放行）的运行期行为（147 条）。
+P13-2 已实施成果回归：语法/类型/所有权/生命周期各层的编译期行为，以及决议 A（值语义 struct）与决议 C（条件销毁放行）的运行期行为（149 条）。
 
 - 类型: regression
-- 用例数: 147
-- 入口: `execute.ps1`（转接 `tests/agent/_shared/driver.ps1`）
+- 用例数: 149
+- 入口: `execute.ps1`（转接 `tests/_shared/driver.ps1`）
 
 ## compileOnly
 

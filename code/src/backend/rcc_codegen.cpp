@@ -8444,6 +8444,41 @@ namespace backend
         // 顺序很关键：先把闭包指针存进栈槽保住，再布置实参（布置实参要用
         // 参数寄存器，任何一次求值都可能把它们冲掉），最后取回闭包指针。
         // 不能用 push 暂存：push 会让 %rsp 偏离 16 字节对齐，调用点就错了。
+        //
+        // 间接调用不支持 struct 返回值（2026-11-18 用户裁决 A）：struct 返回
+        // 需要调用方传缓冲区地址（__p5_retbuf 占第一个整型寄存器），被调用方
+        // 拷进去再在 %rax 返回缓冲区地址。间接调用的目标地址在 %r11、env 在
+        // %r10，%rax 是闭包指针本身的来源，没有位置再摆 retbuf；当前实现会
+        // 把返回值当整数用（%rax 里其实是别的地址），属于**静默错误值**。
+        // 这里显式拒绝，比留一个运行期崩溃的洞好。
+        // 返回类型的来源优先取变量槽（裸标识符最准），否则退回 inferType。
+        sema::TypePtr calleeType;
+        if (const auto calleeId = std::dynamic_pointer_cast<ast::IdentifierNode>(callee))
+        {
+            if (const auto slot = lookupVar(calleeId->getName()); slot && slot->type)
+            {
+                calleeType = slot->type;
+            }
+        }
+        if (!calleeType)
+        {
+            calleeType = inferType(callee);
+        }
+        if (calleeType && calleeType->getKind() == sema::TypeKind::TK_FUNC)
+        {
+            const auto fnType = std::static_pointer_cast<sema::FunctionType>(calleeType);
+            if (const auto inner = fnType->getReturnType();
+                inner && inner->getKind() == sema::TypeKind::TK_STRUCT)
+            {
+                failAt(callee->getPos(),
+                       "indirect calls cannot return a struct value ('" + inner->toString() +
+                           "'); the struct return ABI needs a caller-provided buffer that an "
+                           "indirect call has no register left for — call it directly, or return "
+                           "a reference/pointer instead (decision: struct return via function "
+                           "value is explicitly unsupported)");
+                return;
+            }
+        }
         emitExpression(callee);
         if (hasFailed())
             return;
