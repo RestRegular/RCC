@@ -95,7 +95,7 @@ fun main(): void {
 **由此得到的标签区判定顺序（可直接实施，无需再裁决）**：
 
 ```
-1. 内置类型名  void/bool/char/int/float/str/ptr/any/list/dict/funi
+1. 内置类型名  void/bool/char/int/float/str/ptr/any/list/dict/func
 2. 预声明类型名  Pool（用户不可自定义同名）
 3. 用户自定义类型名（class 定义，且不得与 1、2 重名 → 新增检查）
 4. 出生地变量名（必须是 Pool 类型的变量）

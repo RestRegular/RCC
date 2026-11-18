@@ -151,9 +151,9 @@ P9 遗留的一个真实缺陷在这次一并修掉：`parseTypeName` 硬编码
 | `T` | 任意 | `T` = 实参类型 |
 | `list[T]` | `list[float]` | `T` = `float` |
 | `dict[K,V]` | `dict[str,float]` | `K` = `str`，`V` = `float` |
-| `funi[A][B]` | 具名函数 | `A`/`B` 从函数签名推 |
+| `func[A][B]` | 具名函数 | `A`/`B` 从函数签名推 |
 
-`funi[A][B]` 那条有个坑：`inferType` 对标识符只返回变量槽类型，
+`func[A][B]` 那条有个坑：`inferType` 对标识符只返回变量槽类型，
 取不到函数签名。所以当形参是 `TK_FUNC` 时，若实参是具名函数标识符，
 就从 `_functionParams` / `_functionReturns` 里把签名补出来
 （`map2(addOne, 41)` 靠这个）。
@@ -210,7 +210,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File test_scripts/test_legacy_all
 
 - `test_p10_generics.ps1`：22 个用例
   - 11 正向（显式类型实参 / 泛型类 / 嵌套实例化 / 零成本未使用）
-  - 7 推导（裸调用、`list[T]`、`dict[str,T]`、`funi[A][B]`、实例共享）
+  - 7 推导（裸调用、`list[T]`、`dict[str,T]`、`func[A][B]`、实例共享）
   - 4 反向（类型实参个数、推不出来、实例化实参不匹配、泛型类实参个数）
 - `test_legacy_all.ps1`：仍为 15/17，不回退
   （`test_14_iter` / `test_15_forinrange` 属 P12 范围）

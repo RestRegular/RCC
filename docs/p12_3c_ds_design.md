@@ -102,15 +102,15 @@
 | `dictValues` | `fun dictValues(d: dict): list` | 同上 |
 | `sort` | `fun sort[T](xs: list[T], reverse: bool = false): list[T]` | 插入排序，泛型单态化 |
 | `join` | `fun join[T](xs: list[T], sep: str): str` | `toStr` 逐元素拼接 |
-| `repeat` | `fun repeat(times: int, h: funi[int][void]): void` | 回调无写回，见 §3.2 |
-| `forInRange` | `fun forInRange(start: int, end: int, h: funi[int][void], sep: int = 1): void` | 同上 |
+| `repeat` | `fun repeat(times: int, h: func[int][void]): void` | 回调无写回，见 §3.2 |
+| `forInRange` | `fun forInRange(start: int, end: int, h: func[int][void], sep: int = 1): void` | 同上 |
 
 ### 3.2 新增（8 个，用户 2026-11-17 批准）
 
 | API | 签名 | 说明 |
 |---|---|---|
-| `map` | `fun map[T](xs: list[T], h: funi[T][T]): list[T]` | 逐元素变换 |
-| `filter` | `fun filter[T](xs: list[T], h: funi[T][bool]): list[T]` | 逐元素筛选 |
+| `map` | `fun map[T](xs: list[T], h: func[T][T]): list[T]` | 逐元素变换 |
+| `filter` | `fun filter[T](xs: list[T], h: func[T][bool]): list[T]` | 逐元素筛选 |
 | `contains` | `fun contains[T](xs: list[T], t: T): bool` | 逐元素 `==` |
 | `indexOf` | `fun indexOf[T](xs: list[T], t: T): int` | 找不到返回 -1 |
 | `reverse` | `fun reverse[T](xs: list[T]): list[T]` | 逆序新 list |
@@ -169,7 +169,7 @@ eachOf(xs, (v: int) -> { acc = acc + v })   // acc 仍是 0
 ### 4.1 `repeat` / `forInRange` —— 纯副作用回调
 
 ```rio
-fun repeat(times: int, h: funi[int][void]): void {
+fun repeat(times: int, h: func[int][void]): void {
     var i: int = 0
     while i < times {
         h(i)

@@ -56,8 +56,8 @@ BuiltinFuncRetType rcc_sout(ast::CompileVisitor &visitor, const CallInfos& callI
 `release/Lib/builtin/*.rio` 共 55 处 `any`，绝大多数出现在本应是泛型的位置：
 
 ```rio
-fun iter(iterData, handler: funi[any, int, int, .*][any], reverse: bool = false): bool
-fun sort(sortHandler: funi[any, any][int] = null, reverse: bool = false): List public
+fun iter(iterData, handler: func[any, int, int, .*][any], reverse: bool = false): bool
+fun sort(sortHandler: func[any, any][int] = null, reverse: bool = false): List public
 ```
 
 这说明**泛型不是新增特性，而是补上现有代码已经在用的洞**。去 `any` 与加泛型必须同批做。
@@ -65,7 +65,7 @@ fun sort(sortHandler: funi[any, any][int] = null, reverse: bool = false): List p
 **发现三：现有类型标签语法已经是参数化类型的雏形。**
 
 ```rio
-funi[int, bool, bool][any]     // 函数：参数列表 [返回类型]
+func[int, bool, bool][any]     // 函数：参数列表 [返回类型]
 list[int]                       // 列表元素类型
 ```
 
@@ -488,7 +488,7 @@ compiler ──解析──► lib/core/core.rio        （必须，ABI 契约�
 |---|---|---|
 | **A. 引入 interface / trait** | `fun sout<T: Display>(x: T)`，字典传递 | 语言已有 `interface` 标签（`DESCRIBE_LABELS`），可自然延伸 |
 | **B. 隐式协议（编译器约定）** | 编译器要求每个类型有 `__fmt_T` 符号，单态化时自动查找 | 不需要新语法，但不可扩展、不透明 |
-| **C. 限定泛型只能用于容器** | `list[T]` 可以，但 `sout<T>` 不行，打印只走重载 | 最省事，但表达力弱，`ds.rio` 里大量 `funi[any]` 回调无法迁移 |
+| **C. 限定泛型只能用于容器** | `list[T]` 可以，但 `sout<T>` 不行，打印只走重载 | 最省事，但表达力弱，`ds.rio` 里大量 `func[any]` 回调无法迁移 |
 | **D. 单态化即约束（无接口系统）** | 定义处不检查；每个实例化点生成一份具体代码，检查发生在实例化处 | 不需要新语法；实例就是普通函数，只是名字带 mangling 后缀 |
 
 **实际决策（P10 已按此实现）：D。**
@@ -506,7 +506,7 @@ compiler ──解析──► lib/core/core.rio        （必须，ABI 契约�
 要等具体实例才暴露，且实例化处的检查只覆盖「形参 vs 实参」，不覆盖函数体内部。
 详见 `docs/p10_plan.md` §7。
 
-（原建议 A 的保留意见：若将来 `ds.rio` 的 `funi[any]` 回调迁移出现无法用
+（原建议 A 的保留意见：若将来 `ds.rio` 的 `func[any]` 回调迁移出现无法用
 单态化表达的用例，再回到 A。目前 legacy 里没有这样的用例。）
 
 ### 8.4 旧 `-s` 符号导出怎么办
@@ -595,7 +595,7 @@ P11 的实际做法见 `docs/p11_plan.md`：**§4.3 的「全部函数都修饰�
 ## 十、下一步建议
 
 1. **§8.3（泛型约束）已决策**：P10 选「单态化即约束」，无接口系统。
-   若将来 `ds.rio` 的 `funi[any]` 回调迁移出现无法用单态化表达的用例，再回到方案 A。
+   若将来 `ds.rio` 的 `func[any]` 回调迁移出现无法用单态化表达的用例，再回到方案 A。
 2. 决策 §8.1（内存管理）与 §8.2（异常），两者都影响 ABI，越早定越好。
 3. **P11 已完成**（重载 + mangling）：符号按定义个数分流，唯一名字保裸名，
    重载集才修饰；决议在调用点按实参静态类型做（见 `docs/p11_plan.md`）。

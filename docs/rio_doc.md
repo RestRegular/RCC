@@ -132,7 +132,7 @@ Hello, Rio!
 | 类别 | 关键字 |
 |---|---|
 | 声明 | `var` `const` `fun` `class` `ctor` |
-| 类型 | `int` `float` `bool` `str` `char` `void` `list` `dict` `ptr` `funi` `any` |
+| 类型 | `int` `float` `bool` `str` `char` `void` `list` `dict` `ptr` `func` `any` |
 | 控制流 | `if` `else` `while` `for` `break` `continue` `ret` |
 | 异常 | `try` `catch` `finally` `throw` |
 | 类 | `this` `super` `static` `override` |
@@ -153,7 +153,7 @@ Hello, Rio!
 | `list[T]` | 元素类型为 `T` 的列表 | `[1, 2, 3]`、`[]` |
 | `dict` | 键为 `str`、值任意的字典 | `{"k": 1}`、`{}` |
 | `ptr` | 无类型裸地址 | 由 `core_alloc` 等获得 |
-| `funi` | 函数值 | `(x: int) -> { ret x }` |
+| `func` | 函数值 | `(x: int) -> { ret x }` |
 | `any` | 指针族值（`str`/`list`/`dict`/`ptr`），见 8.7 | — |
 
 **零值**：声明但不初始化时，得到该类型的零值。
@@ -462,7 +462,7 @@ import(ds="ds")
 var doubled = map([1, 2, 3], (v: int) -> { ret v * 2 })
 ```
 
-类型标注是 `funi`，可带签名：`funi[int][int]` 表示「收 int 返回 int」。
+类型标注是 `func`，可带签名：`func[int][int]` 表示「收 int 返回 int」。
 
 > **限制**：闭包是**按值捕获**，回调里**不能写回外层变量**（G6 延期）。
 > 所以 `ds.iter` 这类「靠回调累加」的设计被去掉了，改用 `map`/`filter`
@@ -620,16 +620,16 @@ import(ds="ds")
 | `dictValues` | `(d: dict): list` | 值列表，插入顺序 |
 | `contains` | `[T](xs: list[T], t: T): bool` | 是否包含 |
 | `indexOf` | `[T](xs: list[T], t: T): int` | 首次出现的下标，没有返回 `-1` |
-| `map` | `[T](xs: list[T], h: funi): list[T]` | 映射 |
-| `filter` | `[T](xs: list[T], h: funi): list[T]` | 过滤 |
+| `map` | `[T](xs: list[T], h: func): list[T]` | 映射 |
+| `filter` | `[T](xs: list[T], h: func): list[T]` | 过滤 |
 | `reverse` | `[T](xs: list[T]): list[T]` | 反转，返回新列表 |
 | `slice` | `[T](xs: list[T], start: int, end: int): list[T]` | 切片，下标自动钳制 |
 | `concat` | `[T](a: list[T], b: list[T]): list[T]` | 拼接 |
 | `sum` | `(xs: list[int]): int` | 求和 |
 | `sort` | `[T](xs: list[T], reverse: bool = false): list[T]` | 排序，返回新列表 |
 | `join` | `[T](xs: list[T], sep: str = ""): str` | 用分隔符拼成字符串 |
-| `repeat` | `(times: int, h: funi): void` | 调用回调 `times` 次，回调收到下标 |
-| `forInRange` | `(start: int, end: int, h: funi, sep: int = 1): void` | 按步长遍历 |
+| `repeat` | `(times: int, h: func): void` | 调用回调 `times` 次，回调收到下标 |
+| `forInRange` | `(start: int, end: int, h: func, sep: int = 1): void` | 按步长遍历 |
 
 **注意 `ds` 不导出 `size`** —— 用 `str.size`（7.2）。两个模块都导出 `size`
 会造成导入冲突。
@@ -703,9 +703,9 @@ import(o="ops")
 | 函数 | 签名 | 说明 |
 |---|---|---|
 | `ternary` | `[T](condition: bool, trueValue: T, falseValue: T): T` | 三元选择（两个值都求值） |
-| `ternaryLazy` | `[T](condition: bool, trueFuni: funi, falseFuni: funi): T` | 三元选择（只求值选中的分支） |
+| `ternaryLazy` | `[T](condition: bool, truefunc: func, falsefunc: func): T` | 三元选择（只求值选中的分支） |
 | `orVal` | `[T](fallback: T, spare: T): T` | `fallback` 为 `null` 时取 `spare` |
-| `orLazy` | `[T](front: T, back: funi): T` | `front` 为 `null` 时调 `back` 求值 |
+| `orLazy` | `[T](front: T, back: func): T` | `front` 为 `null` 时调 `back` 求值 |
 
 ```rio
 import(o="ops")

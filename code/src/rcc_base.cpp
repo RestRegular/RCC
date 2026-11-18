@@ -92,7 +92,7 @@ namespace base {
 
     const StringSet TYPES = {
             "int", "float", "str", "bool", "char", "any",
-            "list", "dict", "series", "func", "funi", "void",
+            "list", "dict", "series", "func", "void",
             "nul", "clas"
     };
 
@@ -107,7 +107,7 @@ namespace base {
         "overwrite", "interface", "virtual",
         // data type label
         "int", "float", "str", "bool", "char", "any", "list",
-        "dict", "series", "func", "funi", "void", "nul", "clas"
+        "dict", "series", "func", "void", "nul", "clas"
     };
 
     const std::string NULL_VALUE = "null";

@@ -11,7 +11,7 @@
 #  ---- G11：类字段初始化器 ----
 #  问题：`class A { var x: int = 42 }` 后 `A().x` 读出 0。
 #  原仓库依据：datatype.rio:50 `var TP_INT: str static = type(0)`、
-#        ds.rio:492 `compareHandler: funi[...] private = null` —— 都是字段初始化器。
+#        ds.rio:492 `compareHandler: func[...] private = null` —— 都是字段初始化器。
 #  修法：registerClassBody 收集 ownFieldInits；emitConstructorCall 在清零之后、
 #        用户 ctor 之前按声明顺序写入。
 #

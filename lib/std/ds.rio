@@ -539,7 +539,7 @@ fun indexOf[T](xs: list[T], t: T): int {
  *
  * @example map([1,2,3], (v: int) -> { ret v * 2 }) 得到 [2,4,6]
  */
-fun map[T](xs: list[T], h: funi[T][T]): list[T] {
+fun map[T](xs: list[T], h: func[T][T]): list[T] {
     var r: list[T] = []
     var i: int = 0
     while i < _dsLen(xs) {
@@ -554,7 +554,7 @@ fun map[T](xs: list[T], h: funi[T][T]): list[T] {
  *
  * @example filter([1,2,3,4], (v: int) -> { ret v % 2 == 0 }) 得到 [2,4]
  */
-fun filter[T](xs: list[T], h: funi[T][bool]): list[T] {
+fun filter[T](xs: list[T], h: func[T][bool]): list[T] {
     var r: list[T] = []
     var i: int = 0
     while i < _dsLen(xs) {
@@ -720,7 +720,7 @@ fun join[T](xs: list[T], sep: str = ""): str {
  *
  * @example repeat(3, (i: int) -> { sout(i) }) 打印 0 1 2
  */
-fun repeat(times: int, h: funi[int][void]): void {
+fun repeat(times: int, h: func[int][void]): void {
     var i: int = 0
     while i < times {
         h(i)
@@ -737,7 +737,7 @@ fun repeat(times: int, h: funi[int][void]): void {
  *
  * @example forInRange(0, 3, (i: int) -> { sout(i) }) 打印 0 1 2
  */
-fun forInRange(start: int, end: int, h: funi[int][void], sep: int = 1): void {
+fun forInRange(start: int, end: int, h: func[int][void], sep: int = 1): void {
     if sep == 0 {
         ret
     }

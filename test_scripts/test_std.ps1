@@ -78,8 +78,8 @@ $expectedSigs = @{
         'dictValues(d: dict): list'
         'dumpToStr[T, K](container: dict): str'
         'dumpToStr[T](container: list): str'
-        'filter[T](xs: list, h: funi): list'
-        'forInRange(start: int, end: int, h: funi, sep: int = 1): void'
+        'filter[T](xs: list, h: func): list'
+        'forInRange(start: int, end: int, h: func, sep: int = 1): void'
         'indexOf[T](xs: list, t: T): int'
         'isEmpty(arg: dict): bool'
         'isEmpty(arg: list): bool'
@@ -87,10 +87,10 @@ $expectedSigs = @{
         'join[T](xs: list, sep: str = ""): str'
         'listAppend[T](xs: list, item: T): void'
         'listRemove[T](xs: list, index: int): void'
-        'map[T](xs: list, h: funi): list'
+        'map[T](xs: list, h: func): list'
         'repList[T](x: T, times: int): list'
         'repStr(s: str, times: int): str'
-        'repeat(times: int, h: funi): void'
+        'repeat(times: int, h: func): void'
         'reverse[T](xs: list): list'
         'slice[T](xs: list, start: int, end: int): list'
         'sort[T](xs: list, reverse: bool = false): list'
@@ -135,10 +135,10 @@ $expectedSigs = @{
         'pi: float'
     )
     ops  = @(
-        'orLazy[T](front: T, back: funi): T'
+        'orLazy[T](front: T, back: func): T'
         'orVal[T](fallback: T, spare: T): T'
         'ternary[T](condition: bool, trueValue: T, falseValue: T): T'
-        'ternaryLazy[T](condition: bool, trueFuni: funi, falseFuni: funi): T'
+        'ternaryLazy[T](condition: bool, truefunc: func, falsefunc: func): T'
     )
     io   = @(
         'input(prompt: str = ""): str'

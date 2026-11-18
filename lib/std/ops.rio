@@ -35,11 +35,11 @@ fun ternary[T](condition: bool, trueValue: T, falseValue: T): T {
  *
  * @example ternaryLazy(x != null, () -> { ret x.name }, () -> { ret "?" })
  */
-fun ternaryLazy[T](condition: bool, trueFuni: funi[][T], falseFuni: funi[][T]): T {
+fun ternaryLazy[T](condition: bool, truefunc: func[][T], falsefunc: func[][T]): T {
     if condition {
-        ret trueFuni()
+        ret truefunc()
     }
-    ret falseFuni()
+    ret falsefunc()
 }
 
 /**
@@ -57,7 +57,7 @@ fun orVal[T](fallback: T, spare: T): T {
  *
  * @example orLazy(getConfig("x"), () -> { ret 10 })
  */
-fun orLazy[T](front: T, back: funi[][T]): T {
+fun orLazy[T](front: T, back: func[][T]): T {
     if front == null || front == false {
         ret back()
     }

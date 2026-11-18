@@ -814,7 +814,7 @@ namespace backend
             std::map<std::string, sema::TypePtr> ownFieldTypes;
             // P12/G11：实例字段的初始化器（`var x: int = 42`），按声明顺序。
             // 原仓库 datatype.rio:50 `var TP_INT: str static = type(0)`、
-            // ds.rio:492 `compareHandler: funi[...] private = null` 都靠它。
+            // ds.rio:492 `compareHandler: func[...] private = null` 都靠它。
             // static 字段不进这里（见下面的 staticFields）。
             std::vector<std::pair<std::string, std::shared_ptr<ast::ExpressionNode>>> ownFieldInits;
             // 生命周期标签 `static` 修饰的字段：**不属于实例布局**，全类共享一份。
@@ -949,7 +949,7 @@ namespace backend
         // 走 LabelNode 才能保留元素类型（P9/P10 同一套理由）。
         sema::TypePtr returnTypeFromNode(const std::shared_ptr<ast::FunctionDefinitionNode>& node,
                                          const std::vector<std::string>& genericParams = {}) const;
-        // 把逗号分隔的类型实参表达式摊平（`funi[int, str][bool]` 的第一段）。
+        // 把逗号分隔的类型实参表达式摊平（`func[int, str][bool]` 的第一段）。
         static void flattenTypeArgs(const std::shared_ptr<ast::ExpressionNode>& node,
                                     std::vector<std::shared_ptr<ast::ExpressionNode>>& out);
         // 单态化：把签名里的 GenericType 换成实参类型（未绑定的保持原样）。

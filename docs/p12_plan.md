@@ -48,7 +48,7 @@ git commit -m "feat(backend): rewrite RCC on x86-64 GAS backend (P0-P11)"
 | 函数重载（`fun f(x: int)` / `fun f(x: str)`），**含跨模块** | ✅ `m.f(1)` / `m.f("a")` 各自决议正确 |
 | 泛型函数 / 泛型类（`first[T](a: list[T]): T`、`Box[int](5)`） | ✅ |
 | 类：`ctor`、字段、方法、`this.x`、`this.field[i]`、`obj.field = v` | ✅ |
-| 匿名函数、具名函数当函数值传参、`funi[int][int]` 形参 + `funi[any, int, int, .*][any]` | ✅ |
+| 匿名函数、具名函数当函数值传参、`func[int][int]` 形参 + `func[any, int, int, .*][any]` | ✅ |
 | 无捕获闭包、有捕获闭包（按值） | ✅ 读得到捕获值 |
 | `core_str_len(x)` 对 **list / dict / str** 都返回正确长度 | ✅ 3 / 4 / 2 |
 | `sout` 多实参混类型、`end=` 关键字实参、`sout()` 特化 | ✅ |
@@ -71,7 +71,7 @@ git commit -m "feat(backend): rewrite RCC on x86-64 GAS backend (P0-P11)"
 | G7 | `{ ret }` —— `ret` 与 `}` 同一行 | ParserError `TOKEN_RBRACE` 找不到前缀构造 | 原仓库裸 `ret` 是合法语法，`ds.rio` 里大量使用 | ✅ **已完成**：`}` / `TOKEN_STREAM_END` 视为无返回值 |
 | G9 | `str` 相等比较按**指针**比 | `"x" == "x"` → `false`；`var a="ab" var c="ab"` → `a != c` 成立 | 原仓库 `str.rio:105` `if del == ""`、`datatype.rio:92` `typeOfArg1 == arg2[i]` 都依赖**内容**比较；legacy `ITER_GET`/字典查找也按内容比 | ✅ **已完成**：`emitStrEq`（先比长度头，再 `core_mem_eq`） |
 | G10 | `str` 下标 `s[i]` | `Index access on a non-container value` | 原仓库 v1.21.2 **实测支持读取**（`sout(s[1])` → `e`）；但**写入是静默失效的 bug**（`s[1]="X"` 输出仍 `hello`，因 VM 的 `String::getDataAt` 返回副本） | **必补（只读不写）**：`emitIndexExpression` 加 TK_STR 分支返回 `char`；`s[i]=c` **编译期报错**。详见 §G10 |
-| G11 | 类字段初始化器 `var x: int = 42` 不生效 | 读出来是 `0`（只有 ctor 里赋值才有效） | 原仓库 `datatype.rio:50` `var TP_INT: str static = type(0)`、`ds.rio:492` `compareHandler: funi[...] private = null` 都是字段初始化器 | ✅ **已完成**：`ownFieldInits`，沿继承链在 ctor 前写入 |
+| G11 | 类字段初始化器 `var x: int = 42` 不生效 | 读出来是 `0`（只有 ctor 里赋值才有效） | 原仓库 `datatype.rio:50` `var TP_INT: str static = type(0)`、`ds.rio:492` `compareHandler: func[...] private = null` 都是字段初始化器 | ✅ **已完成**：`ownFieldInits`，沿继承链在 ctor 前写入 |
 | G12 | `ptr` 返回值标注不可用（无 cast） | `fun f(): ptr { var p = core_alloc(...) ret p }` → `cannot assign a value of type int to a target of type ptr` | 原仓库没有 `ptr` 类型（`builtInTypes` 里无 `ptr`），这是**新架构自己引入**的类型；但 `core.rio` 的 `alloc`/`realloc` 必须能返回指针，否则 std 无法分配内存 | ✅ **已完成**：`sameValueFamily` 放行 `ptr` ↔ 数值族（方案 1） |
 | G13 | `any` 作为**显式标注**不认 | `fun f(a: any): int` → `Unknown type 'any'`；但**省略标注**完全正常 | 原仓库 `builtInTypes` 里**有** `any`（`rcc_symbol.cpp:650`），`ds.rio:32` `fun copy(arg): any`、`math.rio:26` `fun pow(a, times: int): any` 都在用 | ✅ **已完成**：`parseTypeName` / 形参登记 / 返回标注校验三处都认 `any` → unknown |
 
@@ -802,7 +802,7 @@ return std::make_shared<Char>(value[index]);  // ❌ 副本，改它没有任何
 **现象**（探针 `hh1` / `ii2`）：`class A { var x: int = 42 }` → `A().x` 读出来是 `0`。
 
 **原仓库依据**：`datatype.rio:50` `var TP_INT: str static = type(0)`、
-`ds.rio:492` `compareHandler: funi[...] private = null`、`ds.rio:493` 同 —— 都是字段初始化器。
+`ds.rio:492` `compareHandler: func[...] private = null`、`ds.rio:493` 同 —— 都是字段初始化器。
 
 **修法**：`registerClassBody` 在收集字段时，把 `def->getValueNode()` 一并存进
 `ClassInfo::ownFieldInits`；`emitConstructor`（或对象创建处）在 ctor 之前按声明顺序
@@ -915,8 +915,8 @@ fun size(arg): int {
 | `datatype` | `type`、`setType`、`checkType`、`isIter`、`DT` 类 | **整模块删**（见 S3），与静态架构冲突 |
 
 > ⚠️ **原仓库签名里的 `any` 分两种情况，已实测区分**：
-> - `funi[any, int, int, .*][any]` —— 函数类型**内部**的 `any` **能正常解析**
->   （探针 `chk_funi1`/`chk_funi2`/`chk_funi3` 全部通过）。`ds.iter`/`ds.sort`/`ds.repeat`
+> - `func[any, int, int, .*][any]` —— 函数类型**内部**的 `any` **能正常解析**
+>   （探针 `chk_func1`/`chk_func2`/`chk_func3` 全部通过）。`ds.iter`/`ds.sort`/`ds.repeat`
 >   的签名照原样抄即可，**不依赖 G13**。
 > - 裸的形参/返回值标注 `fun copy(arg: any): any` —— **P12-2 修复前不认**（G13）。
 >   当时改用省略标注 `fun copy(arg) { ret arg }` 即可，语义等价（探针 `g13a`/`r1`）。
@@ -1015,8 +1015,8 @@ fun size(arg): int {
 
 #### C. 已实测确认可编译（签名直接沿用原仓库）
 
-`ds.iter` 的 `funi[any, int, int, .*][any]`、`ds.sort` 的 `funi[any, any][int] = null`、
-`ds.repeat` 的 `funi[int][any]`、`ops.ternaryLazy` 的 `funi[][any]`、
+`ds.iter` 的 `func[any, int, int, .*][any]`、`ds.sort` 的 `func[any, any][int] = null`、
+`ds.repeat` 的 `func[int][any]`、`ops.ternaryLazy` 的 `func[][any]`、
 `lowlevel.ri` 的 `(i: str, *args)`、`io.print` 的 `(*args, end, sep)`、
 `prog` 的 `(*args, **kwargs)` —— 这些复杂签名都能过编译（探针 `r3`–`r6`、`kk1`–`kk5`）。
 

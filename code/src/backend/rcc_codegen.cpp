@@ -100,10 +100,13 @@ namespace backend{
             if (name == "dict" || name == "map")            {
                 return std::make_shared<sema::DictType>(nullptr, nullptr);
             }
-            // P10：`funi[params][ret]` —— 函数类型标注。
+            // P10：`func[params][ret]` —— 函数类型标注。
             // 裸名字到这里时元素类型已丢，只能给一个「参数未知」的占位，
-            // 但至少让 `f: funi[...]` 不再报「Unknown type 'funi'」。
-            if (name == "funi" || name == "fun")            {
+            // 但至少让 `f: func[...]` 不再报「Unknown type 'func'」。
+            //
+            // 2026-11-18：`func` 已全部改名为 `func`（用户裁决），不再保留
+            // 旧名 —— 与 `fun` 关键字区分开，`func` 是类型名。
+            if (name == "func")            {
                 return std::make_shared<sema::FunctionType>(
                     std::vector<sema::TypePtr>{}, sema::getUnknownType());
             }
@@ -2228,7 +2231,7 @@ namespace backend{
             }
             // 不是局部变量但是已知函数：`apply(add, 3)` 里的 add 是一个
             // 函数值（闭包指针），类型得是 FunctionType 而不是 int，
-            // 否则传给 `f: funi[A][B]` 形参时会被可赋值性校验挡下来。
+            // 否则传给 `f: func[A][B]` 形参时会被可赋值性校验挡下来。
             const auto paramsIt = _functionParams.find(id->getName());
             const auto retIt = _functionReturns.find(id->getName());
             if (paramsIt != _functionParams.end() && retIt != _functionReturns.end())            {
@@ -7181,8 +7184,9 @@ namespace backend{
         if (label->getLabelDesNodes().empty())        {
             return resolveTypeName(base);
         }
-        // `funi[params][ret]`：labelDesNodes[0] = 参数表，[1] = 返回类型
-        if (base == "funi" || base == "fun")        {
+        // `func[params][ret]`：labelDesNodes[0] = 参数表，[1] = 返回类型
+        // （2026-11-18 起 `func` 改名 `func`，旧名不再接受。）
+        if (base == "func")        {
             const auto des = label->getLabelDesNodes();
             std::vector<sema::TypePtr> params;
             if (!des.empty() && des[0])            {
@@ -8901,7 +8905,7 @@ namespace backend{
             auto actual = inferType(args[i]);
             // 实参是具名函数（`map2(addOne, 41)`）：inferType 对标识符只会
             // 返回变量槽类型，取不到函数签名。这里按已登记的签名补出来，
-            // 否则 funi[A][B] 的 B 永远推不出来。
+            // 否则 func[A][B] 的 B 永远推不出来。
             if (formal->getKind() == sema::TypeKind::TK_FUNC)            {
                 if (const auto fnId = std::dynamic_pointer_cast<ast::IdentifierNode>(args[i]))                {
                     const auto paramsIt = _functionParams.find(fnId->getName());
@@ -8934,7 +8938,7 @@ namespace backend{
                         unify(fd->getValueType(), ad->getValueType());
                         return;
                     }
-                    // `funi[A][B]` 的形参里带泛型形参时，从实参函数类型推。
+                    // `func[A][B]` 的形参里带泛型形参时，从实参函数类型推。
                     // 注意实参可能只是「参数个数对得上」的裸函数名，
                     // 参数类型本身也可能是泛型（泛型传泛型）。
                     if (f->getKind() == sema::TypeKind::TK_FUNC &&

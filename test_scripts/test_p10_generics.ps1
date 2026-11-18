@@ -199,9 +199,9 @@ $deduced = [ordered]@{
         Body   = "fun firstVal[V](d: dict[str, V]): V { ret d[`"a`"] }`nfun main(): void {`n    var d: dict[str, float] = {`"a`": 1.5}`n    sout(firstVal(d))`n}`nmain()`n"
         Expect = '1.5'
     }
-    # 高阶：funi[A][B] 从具名函数的签名反推 A、B。
+    # 高阶：func[A][B] 从具名函数的签名反推 A、B。
     'ded_func_param' = @{
-        Body   = "fun addOne(x: int): int { ret x + 1 }`nfun apply[A, B](f: funi[A][B], v: A): B { ret f(v) }`nfun main(): void {`n    sout(apply(addOne, 41))`n}`nmain()`n"
+        Body   = "fun addOne(x: int): int { ret x + 1 }`nfun apply[A, B](f: func[A][B], v: A): B { ret f(v) }`nfun main(): void {`n    sout(apply(addOne, 41))`n}`nmain()`n"
         Expect = '42'
     }
     # 显式 + 推导混用：identity[int](...) 与 identity(...) 共享同一份实例。
