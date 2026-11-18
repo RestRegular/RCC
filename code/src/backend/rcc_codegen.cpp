@@ -8141,7 +8141,9 @@ namespace backend{
     sema::TypePtr CodeGen::methodReturnType(const std::shared_ptr<ast::FunctionDefinitionNode>& def,
                                             const std::vector<std::string>& paramNames,
                                             const std::vector<sema::TypePtr>& paramTypes,
-                                            const std::string& ownerClass) const    {
+                                            const std::string& ownerClass,
+                                            bool* outAnnotated) const    {
+        if (outAnnotated) *outAnnotated = false;
         if (!def) return sema::getIntType();
         // 声明标签优先（能解析出类名），否则从函数体推断，最后兜底 int。
         // P10：必须走 typeFromLabelList —— 泛型实例的返回标注是 `T`，
@@ -8163,7 +8165,11 @@ namespace backend{
         const auto annotated = typeFromLabelList(def->getLabelNodes(), _currentGenericParams);
         self->_currentGenericParams = savedParams;
         self->_currentGenericBindings = savedBindings;
-        if (annotated && annotated->getKind() != sema::TypeKind::TK_UNKNOWN) return annotated;
+        if (annotated && annotated->getKind() != sema::TypeKind::TK_UNKNOWN)        {
+            // 返回类型来自显式 `: T` 标注 —— 这是用户的承诺，ret 要按它校验。
+            if (outAnnotated) *outAnnotated = true;
+            return annotated;
+        }
         const auto inferred = const_cast<CodeGen*>(this)->inferAnonReturnType(def->getBodyNode(), paramNames, paramTypes);
         if (inferred && inferred->getKind() != sema::TypeKind::TK_UNKNOWN) return inferred;
         return sema::getIntType();
@@ -8311,7 +8317,8 @@ namespace backend{
             for (auto& t : paramTypes)            {
                 if (!t || t->getKind() == sema::TypeKind::TK_UNKNOWN) t = sema::getIntType();
             }
-            const auto ret = methodReturnType(def, paramNames, paramTypes);
+            bool retAnnotated = false;
+            const auto ret = methodReturnType(def, paramNames, paramTypes, "", &retAnnotated);
             // P12/G5：重载方法用修饰名发射；单定义保持裸名（与全局函数一致）。
             std::string methodSymbolName = name + "." + mname;
             if (defs.size() >= 2)            {
@@ -8331,7 +8338,7 @@ namespace backend{
             _functionParamNames[methodSymbolName] = paramNames;
             _currentSignatureClauses = def ? def->getSignatureClauses() : std::vector<std::shared_ptr<ast::LabelNode>>{};
             emitFunctionBody(methodSymbolName, paramNames, paramTypes, ret,
-                             def->getBodyNode(), true, {}, {}, "", true);
+                             def->getBodyNode(), true, {}, {}, "", true, retAnnotated);
           }
         }
         _currentClass = savedClass;

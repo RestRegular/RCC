@@ -277,6 +277,21 @@ Test-Case "L3-N 语句块不影响后续语句（对照）" "fun main(): void {`
 Test-Case "L3-N 块表达式 ret 时销毁块内局部" "fun main(): void {`n var a: int = {`n  var s = `"a`" + `"b`"`n  ret 7`n }`n sout(a)`n}" $true ""
 
 Write-Host ""
+Write-Host "=== L3-O：类方法的 ret 类型校验（emitFunctionBody 漏参） ==="
+# emitFunctionBody 有 11 个参数，最后一个 retTypeAnnotated 决定要不要校验
+# `ret` 的值类型、要不要插返回值类型转换。类方法的调用点只传了 10 个实参，
+# 于是 retTypeAnnotated 落到默认 false，整段校验与转换被跳过：
+#   - `fun toStr(): str { ret "" + 1 }` 在类里静默通过、输出空串，在顶层报错；
+#   - `fun one(): float { ret 1 }` 在类里把 %rax 的整数 1 当 double 打印成垃圾。
+# 这是实现覆盖不全（顶层函数早就做了），不是语言语义变更。
+Test-Case "L3-O 类方法 ret 类型不符报错" "class C {`n fun toStr(): str { ret `"`" + 1 }`n}`nfun main(): void { var c = C()`n sout(c.toStr())`n}" $false "cannot assign"
+Test-Case "L3-O 类方法 ret float 要插转换" "class C {`n fun one(): float { ret 1 }`n}`nfun main(): void { var c = C()`n sout(c.one())`n}" $true ""
+Test-Case "L3-O 类方法 ret void 带值报错" "class C {`n fun f(): void { ret 1 }`n}`nfun main(): void { var c = C()`n c.f()`n}" $false "declared to return void"
+Test-Case "L3-O 类方法 ret 正常值（对照）" "class C {`n fun name(): str { ret `"bob`" }`n fun n(): int { ret 7 }`n}`nfun main(): void { var c = C()`n sout(c.name())`n sout(c.n())`n}" $true ""
+# 与顶层同名写法必须一致：两边都报错，才说明校验路径统一了。
+Test-Case "L3-O 顶层同名写法同样报错（对照）" "fun toStr(): str { ret `"`" + 1 }`nfun main(): void { sout(toStr()) }" $false "cannot assign"
+
+Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
 Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 if ($script:fail -gt 0) { exit 1 }

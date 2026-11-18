@@ -27,8 +27,9 @@
 | K/L 顶层与标签 | L3-K / L3-L | 顶层 var 进移动状态表；`static`/`global` 生命周期标签 |
 | M 回归修复 | 59359cf | 泛型类字段 `T`；drop glue 不发 `.globl` |
 | N 块表达式 | L3-N | 右值位置的裸块作可返回值作用域（`var a: int = { ret 10 }`） |
+| O 方法 ret | L3-O | 类方法漏传 `retTypeAnnotated`，`ret` 类型校验与返回值转换整段被跳过 |
 
-**验证**：`tests/p13_2_regression.ps1`，**121 条用例全 PASS**；每次提交后回归。
+**验证**：`tests/p13_2_regression.ps1`，**126 条用例全 PASS**；每次提交后回归。
 另有 `tests/_probe/verify_fixes.ps1`（43 条），覆盖审阅中发现的实现缺陷及其对照用例。
 
 ## 剩余项与状态
@@ -610,3 +611,84 @@ fun main(): void {
 **回归**：`p13_2_regression` 108 → **121/121**（新增 13 条全过）；
 `verify_fixes` 43/43；全量 `test_all.ps1` 25 套件 19 通过 / **556 通过
 108 失败**（较修前 553/111 多 3 条通过，失败套件仍是同一批 6 个既有项）。
+
+## L3-O：类方法的 `ret` 类型校验被整段跳过（2026-11-18 修复）
+
+### 现象
+
+同一个表达式 `"" + 1`，在类里静默通过、在顶层报错：
+
+```rio
+class Object {
+    fun toStr(): str {
+        ret "" + 1        // 编译通过，运行时输出空串
+    }
+}
+
+fun toStr(): str {
+    ret "" + 1            // 报 cannot assign a value of type int to a target of type str
+}
+```
+
+### 根因：类方法调用点漏传了第 11 个实参
+
+`emitFunctionBody` 有 11 个参数，最后一个是 `retTypeAnnotated`：
+
+```cpp
+void emitFunctionBody(..., bool hasThis = false, bool retTypeAnnotated = false);
+```
+
+它决定 `_functionReturnAnnotated`，而后者控制着 `emitReturn` 里的**两段逻辑**：
+
+1. `ret` 的值类型是否匹配返回标注（不匹配就报错）；
+2. `ret` 的值要不要插**返回值类型转换**。
+
+对照各调用点：
+
+| 调用点 | 实参数 | 状态 |
+|---|---|---|
+| 顶层函数 | 11（`false, retAnnotated`） | ✅ |
+| 泛型实例 | 11（`false, true`） | ✅ |
+| **类方法** | **10** | ❌ 漏传，`retTypeAnnotated` 用默认 `false` |
+| 构造器 | 10（`"this", true`） | 构造器返回类型固定为类本身，可接受 |
+| 匿名函数 | 8 | 无标注返回类型，可接受 |
+
+于是 `_functionReturnAnnotated = false`，`emitReturn` 里
+`if (ret && _functionReturnAnnotated && _functionReturnType)` 整块不执行。
+
+### 影响不止类型校验
+
+第 2 段逻辑被跳过更要紧。`fun one(): float { ret 1 }` 在类里会把 `%rax`
+里的整数 `1` **直接当 double** 交给调用方 —— 修前实测打印出垃圾，修后打印
+`1.0`。这与源码注释里记录的是同一类问题：
+
+> `fun one(): float { ret 1 }` 之前直接把 %rax 里的 1 当 double 用，
+> 调用方 sout 打印出垃圾 —— 必须在这里插转换。
+
+### 修法
+
+`methodReturnType` 原本把「声明标注」和「函数体推断」合并成一个返回值，
+无法区分。加一个可选出参 `bool* outAnnotated` 回填标注状态，类方法调用点
+按顶层函数同一判据传给 `emitFunctionBody`：
+
+```cpp
+bool retAnnotated = false;
+const auto ret = methodReturnType(def, paramNames, paramTypes, "", &retAnnotated);
+emitFunctionBody(methodSymbolName, paramNames, paramTypes, ret,
+                 def->getBodyNode(), true, {}, {}, "", true, retAnnotated);
+```
+
+出参默认 `nullptr`，`inferType` 那个调用点（只需要类型）不用改。
+
+### 实测（`tests/p13_2_regression.ps1` L3-O 5 条）
+
+| 用例 | 修前 | 修后 |
+|---|---|---|
+| 类方法 `fun toStr(): str { ret "" + 1 }` | exit=0（静默，输出空串） | exit=1，报 `cannot assign` |
+| 类方法 `fun one(): float { ret 1 }` | 输出垃圾值 | 输出 `1.0` |
+| 类方法 `fun f(): void { ret 1 }` | exit=0 | exit=1，报 `declared to return void` |
+| 类方法正常返回（对照） | 通过 | 通过 |
+| 顶层同名写法（对照） | 报错 | 报错（两边终于一致） |
+
+**回归**：`p13_2_regression` 121 → **126/126**；`verify_fixes` 43/43；
+全量 `test_all.ps1` **556 通过 / 108 失败**，与修前持平，无回归。

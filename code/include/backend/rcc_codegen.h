@@ -1114,10 +1114,14 @@ namespace backend
         void collectParamAnnotations(const std::shared_ptr<ast::ExpressionNode>& node,
                                      std::vector<std::string>& out) const;
         // 方法/构造器的返回类型：声明的标签优先，否则从函数体推断。
+        // outAnnotated 非空时回填「返回类型是否来自**显式标注**」——
+        // emitFunctionBody 的 retTypeAnnotated 参数靠它决定要不要校验
+        // `ret` 的值类型（与顶层函数 emitFunctionDefinition 同一判据）。
         sema::TypePtr methodReturnType(const std::shared_ptr<ast::FunctionDefinitionNode>& def,
                                        const std::vector<std::string>& paramNames,
                                        const std::vector<sema::TypePtr>& paramTypes,
-                                       const std::string& ownerClass = std::string()) const;
+                                       const std::string& ownerClass = std::string(),
+                                       bool* outAnnotated = nullptr) const;
         // 当前正在发射的方法/构造器所属的类名（空 = 不在类里）。
         std::string _currentClass;
         // 类登记表
