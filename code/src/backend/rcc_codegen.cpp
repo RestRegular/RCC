@@ -2468,6 +2468,22 @@ namespace backend{
             if (!ret || ret->getKind() == sema::TypeKind::TK_UNKNOWN) ret = sema::getIntType();
             return std::make_shared<sema::FunctionType>(params, ret);
         }
+        // P13-2/L3-N（决议 §12.1）：裸块出现在右值位置时是「块表达式」，
+        // 它的类型由出口值决定 —— 优先取块内 `ret value` 的类型（显式出口），
+        // 没有就取末表达式的类型。不这样处理会一路落到下面的 int 兜底，
+        // `var s: str = { ret "x" }` 的值槽就会被开成 int。
+        if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))        {
+            for (const auto& e : block->getBodyExpressions())            {
+                const auto stmt = std::dynamic_pointer_cast<ast::ExpressionStatementNode>(e);
+                const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(
+                    stmt ? stmt->getExpression() : e);
+                if (ret && !ret->exitsFunction() && ret->getReturnNode())                {
+                    const auto t = inferType(ret->getReturnNode());
+                    if (t && t->getKind() != sema::TypeKind::TK_UNKNOWN) return t;
+                }
+            }
+            return inferBlockValueType(node);
+        }
         return sema::getIntType();
     }
     // ============================================================
@@ -3163,8 +3179,11 @@ namespace backend{
             emitExpression(paren->getRangerNode());
             return;
         }
+        // 走到 emitExpression 说明这个块在**值位置**（右值 / 实参 / 返回表达式），
+        // 按块表达式发射：它自己就是可返回值作用域（决议 §12.1 / §13.1）。
+        // 语句位置的块由 emitStatement 单独拦下（asValue=false），不受影响。
         if (std::dynamic_pointer_cast<ast::BlockRangerNode>(node))        {
-            emitBlock(node);
+            emitBlock(node, true);
             return;
         }
         if (std::dynamic_pointer_cast<ast::ConditionNode>(node))        {
@@ -4279,19 +4298,37 @@ namespace backend{
     }
     void CodeGen::emitReturn(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node);
-        // P13-2/L1+L2：`return` 只退函数；`ret` 退最近可返回值作用域 ——
-        // 比较 _loopStack / _ifStack 栈顶的 enterSeq，选后进入（更近）的那个；
-        // 两者都空则退函数（保持兼容）。
+        // P13-2/L1+L2+L3-N：`return` 只退函数；`ret` 退最近可返回值作用域 ——
+        // 比较 _loopStack / _ifStack / _blockStack 栈顶的 enterSeq，选后进入（更近）的；
+        // 三者都空则退函数（保持兼容）。
         if (ret && !ret->exitsFunction())        {
-            const bool hasLoop = !_loopStack.empty();
-            const bool hasIf = !_ifStack.empty();
-            if (hasLoop && (!hasIf || _loopStack.back().enterSeq > _ifStack.back().enterSeq))            {
-                emitRetFromLoop(node);
-                return;
-            }
-            if (hasIf)            {
-                emitRetFromIf(node);
-                return;
+            // 三个栈里取 enterSeq 最大的那个；同等最近时按 块 < if < 循环 的
+            // 嵌套方向处理（外层先入栈，内层 enterSeq 更大，实际不会相等）。
+            enum class Nearest { FUNCTION, BLOCK, IF, LOOP };
+            Nearest nearest = Nearest::FUNCTION;
+            size_t best = 0;
+            const auto consider = [&](const size_t seq, const Nearest kind)                {
+                if (seq > best)                    {
+                    best = seq;
+                    nearest = kind;
+                }
+            };
+            if (!_blockStack.empty()) consider(_blockStack.back().enterSeq, Nearest::BLOCK);
+            if (!_ifStack.empty()) consider(_ifStack.back().enterSeq, Nearest::IF);
+            if (!_loopStack.empty()) consider(_loopStack.back().enterSeq, Nearest::LOOP);
+            switch (nearest)            {
+                case Nearest::BLOCK:
+                    emitRetFromBlock(node);
+                    return;
+                case Nearest::IF:
+                    emitRetFromIf(node);
+                    return;
+                case Nearest::LOOP:
+                    emitRetFromLoop(node);
+                    return;
+                case Nearest::FUNCTION:
+                default:
+                    break;
             }
         }
         // P9：只有当返回类型是**显式标注**时才校验 ret 的值。
@@ -4544,6 +4581,51 @@ namespace backend{
         }
         _asm.jmp(ctx.endLabel);
     }
+    void CodeGen::emitRetFromBlock(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node);
+        const auto& ctx = _blockStack.back();
+        // 决议 §13.1/§13.2：`ret` 退最近的可返回值作用域，带出的值必须匹配
+        // 该作用域的类型。块表达式的类型来自 `: T` 标注或出口值推断，
+        // 有标注时这里就是权威校验点。
+        if (ret && ret->getReturnNode() && ctx.annotatedType)        {
+            const auto why = checkAssignable(ctx.annotatedType, inferType(ret->getReturnNode()));
+            if (!why.empty())            {
+                failAt(ret->getReturnNode()->getPos(),
+                       "L3: ret value does not match block result type: " + why);
+                return;
+            }
+        }
+        std::string valueSlot;
+        bool valueIsFloat = false;
+        if (ret && ret->getReturnNode())        {
+            const auto vt = inferType(ret->getReturnNode());
+            valueIsFloat = vt && vt->isFloat();
+            emitExpression(ret->getReturnNode());
+            if (hasFailed()) return;
+            if (!(vt && vt->isVoid()))            {
+                valueSlot = allocateTemp(valueIsFloat ? sema::getFloatType() : sema::getIntType());
+                if (valueIsFloat) _asm.inst("movsd", "%xmm0", valueSlot);
+                else              _asm.mov("%rax", valueSlot);
+            }
+        }
+        // 只销毁块这一层的拥有者（口径同 if 分支 / 循环 break）：
+        // 块外的变量由外层出口负责，块内的必须在这里销毁 ——
+        // ret 是终结性跳转，走不到 popScope 的词法出口。
+        for (size_t i = _scopeDrops.size(); i > ctx.dropDepth; --i)        {
+            emitScopeDrops(i - 1, true);
+        }
+        // 只弹块内建立的 try 帧
+        emitEhUnwindTo(ctx.ehDepth);
+        if (!valueSlot.empty())        {
+            if (valueIsFloat) _asm.inst("movsd", valueSlot, "%xmm0");
+            else              _asm.mov(valueSlot, "%rax");
+            if (!ctx.valueSlot.empty())            {
+                if (valueIsFloat) _asm.inst("movsd", "%xmm0", ctx.valueSlot);
+                else              _asm.mov("%rax", ctx.valueSlot);
+            }
+        }
+        _asm.jmp(ctx.endLabel);
+    }
     void CodeGen::emitIf(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(node);
         if (!cond)        {
@@ -4642,17 +4724,76 @@ namespace backend{
         }
  else                    restoreMoveStates(entryStates); // 全部分支发散：维持入口
     }
-    void CodeGen::emitBlock(const std::shared_ptr<ast::ExpressionNode>& node)    {
+    void CodeGen::emitBlock(const std::shared_ptr<ast::ExpressionNode>& node, const bool asValue)    {
         const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node);
         if (!block)        {
             fail("Not a block: " + node->toString());
             return;
         }
-        pushScope();
-        for (const auto& expr : block->getBodyExpressions())        {
-            emitStatement(expr);
+        // P13-2/L3-N（决议 §12.1 / §13.1 / §15.1）：
+        //   右值位置的裸块 = 「块表达式」，是**可返回值作用域** ——
+        //     块内 `ret value` 退这个块并带出值；
+        //   语句位置的裸块**不是**可返回值作用域（§15.1 明写「ret / break /
+        //     continue 在裸块内按外层上下文生效」），块内 `ret` 直接退外层。
+        // 所以只有 asValue 时才建立 BlockContext，语句块路径与 L1 完全一致。
+        std::string valueSlot;
+        sema::TypePtr blockType;
+        std::string endLabel;
+        if (asValue)        {
+            blockType = inferType(node);
+            if (blockType && !blockType->isVoid())            {
+                valueSlot = allocateTemp(blockType);
+                endLabel = _asm.newLabel("block_end");
+                // 零初始化：块内可能出现不带值的 `ret`（提前退出），
+                // 那种出口不写值槽，出口读到的必须是零值而不是栈上垃圾。
+                if (blockType->isFloat())                {
+                    _asm.inst("xorpd", "%xmm0", "%xmm0");
+                    _asm.inst("movsd", "%xmm0", valueSlot);
+                }
+  else                {
+                    _asm.movImm(0, "%rax");
+                    _asm.mov("%rax", valueSlot);
+                }
+            }
         }
+        // dropDepth 取**pushScope 之前**的深度：块自己的这一层变量在 `ret`
+        // 出口也必须销毁（ret 是终结性跳转，走不到 popScope 的词法出口）。
+        // emitIf 那边取的是 pushScope 之后的深度，因为它的分支体是一个嵌套块，
+        // 差一层正好对上。
+        const size_t dropDepthBefore = _scopeDrops.size();
+        pushScope();
+        if (!valueSlot.empty())        {
+            _blockStack.push_back({endLabel, valueSlot, blockType, dropDepthBefore,
+                                   _ehStack.size(), ++_scopeEnterSeq});
+        }
+        const auto bodyExprs = block->getBodyExpressions();
+        for (size_t i = 0; i < bodyExprs.size(); ++i)        {
+            const auto& expr = bodyExprs[i];
+            // 末表达式本身是块时，它也在值位置（本块的值就是它的值），
+            // 所以按块表达式发射 —— 这样它内部的 `ret` 退的是它自己，
+            // 符合 §13.1「ret 退最近一层」。其余一律按语句发射。
+            if (!valueSlot.empty() && i + 1 == bodyExprs.size() &&
+                std::dynamic_pointer_cast<ast::BlockRangerNode>(expr))            {
+                emitBlock(expr, true);
+            }
+  else            {
+                emitStatement(expr);
+            }
+        }
+        // 末值落槽必须发生在 popScope **之前**：popScope 发出的销毁调用会
+        // 冲掉 %rax / %xmm0。块内若已有 `ret value` 出口，那段代码是不可达的
+        // （ret 已经 jmp 到 endLabel），留着不影响运行。
+        if (!valueSlot.empty() && !hasFailed())        {
+            if (blockType->isFloat()) _asm.inst("movsd", "%xmm0", valueSlot);
+            else                      _asm.mov("%rax", valueSlot);
+        }
+        if (!valueSlot.empty()) _blockStack.pop_back();
         popScope();
+        if (!valueSlot.empty())        {
+            _asm.label(endLabel);
+            if (blockType->isFloat()) _asm.inst("movsd", valueSlot, "%xmm0");
+            else                      _asm.mov(valueSlot, "%rax");
+        }
     }
     void CodeGen::emitLoop(const std::shared_ptr<ast::ExpressionNode>& node)    {
         const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(node);

@@ -253,6 +253,30 @@ Test-Case "L3-L static 不破坏普通字段（对照）" "class A {`n var n: in
 Test-Case "L3-L 未知类型标签仍报错（对照）" "class A {`n var n: int zzz = 0`n}`nfun main(): void { var a: A = A() }" $false "unknown type 'zzz'"
 
 Write-Host ""
+Write-Host "=== L3-N：块表达式作右值（决议 §12.1 / §13.1 / §15.1） ==="
+# 决议 §12.1 把「裸块 { ... }」列为可返回值作用域，§13.1 规定 `ret` 退最近
+# 可返回值作用域。修前 emitBlock 没有值槽、也没有上下文栈，块内 `ret value`
+# 一路落到「退函数」分支，被 void 返回类型挡下：
+#   "Function '__rio_user_main' is declared to return void and cannot return a value"
+# 注意 §15.1：**语句位置**的裸块不是可返回值作用域，块内 ret 按外层上下文生效，
+# 所以下面同时保留语句块的对照用例。
+Test-Case "L3-N 块表达式 ret value" "fun main(): void {`n var a: int = { ret 10 }`n sout(a)`n}" $true ""
+Test-Case "L3-N 块表达式末表达式取值" "fun main(): void {`n var a: int = { 10 }`n sout(a)`n}" $true ""
+Test-Case "L3-N 块表达式多语句末值" "fun main(): void {`n var a: int = {`n  var t = 3`n  t * 4`n }`n sout(a)`n}" $true ""
+Test-Case "L3-N 块表达式 ret str" "fun main(): void {`n var s: str = { ret `"hi`" }`n sout(s)`n}" $true ""
+Test-Case "L3-N 块表达式 ret float" "fun main(): void {`n var f: float = { ret 1.5 }`n sout(f)`n}" $true ""
+Test-Case "L3-N 块表达式嵌套" "fun main(): void {`n var a: int = {`n  var b: int = { ret 3 }`n  ret b + 1`n }`n sout(a)`n}" $true ""
+Test-Case "L3-N 块表达式作实参" "fun twice(x: int): int { ret x * 2 }`nfun main(): void { sout(twice({ 21 })) }" $true ""
+Test-Case "L3-N 块表达式内 if 带 ret" "fun main(): void {`n var a: int = {`n  if (1 > 0) { ret 5 }`n  6`n }`n sout(a)`n}" $true ""
+Test-Case "L3-N 块表达式在循环体内" "fun main(): void {`n var s = 0`n for ({var i = 0; i < 3; i ++}) {`n  var v: int = { ret i }`n  s += v`n }`n sout(s)`n}" $true ""
+Test-Case "L3-N 块表达式内 ret 类型不符报错" "fun main(): void {`n var a: int = { ret `"str`" }`n sout(a)`n}" $false "cannot assign"
+# 语句块对照：块内 ret 按外层上下文生效（§15.1），即退函数，不是退块。
+Test-Case "L3-N 语句块内 ret 仍退函数（对照）" "fun main(): void {`n { ret }`n sout(333)`n}" $true ""
+Test-Case "L3-N 语句块不影响后续语句（对照）" "fun main(): void {`n { sout(1) }`n sout(2)`n}" $true ""
+# 块内局部变量必须在 ret 出口销毁，不能因跳出而漏掉（§15.1 出生地对齐块）。
+Test-Case "L3-N 块表达式 ret 时销毁块内局部" "fun main(): void {`n var a: int = {`n  var s = `"a`" + `"b`"`n  ret 7`n }`n sout(a)`n}" $true ""
+
+Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
 Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 if ($script:fail -gt 0) { exit 1 }

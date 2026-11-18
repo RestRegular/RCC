@@ -155,8 +155,13 @@ namespace backend
         void emitRetFromLoop(const std::shared_ptr<ast::ExpressionNode>& node);
         // P13-2/L2：`ret` 在带 : T 标注的 if 分支里退该 if 并带出值。
         void emitRetFromIf(const std::shared_ptr<ast::ExpressionNode>& node);
+        // P13-2/L3-N：`ret` 在块表达式里退该块并带出值。
+        void emitRetFromBlock(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitIf(const std::shared_ptr<ast::ExpressionNode>& node);
-        void emitBlock(const std::shared_ptr<ast::ExpressionNode>& node);
+        // asValue=true 表示这个块是「块表达式」（出现在右值位置）。
+        // 决议 §13.1 的「块表达式」是可返回值作用域，§15.1 的裸块语句不是 ——
+        // 后者块内 `ret` 按外层上下文生效，所以两种位置必须走不同路径。
+        void emitBlock(const std::shared_ptr<ast::ExpressionNode>& node, bool asValue = false);
         void emitLoop(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitBreak(const std::shared_ptr<ast::ExpressionNode>& node = nullptr);
         void emitContinue();
@@ -723,6 +728,20 @@ namespace backend
             size_t enterSeq = 0;
         };
         std::vector<IfContext> _ifStack;
+        // P13-2/L3-N：块表达式（右值位置的裸块）的上下文。
+        // 决议 §12.1 把「裸块 { ... }」列为可返回值作用域，§13.1 的 `ret`
+        // 退「最近的可返回值作用域」。语句位置的裸块不算（§15.1：块内
+        // ret/break/continue 按外层上下文生效），所以只有值位置的块入栈。
+        struct BlockContext
+        {
+            std::string endLabel;
+            std::string valueSlot;
+            std::shared_ptr<sema::Type> annotatedType;
+            size_t dropDepth = 0;
+            size_t ehDepth = 0;
+            size_t enterSeq = 0;
+        };
+        std::vector<BlockContext> _blockStack;
         size_t _scopeEnterSeq = 0; // 单调递增，用于判定最近的可返回值作用域
 
         // 已知函数签名：名字 -> 返回类型

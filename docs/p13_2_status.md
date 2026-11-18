@@ -20,9 +20,16 @@
 | D 挂起态 | f49e008 | pending_take + 独占检查 + 独立 take 警告 |
 | E 子引用 | 07c8ba0 / 5e85a3d / 9b0017d / 5a800ec / 645ad6b | 子引用类型+地址；路径表+冲突；NLL；穿透展开；get_mut+不等事实 |
 | F 诊断 | ba1f99b / 9ebc47b / a58b1cd / 798f526 / 0c4c1ff / 000629a | 子句进 AST；from 检查；ensures 语法校验；Take 形参调用；ensures 逐出口；writes 泛型校验；实施总结 + dump 子句参数 |
+| G 合流 | 111（L3-G） | 分支/循环的移动状态快照 + 格上界合流 |
+| H ensures | L3-H | throw 出口不检查 ensures；重复项逐项继承前缀标记 |
+| I 方法子句 | L3-I | 方法上的 writes/from/ensures 进校验；try/catch 后 Take 回 `?` |
+| J 出生地 | L3-J | 未声明出生地标签报错；类赋值方向校验 |
+| K/L 顶层与标签 | L3-K / L3-L | 顶层 var 进移动状态表；`static`/`global` 生命周期标签 |
+| M 回归修复 | 59359cf | 泛型类字段 `T`；drop glue 不发 `.globl` |
+| N 块表达式 | L3-N | 右值位置的裸块作可返回值作用域（`var a: int = { ret 10 }`） |
 
-**验证**：`tests/p13_2_regression.ps1`，60 条用例全 PASS；每次提交后回归。
-另有 `tests/_probe/verify_fixes.ps1`（25 条），覆盖审阅中发现的实现缺陷及其对照用例。
+**验证**：`tests/p13_2_regression.ps1`，**121 条用例全 PASS**；每次提交后回归。
+另有 `tests/_probe/verify_fixes.ps1`（43 条），覆盖审阅中发现的实现缺陷及其对照用例。
 
 ## 剩余项与状态
 
@@ -45,6 +52,7 @@
 > 2026-11-18 已实现，见下文「L3-I」一节。
 > **未声明的出生地标签、类赋值方向已不在本表**：2026-11-18 已实现，
 > 见下文「L3-J」一节。
+> **块表达式作右值已不在本表**：2026-11-18 已实现，见下文「L3-N」一节。
 
 | 项 | 决议依据 | 实测表现 |
 |---|---|---|
@@ -532,3 +540,73 @@ ld: ...rt.o:(.text+0xc5e): multiple definition of `__rio_drop_K';
 问题：`fun identity[T](x: T): T { ret x }` 被 P13-1 的 D9 严格借用规则判成
 「'x' is a borrowed value and cannot be returned」。这是用户 2026-11-17 明确
 裁决的口径（**严格报错、不造近似**），不是回归，也不是本次改动引入。
+
+## L3-N：块表达式作右值（2026-11-18 实现）
+
+### 缺口
+
+决议 §12.1 把「裸块 `{ ... }`」列为**可返回值作用域**，§13.1 规定 `ret`
+退**最近的可返回值作用域**。但修前 `emitBlock` 只有
+`pushScope → emitStatement × N → popScope`，既没有值槽也没有上下文栈；
+`emitReturn` 只在 `_loopStack` / `_ifStack` 里找最近的栈顶，于是块内 `ret`
+一路落到「退函数」分支，被 void 返回类型挡下：
+
+```rio
+fun main(): void {
+    var a: int = { ret 10 }
+    sout(a)
+}
+// 报：Function '__rio_user_main' is declared to return void and cannot return a value
+```
+
+`if` 和循环都实现了这条语义，只有裸块漏了 —— 属实现缺口，不是设计待定。
+
+### 关键设计判断：块表达式 ≠ 语句块
+
+决议 §15.1 同时写明：「`ret` / `break` / `continue` 在裸块内**按外层上下文生效**」。
+两条看似冲突，实际分工是：
+
+| 位置 | 是不是可返回值作用域 | 块内 `ret` 退到哪 |
+|---|---|---|
+| 右值位置（`var a = { ... }`、实参、返回表达式） | **是**（§12.1「块表达式」） | 退这个块，带出值 |
+| 语句位置（裸块单独成句） | **不是**（§15.1） | 退外层函数 / 循环 / if |
+
+所以 `emitBlock` 新增 `asValue` 参数，只有 `emitExpression`（值位置）传
+`true`，`emitStatement`（语句位置）保持 `false` —— 语句块路径与 L1 完全一致，
+零回归风险。
+
+### 实现
+
+- `BlockContext { endLabel, valueSlot, annotatedType, dropDepth, ehDepth, enterSeq }`
+  与 `IfContext` 同构；`_blockStack` 参与 `emitReturn` 的「取 enterSeq 最大者」
+  比较，三者统一排序，不再用两两 `if` 判断。
+- `emitRetFromBlock`：算值 → 存临时槽 → 只销毁块这一层（`dropDepth` 取
+  **pushScope 之前**的深度，块自己的局部变量必须在 ret 出口销毁，因为 ret
+  是终结性跳转、走不到词法出口）→ `emitEhUnwindTo` → 写值槽 → `jmp endLabel`。
+- `emitBlock(asValue=true)`：按推断类型开值槽并**零初始化**（块内可能有
+  不带值的提前出口，出口不能读到栈上垃圾）→ 末值落槽**在 popScope 之前**
+  （popScope 的销毁调用会冲掉 `%rax`/`%xmm0`）→ `endLabel` 处读回寄存器。
+- `inferType` 补上块表达式分支：优先取块内 `ret value` 的类型，没有就取末
+  表达式类型。不补的话会一路落到 `int` 兜底，`var s: str = { ret "x" }`
+  的值槽会被开成 int。
+
+### 实测（`tests/p13_2_regression.ps1` L3-N 13 条）
+
+| 写法 | 结果 |
+|---|---|
+| `var a: int = { ret 10 }` | 10 |
+| `var a: int = { 10 }` | 10 |
+| `var a: int = { var t = 3; t * 4 }` | 12 |
+| `var s: str = { ret "hi" }` | hi |
+| `var f: float = { ret 1.5 }` | 1.5 |
+| `var a: int = { var b: int = { ret 3 }; ret b + 1 }` | 4 |
+| `twice({ 21 })`（实参位置） | 42 |
+| `var a: int = { if (1>0) { ret 5 }; 6 }` | 5 |
+| 循环体内 `var v: int = { ret i }` | 累加正确 |
+| `var a: int = { ret "str" }` | 报 `cannot assign`（类型不符） |
+| `{ ret }`（语句块） | 仍退函数（§15.1 对照） |
+| `{ sout(1) }; sout(2)`（语句块） | 1 后 2，不受影响 |
+
+**回归**：`p13_2_regression` 108 → **121/121**（新增 13 条全过）；
+`verify_fixes` 43/43；全量 `test_all.ps1` 25 套件 19 通过 / **556 通过
+108 失败**（较修前 553/111 多 3 条通过，失败套件仍是同一批 6 个既有项）。
