@@ -1047,6 +1047,16 @@ namespace backend
         // 把 srcAddr 处的 struct 值逐字节拷到 dstAddr（都用 core_mem_copy）。
         // 地址由调用方算好放进这两个寄存器/槽位表达式里。
         void emitStructCopy(const std::string& dstAddr, const std::string& srcAddr, long long size);
+        // 决议 A：**所有**调用点都必须走这两个函数，否则返回 struct 的调用
+        // 会退化成「被调方自己造缓冲区」——那是 ret 之后就失效的栈内存。
+        //
+        // prepareStructRetBuf：返回 struct 时在调用方帧里分配返回缓冲区，
+        // 把它的地址存进一个栈槽并返回该槽（空串 = 返回类型不是 struct）。
+        // 非 struct 返回时 argStart 置 0；是 struct 时置 1（缓冲区占掉
+        // 第一个整型寄存器位置，用户实参整体后移一格）。
+        std::string prepareStructRetBuf(const sema::TypePtr& retType, size_t& argStart);
+        // 调用之后把缓冲区地址重新装进 %rax：struct 表达式的结果是**值的地址**。
+        void finishStructRetCall(const std::string& bufSlot);
         // 表达式求值后拿它的**地址**（struct 值语义专用）。
         // 变量 → 槽位地址；构造调用 → 临时槽地址；字段 → 基址+偏移。
         // 返回空串表示推不出来（调用方负责报错）。

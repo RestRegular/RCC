@@ -1,0 +1,12 @@
+// 决议 A：零值默认（Pt()）与字段默认值（var y: int = 5）。
+struct Pt { var x: int, y: int = 5 }
+struct Z { var a: int, b: int }
+fun main(): void {
+    var p: Pt = Pt(1)
+    var z: Z = Z()
+    sout(p.x)
+    sout(p.y)
+    sout(z.a)
+    sout(z.b)
+}
+main()

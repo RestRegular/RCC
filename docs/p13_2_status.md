@@ -7,7 +7,7 @@
 
 > **关于本文里的测试路径**：文中大量引用 `tests/p13_2_regression.ps1` 与
 > `tests/_probe/verify_fixes.ps1`，这两个脚本已在测试体系重构中迁入新契约，
-> 现在分别是 `tests/agent/p13-2-regression/`（126 例）与
+> 现在分别是 `tests/agent/p13-2-regression/`（143 例）与
 > `tests/agent/p13-verify-fixes/`（43 例）。其余 `test_scripts/test_*.ps1`
 > 也已迁入 `tests/agent/<同名套件>/`。这些引用作为**当时的历史记录**保留原样，
 > 不再逐条改写；现行体系见 `docs/architecture_plan.md` §11。
@@ -38,7 +38,7 @@
 | P std 重写 | 29f6e07 | 标准库（str/io/ops/math/ds）按内存模型规范重写完成；期间修掉四个编译器缺陷，见「C-2」一节 |
 | Q clone() | 29f6e07 | `x.clone()` / `clone(x)` 按静态类型派发（str/list/值类型；dict 待 P13-4） |
 
-**验证**：`tests/agent/p13-2-regression/`，**126 条用例全 PASS**；每次提交后回归。
+**验证**：`tests/agent/p13-2-regression/`，**143 条用例全 PASS**；每次提交后回归。
 另有 `tests/agent/p13-verify-fixes/`（43 条），覆盖审阅中发现的实现缺陷及其对照用例。
 
 ## 剩余项与状态
@@ -89,7 +89,8 @@
 > 已于 2026-11-18 修复，见下文「L3-J」一节。修后实测：
 > `var p: Player nosuchpool = Player("a")` 报 `unknown label 'nosuchpool'`；
 > `var a: Enemy = Player("x")` 报 `not the same class or a derived class`。
-> 其余回归修复见「L3-M」一节。
+> 其余回归修复见「L3-M」一节。2026-11-18 又补了一轮 struct 返回 ABI 的三处
+> 缺陷，见「L3-P」一节。
 
 ### C-2. 2026-11-18 标准库重写期间修掉的编译器缺陷
 
@@ -759,3 +760,96 @@ emitFunctionBody(methodSymbolName, paramNames, paramTypes, ret,
 
 **回归**：`p13_2_regression` 121 → **126/126**；`verify_fixes` 43/43；
 全量 `test_all.ps1` **556 通过 / 108 失败**，与修前持平，无回归。
+
+## L3-P：struct 返回 ABI 的三处缺陷（2026-11-18 修复）
+
+决议 A 规定「返回 struct 时，调用方分配返回缓冲区，把地址当第一个整型
+实参传进去；被调方把值拷进去并在 %rax 里返回该地址」。这条约定只有
+**普通函数调用**一处实现了，另外三条调用路径都没有 —— 于是「返回 struct
+的函数」在泛型、重载、方法三种场景下分别以不同方式出错。
+
+### 缺陷一：泛型实例返回 struct → 运行时访问违例
+
+```rio
+struct Pt { var x: int }
+fun id[T](v: T): Pt { var p: Pt = Pt(2)  ret p }
+fun main(): void { var b: Pt = id(5)  sout(b.x) }
+```
+
+修前编译 exit=0，运行 `-1073741819`（0xC0000005）。生成的汇编里
+`_G2idi` 入口是 `movq %rcx,-8(%rbp)` —— 它把 `__p5_retbuf` 当成第一个
+**用户形参**接了下来，而调用点 `__rio_user_main` 根本没分配缓冲区：
+`movq $5,0(%rsp)` 之后 `movq 0(%rsp),%rcx`，%rcx 里是 5 而不是地址。
+`ret p` 于是往地址 5 写，随后 `movq 0(%r11),%rax` 解引用垃圾。
+
+根因：`tryEmitGenericCall()` 只做了 `emitArgsToRegisters` + `call`，
+没有 `emitFunctionCall()` 里那段返回缓冲区分支，也没调 `applyWriteEffects`。
+
+### 缺陷二：重载决议出的那一份返回 struct → 同样的崩溃
+
+`fun mk(v: int): Pt` 与 `fun mk(v: str): Pt` 并存时，`var p: Pt = mk(4)`
+走 `emitResolvedCall()`，那条路径同样缺返回缓冲区分支，症状与缺陷一一致
+（exit `0xC0000005`）。返回类型只能从**决议后的签名** `sig.retType` 取，
+因为重载名不进 `_functionReturns`。
+
+### 缺陷三：方法返回 struct → 静默破坏接收者对象
+
+```rio
+class Box {
+    var v: int, w: int
+    ctor(n: int) { this.v = n  this.w = 100 }
+    fun make(): Pt { var p: Pt = Pt(11, 22)  ret p }
+}
+var b: Box = Box(7)
+var p: Pt = b.make()
+sout(p.x) sout(p.y) sout(b.v) sout(b.w)   // 修前：11 22 11 22
+```
+
+修前打印 **11 / 22 / 11 / 22**，期望 **11 / 22 / 7 / 100** —— `b.v`/`b.w`
+被覆盖成了 struct 的字段值。这条最危险：不崩溃、不报错，只是悄悄把接收者
+对象改掉。
+
+两层原因叠加：
+
+1. 调用点 `emitMethodCall()` 把接收者放进 `%rcx`，没给返回缓冲区留位置；
+2. 被调方 `emitFunctionBody()` 里 `hasThis` 分支写死 `mov %rcx` 并
+   `argPos = 1`。返回 struct 时第 0 个位置已经给了 `__p5_retbuf`，于是
+   `this` 槽和返回缓冲区槽指向**同一个寄存器** —— `ret p` 的 struct 拷贝
+   直接写进了 Box 对象。
+
+### 修法
+
+- 新增 `prepareStructRetBuf(retType, argStart)` / `finishStructRetCall(bufSlot)`
+  两个 helper，把「分配缓冲区 → 存槽 → 实参后移一格 → 调用后把地址装回 %rax」
+  收敛成一处，避免四条路径各写一遍再次漂移。
+- 四条调用路径全部改走它：`emitFunctionCall`（原本已有，改为复用）、
+  `emitResolvedCall`、`tryEmitGenericCall`、`emitMethodCall`、`emitModuleFunctionCall`。
+- `emitFunctionBody` 的 `hasThis` 分支改成按 `argPos` 顺延（`argPos += 1`
+  并取 `intRegs[argPos]`），并支持 `this` 溢出到栈参数区的情况。
+- 方法调用的位置分配：非 struct 返回 → `this` 占第 0 位、用户实参从 1 开始；
+  返回 struct → 缓冲区第 0 位、`this` 第 1 位、用户实参从 **2** 开始。
+  这条一开始写成 1，`b.five(1,2,3,4,5)` 立刻给出 `2/7/100` 而不是
+  `103/12/100`，正是实参与 `this` 抢寄存器的症状。
+
+### 实测
+
+| 用例 | 修前 | 修后 |
+|---|---|---|
+| `L3-struct-ret-generic`（泛型实例返回 struct） | exit `0xC0000005` | `2` |
+| `L3-struct-ret-overload`（重载返回 struct） | exit `0xC0000005` | `4` |
+| `L3-struct-ret-method`（方法返回 struct） | `11 22 11 22` | `11 22 7 100` |
+| `L3-struct-ret-method-spill`（实参跨寄存器/栈） | 实参与 this 撞位 | `103 12 100` |
+
+**回归**：`p13-2-regression` 134 → **143/143**（新增 9 条 struct 用例）；
+全量 `tests/user/run-all.ps1` **27 套件 901 用例全过，0 失败**。
+
+### 仍未覆盖
+
+- 间接调用（函数值 / 闭包）返回 struct：闭包对象只存 fnptr + env，没有
+  返回类型信息，当前无法在调用点判断要不要分配缓冲区。未做静默降级，
+  留待后续设计（不在本次 bug 修复范围）。
+- `struct` 作类字段（`var p: Pt`）：实测报 `cannot assign a value of type int`，
+  属既有的类型推断限制，与本次 ABI 缺陷无关。
+- `mk(1,2).x`（对调用结果直接取字段）：报 `Cannot determine the object type
+  of attribute access`，同样属既有推断限制。
+

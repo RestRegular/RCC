@@ -1,0 +1,13 @@
+// 决议 A：struct 是值语义 —— 构造、读字段、赋值即逐字节拷贝，
+// 拷贝之后两份互不影响。
+struct Pt { var x: int, y: int }
+fun main(): void {
+    var a: Pt = Pt(1, 2)
+    var b: Pt = a
+    b.x = 99
+    sout(a.x)
+    sout(a.y)
+    sout(b.x)
+    sout(b.y)
+}
+main()

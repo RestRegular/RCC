@@ -1,0 +1,19 @@
+// 决议 A + P6：方法返回 struct，且 this 顺延之后用户实参跨越寄存器/栈边界。
+// 修前 this 写死 %rcx 且 argPos 被重置为 1，实参会和 this 抢寄存器。
+struct Pt { var x: int, y: int }
+class Box {
+    var v: int
+    ctor(a: int) { this.v = a }
+    fun five(p: int, q: int, r: int, s: int, t: int): Pt {
+        var u: Pt = Pt(this.v + p + q, r + s + t)
+        ret u
+    }
+}
+fun main(): void {
+    var b: Box = Box(100)
+    var p: Pt = b.five(1, 2, 3, 4, 5)
+    sout(p.x)
+    sout(p.y)
+    sout(b.v)
+}
+main()

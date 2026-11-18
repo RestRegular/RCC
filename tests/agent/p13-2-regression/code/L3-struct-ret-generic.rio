@@ -1,0 +1,13 @@
+// 决议 A + P10：泛型实例返回 struct。修前 tryEmitGenericCall 没有返回
+// 缓冲区分支，实例体把 __p5_retbuf 当第一个用户形参接 %rcx，调用点也不
+// 分配缓冲区 —— 编译通过但运行时访问违例（0xC0000005）。
+struct Pt { var x: int }
+fun id[T](v: T): Pt {
+    var p: Pt = Pt(2)
+    ret p
+}
+fun main(): void {
+    var b: Pt = id(5)
+    sout(b.x)
+}
+main()

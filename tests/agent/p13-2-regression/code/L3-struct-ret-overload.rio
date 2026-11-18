@@ -1,0 +1,16 @@
+// 决议 A + P11：重载决议出的那一份返回 struct。修前 emitResolvedCall
+// 同样缺返回缓冲区分支，与泛型路径同一类崩溃。
+struct Pt { var x: int }
+fun mk(v: int): Pt {
+    var p: Pt = Pt(v)
+    ret p
+}
+fun mk(v: str): Pt {
+    var p: Pt = Pt(99)
+    ret p
+}
+fun main(): void {
+    var p: Pt = mk(4)
+    sout(p.x)
+}
+main()

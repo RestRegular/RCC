@@ -2830,15 +2830,21 @@ namespace backend
             if (!pt || pt->getKind() == sema::TypeKind::TK_UNKNOWN)
                 pt = sema::getIntType();
         }
-        const size_t callArea = emitArgsToRegisters(flat, displayName, paramTypes, 0, &sig.annotated);
+        // 决议 A：重载同样可能是「返回 struct」的那一份。返回类型只能从
+        // 决议后的签名里拿（重载名不进 _functionReturns）。
+        size_t argStart = 0;
+        const std::string structRetBuf = prepareStructRetBuf(sig.retType, argStart);
+        const size_t callArea = emitArgsToRegisters(flat, displayName, paramTypes, argStart, &sig.annotated);
         if (hasFailed())
             return;
         if (!applyWriteEffects(symbol, displayName, flat, utils::getUnknownPos()))
             return;
+        if (!structRetBuf.empty())
+            _asm.mov(structRetBuf, "%rcx");
         _asm.call(symbol);
         _asm.addRsp(callArea);
-    }
-    void CodeGen::failOverload(const std::string& name, const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+        finishStructRetCall(structRetBuf);
+    }    void CodeGen::failOverload(const std::string& name, const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
                                const utils::Pos& pos, bool ambiguous)
     {
         // 候选签名用**原始标注文本**呈现：`fun f(x: Piont)` 要原样报出 "Piont"，
@@ -9051,17 +9057,8 @@ namespace backend
         // 不能让被调方在自己帧里造。
         const auto retIt = _functionReturns.find(fname);
         const auto retType = retIt != _functionReturns.end() ? retIt->second : nullptr;
-        std::string structRetBuf;
         size_t argStart = 0;
-        if (retType && retType->getKind() == sema::TypeKind::TK_STRUCT)
-        {
-            const std::string buf = allocateTemp(retType);
-            _asm.lea(buf, "%rax");
-            const std::string keep = allocateTemp(sema::getPtrType());
-            _asm.mov("%rax", keep);
-            structRetBuf = keep;
-            argStart = 1;
-        }
+        const std::string structRetBuf = prepareStructRetBuf(retType, argStart);
         const size_t callArea = emitArgsToRegisters(callArgs, fname, paramTypes, argStart, annotatedMask);
         if (hasFailed())
         {
@@ -9083,10 +9080,7 @@ namespace backend
         _asm.mov(structRetBuf, "%rcx");
         _asm.call(emitName);
         _asm.addRsp(callArea);
-        // 被调方已经把值拷进缓冲区，并把缓冲区地址放进 %rax；
-        // 表达式结果就是那个地址（值语义约定）。这里重新装一次是因为
-        // applyWriteEffects / 调用本身可能已经冲掉了 %rax。
-        _asm.mov(structRetBuf, "%rax");
+        finishStructRetCall(structRetBuf);
     }
     bool CodeGen::isModuleName(const std::string& name) const
     {
@@ -9309,13 +9303,21 @@ namespace backend
         {
             paramTypes = found->second;
         }
-        const size_t callArea = emitArgsToRegisters(normalizeCallArgs(args, fname), fname, paramTypes);
+        // 决议 A：模块函数同样可能返回 struct（返回缓冲区走第一个整型位置）。
+        const auto modRetIt = _functionReturns.find(fname);
+        const auto modRetType = modRetIt != _functionReturns.end() ? modRetIt->second : nullptr;
+        size_t modArgStart = 0;
+        const std::string modRetBuf = prepareStructRetBuf(modRetType, modArgStart);
+        const size_t callArea = emitArgsToRegisters(normalizeCallArgs(args, fname), fname, paramTypes, modArgStart);
         if (hasFailed())
         {
             return;
         }
+        if (!modRetBuf.empty())
+            _asm.mov(modRetBuf, "%rcx");
         _asm.call(fname);
         _asm.addRsp(callArea);
+        finishStructRetCall(modRetBuf);
     }
     void CodeGen::emitRtPrintCall(const std::string& fnName, bool isFloat)
     {
@@ -11464,6 +11466,29 @@ namespace backend
         }
         _asm.mov("%r10", "%rax");
     }
+    std::string CodeGen::prepareStructRetBuf(const sema::TypePtr& retType, size_t& argStart)
+    {
+        argStart = 0;
+        if (!retType || retType->getKind() != sema::TypeKind::TK_STRUCT)
+            return std::string();
+        // 缓冲区必须是**调用方帧**里的槽：被调方 ret 之后自己的帧就没了。
+        const std::string buf = allocateTemp(retType);
+        _asm.lea(buf, "%rax");
+        // 实参布置会用到 %rax，也可能把 %rcx 冲掉，所以先把地址存进栈槽，
+        // 等所有实参都布置完再统一装进第一个整型寄存器。
+        const std::string keep = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", keep);
+        argStart = 1; // 缓冲区占掉第 0 个位置，用户实参整体后移
+        return keep;
+    }
+    void CodeGen::finishStructRetCall(const std::string& bufSlot)
+    {
+        if (bufSlot.empty())
+            return;
+        // 表达式的结果是「值的地址」。不能直接用被调方返回的 %rax —— 中间
+        // 的 applyWriteEffects / 其他调用可能已经把它冲掉了。
+        _asm.mov(bufSlot, "%rax");
+    }
     void CodeGen::emitStructConstructor(const std::string& structName,
                                         const std::shared_ptr<ast::ExpressionNode>& callNode,
                                         const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)
@@ -12309,6 +12334,9 @@ namespace backend
         }
         while (paramTypes.size() < paramNames.size())
             paramTypes.push_back(sema::getIntType());
+        // 被选中那一份定义（重载决议会替换掉 it->second.def）。返回类型必须
+        // 从**选中的那一份**推，否则同名不同返回类型的方法会拿错缓冲区大小。
+        std::shared_ptr<ast::FunctionDefinitionNode> selectedDef = it->second.def;
         // P12/G5：方法重载决议。
         // 判据与全局函数完全一致（P11）：唯一名字保持裸名，≥2 个定义才修饰。
         // 修饰名里带类名，避免两个类的方法互相撞符号。
@@ -12377,6 +12405,7 @@ namespace backend
                 }
             }
             symbol = mangleOverload(best->owner + "." + methodId->getName(), bestTypes);
+            selectedDef = best->def;
             // 形参类型/名字换成被选中那一份的
             paramNames.clear();
             paramTypes.clear();
@@ -12394,7 +12423,9 @@ namespace backend
             while (paramTypes.size() < paramNames.size())
                 paramTypes.push_back(sema::getIntType());
         }
-        // 接收者先求值存进栈槽（实参求值可能包含调用），最后落到 %rcx。
+        // 决议 A：方法也可能返回 struct。返回类型从被选中那一份的签名推。
+        sema::TypePtr methRetType = methodReturnType(selectedDef, paramNames, paramTypes, owner);
+        // 接收者先求值存进栈槽（实参求值可能包含调用），最后落到接收者寄存器。
         // 不能用 push：push 会破坏调用点的 16 字节对齐。
         emitExpression(member->getLeftNode());
         if (hasFailed())
@@ -12404,14 +12435,29 @@ namespace backend
         const std::vector<bool>* methMask = nullptr;
         if (const auto found = _functionParamAnnotated.find(symbol); found != _functionParamAnnotated.end())
             methMask = &found->second;
-        const size_t methArea = emitArgsToRegisters(args, symbol, paramTypes, 1, methMask);
+        // 位置分配：非 struct 返回时 this 占第 0 位、用户实参从 1 开始；
+        // 返回 struct 时第 0 位让给返回缓冲区、this 顺延到第 1 位、用户实参
+        // 从 2 开始。**必须**这样排，否则实参会和 this 抢同一个寄存器。
+        size_t methArgStart = 0;
+        const std::string methRetBuf = prepareStructRetBuf(methRetType, methArgStart);
+        methArgStart = methRetBuf.empty() ? 1 : 2;
+        const size_t methArea = emitArgsToRegisters(args, symbol, paramTypes, methArgStart, methMask);
         if (hasFailed())
         {
             return;
         }
-        _asm.mov(receiverSlot, "%rcx");
+        if (!methRetBuf.empty())
+        {
+            _asm.mov(methRetBuf, "%rcx");
+            _asm.mov(receiverSlot, "%rdx");
+        }
+        else
+        {
+            _asm.mov(receiverSlot, "%rcx");
+        }
         _asm.call(symbol);
         _asm.addRsp(methArea);
+        finishStructRetCall(methRetBuf);
     }
     void CodeGen::emitSuperCall(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)
     {
@@ -13026,11 +13072,22 @@ namespace backend
         {
             instMask = &p->second;
         }
-        const size_t instArea = emitArgsToRegisters(instArgs, mangled, paramTypes, 0, instMask);
+        // 决议 A：泛型实例同样可能返回 struct（`fun id[T](v: T): Pt`）。
+        // 修前这里没有返回缓冲区分支：实例体把 `__p5_retbuf` 当成第一个
+        // 用户形参去接 %rcx，调用点也没分配缓冲区，`movq %rax, slot` 之后
+        // 再解引用就是访问违例（实测 r2.rio 退出码 0xC0000005）。
+        const auto instRetIt = _functionReturns.find(mangled);
+        const auto instRetType = instRetIt != _functionReturns.end() ? instRetIt->second : nullptr;
+        size_t instArgStart = 0;
+        const std::string instRetBuf = prepareStructRetBuf(instRetType, instArgStart);
+        const size_t instArea = emitArgsToRegisters(instArgs, mangled, paramTypes, instArgStart, instMask);
         if (hasFailed())
             return true;
+        if (!instRetBuf.empty())
+            _asm.mov(instRetBuf, "%rcx");
         _asm.call(mangled);
         _asm.addRsp(instArea);
+        finishStructRetCall(instRetBuf);
         return true;
     }
     void CodeGen::emitFunctionDefinition(const std::shared_ptr<ast::FunctionDefinitionNode>& node)
@@ -13496,17 +13553,32 @@ namespace backend
             _asm.mov(intRegs[argPos], _structRetBufSlot);
             argPos += 1;
         }
-        // P6：构造器/方法有隐藏的 this 参数，占掉第一个整型寄存器（%rcx），
-        // 用户形参整体后移一格。this 存成一个普通局部槽位，这样函数体里
+        // P6：构造器/方法有隐藏的 this 参数，占掉一个整型寄存器，用户形参
+        // 整体后移一格。this 存成一个普通局部槽位，这样函数体里
         // `this.x` 走的是和普通变量完全一样的取址路径。
+        //
+        // 位置必须按 argPos 顺延，**不能**写死 %rcx：返回 struct 的方法
+        // 已经把第 0 个位置让给 `__p5_retbuf` 了，此时 this 在 %rdx。
+        // 修前这里无条件 `mov %rcx` + `argPos = 1`，于是 this 和返回缓冲区
+        // 指向同一块内存 —— `ret p` 会把 struct 值写进**接收者对象本身**
+        // （实测：`b.make()` 返回 Pt(11,22) 之后 b.v/b.w 从 7/100 变成 11/22）。
         if (hasThis)
         {
             sema::TypePtr thisType = _currentClass.empty() ? sema::getIntType() : resolveTypeName(_currentClass);
             if (!thisType)
                 thisType = sema::getIntType();
             const long long offset = allocateSlot("this", thisType, thisType->getSize());
-            _asm.mov("%rcx", std::to_string(offset) + "(%rbp)");
-            argPos = 1;
+            if (argPos < registerSlots)
+            {
+                _asm.mov(intRegs[argPos], std::to_string(offset) + "(%rbp)");
+            }
+            else
+            {
+                const std::string from = std::to_string(_abi.getStackArgOffset(argPos - registerSlots) + 8) + "(%rbp)";
+                _asm.mov(from, "%rax");
+                _asm.mov("%rax", std::to_string(offset) + "(%rbp)");
+            }
+            argPos += 1;
         }
         for (size_t i = 0; i < paramNames.size(); ++i)
         {

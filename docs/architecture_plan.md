@@ -548,7 +548,7 @@ P6 见 `docs/p6_plan.md`；P7 见 `docs/p7_plan.md`；P8 见 `docs/p8_plan.md`�
 `test_14_iter` / `test_15_forinrange` 是 G6（闭包写回）延期的已知失败，非回归。
 test_14_iter / test_15_forinrange 仍然不通过，但**不再是 P8 的门槛**：
 它们依赖旧 LLVM 时代的 `release/Lib/builtin/ds.rio`（`encapsulated` + RA 指令），
-属于 P12「重写标准库」的范围。P8 的门槛改为 `test_scripts/test_p8_modules.ps1`（13 个用例）。
+属于 P12「重写标准库」的范围。P8 的门槛改为 `tests/agent/p8-modules/`（13 个用例）。
 
 ### 9.2 依赖关系
 

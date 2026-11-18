@@ -1,0 +1,12 @@
+// 决议 A：返回 struct 走调用方提供的返回缓冲区。
+struct Pt { var x: int, y: int }
+fun mk(a: int, b: int): Pt {
+    var t: Pt = Pt(a, b)
+    ret t
+}
+fun main(): void {
+    var p: Pt = mk(3, 4)
+    sout(p.x)
+    sout(p.y)
+}
+main()

@@ -1,0 +1,24 @@
+// 决议 A + P6：方法返回 struct。修前 emitMethodCall 不给返回缓冲区留位置，
+// 被调方的 this 槽与 __p5_retbuf 撞同一个寄存器 —— `ret p` 会把 struct
+// 值写进**接收者对象本身**，b.v/b.w 被覆盖成 11/22。
+struct Pt { var x: int, y: int }
+class Box {
+    var v: int, w: int
+    ctor(n: int) {
+        this.v = n
+        this.w = 100
+    }
+    fun make(): Pt {
+        var p: Pt = Pt(11, 22)
+        ret p
+    }
+}
+fun main(): void {
+    var b: Box = Box(7)
+    var p: Pt = b.make()
+    sout(p.x)
+    sout(p.y)
+    sout(b.v)
+    sout(b.w)
+}
+main()

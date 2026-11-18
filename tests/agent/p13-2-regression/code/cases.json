@@ -933,6 +933,51 @@
                       "mustMatchLiteral":  true,
                       "expectFailure":  true,
                       "file":  "code/L3-get_mut-growth.rio"
+                  },
+                  {
+                      "id":  "L3-struct-value",
+                      "file":  "code/L3-struct-value.rio",
+                      "expect":  "1\n2\n99\n2"
+                  },
+                  {
+                      "id":  "L3-struct-default",
+                      "file":  "code/L3-struct-default.rio",
+                      "expect":  "1\n5\n0\n0"
+                  },
+                  {
+                      "id":  "L3-struct-param",
+                      "file":  "code/L3-struct-param.rio",
+                      "expect":  "101\n1\n2"
+                  },
+                  {
+                      "id":  "L3-struct-ret",
+                      "file":  "code/L3-struct-ret.rio",
+                      "expect":  "3\n4"
+                  },
+                  {
+                      "id":  "L3-struct-ret-generic",
+                      "file":  "code/L3-struct-ret-generic.rio",
+                      "expect":  "2"
+                  },
+                  {
+                      "id":  "L3-struct-ret-overload",
+                      "file":  "code/L3-struct-ret-overload.rio",
+                      "expect":  "4"
+                  },
+                  {
+                      "id":  "L3-struct-ret-method",
+                      "file":  "code/L3-struct-ret-method.rio",
+                      "expect":  "11\n22\n7\n100"
+                  },
+                  {
+                      "id":  "L3-struct-ret-method-spill",
+                      "file":  "code/L3-struct-ret-method-spill.rio",
+                      "expect":  "103\n12\n100"
+                  },
+                  {
+                      "id":  "L3-struct-scalar-fields",
+                      "file":  "code/L3-struct-scalar-fields.rio",
+                      "expect":  "7\n1.5\ntrue\nz"
                   }
               ]
 }

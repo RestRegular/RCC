@@ -1,0 +1,11 @@
+// 决议 A：字段只允许标量（int / float / bool / char），各按自己的宽度存。
+// char 字面量是 'A' 形式，打印出来是字符本身。
+struct Mixed { var i: int, f: float, b: bool, c: char }
+fun main(): void {
+    var m: Mixed = Mixed(7, 1.5, true, 'z')
+    sout(m.i)
+    sout(m.f)
+    sout(m.b)
+    sout(m.c)
+}
+main()

@@ -246,12 +246,18 @@ Error: Cannot determine the object type of method call
 | 四态状态格 | E/F/H/X 是**编译期事实表**，不是运行时元数据（**不是 ABI 变更**） | ✅ 已实现 |
 | take 挂起态 | `pending_take` 集合；同一语句 = 同一 AST 节点；独立 take 警告不阻断 | ✅ 独立 `take()` 出 warning；挂起态检查工作 |
 | 子引用 / NLL | 路径穿透引用展开；过程内 NLL + 跨函数保守 | ✅ `var r: Ref[str] = &p.name` 工作 |
-| 签名标注校验 | `ensures` 逐出口、`from` 子集、`writes` 泛型上界 | ✅ 126 条回归全过 |
+| 签名标注校验 | `ensures` 逐出口、`from` 子集、`writes` 泛型上界 | ✅ 143 条回归全过 |
 
 **另外两处实现与决议不一致，已记为待修缺陷（不涉设计，不需要裁决）**：
 
 1. `release(x)` 全局函数形态：决议 §6.4 标题写 `release(x)`，但 §2.1 明确方法形态 `pool.release(x)`。实测全局 `release(p)` 能过类型检查但**链接失败**（`undefined reference to 'release'`）。应删掉这个伪符号或补上实现。
 2. `pool.add_reusing(...)`：§3.1 提到"或 `pool.add_reusing(...)` 优先填空槽"，但语法层完全没有。需要确认这是**必做**还是**可选优化**。
+
+**2026-11-18 补记**：另有三处 struct 返回 ABI 缺陷（泛型 / 重载 / 方法三条调用
+路径没给返回缓冲区留位置，其中方法路径会把 struct 值写进接收者对象本身）
+已修复，详见 `docs/p13_2_status.md`「L3-P」一节。同轮补了 9 条 struct 回归用例
+（`tests/agent/p13-2-regression/code/L3-struct-*.rio`）—— 此前整个回归套件里
+没有任何 `struct` 声明。
 
 ---
 

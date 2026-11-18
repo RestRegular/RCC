@@ -1,0 +1,14 @@
+// 决议 A：struct 形参按值传递 —— 被调方拿到独立副本，改它不影响调用方。
+struct Pt { var x: int, y: int }
+fun bump(p: Pt): int {
+    p.x = p.x + 100
+    ret p.x
+}
+fun main(): void {
+    var a: Pt = Pt(1, 2)
+    var n: int = bump(a)
+    sout(n)
+    sout(a.x)
+    sout(a.y)
+}
+main()
