@@ -10,8 +10,18 @@
 #    manifest.name   与目录名一致
 #    manifest.entry  指向的文件确实存在
 #
+#  用例清单一致性（仅对带 code/cases.json 的套件）：
+#    manifest.caseCount 必须等于 cases.json 里 cases 的实际条数
+#    每条 case 的 id 必须唯一
+#    每条 case 引用的源文件必须存在（单文件用 file，多文件用 main + files）
+#    code/ 下的 .rio 必须都被 cases.json 引用（防止加了用例却没登记）
+#
+#  为什么要校验 caseCount：这个字段没有任何脚本读取，纯粹是给人看的数字，
+#  于是极易忘记同步 —— 实测多次出现「加了用例但 manifest 数字没改」。
+#  它一旦和实际不符，文档里的「N 条用例全过」就是假的。
+#
 #  只校验 cases/ 与 agent/；user/ 是用户自由区，不校验。
-#  以 `_` 开头的目录视为内部共享目录（如 agent/_shared），跳过。
+#  以 `_` 开头的目录视为内部共享目录（如 _shared），跳过。
 #
 #  用法：
 #    powershell -NoProfile -ExecutionPolicy Bypass -File tests\validate.ps1
@@ -94,6 +104,72 @@ foreach ($group in @('cases', 'agent')) {
         if (-not (Test-Path $codePath))  { Fail $name '缺 code/'; $ok = $false }
         if (-not (Test-Path $readmePath)) { Warn $name '缺 README.md' }
         if (-not (Test-Path $expectPath)) { Warn $name '缺 expected/' }
+
+        # ---------- 用例清单一致性（只对带 code/cases.json 的套件） ----------
+        # 旧式套件（用例直接写在 execute.ps1 里、code/ 只有 .gitkeep）没有
+        # cases.json，无法静态核对条数，跳过 —— 它们由 run-all 解析
+        # 「结果：通过 N」那行来统计，不在本脚本职责内。
+        $casesPath = Join-Path $codePath 'cases.json'
+        if (Test-Path $casesPath) {
+            $spec = $null
+            try {
+                $spec = Get-Content $casesPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            } catch {
+                Fail $name ('code/cases.json 不是合法 JSON: ' + $_.Exception.Message); $ok = $false
+            }
+            if ($spec) {
+                $cases = @($spec.cases)
+                $actualCount = $cases.Count
+
+                # ① caseCount 与实际条数一致
+                if ($null -eq $m) {
+                    # manifest 本身缺失/损坏，前面已报错，这里不重复
+                } elseif ($null -eq $m.caseCount) {
+                    Fail $name ("manifest.json 缺字段 'caseCount'（cases.json 实际 {0} 条）" -f $actualCount); $ok = $false
+                } elseif ([int]$m.caseCount -ne $actualCount) {
+                    Fail $name ("manifest.caseCount={0} 与 cases.json 实际 {1} 条不一致（改了用例记得同步数字）" -f $m.caseCount, $actualCount)
+                    $ok = $false
+                }
+
+                # ② id 唯一
+                $dups = @($cases | ForEach-Object { $_.id } | Group-Object | Where-Object { $_.Count -gt 1 })
+                foreach ($d in $dups) {
+                    Fail $name ("cases.json 里 id '{0}' 重复 {1} 次" -f $d.Name, $d.Count); $ok = $false
+                }
+
+                # ③ 每条 case 引用的源文件存在，并收集被引用的文件名
+                $referenced = @{}
+                foreach ($c in $cases) {
+                    $refs = @()
+                    if ($c.file) {
+                        $refs += $c.file
+                    } else {
+                        if ($c.main) { $refs += $c.main }
+                        if ($c.files) { $refs += @($c.files) }
+                    }
+                    if ($refs.Count -eq 0) {
+                        Fail $name ("case '{0}' 既没有 file 也没有 main/files 字段" -f $c.id); $ok = $false
+                        continue
+                    }
+                    foreach ($r in $refs) {
+                        # 用例里的路径是相对套件目录、用 / 分隔
+                        $abs = Join-Path $s.FullName ($r -replace '/', '\')
+                        if (-not (Test-Path $abs)) {
+                            Fail $name ("case '{0}' 引用的文件不存在: {1}" -f $c.id, $r); $ok = $false
+                        }
+                        $referenced[(Split-Path $r -Leaf)] = $true
+                    }
+                }
+
+                # ④ code/ 下的 .rio 都被引用（防止加了用例文件却没登记进 cases.json）
+                $orphans = @(Get-ChildItem $codePath -Filter *.rio -File -Recurse |
+                    Where-Object { -not $referenced.ContainsKey($_.Name) })
+                foreach ($o in $orphans) {
+                    $rel = $o.FullName.Substring($s.FullName.Length + 1) -replace '\\', '/'
+                    Warn $name ("code 下的 '{0}' 没有被 cases.json 引用（孤儿用例）" -f $rel)
+                }
+            }
+        }
 
         if ($ok) {
             Write-Host ("  [通过] {0}" -f $name) -ForegroundColor Green
