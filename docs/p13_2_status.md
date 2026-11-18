@@ -56,10 +56,11 @@
 
 ### C. 实现缺陷（与决议不符，属 bug）
 
-| 缺陷 | 根因 | 实测 |
-|---|---|---|
-| 未声明的出生地标签不报错 | 标签只做「最多一个」检查，没查是否对应真实 Pool 变量 | `var p: Player nosuchpool = Player("a")` 通过 |
-| 类赋值类型检查弱 | `var a: Enemy = Player("x")` 无继承关系也通过 | 通过（P13-1 遗留，非 P13-2 引入） |
+> **本表已清空**：原列的两条（「未声明的出生地标签不报错」「类赋值类型检查弱」）
+> 已于 2026-11-18 修复，见下文「L3-J」一节。修后实测：
+> `var p: Player nosuchpool = Player("a")` 报 `unknown label 'nosuchpool'`；
+> `var a: Enemy = Player("x")` 报 `not the same class or a derived class`。
+> 其余回归修复见「L3-M」一节。
 
 ## 判断
 
