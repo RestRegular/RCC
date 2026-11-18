@@ -1,0 +1,14 @@
+var s = 0
+var a = 0
+while a < 5 {
+    a = a + 1
+    var b = 0
+    while b < 5 {
+        b = b + 1
+        if b == 3 {
+            break
+        }
+        s = s + 1
+    }
+}
+sout(s)

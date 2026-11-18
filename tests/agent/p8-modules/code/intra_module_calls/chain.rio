@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun step1(x: int): int { ret x + 1 }
+fun step2(x: int): int { ret step1(x) * 2 }
+fun step3(x: int): int { ret step2(x) + 3 }

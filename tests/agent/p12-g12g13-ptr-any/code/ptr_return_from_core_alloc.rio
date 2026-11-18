@@ -1,0 +1,7 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun cp(): ptr {
+    var p = core_alloc(32, 8)
+    ret p
+}
+var buf = cp()
+sout(buf != null)

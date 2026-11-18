@@ -1,0 +1,7 @@
+class P2 {
+ var name: str
+ var hp: int
+ ctor(n: str) { this.name = n this.hp = 100 }
+ fun hit(): int writes[this.hp] { this.hp = this.hp - 1 ret this.hp }
+}
+fun main(): void { }

@@ -1,0 +1,11 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var li = [0, 0, 0, 0]
+var i: int = 0
+while i < 4 {
+    li[i] = i * i
+    i += 1
+}
+sout(li[0])
+sout(li[1])
+sout(li[2])
+sout(li[3])

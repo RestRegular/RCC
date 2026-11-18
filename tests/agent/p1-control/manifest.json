@@ -1,0 +1,16 @@
+{
+    "name":  "p1-control",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.0286473Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "if/while/for/break/continue 等控制流语义",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  13,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

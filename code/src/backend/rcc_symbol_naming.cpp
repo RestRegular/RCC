@@ -74,6 +74,13 @@ namespace backend
                 const auto name = std::static_pointer_cast<sema::ClassType>(type)->getName();
                 return "N" + std::to_string(name.size()) + name;
             }
+            // 决议 A：值语义 struct 的符号编码。必须与 class 的 `N` 分开，
+            // 否则同名 struct 与 class 会在重载/mangle 上撞车。
+            case sema::TypeKind::TK_STRUCT:
+            {
+                const auto name = std::static_pointer_cast<sema::StructType>(type)->getName();
+                return "S" + std::to_string(name.size()) + name;
+            }
             case sema::TypeKind::TK_GENERIC:
                 return "T0";
             case sema::TypeKind::TK_POOL:

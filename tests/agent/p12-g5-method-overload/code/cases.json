@@ -1,0 +1,59 @@
+{
+    "cases":  [
+                  {
+                      "id":  "overload_int_vs_str",
+                      "file":  "code/overload_int_vs_str.rio",
+                      "expect":  "42\n5"
+                  },
+                  {
+                      "id":  "overload_three",
+                      "file":  "code/overload_three.rio",
+                      "expect":  "1\n2\n3"
+                  },
+                  {
+                      "id":  "single_method_still_works",
+                      "file":  "code/single_method_still_works.rio",
+                      "expect":  "10"
+                  },
+                  {
+                      "id":  "mixed_overload_and_plain",
+                      "file":  "code/mixed_overload_and_plain.rio",
+                      "expect":  "101\n202\n12"
+                  },
+                  {
+                      "id":  "two_classes_same_method_name",
+                      "file":  "code/two_classes_same_method_name.rio",
+                      "expect":  "10\n11\n20\n21"
+                  },
+                  {
+                      "id":  "overload_calls_overload",
+                      "file":  "code/overload_calls_overload.rio",
+                      "expect":  "6"
+                  },
+                  {
+                      "id":  "overload_uses_field",
+                      "file":  "code/overload_uses_field.rio",
+                      "expect":  "6\n8"
+                  },
+                  {
+                      "id":  "overload_int_vs_float",
+                      "file":  "code/overload_int_vs_float.rio",
+                      "expect":  "1\n2"
+                  },
+                  {
+                      "id":  "derived_shadows_base",
+                      "file":  "code/derived_shadows_base.rio",
+                      "expect":  "2"
+                  },
+                  {
+                      "id":  "derived_overload_shadows_base",
+                      "file":  "code/derived_overload_shadows_base.rio",
+                      "expect":  "10\n20"
+                  },
+                  {
+                      "id":  "derived_inherits_method",
+                      "file":  "code/derived_inherits_method.rio",
+                      "expect":  "10"
+                  }
+              ]
+}

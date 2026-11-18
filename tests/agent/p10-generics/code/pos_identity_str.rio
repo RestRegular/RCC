@@ -1,0 +1,5 @@
+fun identity[T](x: T): T { ret clone(x) }
+fun main(): void {
+    sout(identity[str]("rio"))
+}
+main()

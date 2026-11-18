@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var li = [0, 0]
+li[0] = 6
+li[1] = 7
+sout(li[0] * li[1])

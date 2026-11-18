@@ -1,0 +1,4 @@
+fun main(): void {
+    var l: list = 5
+}
+main()

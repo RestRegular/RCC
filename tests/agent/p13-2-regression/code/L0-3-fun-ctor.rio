@@ -1,0 +1,4 @@
+class C { var v: int
+fun ctor(n: int) { this.v = n }
+}
+fun main(): void { var c = C(7) }

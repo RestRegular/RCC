@@ -1,0 +1,6 @@
+import mathx
+fun main() {
+    sout(add(1, 2))
+    sout(mul(6, 7))
+}
+main()

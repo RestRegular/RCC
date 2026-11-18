@@ -1,0 +1,7 @@
+fun sout(*args, end="\n"): void { encapsulated }
+try {
+    sout("try")
+} finally {
+    sout("finally")
+}
+sout("end")

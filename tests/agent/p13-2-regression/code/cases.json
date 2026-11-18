@@ -1,0 +1,884 @@
+{
+    "cases":  [
+                  {
+                      "id":  "L0-1",
+                      "file":  "code/L0-1.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L0-1",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L0-1-2",
+                      "file":  "code/L0-1-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L0-1",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L0-2",
+                      "file":  "code/L0-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L0-2",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L0-3-fun-ctor",
+                      "file":  "code/L0-3-fun-ctor.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L0-3",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L0-4",
+                      "file":  "code/L0-4.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L0-4",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L0-5-break-value",
+                      "file":  "code/L0-5-break-value.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L2:",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L0-6-int",
+                      "file":  "code/L0-6-int.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L0-6",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L0-6-Pool",
+                      "file":  "code/L0-6-Pool.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L0-6",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L0-7",
+                      "file":  "code/L0-7.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L0-7",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L1-ret",
+                      "file":  "code/L1-ret.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L1-return",
+                      "file":  "code/L1-return.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L1",
+                      "file":  "code/L1.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L1-2",
+                      "file":  "code/L1-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L1-3",
+                      "file":  "code/L1-3.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L2-if-T",
+                      "file":  "code/L2-if-T.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L2-if-T-2",
+                      "file":  "code/L2-if-T-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L2:",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L2-if-T-3",
+                      "file":  "code/L2-if-T-3.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L2:",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L2-while-T",
+                      "file":  "code/L2-while-T.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L2-break-value",
+                      "file":  "code/L2-break-value.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L2-break-value-2",
+                      "file":  "code/L2-break-value-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L2:",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L2-break-value-3",
+                      "file":  "code/L2-break-value-3.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L2:",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L2-if-ret-value",
+                      "file":  "code/L2-if-ret-value.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L2-if-ret-value-2",
+                      "file":  "code/L2-if-ret-value-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L2:",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3",
+                      "file":  "code/L3.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-Body",
+                      "file":  "code/L3-Body.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-Content-Body-take",
+                      "file":  "code/L3-Content-Body-take.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot assign",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-Ref-Body",
+                      "file":  "code/L3-Ref-Body.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot pass int",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-Take-var",
+                      "file":  "code/L3-Take-var.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L3:",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-Take",
+                      "file":  "code/L3-Take.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "L3:",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-Take-2",
+                      "file":  "code/L3-Take-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-Content",
+                      "file":  "code/L3-Content.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "Moved state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-Ref",
+                      "file":  "code/L3-Ref.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-Ref-2",
+                      "file":  "code/L3-Ref-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot pass Enemy",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-2",
+                      "file":  "code/L3-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-p.name-4",
+                      "file":  "code/L3-p.name-4.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-3",
+                      "file":  "code/L3-3.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "requires a Body variable",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-ref-mut",
+                      "file":  "code/L3-ref-mut.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-take-var-2",
+                      "file":  "code/L3-take-var-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "Empty state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-take-3",
+                      "file":  "code/L3-take-3.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-take-Content",
+                      "file":  "code/L3-take-Content.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "Empty state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-fill-clear",
+                      "file":  "code/L3-fill-clear.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-fill-E",
+                      "file":  "code/L3-fill-E.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "not Empty",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-release-Pool-E",
+                      "file":  "code/L3-release-Pool-E.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-release",
+                      "file":  "code/L3-release.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cross-pool",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-release-2",
+                      "file":  "code/L3-release-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "no Pool birth place",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-release-E",
+                      "file":  "code/L3-release-E.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "not Empty",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-take-4",
+                      "file":  "code/L3-take-4.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "already taken",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-clear",
+                      "file":  "code/L3-clear.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "pending take",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-clear-4",
+                      "file":  "code/L3-clear-4.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "active sub-references",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-NLL-clear",
+                      "file":  "code/L3-NLL-clear.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-get_mut-i-j",
+                      "file":  "code/L3-get_mut-i-j.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-get_mut",
+                      "file":  "code/L3-get_mut.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "conflicting mutable references",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-from-local-5.2",
+                      "file":  "code/L3-from-local-5.2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot return a reference to local",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-from",
+                      "file":  "code/L3-from.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-ensures-Take-9.2",
+                      "file":  "code/L3-ensures-Take-9.2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "requires a Take",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-ensures-Take-t",
+                      "file":  "code/L3-ensures-Take-t.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-ensures-t-9.2",
+                      "file":  "code/L3-ensures-t-9.2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "unknown state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-Take-take-7.3",
+                      "file":  "code/L3-Take-take-7.3.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "Empty state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-writes-p.field-5.3",
+                      "file":  "code/L3-writes-p.field-5.3.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "instance-level writes",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-writes-p",
+                      "file":  "code/L3-writes-p.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-G-take",
+                      "file":  "code/L3-G-take.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-G-take-2",
+                      "file":  "code/L3-G-take-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "? state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-G-take-take",
+                      "file":  "code/L3-G-take-take.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "? state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-G-clear-fill",
+                      "file":  "code/L3-G-clear-fill.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-G-if-clear-fill",
+                      "file":  "code/L3-G-if-clear-fill.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-G-clear-fill-2",
+                      "file":  "code/L3-G-clear-fill-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-G-else-fill",
+                      "file":  "code/L3-G-else-fill.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "? state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-G-take-clear",
+                      "file":  "code/L3-G-take-clear.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "? state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-G",
+                      "file":  "code/L3-G.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "not Empty",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-G-clear",
+                      "file":  "code/L3-G-clear.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "? state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-G-clear-fill-3",
+                      "file":  "code/L3-G-clear-fill-3.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-G-break-F-E",
+                      "file":  "code/L3-G-break-F-E.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "? state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-G-break-E",
+                      "file":  "code/L3-G-break-E.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-G-Take-3",
+                      "file":  "code/L3-G-Take-3.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-G-Take-take-2",
+                      "file":  "code/L3-G-Take-take-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-H-throw-ensures",
+                      "file":  "code/L3-H-throw-ensures.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-H-throw-t",
+                      "file":  "code/L3-H-throw-t.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-H-throw-ret-ensures",
+                      "file":  "code/L3-H-throw-ret-ensures.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "unknown state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-H-throw-ret",
+                      "file":  "code/L3-H-throw-ret.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-H-ensures-t-t",
+                      "file":  "code/L3-H-ensures-t-t.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "more than once",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-H-ensures-t-t-2",
+                      "file":  "code/L3-H-ensures-t-t-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "more than once",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-H-ensures-t-t-3",
+                      "file":  "code/L3-H-ensures-t-t-3.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "more than once",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-H-ensures-t-t-4",
+                      "file":  "code/L3-H-ensures-t-t-4.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "more than once",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-H-ensures-t",
+                      "file":  "code/L3-H-ensures-t.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "unknown state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-H-ensures-t-2",
+                      "file":  "code/L3-H-ensures-t-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-I-writes-zzz.name",
+                      "file":  "code/L3-I-writes-zzz.name.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "not a parameter",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-I-writes-this.hp",
+                      "file":  "code/L3-I-writes-this.hp.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-I-writes-.",
+                      "file":  "code/L3-I-writes-..rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-I-from-this.name-ret-this.name",
+                      "file":  "code/L3-I-from-this.name-ret-this.name.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-I-ret-this.name-from",
+                      "file":  "code/L3-I-ret-this.name-from.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "not listed",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-I-catch-ret-try-take",
+                      "file":  "code/L3-I-catch-ret-try-take.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "unknown state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-I-catch",
+                      "file":  "code/L3-I-catch.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-I-catch-take",
+                      "file":  "code/L3-I-catch-take.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-I-catch-2",
+                      "file":  "code/L3-I-catch-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-J",
+                      "file":  "code/L3-J.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "unknown label",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-J-Pool",
+                      "file":  "code/L3-J-Pool.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-J-2",
+                      "file":  "code/L3-J-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-J-3",
+                      "file":  "code/L3-J-3.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "not the same class",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-J-4",
+                      "file":  "code/L3-J-4.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-J-5",
+                      "file":  "code/L3-J-5.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "not the same class",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-K-take",
+                      "file":  "code/L3-K-take.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "Empty state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-K-take-2",
+                      "file":  "code/L3-K-take-2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "Empty state",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-K-take-fill",
+                      "file":  "code/L3-K-take-fill.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-K-take-3",
+                      "file":  "code/L3-K-take-3.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-L-static",
+                      "file":  "code/L3-L-static.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-L-global",
+                      "file":  "code/L3-L-global.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-L-static-2",
+                      "file":  "code/L3-L-static-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-L",
+                      "file":  "code/L3-L.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "unknown type \u0027zzz\u0027",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-N-ret-value",
+                      "file":  "code/L3-N-ret-value.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N",
+                      "file":  "code/L3-N.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-2",
+                      "file":  "code/L3-N-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-ret-str",
+                      "file":  "code/L3-N-ret-str.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-ret-float",
+                      "file":  "code/L3-N-ret-float.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-3",
+                      "file":  "code/L3-N-3.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-4",
+                      "file":  "code/L3-N-4.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-if-ret",
+                      "file":  "code/L3-N-if-ret.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-5",
+                      "file":  "code/L3-N-5.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-ret",
+                      "file":  "code/L3-N-ret.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot assign",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-N-ret-2",
+                      "file":  "code/L3-N-ret-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-6",
+                      "file":  "code/L3-N-6.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-N-ret-3",
+                      "file":  "code/L3-N-ret-3.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-O-ret",
+                      "file":  "code/L3-O-ret.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot assign",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-O-ret-float",
+                      "file":  "code/L3-O-ret-float.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-O-ret-void",
+                      "file":  "code/L3-O-ret-void.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "declared to return void",
+                      "mustMatchLiteral":  true
+                  },
+                  {
+                      "id":  "L3-O-ret-2",
+                      "file":  "code/L3-O-ret-2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "L3-O",
+                      "file":  "code/L3-O.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true,
+                      "mustMatch":  "cannot assign",
+                      "mustMatchLiteral":  true
+                  }
+              ]
+}

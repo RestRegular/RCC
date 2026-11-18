@@ -1,0 +1,4 @@
+fun main(): void {
+ var s: str = { ret "hi" }
+ sout(s)
+}

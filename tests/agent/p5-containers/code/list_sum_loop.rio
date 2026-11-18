@@ -1,0 +1,9 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var xs = [1, 2, 3, 4, 5]
+var total = 0
+var i = 0
+while i < 5 {
+    total = total + xs[i]
+    i = i + 1
+}
+sout(total)

@@ -1,0 +1,9 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun noop(): void {
+    ret
+}
+fun f(): int {
+    ret 42
+}
+noop()
+sout(f())

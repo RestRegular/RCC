@@ -1,0 +1,16 @@
+{
+    "name":  "p0-pipeline",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:04:19.5713971Z",
+    "author":  "agent",
+    "type":  "smoke",
+    "description":  "Rio 源码 -\u003e 汇编 -\u003e 目标文件 -\u003e 可执行 -\u003e 运行，整条链路（不依赖 LLVM，只用 GNU as/ld）",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  5,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

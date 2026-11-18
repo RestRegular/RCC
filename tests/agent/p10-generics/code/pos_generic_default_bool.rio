@@ -1,0 +1,6 @@
+fun flag[T](x: T, b: bool = false): bool { ret b }
+fun main(): void {
+    sout(flag(1))
+    sout(flag(2, true))
+}
+main()

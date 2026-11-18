@@ -1,0 +1,4 @@
+fun main(): void {
+    var x: Piont = 1
+}
+main()

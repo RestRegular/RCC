@@ -1,0 +1,7 @@
+fun main(): void {
+ var a: int = {
+  var t = 3
+  t * 4
+ }
+ sout(a)
+}

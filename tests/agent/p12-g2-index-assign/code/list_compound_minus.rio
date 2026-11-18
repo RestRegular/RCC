@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var li = [10, 20, 30]
+li[2] -= 5
+sout(li[2])

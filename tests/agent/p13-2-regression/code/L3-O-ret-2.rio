@@ -1,0 +1,8 @@
+class C {
+ fun name(): str { ret "bob" }
+ fun n(): int { ret 7 }
+}
+fun main(): void { var c = C()
+ sout(c.name())
+ sout(c.n())
+}

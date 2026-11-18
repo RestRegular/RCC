@@ -1,0 +1,1 @@
+fun f(a: int): int from[] { ret a }

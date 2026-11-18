@@ -1,0 +1,5 @@
+fun half(a: float): float { ret a / 2.0 }
+fun main(): void {
+    sout(half(3))
+}
+main()

@@ -1,0 +1,8 @@
+fun sout(*args, end="\n"): void { encapsulated }
+try {
+    sout("in try")
+    throw "x"
+    sout("NOT REACHED")
+} catch(e) {
+    sout("caught")
+}

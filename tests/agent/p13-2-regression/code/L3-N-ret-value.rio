@@ -1,0 +1,4 @@
+fun main(): void {
+ var a: int = { ret 10 }
+ sout(a)
+}

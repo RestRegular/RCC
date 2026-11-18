@@ -1,0 +1,11 @@
+class P {
+    var x: int
+    ctor(v: int) { this.x = v }
+}
+fun f(x: str): void { sout("str") }
+fun f(x: list): void { sout("list") }
+fun main(): void {
+    var p = P(1)
+    f(p)
+}
+main()

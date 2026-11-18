@@ -1,0 +1,5 @@
+var xs = [10, 20]
+if var p = xs.get(0) {
+    sout(p)
+}
+sout(p)

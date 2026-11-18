@@ -1,0 +1,7 @@
+fun f(x: int): void { sout("exact") }
+fun f(x): void { sout("wild") }
+fun main(): void {
+    f(1)
+    f("s")
+}
+main()

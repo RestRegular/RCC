@@ -1,0 +1,17 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var i = 0
+while i < 5 {
+    try {
+        if i == 2 { break }
+        sout(i)
+    } catch(le) {
+        sout("NOT REACHED")
+    }
+    i = i + 1
+}
+sout("loop done")
+try {
+    throw "post loop"
+} catch(pe) {
+    sout(pe)
+}

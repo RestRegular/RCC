@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var l = [2147483648, 9223372036854775807]
+sout(l[0])
+sout(l[1])

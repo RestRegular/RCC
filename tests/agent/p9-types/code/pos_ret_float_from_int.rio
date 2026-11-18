@@ -1,0 +1,5 @@
+fun one(): float { ret 1 }
+fun main(): void {
+    sout(one())
+}
+main()

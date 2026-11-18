@@ -1,0 +1,9 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class A {
+    var base: int = 5
+    fun m(x: int): int { ret this.base + x }
+    fun m(x: str): int { ret this.base + core_str_len(x) }
+}
+var o = A()
+sout(o.m(1))
+sout(o.m("abc"))

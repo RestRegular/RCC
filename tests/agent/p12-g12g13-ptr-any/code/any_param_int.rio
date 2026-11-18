@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun identity(a: any): int {
+    ret a
+}
+sout(identity(7))

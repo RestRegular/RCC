@@ -1,0 +1,6 @@
+fun f(a: int): int { ret a }
+fun f(a: int, b: int): int { ret a + b }
+fun main(): void {
+    f(1, 2, 3)
+}
+main()

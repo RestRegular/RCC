@@ -1,0 +1,16 @@
+{
+    "name":  "p12-g5-method-overload",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.2082652Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "类方法重载决议与符号修饰",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  11,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

@@ -1,0 +1,2 @@
+fun noValue(): void { }
+fun main(): void { var x = if (1 > 0): int { noValue() } else { 8 } }

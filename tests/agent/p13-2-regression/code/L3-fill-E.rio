@@ -1,0 +1,5 @@
+class Player {
+ var name: str
+ ctor(n: str) { this.name = n }
+}
+fun main(): void { var bob: Player = Player("bob"); var c: Content[Player] = null; bob.fill(c) }

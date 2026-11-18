@@ -1,0 +1,7 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun fromInt(v: int): ptr {
+    ret v
+}
+var q: ptr = core_alloc(16, 8)
+var back: ptr = fromInt(q)
+sout(back == q)

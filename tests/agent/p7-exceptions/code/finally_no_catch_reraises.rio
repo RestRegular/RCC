@@ -1,0 +1,12 @@
+fun sout(*args, end="\n"): void { encapsulated }
+try {
+    try {
+        throw "deep"
+    } finally {
+        sout("inner finally")
+    }
+    sout("NOT REACHED")
+} catch(e) {
+    sout("outer caught")
+    sout(e)
+}

@@ -1,0 +1,26 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class A {
+    var a: int
+    ctor(x: int) { this.a = x }
+}
+class B: A {
+    var b: int
+    ctor(x: int, y: int) {
+        super(x)
+        this.b = y
+    }
+}
+class C: B {
+    var c: int
+    ctor(x: int, y: int, z: int) {
+        super(x, y)
+        this.c = z
+    }
+}
+fun main(): void {
+    var o = C(1, 2, 3)
+    sout(o.a)
+    sout(o.b)
+    sout(o.c)
+}
+main()

@@ -1,0 +1,79 @@
+{
+    "cases":  [
+                  {
+                      "id":  "field_basic",
+                      "file":  "code/field_basic.rio",
+                      "expect":  "10\n20"
+                  },
+                  {
+                      "id":  "field_write_outside",
+                      "file":  "code/field_write_outside.rio",
+                      "expect":  "1\n99"
+                  },
+                  {
+                      "id":  "no_ctor",
+                      "file":  "code/no_ctor.rio",
+                      "expect":  "0\n0\n7\n0"
+                  },
+                  {
+                      "id":  "method_no_args",
+                      "file":  "code/method_no_args.rio",
+                      "expect":  "7"
+                  },
+                  {
+                      "id":  "method_with_args",
+                      "file":  "code/method_with_args.rio",
+                      "expect":  "15\n26"
+                  },
+                  {
+                      "id":  "method_mutates",
+                      "file":  "code/method_mutates.rio",
+                      "expect":  "6"
+                  },
+                  {
+                      "id":  "inherit_fields",
+                      "file":  "code/inherit_fields.rio",
+                      "expect":  "42\n99"
+                  },
+                  {
+                      "id":  "inherit_method",
+                      "file":  "code/inherit_method.rio",
+                      "expect":  "5"
+                  },
+                  {
+                      "id":  "three_levels",
+                      "file":  "code/three_levels.rio",
+                      "expect":  "1\n2\n3"
+                  },
+                  {
+                      "id":  "float_field",
+                      "file":  "code/float_field.rio",
+                      "expect":  "1.5\n2.5\n9.5"
+                  },
+                  {
+                      "id":  "object_as_arg",
+                      "file":  "code/object_as_arg.rio",
+                      "expect":  "17"
+                  },
+                  {
+                      "id":  "object_as_return",
+                      "file":  "code/object_as_return.rio",
+                      "expect":  "4\n5"
+                  },
+                  {
+                      "id":  "two_objects",
+                      "file":  "code/two_objects.rio",
+                      "expect":  "100\n2"
+                  },
+                  {
+                      "id":  "method_ret_arith",
+                      "file":  "code/method_ret_arith.rio",
+                      "expect":  "12\n13\ntrue"
+                  },
+                  {
+                      "id":  "nested_field",
+                      "file":  "code/nested_field.rio",
+                      "expect":  "77"
+                  }
+              ]
+}

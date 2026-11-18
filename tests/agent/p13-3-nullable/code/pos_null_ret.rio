@@ -1,0 +1,22 @@
+class Box {
+    var v: int
+    ctor(v: int) {
+        this.v = v
+    }
+}
+fun maybe(n: int): Box? {
+    if n > 0 {
+        ret Box(n)
+    }
+    ret null
+}
+if var a = maybe(4) {
+    sout(a.v)
+} else {
+    sout(-1)
+}
+if var b = maybe(0) {
+    sout(b.v)
+} else {
+    sout(-1)
+}

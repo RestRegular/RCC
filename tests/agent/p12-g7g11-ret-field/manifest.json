@@ -1,0 +1,16 @@
+{
+    "name":  "p12-g7g11-ret-field",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.2259583Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "返回值路径、字段访问与赋值",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  16,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

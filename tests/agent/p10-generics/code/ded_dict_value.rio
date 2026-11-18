@@ -1,0 +1,6 @@
+fun firstVal[V](d: dict[str, V]): V { ret d["a"] }
+fun main(): void {
+    var d: dict[str, float] = {"a": 1.5}
+    sout(firstVal(d))
+}
+main()

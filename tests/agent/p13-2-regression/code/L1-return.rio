@@ -1,0 +1,9 @@
+fun f(): int {
+ var i = 0
+ while i < 5 {
+  i += 1
+  if i == 2 { return 99 }
+ }
+ ret i
+}
+fun main(): void { var x = f() }

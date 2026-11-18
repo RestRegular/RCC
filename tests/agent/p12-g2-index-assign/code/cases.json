@@ -1,0 +1,91 @@
+{
+    "cases":  [
+                  {
+                      "id":  "list_set_first",
+                      "file":  "code/list_set_first.rio",
+                      "expect":  "0\n2\n3"
+                  },
+                  {
+                      "id":  "list_set_middle",
+                      "file":  "code/list_set_middle.rio",
+                      "expect":  "1\n99\n3"
+                  },
+                  {
+                      "id":  "list_compound_plus",
+                      "file":  "code/list_compound_plus.rio",
+                      "expect":  "1\n12\n3"
+                  },
+                  {
+                      "id":  "list_compound_minus",
+                      "file":  "code/list_compound_minus.rio",
+                      "expect":  "25"
+                  },
+                  {
+                      "id":  "list_compound_star",
+                      "file":  "code/list_compound_star.rio",
+                      "expect":  "14"
+                  },
+                  {
+                      "id":  "list_set_variable_index",
+                      "file":  "code/list_set_variable_index.rio",
+                      "expect":  "0\n5\n7"
+                  },
+                  {
+                      "id":  "list_set_in_loop",
+                      "file":  "code/list_set_in_loop.rio",
+                      "expect":  "0\n1\n4\n9"
+                  },
+                  {
+                      "id":  "list_set_out_of_range",
+                      "file":  "code/list_set_out_of_range.rio",
+                      "expect":  "1\n2"
+                  },
+                  {
+                      "id":  "list_set_negative_index",
+                      "file":  "code/list_set_negative_index.rio",
+                      "expect":  "1\n2"
+                  },
+                  {
+                      "id":  "dict_overwrite",
+                      "file":  "code/dict_overwrite.rio",
+                      "expect":  "9"
+                  },
+                  {
+                      "id":  "dict_insert_new",
+                      "file":  "code/dict_insert_new.rio",
+                      "expect":  "1\n2"
+                  },
+                  {
+                      "id":  "dict_insert_many",
+                      "file":  "code/dict_insert_many.rio",
+                      "expect":  "1\n2\n3\n4"
+                  },
+                  {
+                      "id":  "dict_insert_into_empty",
+                      "file":  "code/dict_insert_into_empty.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "dict_insert_then_overwrite",
+                      "file":  "code/dict_insert_then_overwrite.rio",
+                      "expect":  "1\n6"
+                  },
+                  {
+                      "id":  "dict_int_key",
+                      "file":  "code/dict_int_key.rio",
+                      "expect":  "11\n20"
+                  },
+                  {
+                      "id":  "written_value_is_usable",
+                      "file":  "code/written_value_is_usable.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "str_index_assign_rejected",
+                      "file":  "code/str_index_assign_rejected.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Assignment to list element|Index assignment",
+                      "mustMatchRegex":  true
+                  }
+              ]
+}

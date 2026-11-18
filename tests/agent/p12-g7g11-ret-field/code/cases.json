@@ -1,0 +1,84 @@
+{
+    "cases":  [
+                  {
+                      "id":  "ret_same_line_void",
+                      "file":  "code/ret_same_line_void.rio",
+                      "expect":  "ok"
+                  },
+                  {
+                      "id":  "ret_same_line_with_value",
+                      "file":  "code/ret_same_line_with_value.rio",
+                      "expect":  "1\n0"
+                  },
+                  {
+                      "id":  "ret_after_statement_same_line",
+                      "file":  "code/ret_after_statement_same_line.rio",
+                      "expect":  "3"
+                  },
+                  {
+                      "id":  "ret_in_nested_block",
+                      "file":  "code/ret_in_nested_block.rio",
+                      "expect":  "2\n1\n0"
+                  },
+                  {
+                      "id":  "ret_next_line_still_works",
+                      "file":  "code/ret_next_line_still_works.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "field_init_int",
+                      "file":  "code/field_init_int.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "field_init_str",
+                      "file":  "code/field_init_str.rio",
+                      "expect":  "hello"
+                  },
+                  {
+                      "id":  "field_init_multiple",
+                      "file":  "code/field_init_multiple.rio",
+                      "expect":  "1\n2\n3"
+                  },
+                  {
+                      "id":  "ctor_overrides_init",
+                      "file":  "code/ctor_overrides_init.rio",
+                      "expect":  "99"
+                  },
+                  {
+                      "id":  "ctor_keeps_other_init",
+                      "file":  "code/ctor_keeps_other_init.rio",
+                      "expect":  "5\n100"
+                  },
+                  {
+                      "id":  "field_without_init_is_zero",
+                      "file":  "code/field_without_init_is_zero.rio",
+                      "expect":  "0"
+                  },
+                  {
+                      "id":  "two_instances_independent",
+                      "file":  "code/two_instances_independent.rio",
+                      "expect":  "20\n10"
+                  },
+                  {
+                      "id":  "field_init_expression",
+                      "file":  "code/field_init_expression.rio",
+                      "expect":  "13"
+                  },
+                  {
+                      "id":  "field_init_uses_earlier_field",
+                      "file":  "code/field_init_uses_earlier_field.rio",
+                      "expect":  "10"
+                  },
+                  {
+                      "id":  "method_reads_initialized_field",
+                      "file":  "code/method_reads_initialized_field.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "base_field_init_inherited",
+                      "file":  "code/base_field_init_inherited.rio",
+                      "expect":  "11\n22"
+                  }
+              ]
+}

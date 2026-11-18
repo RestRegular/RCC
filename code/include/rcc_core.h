@@ -136,6 +136,7 @@ namespace core {
         TOKEN_STREAM_END,
         TOKEN_STREAM_START,
         TOKEN_STRING,
+        TOKEN_STRUCT,   // A：值语义 struct（docs/pending_designs.md §A）
         TOKEN_STAR,
         TOKEN_STAR_ASSIGN,
         TOKEN_TRY,

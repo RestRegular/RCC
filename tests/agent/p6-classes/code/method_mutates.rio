@@ -1,0 +1,16 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Counter {
+    var n: int
+    ctor() { this.n = 0 }
+    fun bump(k: int) {
+        this.n = this.n + k
+    }
+}
+fun main(): void {
+    var c = Counter()
+    c.bump(1)
+    c.bump(2)
+    c.bump(3)
+    sout(c.n)
+}
+main()

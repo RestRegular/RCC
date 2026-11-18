@@ -1,0 +1,12 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var i = 0
+while i < 4 {
+    i = i + 1
+    try {
+        if i == 2 { continue }
+        sout(i)
+    } catch(ce) {
+        sout("NOT REACHED")
+    }
+}
+sout("done")

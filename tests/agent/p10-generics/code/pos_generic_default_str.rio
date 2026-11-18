@@ -1,0 +1,6 @@
+fun tag[T](x: T, s: str = "DEF"): str { ret clone(s) }
+fun main(): void {
+    sout(tag(1))
+    sout(tag(2, "X"))
+}
+main()

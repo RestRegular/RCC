@@ -1,0 +1,16 @@
+{
+    "name":  "p9-types",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.3935125Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "类型标注、隐式转换、类型错误诊断",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  20,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

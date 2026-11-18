@@ -1,0 +1,16 @@
+{
+    "name":  "p12-g3g4-concat",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.1937242Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "字符串与容器拼接、隐式转字符串",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  22,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

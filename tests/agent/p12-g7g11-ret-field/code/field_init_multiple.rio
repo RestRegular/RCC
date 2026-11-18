@@ -1,0 +1,10 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class A {
+    var x: int = 1
+    var y: int = 2
+    var z: int = 3
+}
+var o = A()
+sout(o.x)
+sout(o.y)
+sout(o.z)

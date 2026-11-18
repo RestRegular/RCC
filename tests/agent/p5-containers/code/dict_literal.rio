@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var dic = {"name": "Rio", "age": 18}
+sout(dic["name"])
+sout(dic["age"])

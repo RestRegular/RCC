@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var li = [1, 2]
+li[0 - 1] = 123
+sout(li[0])
+sout(li[1])

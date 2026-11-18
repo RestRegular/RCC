@@ -1,0 +1,127 @@
+{
+    "cases":  [
+                  {
+                      "id":  "single_module",
+                      "main":  "code/single_module/main.rio",
+                      "files":  [
+                                    "code/single_module/main.rio",
+                                    "code/single_module/mathx.rio"
+                                ],
+                      "expect":  "3\n42"
+                  },
+                  {
+                      "id":  "qualified_call",
+                      "main":  "code/qualified_call/main.rio",
+                      "files":  [
+                                    "code/qualified_call/main.rio",
+                                    "code/qualified_call/mathx.rio"
+                                ],
+                      "expect":  "30\n12"
+                  },
+                  {
+                      "id":  "nested_import",
+                      "main":  "code/nested_import/main.rio",
+                      "files":  [
+                                    "code/nested_import/algeb.rio",
+                                    "code/nested_import/mathx.rio",
+                                    "code/nested_import/main.rio"
+                                ],
+                      "expect":  "3\n25\n27\n42"
+                  },
+                  {
+                      "id":  "diamond_dedupe",
+                      "main":  "code/diamond_dedupe/main.rio",
+                      "files":  [
+                                    "code/diamond_dedupe/base.rio",
+                                    "code/diamond_dedupe/modb.rio",
+                                    "code/diamond_dedupe/moda.rio",
+                                    "code/diamond_dedupe/main.rio"
+                                ],
+                      "expect":  "4\n8\n42"
+                  },
+                  {
+                      "id":  "alias_import",
+                      "main":  "code/alias_import/main.rio",
+                      "files":  [
+                                    "code/alias_import/utilx.rio",
+                                    "code/alias_import/mathx.rio",
+                                    "code/alias_import/main.rio"
+                                ],
+                      "expect":  "42\n5"
+                  },
+                  {
+                      "id":  "module_class",
+                      "main":  "code/module_class/main.rio",
+                      "files":  [
+                                    "code/module_class/main.rio",
+                                    "code/module_class/shapes.rio"
+                                ],
+                      "expect":  "7\n30"
+                  },
+                  {
+                      "id":  "export_ignored",
+                      "main":  "code/export_ignored/main.rio",
+                      "files":  [
+                                    "code/export_ignored/utilx.rio",
+                                    "code/export_ignored/main.rio"
+                                ],
+                      "expect":  "10\n0"
+                  },
+                  {
+                      "id":  "intra_module_calls",
+                      "main":  "code/intra_module_calls/main.rio",
+                      "files":  [
+                                    "code/intra_module_calls/chain.rio",
+                                    "code/intra_module_calls/main.rio"
+                                ],
+                      "expect":  "13"
+                  },
+                  {
+                      "id":  "importer_before_module",
+                      "main":  "code/importer_before_module/main.rio",
+                      "files":  [
+                                    "code/importer_before_module/late.rio",
+                                    "code/importer_before_module/main.rio"
+                                ],
+                      "expect":  "99"
+                  },
+                  {
+                      "id":  "default_and_named_args",
+                      "main":  "code/default_and_named_args/main.rio",
+                      "files":  [
+                                    "code/default_and_named_args/main.rio"
+                                ],
+                      "expect":  "3\n11\n6"
+                  },
+                  {
+                      "id":  "missing_module",
+                      "main":  "code/missing_module/main.rio",
+                      "files":  [
+                                    "code/missing_module/main.rio"
+                                ],
+                      "expectFailure":  true,
+                      "mustMatch":  "Cannot find imported module \u0027nosuchmodule\u0027"
+                  },
+                  {
+                      "id":  "cyclic_import",
+                      "main":  "code/cyclic_import/main.rio",
+                      "files":  [
+                                    "code/cyclic_import/cyca.rio",
+                                    "code/cyclic_import/main.rio",
+                                    "code/cyclic_import/cycb.rio"
+                                ],
+                      "expectFailure":  true,
+                      "mustMatch":  "Recursive import detected"
+                  },
+                  {
+                      "id":  "module_syntax_error",
+                      "main":  "code/module_syntax_error/main.rio",
+                      "files":  [
+                                    "code/module_syntax_error/main.rio",
+                                    "code/module_syntax_error/broken.rio"
+                                ],
+                      "expectFailure":  true,
+                      "mustMatch":  "broken.rio"
+                  }
+              ]
+}

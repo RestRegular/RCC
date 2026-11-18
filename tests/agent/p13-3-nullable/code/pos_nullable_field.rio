@@ -1,0 +1,11 @@
+class Box {
+    var v: int
+    ctor(v: int) {
+        this.v = v
+    }
+}
+fun id(b: Box): Box? {
+    ret b
+}
+var p: Box? = id(Box(7))
+sout(p.v)

@@ -1,0 +1,8 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var d = {"a": 1, "a": 2}
+sout(core_str_len(d))
+sout(d["a"])
+var e = {"x": 1, "y": 2, "x": 3}
+sout(core_str_len(e))
+sout(e["x"])
+sout(e["y"])

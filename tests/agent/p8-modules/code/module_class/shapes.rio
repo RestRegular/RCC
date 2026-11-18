@@ -1,0 +1,9 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Point {
+    var x: int, y: int
+    ctor(a: int, b: int) {
+        this.x = a
+        this.y = b
+    }
+    fun sum(): int { ret this.x + this.y }
+}

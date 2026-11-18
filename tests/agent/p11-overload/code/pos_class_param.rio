@@ -1,0 +1,12 @@
+class Point {
+    var x: int
+    ctor(v: int) { this.x = v }
+}
+fun show(p: Point): void { sout("point ", p.x) }
+fun show(n: int): void { sout("int ", n) }
+fun main(): void {
+    var p = Point(9)
+    show(p)
+    show(5)
+}
+main()

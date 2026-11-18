@@ -1,0 +1,9 @@
+import moda
+import modb
+import base
+fun main() {
+    sout(quad(1))
+    sout(oct(1))
+    sout(twice(21))
+}
+main()

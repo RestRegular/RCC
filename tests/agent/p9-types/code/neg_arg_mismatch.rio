@@ -1,0 +1,5 @@
+fun f(x: int): int { ret x }
+fun main(): void {
+    f("hello")
+}
+main()

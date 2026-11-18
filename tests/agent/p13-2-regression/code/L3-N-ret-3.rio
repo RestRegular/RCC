@@ -1,0 +1,7 @@
+fun main(): void {
+ var a: int = {
+  var s = "a" + "b"
+  ret 7
+ }
+ sout(a)
+}

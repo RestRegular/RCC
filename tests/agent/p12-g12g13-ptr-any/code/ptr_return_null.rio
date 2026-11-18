@@ -1,0 +1,6 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun nothing(): ptr {
+    ret null
+}
+var p = nothing()
+sout(p == null)

@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var e = []
+var d = {}
+sout(e[0])
+sout(d["k"] == null)

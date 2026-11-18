@@ -1,0 +1,81 @@
+{
+    "cases":  [
+                  {
+                      "id":  "ptr_return_from_core_alloc",
+                      "file":  "code/ptr_return_from_core_alloc.rio",
+                      "expect":  "true"
+                  },
+                  {
+                      "id":  "ptr_param_as_int",
+                      "file":  "code/ptr_param_as_int.rio",
+                      "expect":  "true"
+                  },
+                  {
+                      "id":  "ptr_to_int_param",
+                      "file":  "code/ptr_to_int_param.rio",
+                      "expect":  "true"
+                  },
+                  {
+                      "id":  "ptr_arithmetic",
+                      "file":  "code/ptr_arithmetic.rio",
+                      "expect":  "8"
+                  },
+                  {
+                      "id":  "var_declared_ptr",
+                      "file":  "code/var_declared_ptr.rio",
+                      "expect":  "0"
+                  },
+                  {
+                      "id":  "ptr_write_then_read",
+                      "file":  "code/ptr_write_then_read.rio",
+                      "expect":  "5"
+                  },
+                  {
+                      "id":  "ptr_return_null",
+                      "file":  "code/ptr_return_null.rio",
+                      "expect":  "true"
+                  },
+                  {
+                      "id":  "any_param_int",
+                      "file":  "code/any_param_int.rio",
+                      "expect":  "7"
+                  },
+                  {
+                      "id":  "any_param_str",
+                      "file":  "code/any_param_str.rio",
+                      "expect":  "5"
+                  },
+                  {
+                      "id":  "any_param_list",
+                      "file":  "code/any_param_list.rio",
+                      "expect":  "3"
+                  },
+                  {
+                      "id":  "any_return_numeric",
+                      "file":  "code/any_return_numeric.rio",
+                      "expect":  "81"
+                  },
+                  {
+                      "id":  "any_param_and_return",
+                      "file":  "code/any_param_and_return.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "var_annotated_any",
+                      "file":  "code/var_annotated_any.rio",
+                      "expect":  "5\ntext"
+                  },
+                  {
+                      "id":  "unannotated_still_works",
+                      "file":  "code/unannotated_still_works.rio",
+                      "expect":  "9"
+                  },
+                  {
+                      "id":  "typo_still_rejected",
+                      "file":  "code/typo_still_rejected.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Unknown type",
+                      "mustMatchRegex":  true
+                  }
+              ]
+}

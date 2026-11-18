@@ -1,0 +1,5 @@
+fun identity[T](x: T): T { ret x }
+fun main(): void {
+    sout(identity(42))
+}
+main()

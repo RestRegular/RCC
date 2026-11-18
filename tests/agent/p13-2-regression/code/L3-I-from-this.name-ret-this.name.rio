@@ -1,0 +1,7 @@
+class P2 {
+ var name: str
+ var hp: int
+ ctor(n: str) { this.name = n this.hp = 100 }
+ fun refSelf(): Ref[str] from[this.name] { ret &this.name }
+}
+fun main(): void { }

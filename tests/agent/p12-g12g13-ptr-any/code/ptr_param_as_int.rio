@@ -1,0 +1,6 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun asInt(p: ptr): int {
+    ret p
+}
+var q: ptr = core_alloc(16, 8)
+sout(asInt(q) > 0)

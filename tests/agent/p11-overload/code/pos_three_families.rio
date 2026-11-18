@@ -1,0 +1,9 @@
+fun show(x: int): void { sout("int") }
+fun show(x: float): void { sout("float") }
+fun show(x: str): void { sout("str") }
+fun main(): void {
+    show(42)
+    show(2.5)
+    show("hi")
+}
+main()

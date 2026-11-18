@@ -1,0 +1,19 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Point {
+    var x: int, y: int
+    ctor(a: int, b: int) {
+        this.x = a
+        this.y = b
+    }
+    fun add(dx: int, dy: int) {
+        this.x = this.x + dx
+        this.y = this.y + dy
+    }
+}
+fun main(): void {
+    var p = Point(10, 20)
+    p.add(5, 6)
+    sout(p.x)
+    sout(p.y)
+}
+main()

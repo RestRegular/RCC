@@ -1,0 +1,16 @@
+{
+    "name":  "p12-symbol-export",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:04:19.6645216Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "`-s` 六种导出格式（text/json/html/ctags/dot/markdown）的结构性质校验",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  59,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

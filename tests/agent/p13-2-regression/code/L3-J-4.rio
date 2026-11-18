@@ -1,0 +1,9 @@
+class B1 {
+ var v: int
+ ctor(a: int) { this.v = a }
+}
+class D1: B1 {
+ var e: int
+ ctor(a: int, b: int) { super(a) this.e = b }
+}
+fun main(): void { var b: B1 = D1(1, 2) }

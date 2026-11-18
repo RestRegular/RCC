@@ -1,0 +1,4 @@
+fun main(): void {
+    var x: int = "hello"
+}
+main()

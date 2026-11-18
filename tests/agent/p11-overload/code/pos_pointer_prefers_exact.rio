@@ -1,0 +1,7 @@
+fun g(x: str): void { sout("str") }
+fun g(x: list): void { sout("list") }
+fun main(): void {
+    g("hello")
+    g([1, 2])
+}
+main()

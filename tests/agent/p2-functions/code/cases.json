@@ -1,0 +1,54 @@
+{
+    "cases":  [
+                  {
+                      "id":  "anon_basic",
+                      "file":  "code/anon_basic.rio",
+                      "expect":  "8\n20"
+                  },
+                  {
+                      "id":  "anon_as_arg",
+                      "file":  "code/anon_as_arg.rio",
+                      "expect":  "25"
+                  },
+                  {
+                      "id":  "named_as_value",
+                      "file":  "code/named_as_value.rio",
+                      "expect":  "8"
+                  },
+                  {
+                      "id":  "anon_bare_expr",
+                      "file":  "code/anon_bare_expr.rio",
+                      "expect":  "21"
+                  },
+                  {
+                      "id":  "anon_return_float",
+                      "file":  "code/anon_return_float.rio",
+                      "expect":  "2.5"
+                  },
+                  {
+                      "id":  "anon_if_body",
+                      "file":  "code/anon_if_body.rio",
+                      "expect":  "42\n42"
+                  },
+                  {
+                      "id":  "anon_loop_body",
+                      "file":  "code/anon_loop_body.rio",
+                      "expect":  "55"
+                  },
+                  {
+                      "id":  "anon_nested",
+                      "file":  "code/anon_nested.rio",
+                      "expect":  "15"
+                  },
+                  {
+                      "id":  "anon_inline_call",
+                      "file":  "code/anon_inline_call.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "anon_multi_args",
+                      "file":  "code/anon_multi_args.rio",
+                      "expect":  "30"
+                  }
+              ]
+}

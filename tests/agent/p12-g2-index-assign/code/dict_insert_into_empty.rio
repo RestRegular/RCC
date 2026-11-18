@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var d = {}
+d["x"] = 42
+sout(d["x"])

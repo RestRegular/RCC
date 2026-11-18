@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun ident(a): int {
+    ret a
+}
+sout(ident(9))

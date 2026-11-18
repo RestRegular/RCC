@@ -1,0 +1,12 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var i = 0
+while i < 3 {
+    try {
+        if i == 1 { break }
+        sout(i)
+    } finally {
+        sout("fin")
+    }
+    i = i + 1
+}
+sout("done")

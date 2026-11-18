@@ -1,0 +1,7 @@
+fun test(arg: dict[str, int]): int { ret 6 }
+fun test(arg: dict[str, str]): int { ret 7 }
+fun main(): void {
+    sout(test({"k": 1}))
+    sout(test({"1": "2"}))
+}
+main()

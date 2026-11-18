@@ -1,0 +1,16 @@
+{
+    "name":  "p6-classes",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.3219287Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "类定义、字段、方法、构造、继承、封装",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  15,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

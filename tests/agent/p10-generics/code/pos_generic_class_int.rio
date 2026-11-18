@@ -1,0 +1,10 @@
+class Box[T] {
+    var v: T
+    ctor(val: T) { this.v = val }
+    fun get(): T { ret this.v }
+}
+fun main(): void {
+    var b: Box[int] = Box[int](42)
+    sout(b.get())
+}
+main()

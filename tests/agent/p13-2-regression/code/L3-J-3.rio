@@ -1,0 +1,9 @@
+class Player {
+ var name: str
+ ctor(n: str) { this.name = n }
+}
+class Enemy {
+ var name: str
+ ctor(n: str) { this.name = n }
+}
+fun main(): void { var a: Enemy = Player("x") }

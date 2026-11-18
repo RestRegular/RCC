@@ -1,0 +1,9 @@
+fun pick(x: int): int { ret x }
+fun pick(x: float): float { ret x * 2.0 }
+fun main(): void {
+    var a = pick(3)
+    var b = pick(1.25)
+    sout(a)
+    sout(b)
+}
+main()

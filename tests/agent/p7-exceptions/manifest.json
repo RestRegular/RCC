@@ -1,0 +1,16 @@
+{
+    "name":  "p7-exceptions",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.3406898Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "throw / try / catch / finally 与跨函数传播、退出码",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  17,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

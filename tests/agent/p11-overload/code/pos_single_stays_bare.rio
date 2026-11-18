@@ -1,0 +1,5 @@
+fun only(x: int): int { ret x * 3 }
+fun main(): void {
+    sout(only(14))
+}
+main()

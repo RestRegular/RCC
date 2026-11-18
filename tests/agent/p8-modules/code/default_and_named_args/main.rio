@@ -1,0 +1,8 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun g(a: int, b: int = 2): int { ret a + b }
+fun main() {
+    sout(g(1))
+    sout(g(1, 10))
+    sout(g(b=5, a=1))
+}
+main()

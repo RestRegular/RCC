@@ -1,0 +1,10 @@
+var x = 42
+if x > 100 {
+    sout("A")
+} elif x > 50 {
+    sout("B")
+} elif x > 10 {
+    sout("C")
+} else {
+    sout("D")
+}

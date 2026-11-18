@@ -1128,35 +1128,34 @@ str    PASS   17/17    29/29     ✓ 完成
 问题：bat 里的中文路径、引号、`fc` 的行尾处理都很脆（`fc /W` 会吞掉空白差异，
 和 `test_legacy_all.ps1` 的逐字节比对语义不一致）。
 
-新版本：`test.bat` 退化成薄壳，实际逻辑放进 `test_scripts/test_all.ps1`：
+新版本：`test.bat` 退化成薄壳，实际逻辑放进运行器：
 
 ```bat
 @echo off
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\test_scripts\test_all.ps1" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\tests\user\run-all.ps1" %*
 ```
 
-`test_all.ps1` 依次跑 `test_p0..p11` + `test_std` + `test_legacy_all`，
-汇总成一张表，任一失败就 `exit 1`。这样「一条命令跑完全部」且只有一套判定逻辑。
+运行器**扫描** `tests/{agent,cases}` 下每个带 `execute.ps1` 的目录并执行，
+汇总成一张表，任一失败就 `exit 1`。这样「一条命令跑完全部」且只有一套判定逻辑，
+新增测试集也不需要改运行器。
 
-### 6.3 `tests/test_14_iter` / `tests/test_15_forinrange`
+> 历史说明：本节最初实现为 `test_scripts/test_all.ps1` + 一张 25 行的硬编码套件清单。
+> 该目录已在测试体系重构中删除，判定逻辑迁到 `tests/agent/_shared/driver.ps1`，
+> 调度迁到 `tests/user/run-all.ps1`。详见 `docs/architecture_plan.md` §11。
+
+### 6.3 `test_14_iter` / `test_15_forinrange`（已随旧测试体系删除）
 
 这两个用例的 `expected.txt` 与 `test.rio` 依赖旧 `ds.iter` / `ds.forInRange` 的
 「回调里改外层变量」契约（G6）。**G6 在 P12 不做**（§4.3、§10.2）。
 
-因此：
+> ⚠️ **状态更新**：整个 legacy 测试体系（`tests/test_1_*` … `test_17_*`）
+> 已在测试体系重构中整体移除。这两个用例随之消失，不再是「已知失败」，
+> 而是**不再存在**。G6 若将来要做，应在新契约下重新写成 `tests/agent/` 里的
+> 测试集，而不是复活旧目录。
 
-| 项 | 处置 |
-|---|---|
-| `test.rio` | **原样保留，不动** |
-| `expected.txt` | **原样保留，不动** |
-| 这两个用例的 P12 状态 | 标记为「⚠️ 已知失败 —— G6 延期导致」，**不计入 P12 验收门槛** |
-| `test_legacy_all.ps1` 的判定 | 改为 15/17 通过即算通过，并在输出里明确列出这两个是「G6 延期」而非「回归」 |
-
-> ❌ **明确禁止**：把 `expected.txt` 改成「不写回」的结果、或把 `test.rio` 改写成
-> 「`iter` 返回累计值」的新契约来让它们变绿。那是用修改测试预期掩盖真实缺陷，
-> 会把问题静默带到下个版本。用户 2026-11-16 明确要求过这一点。
-
-等 G6 与内存模型定稿后，这两个用例应当**原样**通过，作为 G6 完成的最强证明。
+当年为让它们变绿而改 `expected.txt` 或改写 `test.rio` 的做法被明确禁止 ——
+那是用修改测试预期掩盖真实缺陷。这条纪律在删除后依然成立：
+新体系下新增用例时，同样不许为了让套件变绿而调整期望值。
 
 ## 7. P12-5：文档与发版
 
@@ -1736,7 +1735,7 @@ legacy 15/17（`test_14_iter` / `test_15_forinrange` 为 G6 已知延期）。
 `'P_CMAKE"=="false" (' is not recognized` —— 表现完全不像行尾问题，
 很容易误判成语法错误。
 
-#### 10.7.2 `scripts/test.bat` + `test_scripts/test_all.ps1`
+#### 10.7.2 `scripts/test.bat` + 运行器
 
 旧 `test.bat` 用 `fc /W` 比对 `expected.txt`，而 `test_legacy_all.ps1` 是
 **逐字节**比对 —— 同一份输出可能在一个脚本里过、另一个里挂，两套判定逻辑
@@ -1746,22 +1745,24 @@ legacy 15/17（`test_14_iter` / `test_15_forinrange` 为 G6 已知延期）。
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" %*
 ```
 
-逻辑全在 `test_all.ps1`，**只有一套判定逻辑**。功能：
+**只有一套判定逻辑**。功能：
 
 | 参数 | 作用 |
 |---|---|
-| （无） | 跑全部 24 套件 |
-| `-Quick` | 跳过 `test_std` 与 `test_legacy_all` 两个慢套件（22 套） |
-| `-Filter <regex>` | 只跑名字匹配的套件 |
+| （无） | 跑 agent + cases 全部测试集 |
+| `-Area agent\|cases` | 只跑某个区域 |
+| `-Filter <regex>` | 只跑名字匹配的测试集 |
 | `-StopOnFail` | 首个失败即中止 |
-| `-KeepLog` | 每个套件的完整日志落到 `build\test_logs\` |
+| `-KeepLog` | 每个测试集的完整日志落到 `build\test_logs\` |
 
-套件顺序刻意安排成「先编译器自身正确 → 再标准库 → 最后 legacy」，
-这样最先失败的那个通常就是根因。汇总表解析各脚本尾部的「通过 N，失败 M」，
-legacy 额外标注 `G6 延期：test_14_iter, test_15_forinrange`。
+> **状态更新**：本节最初实现为 `test_scripts/test_all.ps1` + 25 行硬编码套件清单。
+> 该目录已在测试体系重构中删除：判定逻辑迁到 `tests/agent/_shared/driver.ps1`，
+> 调度迁到 `tests/user/run-all.ps1`（**扫描式**，不再需要清单）。
+> 现行体系详见 `docs/architecture_plan.md` §11。
 
-**实测**：`-Quick` 22 套件 439 项全绿；全量 24 套件 **667 通过 / 2 失败**
-（2 项即 G6 延期，不计入验收门槛）。
+**当时的实测**（旧体系，作为历史记录保留）：`-Quick` 22 套件 439 项全绿；
+全量 24 套件 **667 通过 / 2 失败**（2 项即 G6 延期，不计入验收门槛）。
+重构后 `tests/agent/` 共 **872 例全绿**（24 个旧套件 703 例 + 回归脚本 126 + 43）。
 
 ## 11. 总体执行原则（本计划的总纲，任何小节冲突时以本节为准）
 

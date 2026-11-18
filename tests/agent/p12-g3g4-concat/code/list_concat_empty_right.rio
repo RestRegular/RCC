@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var e = []
+var l = [7] + e
+sout(l[0])

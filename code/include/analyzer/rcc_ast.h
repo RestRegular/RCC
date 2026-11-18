@@ -79,6 +79,7 @@ namespace ast {
         RETURN, // return返回语句节点
         REF_EXPRESSION, // P13-2/L3：`&bob` 壳子取引用（产出 Ref[T]）
         STRING, // 字符串字面量节点
+        STRUCT_DEFINITION, // A：值语义 struct 定义节点（docs/pending_designs.md §A）
         TERNARY, // 三元条件表达式节点
         UNARY, // 一元表达式节点
         UNDEFINED, // 未定义值节点

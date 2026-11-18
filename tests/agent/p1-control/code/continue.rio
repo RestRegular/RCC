@@ -1,0 +1,8 @@
+var k = 0
+while k < 5 {
+    k = k + 1
+    if k == 2 {
+        continue
+    }
+    sout(k)
+}

@@ -1,0 +1,114 @@
+{
+    "cases":  [
+                  {
+                      "id":  "pos_float_annot_int_init",
+                      "file":  "code/pos_float_annot_int_init.rio",
+                      "expect":  "1.0"
+                  },
+                  {
+                      "id":  "pos_float_infer",
+                      "file":  "code/pos_float_infer.rio",
+                      "expect":  "1.5"
+                  },
+                  {
+                      "id":  "pos_param_float_from_int",
+                      "file":  "code/pos_param_float_from_int.rio",
+                      "expect":  "1.5"
+                  },
+                  {
+                      "id":  "pos_param_int",
+                      "file":  "code/pos_param_int.rio",
+                      "expect":  "14"
+                  },
+                  {
+                      "id":  "pos_float_compound",
+                      "file":  "code/pos_float_compound.rio",
+                      "expect":  "2.5"
+                  },
+                  {
+                      "id":  "pos_str_annot",
+                      "file":  "code/pos_str_annot.rio",
+                      "expect":  "hi"
+                  },
+                  {
+                      "id":  "pos_bool_annot",
+                      "file":  "code/pos_bool_annot.rio",
+                      "expect":  "true"
+                  },
+                  {
+                      "id":  "pos_ret_float_from_int",
+                      "file":  "code/pos_ret_float_from_int.rio",
+                      "expect":  "1.0"
+                  },
+                  {
+                      "id":  "pos_unannotated_param_closure",
+                      "file":  "code/pos_unannotated_param_closure.rio",
+                      "expect":  "10"
+                  },
+                  {
+                      "id":  "pos_unannotated_infer",
+                      "file":  "code/pos_unannotated_infer.rio",
+                      "expect":  "101"
+                  },
+                  {
+                      "id":  "neg_var_annot_mismatch",
+                      "file":  "code/neg_var_annot_mismatch.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Variable \u0027x\u0027 declared as int"
+                  },
+                  {
+                      "id":  "neg_arg_mismatch",
+                      "file":  "code/neg_arg_mismatch.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Argument 1 of \u0027f\u0027"
+                  },
+                  {
+                      "id":  "neg_ret_mismatch",
+                      "file":  "code/neg_ret_mismatch.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Return value in \u0027g\u0027"
+                  },
+                  {
+                      "id":  "neg_assign_mismatch",
+                      "file":  "code/neg_assign_mismatch.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Assignment to \u0027x\u0027"
+                  },
+                  {
+                      "id":  "neg_unknown_var_type",
+                      "file":  "code/neg_unknown_var_type.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Unknown type \u0027Piont\u0027 in declaration of \u0027x\u0027"
+                  },
+                  {
+                      "id":  "neg_unknown_param_type",
+                      "file":  "code/neg_unknown_param_type.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Unknown type \u0027Piont\u0027 of parameter \u0027a\u0027"
+                  },
+                  {
+                      "id":  "neg_unknown_ret_type",
+                      "file":  "code/neg_unknown_ret_type.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Unknown return type \u0027Piont\u0027"
+                  },
+                  {
+                      "id":  "neg_void_ret_value",
+                      "file":  "code/neg_void_ret_value.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "declared to return void"
+                  },
+                  {
+                      "id":  "neg_bool_from_str",
+                      "file":  "code/neg_bool_from_str.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "declared as bool"
+                  },
+                  {
+                      "id":  "neg_list_from_int",
+                      "file":  "code/neg_list_from_int.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "declared as list"
+                  }
+              ]
+}

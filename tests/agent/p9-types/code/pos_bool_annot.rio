@@ -1,0 +1,5 @@
+fun main(): void {
+    var b: bool = true
+    sout(b)
+}
+main()

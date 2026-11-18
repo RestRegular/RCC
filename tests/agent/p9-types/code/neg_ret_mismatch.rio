@@ -1,0 +1,5 @@
+fun g(): str { ret 42 }
+fun main(): void {
+    sout(g())
+}
+main()

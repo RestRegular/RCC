@@ -1,0 +1,6 @@
+class C {
+ fun toStr(): str { ret "" + 1 }
+}
+fun main(): void { var c = C()
+ sout(c.toStr())
+}

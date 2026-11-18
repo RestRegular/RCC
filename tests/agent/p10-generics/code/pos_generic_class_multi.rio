@@ -1,0 +1,14 @@
+class Pair[A, B] {
+    var first: A
+    var second: B
+    ctor(a: A, b: B) {
+        this.first = a
+        this.second = b
+    }
+}
+fun main(): void {
+    var p: Pair[int, str] = Pair[int, str](7, "x")
+    sout(p.first)
+    sout(p.second)
+}
+main()

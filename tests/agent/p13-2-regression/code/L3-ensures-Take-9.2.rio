@@ -1,0 +1,2 @@
+fun bad(t: int): int ensures[t] { ret t }
+fun main(): void { var x = bad(1) }

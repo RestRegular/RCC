@@ -1,0 +1,13 @@
+class Player {
+ var name: str
+ ctor(n: str) { this.name = n }
+}
+fun f(t: Take[Player]): str ensures[?t] {
+ try {
+  var c = t.take()
+  ret "ok"
+ } catch (e: str) {
+  ret t.name
+ }
+}
+fun main(): void { }

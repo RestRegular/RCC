@@ -1,0 +1,5 @@
+fun f(a: Piont): int { ret 1 }
+fun main(): void {
+    f(1)
+}
+main()

@@ -3,6 +3,11 @@
 > 对应 `docs/p12_plan.md` §3.2。本文件是**删除前**的审计记录 + **删除后**的核对结论。
 > 审计日期：2026-11-16。基线版本：`9a1729c`（P0–P11 重写完成）。
 
+> **关于本文里的测试路径**：文中引用的 `test_scripts/*.ps1` 与 `tests/test_*`
+> 目录都已在后续的测试体系重构中移除（`test_scripts/` 整体删除，
+> 旧 17 个 legacy 目录删除）。这些引用作为**审计当时的历史记录**保留原样；
+> 现行测试体系见 `docs/architecture_plan.md` §11。
+
 ## 0. 被删除的范围
 
 `CMakeLists.txt` 的 `RCC_LEGACY_SOURCES` 原有 18 个 `.cpp`，约 8.6k 行：

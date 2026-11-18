@@ -1,0 +1,15 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Inner {
+    var v: int
+    ctor(n: int) { this.v = n }
+}
+class Outer {
+    var inner: Inner
+    ctor(i: Inner) { this.inner = i }
+}
+fun main(): void {
+    var i = Inner(77)
+    var o = Outer(i)
+    sout(o.inner.v)
+}
+main()

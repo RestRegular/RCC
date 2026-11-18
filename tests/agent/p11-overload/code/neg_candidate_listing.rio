@@ -1,0 +1,6 @@
+fun f(a: int, b: int): void { sout(a) }
+fun f(a: str, b: str): void { sout(a) }
+fun main(): void {
+    f(1, "x")
+}
+main()

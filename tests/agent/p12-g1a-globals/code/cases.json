@@ -1,0 +1,44 @@
+{
+    "cases":  [
+                  {
+                      "id":  "read_in_function",
+                      "file":  "code/read_in_function.rio",
+                      "expect":  "7"
+                  },
+                  {
+                      "id":  "write_in_function",
+                      "file":  "code/write_in_function.rio",
+                      "expect":  "3"
+                  },
+                  {
+                      "id":  "assign_at_top",
+                      "file":  "code/assign_at_top.rio",
+                      "expect":  "100"
+                  },
+                  {
+                      "id":  "float_global",
+                      "file":  "code/float_global.rio",
+                      "expect":  "3.5"
+                  },
+                  {
+                      "id":  "str_global",
+                      "file":  "code/str_global.rio",
+                      "expect":  "hi"
+                  },
+                  {
+                      "id":  "multiple_globals",
+                      "file":  "code/multiple_globals.rio",
+                      "expect":  "6\n1\n2\n3"
+                  },
+                  {
+                      "id":  "local_shadows_global",
+                      "file":  "code/local_shadows_global.rio",
+                      "expect":  "99\n10"
+                  },
+                  {
+                      "id":  "global_as_arg",
+                      "file":  "code/global_as_arg.rio",
+                      "expect":  "42"
+                  }
+              ]
+}

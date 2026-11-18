@@ -1,0 +1,6 @@
+fun sout(*args, end="\n"): void { encapsulated }
+try {
+    throw "the message"
+} catch(e) {
+    sout(e)
+}

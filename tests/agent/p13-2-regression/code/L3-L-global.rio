@@ -1,0 +1,4 @@
+class G {
+ var n: int global = 0
+}
+fun main(): void { var g: G = G() }

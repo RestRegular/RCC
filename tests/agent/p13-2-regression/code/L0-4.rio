@@ -1,0 +1,1 @@
+fun main(): void { var x: str int = "hi"; sout(x) }

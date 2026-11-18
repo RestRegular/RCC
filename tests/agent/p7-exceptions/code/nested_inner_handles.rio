@@ -1,0 +1,12 @@
+fun sout(*args, end="\n"): void { encapsulated }
+try {
+    try {
+        throw "inner"
+    } catch(ei) {
+        sout("inner got")
+        sout(ei)
+    }
+    sout("after inner")
+} catch(eo) {
+    sout("NOT REACHED outer")
+}

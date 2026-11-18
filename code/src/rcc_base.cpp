@@ -14,7 +14,7 @@ namespace base {
 
     const StringSet KEYWORDS = {
             "var", "fun", "if", "else", "elif", "for", "while", "until",
-            "ret", "break", "class", "pass", "ctor", "encapsulated", "try",
+            "ret", "break", "class", "struct", "pass", "ctor", "encapsulated", "try",
             "catch", "finally", "throw", "link"
     };
 

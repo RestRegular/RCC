@@ -1,0 +1,7 @@
+fun f(a: int): int { ret a }
+fun f(a: int, b: int): int { ret a + b }
+fun main(): void {
+    sout(f(7))
+    sout(f(3, 4))
+}
+main()

@@ -1,0 +1,6 @@
+fun addOne(x: int): int { ret x + 1 }
+fun apply[A, B](f: func[A][B], v: A): B { ret f(v) }
+fun main(): void {
+    sout(apply(addOne, 41))
+}
+main()

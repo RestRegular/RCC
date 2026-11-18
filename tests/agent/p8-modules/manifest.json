@@ -1,0 +1,16 @@
+{
+    "name":  "p8-modules",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.3729519Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "import、限定调用、嵌套与菱形依赖、循环导入报错",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  13,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

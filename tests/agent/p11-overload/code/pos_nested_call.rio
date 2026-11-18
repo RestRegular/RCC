@@ -1,0 +1,7 @@
+fun h(x: int): int { ret x + 1 }
+fun h(x: str): str { ret clone(x) }
+fun twice(x: int): int { ret h(h(x)) }
+fun main(): void {
+    sout(twice(40))
+}
+main()

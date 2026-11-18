@@ -269,6 +269,14 @@ namespace ast {
         return resultLabels;
     }
 
+    void BranchNode::setBindingName(const std::string& name) {
+        bindingName = name;
+    }
+
+    const std::string& BranchNode::getBindingName() const {
+        return bindingName;
+    }
+
     ConditionNode::ConditionNode(const std::vector<std::shared_ptr<ExpressionNode>> &branchNodes)
         : ExpressionNode(branchNodes[0]->getMainToken(), NodeType::CONDITION), branchNodes(branchNodes) {}
 
@@ -408,6 +416,24 @@ namespace ast {
     }
 
     Pos ClassDefinitionNode::getPos() const {
+        return getMainToken().getPos();
+    }
+
+    StructDefinitionNode::StructDefinitionNode(const Token &structToken,
+                                               const std::shared_ptr<ExpressionNode> &nameNode_,
+                                               const std::shared_ptr<ExpressionNode> &bodyNode_)
+            : ExpressionNode(structToken, NodeType::STRUCT_DEFINITION),
+              nameNode(nameNode_), bodyNode(bodyNode_) {}
+
+    std::shared_ptr<ExpressionNode> StructDefinitionNode::getBodyNode() const {
+        return bodyNode;
+    }
+
+    std::shared_ptr<ExpressionNode> StructDefinitionNode::getNameNode() const {
+        return nameNode;
+    }
+
+    Pos StructDefinitionNode::getPos() const {
         return getMainToken().getPos();
     }
 
@@ -616,6 +642,16 @@ namespace ast {
     {
         setMainToken(token);
         labelPath.push_back(token.getValue());
+    }
+
+    void LabelNode::setNullable(const bool value)
+    {
+        nullable = value;
+    }
+
+    bool LabelNode::isNullable() const
+    {
+        return nullable;
     }
 
     RangerNode::RangerNode(const NodeType rangerType_,

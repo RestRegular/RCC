@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var q: ptr = core_alloc(16, 8)
+core_mem_set(q, 0, 16)
+core_mem_set(q, 5, 1)
+sout(core_str_len(q))

@@ -1,0 +1,18 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Base {
+    var val: int
+    ctor(v: int) { this.val = v }
+    fun get(): int { ret this.val }
+}
+class Derived: Base {
+    var extra: int
+    ctor(v: int, e: int) {
+        super(v)
+        this.extra = e
+    }
+}
+fun main(): void {
+    var d = Derived(5, 6)
+    sout(d.get())
+}
+main()

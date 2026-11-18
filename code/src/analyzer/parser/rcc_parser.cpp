@@ -77,6 +77,8 @@ namespace parser {
         {TokenType::TOKEN_CTOR, &Parser::buildConstructorExpression},
         // 类定义
         {TokenType::TOKEN_CLASS, &Parser::buildClassExpression},
+        // A：值语义 struct 定义（与 class 并列，无继承）
+        {TokenType::TOKEN_STRUCT, &Parser::buildStructExpression},
         // 返回语句
         {TokenType::TOKEN_RETURN, &Parser::buildReturnExpression},
         // P13-2/L1：`ret` 退最近可返回值作用域，与 return 分开 token、共用构建函数。

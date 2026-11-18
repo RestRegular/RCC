@@ -1,0 +1,16 @@
+{
+    "name":  "p12-g12g13-ptr-any",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.1394493Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "裸指针与 any 的互操作、类型标注校验",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  15,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

@@ -1,0 +1,16 @@
+{
+    "name":  "p10-generics",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.0986838Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "单态化、类型实参推导、泛型类、同名多份泛型声明",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  34,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

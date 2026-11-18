@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun f(a: piont): int {
+    ret a
+}
+sout(f(1))

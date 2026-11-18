@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+import cyca
+fun main() { sout(ca()) }
+main()

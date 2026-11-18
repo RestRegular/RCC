@@ -1,0 +1,16 @@
+{
+    "name":  "p13-verify-fixes",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:10:16.7690385Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "P13-2 审阅发现的 A-J 类缺陷修复验证（43 条，只验编译成功或失败）",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  43,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

@@ -1,0 +1,6 @@
+fun main(): void {
+    var x = 100
+    var z = x + 1
+    sout(z)
+}
+main()

@@ -1,0 +1,16 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Vec {
+    var x: float, y: float
+    ctor(a: float, b: float) {
+        this.x = a
+        this.y = b
+    }
+}
+fun main(): void {
+    var v = Vec(1.5, 2.5)
+    sout(v.x)
+    sout(v.y)
+    v.x = 9.5
+    sout(v.x)
+}
+main()

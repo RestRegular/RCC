@@ -1,0 +1,7 @@
+fun f(a: int, b: int): int { ret a * 100 + b }
+fun f(s: str): str { ret clone(s) }
+fun main(): void {
+    sout(f(b=2, a=1))
+    sout(f("z"))
+}
+main()

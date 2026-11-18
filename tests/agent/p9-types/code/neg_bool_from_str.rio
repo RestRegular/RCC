@@ -1,0 +1,4 @@
+fun main(): void {
+    var b: bool = "yes"
+}
+main()

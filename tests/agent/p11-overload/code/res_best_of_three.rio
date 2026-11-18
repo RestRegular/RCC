@@ -1,0 +1,9 @@
+fun k(x: int): void { sout("i") }
+fun k(x: float): void { sout("f") }
+fun k(x: bool): void { sout("b") }
+fun main(): void {
+    k(1)
+    k(1.5)
+    k(true)
+}
+main()

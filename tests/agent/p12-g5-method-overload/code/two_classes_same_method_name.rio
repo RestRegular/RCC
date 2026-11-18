@@ -1,0 +1,15 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class A {
+    fun m(x: int): int { ret 10 }
+    fun m(x: str): int { ret 11 }
+}
+class B {
+    fun m(x: int): int { ret 20 }
+    fun m(x: str): int { ret 21 }
+}
+var a = A()
+var b = B()
+sout(a.m(0))
+sout(a.m("s"))
+sout(b.m(0))
+sout(b.m("s"))

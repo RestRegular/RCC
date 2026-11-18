@@ -1,0 +1,2 @@
+fun sout(*args, end="\n"): void { encapsulated }
+sout(9223372036854775808)

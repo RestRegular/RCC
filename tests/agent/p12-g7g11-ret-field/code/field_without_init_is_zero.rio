@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class A { var a: int }
+var o = A()
+sout(o.a)

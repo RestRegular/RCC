@@ -1,0 +1,6 @@
+fun identity[T](x: T): T { ret x }
+fun main(): void {
+    sout(identity[int](1))
+    sout(identity(2))
+}
+main()

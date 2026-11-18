@@ -1,0 +1,114 @@
+{
+    "cases":  [
+                  {
+                      "id":  "str_concat_literals",
+                      "file":  "code/str_concat_literals.rio",
+                      "expect":  "xy"
+                  },
+                  {
+                      "id":  "str_concat_variables",
+                      "file":  "code/str_concat_variables.rio",
+                      "expect":  "abcd"
+                  },
+                  {
+                      "id":  "str_concat_accumulate",
+                      "file":  "code/str_concat_accumulate.rio",
+                      "expect":  "hi!"
+                  },
+                  {
+                      "id":  "str_concat_chain",
+                      "file":  "code/str_concat_chain.rio",
+                      "expect":  "abc"
+                  },
+                  {
+                      "id":  "str_concat_empty_left",
+                      "file":  "code/str_concat_empty_left.rio",
+                      "expect":  "tail"
+                  },
+                  {
+                      "id":  "str_concat_empty_right",
+                      "file":  "code/str_concat_empty_right.rio",
+                      "expect":  "head"
+                  },
+                  {
+                      "id":  "str_concat_then_compare",
+                      "file":  "code/str_concat_then_compare.rio",
+                      "expect":  "abcd"
+                  },
+                  {
+                      "id":  "str_concat_multibyte",
+                      "file":  "code/str_concat_multibyte.rio",
+                      "expect":  "你好世界"
+                  },
+                  {
+                      "id":  "list_concat_literals",
+                      "file":  "code/list_concat_literals.rio",
+                      "expect":  "1\n2\n3\n4"
+                  },
+                  {
+                      "id":  "list_concat_variables",
+                      "file":  "code/list_concat_variables.rio",
+                      "expect":  "1\n2\n3\n4"
+                  },
+                  {
+                      "id":  "list_concat_empty_left",
+                      "file":  "code/list_concat_empty_left.rio",
+                      "expect":  "7"
+                  },
+                  {
+                      "id":  "list_concat_empty_right",
+                      "file":  "code/list_concat_empty_right.rio",
+                      "expect":  "7"
+                  },
+                  {
+                      "id":  "list_concat_length",
+                      "file":  "code/list_concat_length.rio",
+                      "expect":  "5\n0"
+                  },
+                  {
+                      "id":  "list_concat_then_set",
+                      "file":  "code/list_concat_then_set.rio",
+                      "expect":  "99\n4"
+                  },
+                  {
+                      "id":  "list_concat_no_mutation",
+                      "file":  "code/list_concat_no_mutation.rio",
+                      "expect":  "1\n2\n3\n4"
+                  },
+                  {
+                      "id":  "list_concat_chain",
+                      "file":  "code/list_concat_chain.rio",
+                      "expect":  "1\n2\n3"
+                  },
+                  {
+                      "id":  "str_compound_append",
+                      "file":  "code/str_compound_append.rio",
+                      "expect":  "abc"
+                  },
+                  {
+                      "id":  "str_compound_append_empty",
+                      "file":  "code/str_compound_append_empty.rio",
+                      "expect":  "x"
+                  },
+                  {
+                      "id":  "list_compound_append",
+                      "file":  "code/list_compound_append.rio",
+                      "expect":  "1\n2"
+                  },
+                  {
+                      "id":  "list_compound_append_chain",
+                      "file":  "code/list_compound_append_chain.rio",
+                      "expect":  "3"
+                  },
+                  {
+                      "id":  "str_compound_no_pointer_add",
+                      "file":  "code/str_compound_no_pointer_add.rio",
+                      "expect":  "4"
+                  },
+                  {
+                      "id":  "list_concat_str_elements",
+                      "file":  "code/list_concat_str_elements.rio",
+                      "expect":  "a\nb\nc"
+                  }
+              ]
+}

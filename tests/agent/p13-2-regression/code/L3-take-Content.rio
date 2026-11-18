@@ -1,0 +1,6 @@
+class Player {
+ var name: str
+ ctor(n: str) { this.name = n }
+}
+fun consume(c: Content[Player]): int { ret 1 }
+fun main(): void { var bob: Player = Player("bob"); consume(bob.take()); var d = bob }

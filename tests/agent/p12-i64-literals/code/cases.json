@@ -1,0 +1,135 @@
+{
+    "cases":  [
+                  {
+                      "id":  "i32_max",
+                      "file":  "code/i32_max.rio",
+                      "expect":  "2147483647"
+                  },
+                  {
+                      "id":  "i32_max_plus_1",
+                      "file":  "code/i32_max_plus_1.rio",
+                      "expect":  "2147483648"
+                  },
+                  {
+                      "id":  "u32_max",
+                      "file":  "code/u32_max.rio",
+                      "expect":  "4294967295"
+                  },
+                  {
+                      "id":  "u32_max_plus_1",
+                      "file":  "code/u32_max_plus_1.rio",
+                      "expect":  "4294967296"
+                  },
+                  {
+                      "id":  "i64_max",
+                      "file":  "code/i64_max.rio",
+                      "expect":  "9223372036854775807"
+                  },
+                  {
+                      "id":  "i64_min",
+                      "file":  "code/i64_min.rio",
+                      "expect":  "-9223372036854775808"
+                  },
+                  {
+                      "id":  "medium_1e14",
+                      "file":  "code/medium_1e14.rio",
+                      "expect":  "123456789012345"
+                  },
+                  {
+                      "id":  "i64_arith_add",
+                      "file":  "code/i64_arith_add.rio",
+                      "expect":  "9223372036854775806"
+                  },
+                  {
+                      "id":  "i64_arith_mul",
+                      "file":  "code/i64_arith_mul.rio",
+                      "expect":  "4294967296"
+                  },
+                  {
+                      "id":  "i64_arith_div",
+                      "file":  "code/i64_arith_div.rio",
+                      "expect":  "2147483648"
+                  },
+                  {
+                      "id":  "i64_arith_mod",
+                      "file":  "code/i64_arith_mod.rio",
+                      "expect":  "807"
+                  },
+                  {
+                      "id":  "i64_min_plus_one",
+                      "file":  "code/i64_min_plus_one.rio",
+                      "expect":  "-9223372036854775807"
+                  },
+                  {
+                      "id":  "i64_min_computed",
+                      "file":  "code/i64_min_computed.rio",
+                      "expect":  "-9223372036854775808"
+                  },
+                  {
+                      "id":  "i64_compare_gt",
+                      "file":  "code/i64_compare_gt.rio",
+                      "expect":  "true"
+                  },
+                  {
+                      "id":  "i64_compare_neg",
+                      "file":  "code/i64_compare_neg.rio",
+                      "expect":  "true"
+                  },
+                  {
+                      "id":  "i64_compare_eq",
+                      "file":  "code/i64_compare_eq.rio",
+                      "expect":  "true"
+                  },
+                  {
+                      "id":  "i64_min_sign",
+                      "file":  "code/i64_min_sign.rio",
+                      "expect":  "negative"
+                  },
+                  {
+                      "id":  "i64_as_param",
+                      "file":  "code/i64_as_param.rio",
+                      "expect":  "9223372036854775807"
+                  },
+                  {
+                      "id":  "i64_in_list",
+                      "file":  "code/i64_in_list.rio",
+                      "expect":  "2147483648\n9223372036854775807"
+                  },
+                  {
+                      "id":  "i64_negative_var",
+                      "file":  "code/i64_negative_var.rio",
+                      "expect":  "-123456789012345\n123456789012345"
+                  },
+                  {
+                      "id":  "i64_negative_lexed",
+                      "file":  "code/i64_negative_lexed.rio",
+                      "expect":  "-2147483648"
+                  },
+                  {
+                      "id":  "float_still_works",
+                      "file":  "code/float_still_works.rio",
+                      "expect":  "3.14\n3.75"
+                  },
+                  {
+                      "id":  "overflow_i64_max_plus_1",
+                      "file":  "code/overflow_i64_max_plus_1.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Overflow error",
+                      "mustMatchRegex":  true
+                  },
+                  {
+                      "id":  "overflow_i64_min_minus_1",
+                      "file":  "code/overflow_i64_min_minus_1.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Overflow error",
+                      "mustMatchRegex":  true
+                  },
+                  {
+                      "id":  "overflow_huge",
+                      "file":  "code/overflow_huge.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Overflow error",
+                      "mustMatchRegex":  true
+                  }
+              ]
+}

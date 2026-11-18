@@ -1,0 +1,79 @@
+{
+    "cases":  [
+                  {
+                      "id":  "dict_literal",
+                      "file":  "code/dict_literal.rio",
+                      "expect":  "Rio\n18"
+                  },
+                  {
+                      "id":  "dict_dup_key_overwrites",
+                      "file":  "code/dict_dup_key_overwrites.rio",
+                      "expect":  "1\n2\n2\n3\n2"
+                  },
+                  {
+                      "id":  "dict_multi_key",
+                      "file":  "code/dict_multi_key.rio",
+                      "expect":  "1\n2\n3"
+                  },
+                  {
+                      "id":  "dict_miss",
+                      "file":  "code/dict_miss.rio",
+                      "expect":  "true\nfalse"
+                  },
+                  {
+                      "id":  "dict_var_key",
+                      "file":  "code/dict_var_key.rio",
+                      "expect":  "22"
+                  },
+                  {
+                      "id":  "dict_long_keys",
+                      "file":  "code/dict_long_keys.rio",
+                      "expect":  "2\n3\n1"
+                  },
+                  {
+                      "id":  "list_literal",
+                      "file":  "code/list_literal.rio",
+                      "expect":  "10\n30\n40"
+                  },
+                  {
+                      "id":  "list_float",
+                      "file":  "code/list_float.rio",
+                      "expect":  "1.5\n3.5"
+                  },
+                  {
+                      "id":  "list_oob",
+                      "file":  "code/list_oob.rio",
+                      "expect":  "0\n0\n0"
+                  },
+                  {
+                      "id":  "empty_containers",
+                      "file":  "code/empty_containers.rio",
+                      "expect":  "0\ntrue"
+                  },
+                  {
+                      "id":  "nested",
+                      "file":  "code/nested.rio",
+                      "expect":  "2\n3\n6"
+                  },
+                  {
+                      "id":  "loop_index",
+                      "file":  "code/loop_index.rio",
+                      "expect":  "20"
+                  },
+                  {
+                      "id":  "dict_in_func",
+                      "file":  "code/dict_in_func.rio",
+                      "expect":  "200\n77"
+                  },
+                  {
+                      "id":  "list_sum_loop",
+                      "file":  "code/list_sum_loop.rio",
+                      "expect":  "15"
+                  },
+                  {
+                      "id":  "mixed_dict",
+                      "file":  "code/mixed_dict.rio",
+                      "expect":  "1\n2"
+                  }
+              ]
+}

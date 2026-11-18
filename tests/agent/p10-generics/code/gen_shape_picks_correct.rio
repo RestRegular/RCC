@@ -1,0 +1,7 @@
+fun pick[T](c: list[T]): str { ret "list" }
+fun pick[T, K](c: dict[T, K]): str { ret "dict" }
+fun main(): void {
+    sout(pick[int]([1]))
+    sout(pick({"a": 1}))
+}
+main()

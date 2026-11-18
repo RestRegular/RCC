@@ -1,0 +1,2 @@
+fun sout(*args, end="\n"): void { encapsulated }
+sout("a" + "b" + "c")

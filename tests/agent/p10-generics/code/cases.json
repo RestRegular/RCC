@@ -1,0 +1,178 @@
+{
+    "cases":  [
+                  {
+                      "id":  "pos_identity_int",
+                      "file":  "code/pos_identity_int.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "pos_identity_str",
+                      "file":  "code/pos_identity_str.rio",
+                      "expect":  "rio"
+                  },
+                  {
+                      "id":  "pos_identity_float",
+                      "file":  "code/pos_identity_float.rio",
+                      "expect":  "3.5"
+                  },
+                  {
+                      "id":  "pos_pair_two_params",
+                      "file":  "code/pos_pair_two_params.rio",
+                      "expect":  "x"
+                  },
+                  {
+                      "id":  "pos_generic_class_int",
+                      "file":  "code/pos_generic_class_int.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "pos_generic_class_float",
+                      "file":  "code/pos_generic_class_float.rio",
+                      "expect":  "2.5"
+                  },
+                  {
+                      "id":  "pos_generic_class_str",
+                      "file":  "code/pos_generic_class_str.rio",
+                      "expect":  "rio"
+                  },
+                  {
+                      "id":  "pos_generic_class_multi",
+                      "file":  "code/pos_generic_class_multi.rio",
+                      "expect":  "7\nx"
+                  },
+                  {
+                      "id":  "pos_nested_instance",
+                      "file":  "code/pos_nested_instance.rio",
+                      "expect":  "9\n2.5"
+                  },
+                  {
+                      "id":  "pos_generic_class_swap",
+                      "file":  "code/pos_generic_class_swap.rio",
+                      "expect":  "x\n7"
+                  },
+                  {
+                      "id":  "pos_unused_generic",
+                      "file":  "code/pos_unused_generic.rio",
+                      "expect":  "1"
+                  },
+                  {
+                      "id":  "pos_generic_default_int",
+                      "file":  "code/pos_generic_default_int.rio",
+                      "expect":  "42\n7"
+                  },
+                  {
+                      "id":  "pos_generic_default_str",
+                      "file":  "code/pos_generic_default_str.rio",
+                      "expect":  "DEF\nX"
+                  },
+                  {
+                      "id":  "pos_generic_default_bool",
+                      "file":  "code/pos_generic_default_bool.rio",
+                      "expect":  "false\ntrue"
+                  },
+                  {
+                      "id":  "pos_generic_default_multi",
+                      "file":  "code/pos_generic_default_multi.rio",
+                      "expect":  "12\n72\n78"
+                  },
+                  {
+                      "id":  "pos_generic_default_typeparam",
+                      "file":  "code/pos_generic_default_typeparam.rio",
+                      "expect":  "0\n9"
+                  },
+                  {
+                      "id":  "pos_generic_default_explicit",
+                      "file":  "code/pos_generic_default_explicit.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "pos_generic_default_named",
+                      "file":  "code/pos_generic_default_named.rio",
+                      "expect":  "19"
+                  },
+                  {
+                      "id":  "pos_generic_default_two_inst",
+                      "file":  "code/pos_generic_default_two_inst.rio",
+                      "expect":  "42\n42\n42"
+                  },
+                  {
+                      "id":  "ded_int",
+                      "file":  "code/ded_int.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "ded_float",
+                      "file":  "code/ded_float.rio",
+                      "expect":  "3.5"
+                  },
+                  {
+                      "id":  "ded_list_elem",
+                      "file":  "code/ded_list_elem.rio",
+                      "expect":  "1.5"
+                  },
+                  {
+                      "id":  "ded_dict_value",
+                      "file":  "code/ded_dict_value.rio",
+                      "expect":  "1.5"
+                  },
+                  {
+                      "id":  "ded_func_param",
+                      "file":  "code/ded_func_param.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "ded_shared_instance",
+                      "file":  "code/ded_shared_instance.rio",
+                      "expect":  "1\n2"
+                  },
+                  {
+                      "id":  "ded_generic_class_from_annot",
+                      "file":  "code/ded_generic_class_from_annot.rio",
+                      "expect":  "1.25"
+                  },
+                  {
+                      "id":  "gen_multi_decl",
+                      "file":  "code/gen_multi_decl.rio",
+                      "expect":  "list\ndict"
+                  },
+                  {
+                      "id":  "gen_multi_deduce",
+                      "file":  "code/gen_multi_deduce.rio",
+                      "expect":  "1\n2"
+                  },
+                  {
+                      "id":  "gen_default_arg_count",
+                      "file":  "code/gen_default_arg_count.rio",
+                      "expect":  "42\n7"
+                  },
+                  {
+                      "id":  "gen_shape_picks_correct",
+                      "file":  "code/gen_shape_picks_correct.rio",
+                      "expect":  "list\ndict"
+                  },
+                  {
+                      "id":  "neg_wrong_arg_count",
+                      "file":  "code/neg_wrong_arg_count.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "takes 2 type argument(s)"
+                  },
+                  {
+                      "id":  "neg_undeducible",
+                      "file":  "code/neg_undeducible.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Cannot"
+                  },
+                  {
+                      "id":  "neg_instance_arg_mismatch",
+                      "file":  "code/neg_instance_arg_mismatch.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "declared as str"
+                  },
+                  {
+                      "id":  "neg_class_arg_count",
+                      "file":  "code/neg_class_arg_count.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Cannot"
+                  }
+              ]
+}

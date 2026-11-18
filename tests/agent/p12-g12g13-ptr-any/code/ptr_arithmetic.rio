@@ -1,0 +1,6 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var q: ptr = core_alloc(64, 8)
+core_mem_set(q, 0, 64)
+var base: int = q
+var plus8: int = q + 8
+sout(plus8 - base)

@@ -1,0 +1,16 @@
+{
+    "name":  "p2-functions",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.2869537Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "函数定义、调用、默认参数、递归、返回值",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  10,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

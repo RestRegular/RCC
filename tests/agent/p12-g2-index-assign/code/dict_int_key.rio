@@ -1,0 +1,6 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var d = {1: 10}
+d[2] = 20
+d[1] = 11
+sout(d[1])
+sout(d[2])

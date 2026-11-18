@@ -1,0 +1,5 @@
+fun main(): void {
+    var x: float = 1
+    sout(x)
+}
+main()

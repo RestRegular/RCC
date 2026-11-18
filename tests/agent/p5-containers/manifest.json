@@ -1,0 +1,16 @@
+{
+    "name":  "p5-containers",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.3051412Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "list / dict 字面量、索引、迭代、内建方法",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  15,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

@@ -1,0 +1,6 @@
+fun f(x: int): int { ret x }
+fun f(x: int): int { ret x + 1 }
+fun main(): void {
+    sout(f(1))
+}
+main()

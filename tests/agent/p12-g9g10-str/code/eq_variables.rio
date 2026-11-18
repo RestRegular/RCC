@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var a: str = "ab"
+var c: str = "ab"
+if a == c { sout("eq") } else { sout("ne") }

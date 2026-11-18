@@ -1,0 +1,6 @@
+fun apply(f, x) { ret f(x) }
+fun main(): void {
+    var dbl = (a) -> { ret a * 2 }
+    sout(apply(dbl, 5))
+}
+main()

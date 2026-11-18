@@ -1,0 +1,10 @@
+class Player {
+    var name: str
+    ctor (n: str) { this.name = n }
+}
+var pool = Pool.fixed(2)
+fun main(): void {
+ var bob: Body[Player] pool = Player("bob")
+ var c: Content[Player] pool = bob.take()
+ sout(bob.name)
+}

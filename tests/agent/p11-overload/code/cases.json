@@ -1,0 +1,129 @@
+{
+    "cases":  [
+                  {
+                      "id":  "pos_three_families",
+                      "file":  "code/pos_three_families.rio",
+                      "expect":  "int\nfloat\nstr"
+                  },
+                  {
+                      "id":  "pos_arity",
+                      "file":  "code/pos_arity.rio",
+                      "expect":  "7\n7"
+                  },
+                  {
+                      "id":  "pos_return_type",
+                      "file":  "code/pos_return_type.rio",
+                      "expect":  "3\n2.5"
+                  },
+                  {
+                      "id":  "pos_annotated_wins",
+                      "file":  "code/pos_annotated_wins.rio",
+                      "expect":  "exact\nwild"
+                  },
+                  {
+                      "id":  "pos_pointer_prefers_exact",
+                      "file":  "code/pos_pointer_prefers_exact.rio",
+                      "expect":  "str\nlist"
+                  },
+                  {
+                      "id":  "pos_class_param",
+                      "file":  "code/pos_class_param.rio",
+                      "expect":  "point 9\nint 5"
+                  },
+                  {
+                      "id":  "pos_nested_call",
+                      "file":  "code/pos_nested_call.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "pos_single_stays_bare",
+                      "file":  "code/pos_single_stays_bare.rio",
+                      "expect":  "42"
+                  },
+                  {
+                      "id":  "pos_mixed",
+                      "file":  "code/pos_mixed.rio",
+                      "expect":  "dup-int\ndup-float\nsolo"
+                  },
+                  {
+                      "id":  "res_numeric_widen",
+                      "file":  "code/res_numeric_widen.rio",
+                      "expect":  "int\nfloat"
+                  },
+                  {
+                      "id":  "res_default_arg",
+                      "file":  "code/res_default_arg.rio",
+                      "expect":  "15\nx"
+                  },
+                  {
+                      "id":  "res_named_arg",
+                      "file":  "code/res_named_arg.rio",
+                      "expect":  "102\nz"
+                  },
+                  {
+                      "id":  "res_best_of_three",
+                      "file":  "code/res_best_of_three.rio",
+                      "expect":  "i\nf\nb"
+                  },
+                  {
+                      "id":  "neg_no_match",
+                      "file":  "code/neg_no_match.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "No matching overload for \u0027f\u0027"
+                  },
+                  {
+                      "id":  "neg_arity_mismatch",
+                      "file":  "code/neg_arity_mismatch.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "No matching overload for \u0027f\u0027"
+                  },
+                  {
+                      "id":  "neg_ambiguous",
+                      "file":  "code/neg_ambiguous.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Ambiguous call to overloaded function \u0027f\u0027"
+                  },
+                  {
+                      "id":  "neg_duplicate_signature",
+                      "file":  "code/neg_duplicate_signature.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "Duplicate definition of overloaded function"
+                  },
+                  {
+                      "id":  "neg_candidate_listing",
+                      "file":  "code/neg_candidate_listing.rio",
+                      "expectFailure":  true,
+                      "mustMatch":  "candidates: fun f(a: int, b: int); fun f(a: str, b: str)"
+                  },
+                  {
+                      "id":  "con_bare_three",
+                      "file":  "code/con_bare_three.rio",
+                      "expect":  "1\n2\n3"
+                  },
+                  {
+                      "id":  "con_element_types",
+                      "file":  "code/con_element_types.rio",
+                      "expect":  "3\n4"
+                  },
+                  {
+                      "id":  "con_any_vs_concrete",
+                      "file":  "code/con_any_vs_concrete.rio",
+                      "expect":  "3\n2"
+                  },
+                  {
+                      "id":  "con_bare_vs_typed",
+                      "file":  "code/con_bare_vs_typed.rio",
+                      "expect":  "3\n2"
+                  },
+                  {
+                      "id":  "con_dict_values",
+                      "file":  "code/con_dict_values.rio",
+                      "expect":  "6\n7"
+                  },
+                  {
+                      "id":  "con_nested",
+                      "file":  "code/con_nested.rio",
+                      "expect":  "8\n9"
+                  }
+              ]
+}

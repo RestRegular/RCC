@@ -1,0 +1,2 @@
+fun setv[T](b: T, x: T): int writes[b.v] { ret 1 }
+fun main(): void { }

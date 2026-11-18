@@ -1,0 +1,7 @@
+fun main(): void {
+ var i = 0
+ var x = while (i < 5): int {
+  i += 1
+  if i == 3 { break "hi" }
+ }
+}

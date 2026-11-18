@@ -1,0 +1,9 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Base {
+    fun m(x: int): int { ret 1 }
+}
+class Derived: Base {
+    fun m(x: int): int { ret 2 }
+}
+var d = Derived()
+sout(d.m(0))

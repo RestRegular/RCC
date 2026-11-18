@@ -1,0 +1,6 @@
+class Player {
+ var name: str
+ var hp: int
+ ctor(n: str) { this.name = n this.hp = 10 }
+ fun greet(): str { ret this.name }
+}fun main(): void { var pl: Pool = Pool.fixed(4) var a: Player = pl.new[Player]("x") }

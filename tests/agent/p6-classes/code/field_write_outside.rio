@@ -1,0 +1,12 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Box {
+    var v: int
+    ctor(n: int) { this.v = n }
+}
+fun main(): void {
+    var b = Box(1)
+    sout(b.v)
+    b.v = 99
+    sout(b.v)
+}
+main()

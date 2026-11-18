@@ -1,0 +1,11 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun boom() {
+    throw "from boom"
+}
+try {
+    boom()
+    sout("NOT REACHED")
+} catch(e) {
+    sout(e)
+}
+sout("end")

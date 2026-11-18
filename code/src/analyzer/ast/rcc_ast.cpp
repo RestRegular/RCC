@@ -21,6 +21,7 @@ namespace ast {
             case NodeType::CHAR: return "CHAR";
             case NodeType::CLASS_DEFINITION: return "CLASS_DEFINITION";
             case NodeType::CLASS_DECLARATION: return "CLASS_DECLARATION";
+            case NodeType::STRUCT_DEFINITION: return "STRUCT_DEFINITION";
             case NodeType::COMPOUND: return "COMPOUND";
             case NodeType::CONTINUE: return "CONTINUE";
             case NodeType::DECORATOR: return "DECORATOR";

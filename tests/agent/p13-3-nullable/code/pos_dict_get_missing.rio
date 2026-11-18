@@ -1,0 +1,6 @@
+var d = {"a": 5, "b": 6}
+if var v = d.get("nope") {
+    sout(v)
+} else {
+    sout(-1)
+}

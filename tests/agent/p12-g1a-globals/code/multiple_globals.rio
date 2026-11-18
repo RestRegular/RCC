@@ -1,0 +1,9 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var a: int = 1
+var b: int = 2
+var c: int = 3
+fun sum3(): int { ret a + b + c }
+sout(sum3())
+sout(a)
+sout(b)
+sout(c)

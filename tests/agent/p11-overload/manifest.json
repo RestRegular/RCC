@@ -1,0 +1,16 @@
+{
+    "name":  "p11-overload",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.1225881Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "重载决议、mangling、默认值/命名实参参与决议、容器重载",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  24,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

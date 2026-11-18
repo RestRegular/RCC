@@ -1,0 +1,5 @@
+class Player {
+ var name: str
+ ctor(n: str) { this.name = n }
+}
+fun main(): void { var p1: Pool = Pool.fixed(10); var p2: Pool = Pool.fixed(10); var a: Player p1 = Player("bob"); a.clear(); p2.release(a) }

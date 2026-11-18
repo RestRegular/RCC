@@ -1,0 +1,7 @@
+import utilx
+fun main() {
+    sout(twice(5))
+    var b = Box()
+    sout(b.get())
+}
+main()

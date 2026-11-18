@@ -1,0 +1,4 @@
+fun main(): void {
+ var f: float = { ret 1.5 }
+ sout(f)
+}

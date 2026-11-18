@@ -1,0 +1,6 @@
+fun twice(n: int): int { ret n * 2 }
+fun main(): void {
+    var b: int = 7
+    sout(twice(b))
+}
+main()

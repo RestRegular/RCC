@@ -1,0 +1,10 @@
+fun sout(*args, end="\n"): void { encapsulated }
+try {
+    try {
+        throw "pass through"
+    }
+    sout("NOT REACHED 2")
+} catch(e) {
+    sout("outer got")
+    sout(e)
+}

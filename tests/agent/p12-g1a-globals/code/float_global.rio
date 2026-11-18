@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var pi: float = 3.5
+fun readPi(): float { ret pi }
+sout(readPi())

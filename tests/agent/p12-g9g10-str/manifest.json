@@ -1,0 +1,16 @@
+{
+    "name":  "p12-g9g10-str",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.2433367Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "字符串比较、查找、切片、替换等内建",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  16,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

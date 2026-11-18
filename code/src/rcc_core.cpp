@@ -32,6 +32,7 @@ namespace core {
         {"false", TokenType::TOKEN_FALSE},
         {"null", TokenType::TOKEN_NULL},
         {"class", TokenType::TOKEN_CLASS},
+        {"struct", TokenType::TOKEN_STRUCT},
         {"fun", TokenType::TOKEN_FUNCTION},
         {"if", TokenType::TOKEN_IF},
         {"else", TokenType::TOKEN_ELSE},
@@ -300,6 +301,7 @@ namespace core {
         case TokenType::TOKEN_SLASH: return "TOKEN_SLASH";
         case TokenType::TOKEN_SLASH_ASSIGN: return "TOKEN_SLASH_ASSIGN";
         case TokenType::TOKEN_STRING: return "TOKEN_STRING";
+        case TokenType::TOKEN_STRUCT: return "TOKEN_STRUCT";
         case TokenType::TOKEN_STAR: return "TOKEN_STAR";
         case TokenType::TOKEN_STAR_ASSIGN: return "TOKEN_STAR_ASSIGN";
         case TokenType::TOKEN_TRY: return "TOKEN_TRY";

@@ -1,0 +1,84 @@
+{
+    "cases":  [
+                  {
+                      "id":  "eq_variables",
+                      "file":  "code/eq_variables.rio",
+                      "expect":  "eq"
+                  },
+                  {
+                      "id":  "ne_variables",
+                      "file":  "code/ne_variables.rio",
+                      "expect":  "ne"
+                  },
+                  {
+                      "id":  "eq_variable_literal",
+                      "file":  "code/eq_variable_literal.rio",
+                      "expect":  "eq"
+                  },
+                  {
+                      "id":  "ne_prefix",
+                      "file":  "code/ne_prefix.rio",
+                      "expect":  "ok"
+                  },
+                  {
+                      "id":  "eq_empty",
+                      "file":  "code/eq_empty.rio",
+                      "expect":  "empty"
+                  },
+                  {
+                      "id":  "ne_empty",
+                      "file":  "code/ne_empty.rio",
+                      "expect":  "ok"
+                  },
+                  {
+                      "id":  "not_equal_operator",
+                      "file":  "code/not_equal_operator.rio",
+                      "expect":  "ok\nok2"
+                  },
+                  {
+                      "id":  "eq_concat_result",
+                      "file":  "code/eq_concat_result.rio",
+                      "expect":  "eq"
+                  },
+                  {
+                      "id":  "eq_multibyte",
+                      "file":  "code/eq_multibyte.rio",
+                      "expect":  "eq"
+                  },
+                  {
+                      "id":  "index_read",
+                      "file":  "code/index_read.rio",
+                      "expect":  "h\ne\no"
+                  },
+                  {
+                      "id":  "index_read_literal",
+                      "file":  "code/index_read_literal.rio",
+                      "expect":  "b"
+                  },
+                  {
+                      "id":  "index_read_variable",
+                      "file":  "code/index_read_variable.rio",
+                      "expect":  "l"
+                  },
+                  {
+                      "id":  "index_read_out_of_range",
+                      "file":  "code/index_read_out_of_range.rio",
+                      "expect":  "0"
+                  },
+                  {
+                      "id":  "index_read_as_int",
+                      "file":  "code/index_read_as_int.rio",
+                      "expect":  "66"
+                  },
+                  {
+                      "id":  "index_read_in_loop",
+                      "file":  "code/index_read_in_loop.rio",
+                      "expect":  "a\nb\nc"
+                  },
+                  {
+                      "id":  "index_read_empty",
+                      "file":  "code/index_read_empty.rio",
+                      "expect":  "0"
+                  }
+              ]
+}

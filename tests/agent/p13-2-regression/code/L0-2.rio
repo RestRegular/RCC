@@ -1,0 +1,2 @@
+class C { var f: Bogus }
+fun main(): void { var c = C() }

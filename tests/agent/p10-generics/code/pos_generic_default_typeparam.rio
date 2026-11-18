@@ -1,0 +1,6 @@
+fun pick[T](x: T, y: T = 0): T { ret y }
+fun main(): void {
+    sout(pick(5))
+    sout(pick(5, 9))
+}
+main()

@@ -1,0 +1,7 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun twice(a: int): int { ret a * 2 }
+class Box {
+    var v: int = 0
+    fun get(): int { ret this.v }
+}
+export(twice, Box)

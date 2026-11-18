@@ -5,6 +5,13 @@
 > 所有变更均来自已批准的设计文档 `memory-model-syntax-resolutions.md`
 > 与 `p13_2_syntax_resolutions.md`，未自行设计语法。
 
+> **关于本文里的测试路径**：文中大量引用 `tests/p13_2_regression.ps1` 与
+> `tests/_probe/verify_fixes.ps1`，这两个脚本已在测试体系重构中迁入新契约，
+> 现在分别是 `tests/agent/p13-2-regression/`（126 例）与
+> `tests/agent/p13-verify-fixes/`（43 例）。其余 `test_scripts/test_*.ps1`
+> 也已迁入 `tests/agent/<同名套件>/`。这些引用作为**当时的历史记录**保留原样，
+> 不再逐条改写；现行体系见 `docs/architecture_plan.md` §11。
+
 ## 已完成（按依赖顺序）
 
 | 阶段 | 提交 | 内容 |
@@ -31,8 +38,8 @@
 | P std 重写 | 29f6e07 | 标准库（str/io/ops/math/ds）按内存模型规范重写完成；期间修掉四个编译器缺陷，见「C-2」一节 |
 | Q clone() | 29f6e07 | `x.clone()` / `clone(x)` 按静态类型派发（str/list/值类型；dict 待 P13-4） |
 
-**验证**：`tests/p13_2_regression.ps1`，**126 条用例全 PASS**；每次提交后回归。
-另有 `tests/_probe/verify_fixes.ps1`（43 条），覆盖审阅中发现的实现缺陷及其对照用例。
+**验证**：`tests/agent/p13-2-regression/`，**126 条用例全 PASS**；每次提交后回归。
+另有 `tests/agent/p13-verify-fixes/`（43 条），覆盖审阅中发现的实现缺陷及其对照用例。
 
 ## 剩余项与状态
 
@@ -124,9 +131,9 @@ std 按内存模型规范重写时暴露出来的四个编译器缺陷，全部�
    ptr 没有语言层所有权，借用语义对它不适用（`ret p` 只是返回位模式），
    已在 `checkBorrowNotEscaping` 里显式放行 ptr。
 
-修后实测：`test_scripts/test_all.ps1` 25 套件全过（718 用例通过，
+修后实测：`tests/user/run-all.ps1` 26 测试集全过（872 用例通过，
 仅 `test_legacy_all` 两个 G6 已延期的用例失败）；
-`tests/p13_2_regression.ps1` 126/126；`tests/_probe/verify_fixes.ps1` 43/43。
+`tests/agent/p13-2-regression` 126/126；`tests/agent/p13-verify-fixes` 43/43。
 
 ## 判断
 

@@ -1,0 +1,6 @@
+var xs = [10, 20, 30]
+if var p = xs.get(0 - 1) {
+    sout(p)
+} else {
+    sout(-1)
+}

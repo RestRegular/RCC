@@ -1,0 +1,6 @@
+fun firstOf[T](xs: list[T]): T { ret xs[0] }
+fun main(): void {
+    var xs: list[float] = [1.5, 2.5]
+    sout(firstOf(xs))
+}
+main()

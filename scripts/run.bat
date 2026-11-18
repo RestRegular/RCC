@@ -8,10 +8,10 @@ REM  其中 llc.exe 与 cmake-build-debug 两个路径早已不存在，整条�
 REM  新后端直接发 x86-64 汇编，as / ld 由 RCC 自己调，所以只需一步。
 REM
 REM  用法：
-REM    scripts\run.bat                          编译并运行 tests\test_1_builtins\test.rio
-REM    scripts\run.bat -i tests\test_6_functions 指定目录
-REM    scripts\run.bat -i tests\test_1_builtins --no-run     只编译不运行
-REM    scripts\run.bat -i tests\test_1_builtins --skip-cmake 不重新构建编译器
+REM    scripts\run.bat                          编译并运行 tests\user\main.rio
+REM    scripts\run.bat -i tests\user            指定目录
+REM    scripts\run.bat -i tests\user --no-run    只编译不运行
+REM    scripts\run.bat -i tests\user --skip-cmake 不重新构建编译器
 REM    scripts\run.bat -h
 REM ============================================================================
 setlocal enabledelayedexpansion
@@ -23,7 +23,7 @@ set "REPO=%CD%"
 set "RCC_EXE=%REPO%\release\RCC.exe"
 set "BUILD_DIR=%REPO%\build"
 
-set "TEST_DIR=tests\test_1_builtins"
+set "TEST_DIR=tests\user"
 set "RUN_EXE=true"
 set "SKIP_CMAKE=false"
 
@@ -55,23 +55,41 @@ goto :help
 
 :after_parse
 
-REM 测试目录可能是相对仓库根的，也可能是绝对路径
-if exist "%TEST_DIR%\" (
+REM 目标可以是目录（含 main.rio/test.rio），也可以是单个 .rio 文件；
+REM 路径可以相对仓库根，也可以是绝对路径。
+if exist "%TEST_DIR%" (
     set "TDIR=%TEST_DIR%"
-) else if exist "%REPO%\%TEST_DIR%\" (
+) else if exist "%REPO%\%TEST_DIR%" (
     set "TDIR=%REPO%\%TEST_DIR%"
 ) else (
-    echo ERROR: test directory not found: %TEST_DIR%
+    echo ERROR: path not found: %TEST_DIR%
     popd
     exit /b 1
 )
-pushd "%TDIR%" || (echo ERROR: cannot enter "%TDIR%" & popd & exit /b 1)
-set "TDIR=%CD%"
-popd
-
-set "INPUT_RIO=%TDIR%\test.rio"
-set "OUTPUT_EXE=%TDIR%\test.exe"
-set "ACTUAL_TXT=%TDIR%\actual.txt"
+REM 文件模式：直接把它当输入源，不再 pushd
+if /i "%TDIR:~-4%"==".rio" (
+    set "INPUT_RIO=%TDIR%"
+) else (
+    pushd "%TDIR%" || (echo ERROR: cannot enter "%TDIR%" & popd & exit /b 1)
+    set "TDIR=!CD!"
+    popd
+)
+REM 目录模式：在目录里找 main.rio（新惯例）或 test.rio（旧惯例）
+if not defined INPUT_RIO (
+    if exist "%TDIR%\main.rio" (
+        set "INPUT_RIO=%TDIR%\main.rio"
+    ) else if exist "%TDIR%\test.rio" (
+        set "INPUT_RIO=%TDIR%\test.rio"
+    ) else (
+        echo ERROR: no main.rio / test.rio found in %TDIR%
+        echo        put a .rio file there, or pass -i ^<file.rio^>
+        popd
+        exit /b 1
+    )
+)
+for %%F in ("%INPUT_RIO%") do set "INPUT_STEM=%%~dpnF"
+set "OUTPUT_EXE=%INPUT_STEM%.exe"
+set "ACTUAL_TXT=%INPUT_STEM%.actual.txt"
 
 echo ========================================
 echo RCC Build Script
@@ -160,16 +178,16 @@ exit /b 0
 echo Usage: %~nx0 [options]
 echo.
 echo Options:
-echo   -i ^<test_dir^>    Directory containing test.rio (default: tests\test_1_builtins)
+echo   -i ^<dir^|file^>  A directory with main.rio/test.rio, or a .rio file (default: tests\user)
 echo   --no-run           Skip running the executable after building
 echo   --skip-cmake       Skip rebuilding the compiler (use existing release\RCC.exe)
 echo   -h, --help, /?     Show this help message
 echo.
 echo Examples:
 echo   %~nx0
-echo   %~nx0 -i tests\test_6_functions
-echo   %~nx0 -i tests\test_9_integration --no-run
-echo   %~nx0 -i tests\test_1_builtins --skip-cmake
+echo   %~nx0 -i tests\user
+echo   %~nx0 -i tests\user\my.rio --no-run
+echo   %~nx0 -i tests\user --skip-cmake
 echo.
 popd
 exit /b 0

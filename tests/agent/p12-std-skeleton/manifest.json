@@ -1,0 +1,16 @@
+{
+    "name":  "p12-std-skeleton",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:04:19.6780604Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "lib/std 是唯一真相、release/Lib/builtin 是构建产物；模块可独立编译、拷贝逐字节一致、未被 git 跟踪、可被 import 调用",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  31,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

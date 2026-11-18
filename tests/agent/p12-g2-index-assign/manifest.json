@@ -1,0 +1,16 @@
+{
+    "name":  "p12-g2-index-assign",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.1705616Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "list/dict 索引赋值，str 元素写必须编译期报错",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  17,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

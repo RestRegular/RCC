@@ -108,6 +108,38 @@ namespace parser {
         return std::make_shared<ClassDefinitionNode>(classToken, nameNode, bodyNode);
     }
 
+    ExpressionNodePtr Parser::buildStructExpression(){
+        // A（docs/pending_designs.md §A）：`struct Pt { var x: int, y: int }`。
+        // 形状与 buildClassExpression 一致（名字 + 花括号体），但：
+        //   * 没有「只有名字、没有体」的声明形态 —— struct 必须一次定义完
+        //     （值语义需要完整布局才能分配槽位，前向声明无意义）
+        //   * 名字上的标签（`struct Pt: Base`）直接报错，struct 不支持继承
+        const auto &structToken = currentToken();
+        next();
+        auto nameNode = buildExpression(Precedence::LOWEST);
+        if (!nameNode) {
+            recordSyntaxError(structToken, currentToken(), "Expected struct name.");
+            return nullptr;
+        }
+        if (const auto id = std::dynamic_pointer_cast<IdentifierNode>(nameNode);
+            id && !id->getLabels().empty()) {
+            recordSyntaxError(structToken, currentToken(),
+                "struct does not support inheritance or labels.");
+            return nullptr;
+        }
+        if (nextTokenIs(TokenType::TOKEN_NEWLINE)) {
+            recordSyntaxError(structToken, currentToken(),
+                "struct must be defined with a body (declaration-only struct is not allowed).");
+            return nullptr;
+        }
+        if (!expectedNextTokenAndConsume(TokenType::TOKEN_LBRACE)) {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LBRACE);
+            return nullptr;
+        }
+        auto bodyNode = buildBraceExpression();
+        return std::make_shared<StructDefinitionNode>(structToken, nameNode, bodyNode);
+    }
+
     ExpressionNodePtr Parser::buildContinueExpression(){
         // 原先直接返回 nullptr，导致 `continue` 永远报
         // "failure to find the prefix expression construction function"。
@@ -266,6 +298,31 @@ namespace parser {
 
         const auto &ifToken = currentToken();
         next();
+        // 决议 B：`if var p = <expr> { ... }` —— 从可空表达式里取值。
+        //
+        // 语法上 `var` 是 if 条件位置的**前缀**，不是普通变量声明：
+        // 这里手工吃掉 `var <name> =`，剩下的表达式就是那个可空值，
+        // 变量名记在 BranchNode 上，只在 then 块里可见。
+        //
+        // 注意不能走 buildVariableExpression：那会造出一个
+        // VariableDefinitionNode，而它的绑定作用域是**整个外层块**，
+        // 与「只在 then 块可见」不符，且条件语义会变成「声明是否成功」
+        // 这种没有依据的东西。
+        std::string bindingName;
+        if (currentTokenIs(TokenType::TOKEN_VAR))        {
+            next();
+            if (!currentTokenIs(TokenType::TOKEN_IDENTIFIER))            {
+                recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_IDENTIFIER);
+                return nullptr;
+            }
+            bindingName = currentToken().getValue();
+            next();
+            if (!currentTokenIs(TokenType::TOKEN_ASSIGN))            {
+                recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_ASSIGN);
+                return nullptr;
+            }
+            next();
+        }
         auto condition = buildExpression(Precedence::LOWEST);
         // P13-2/L2(Q-C)：`if (cond): T { ... }` 的 `: T` 标注。
         // buildExpression 会把 `:` 当 infix 吃进 condition，形成
@@ -297,7 +354,9 @@ namespace parser {
         }
         next();
         const auto &bodyNode = buildBraceExpression();
-        return std::make_shared<BranchNode>(ifToken, condition, bodyNode, resultLabels);
+        const auto branch = std::make_shared<BranchNode>(ifToken, condition, bodyNode, resultLabels);
+        if (!bindingName.empty()) branch->setBindingName(bindingName);
+        return branch;
     }
 
     ExpressionNodePtr Parser::buildConditionExpression() {
@@ -400,6 +459,18 @@ namespace parser {
                 {
                     break;
                 }
+            }
+            // 决议 B：可空类型后缀 `T?`。`?` 不属于标签路径，也不属于
+            // `[...]` 描述，所以上面的循环会停在这里，解析器接着就撞上
+            // 一个意料之外的 TOKEN_QUESTION（实测 `var x: int? = ...`
+            // 报 "Unexpected token: <TOKEN_QUESTION>"）。
+            //
+            // 这里把它吞掉并记在标签上，类型层面再解释成「可空」。
+            // 只允许出现在**类型标签**后面 —— `a ? b : c` 的三元写法走
+            // 中缀路径，不会进到这里。
+            if (nextTokenIs(TokenType::TOKEN_QUESTION)) {
+                next();
+                labelNode->setNullable(true);
             }
             return labelNode;
         }

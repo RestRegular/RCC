@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var g: int = 1
+fun readG(): int { ret g }
+g = 100
+sout(readG())

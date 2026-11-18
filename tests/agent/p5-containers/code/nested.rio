@@ -1,0 +1,6 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var grid = [[1, 2], [3, 4]]
+sout(grid[0][1])
+sout(grid[1][0])
+var d = {"nums": [5, 6]}
+sout(d["nums"][1])

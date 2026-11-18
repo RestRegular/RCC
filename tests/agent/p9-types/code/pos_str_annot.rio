@@ -1,0 +1,5 @@
+fun main(): void {
+    var s: str = "hi"
+    sout(s)
+}
+main()

@@ -1,0 +1,8 @@
+fun main(): void {
+ var s = 0
+ for ({var i = 0; i < 3; i ++}) {
+  var v: int = { ret i }
+  s += v
+ }
+ sout(s)
+}

@@ -1,0 +1,3 @@
+import chain
+fun main() { sout(step3(4)) }
+main()

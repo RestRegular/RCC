@@ -1,0 +1,7 @@
+fun main(): void {
+ var xs = [1,2,3]
+ var a = xs.get_mut(0)
+ var b = xs.get_mut(0)
+ sout(a)
+ sout(b)
+}

@@ -1,0 +1,6 @@
+fun f(x: int): void { sout(x) }
+fun f(x: float): void { sout(x) }
+fun main(): void {
+    f("str")
+}
+main()

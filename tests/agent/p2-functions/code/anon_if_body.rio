@@ -1,0 +1,9 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var abs = (x) -> {
+    if x < 0 {
+        ret -x
+    }
+    ret x
+}
+sout(abs(-42))
+sout(abs(42))

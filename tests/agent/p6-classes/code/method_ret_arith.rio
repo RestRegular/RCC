@@ -1,0 +1,16 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Rect {
+    var w: int, h: int
+    ctor(a: int, b: int) {
+        this.w = a
+        this.h = b
+    }
+    fun area(): int { ret this.w * this.h }
+}
+fun main(): void {
+    var r = Rect(3, 4)
+    sout(r.area())
+    sout(r.area() + 1)
+    sout(r.area() > 10)
+}
+main()

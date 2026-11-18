@@ -1,0 +1,7 @@
+fun identity[T](x: T): T { ret x }
+fun twice[T](x: T): T { ret identity(x) }
+fun main(): void {
+    sout(twice(9))
+    sout(twice(2.5))
+}
+main()

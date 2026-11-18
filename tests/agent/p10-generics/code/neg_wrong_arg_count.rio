@@ -1,0 +1,5 @@
+fun pair[A, B](a: A, b: B): B { ret b }
+fun main(): void {
+    pair[int](1, "x")
+}
+main()

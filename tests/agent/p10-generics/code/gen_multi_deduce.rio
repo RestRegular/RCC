@@ -1,0 +1,7 @@
+fun f[T](xs: list[T]): int { ret 1 }
+fun f[T, K](d: dict[T, K]): int { ret 2 }
+fun main(): void {
+    sout(f([1]))
+    sout(f({"a": 1}))
+}
+main()

@@ -1,0 +1,10 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun f() {
+    try {
+        ret 1
+    } finally {
+        sout("finally in f")
+    }
+}
+sout(f())
+sout("done")

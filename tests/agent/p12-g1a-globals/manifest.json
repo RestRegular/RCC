@@ -1,0 +1,16 @@
+{
+    "name":  "p12-g1a-globals",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.1507465Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "模块级全局变量的定义、读写与初始化",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  8,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

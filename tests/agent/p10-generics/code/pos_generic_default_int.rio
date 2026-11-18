@@ -1,0 +1,6 @@
+fun pad[T](x: T, n: int = 42): int { ret n }
+fun main(): void {
+    sout(pad(1))
+    sout(pad(2, 7))
+}
+main()

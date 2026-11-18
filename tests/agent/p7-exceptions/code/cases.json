@@ -1,0 +1,90 @@
+{
+    "cases":  [
+                  {
+                      "id":  "throw_catch_basic",
+                      "file":  "code/throw_catch_basic.rio",
+                      "expect":  "before\ncaught\nafter"
+                  },
+                  {
+                      "id":  "catch_value_str",
+                      "file":  "code/catch_value_str.rio",
+                      "expect":  "the message"
+                  },
+                  {
+                      "id":  "throw_skips_rest",
+                      "file":  "code/throw_skips_rest.rio",
+                      "expect":  "in try\ncaught"
+                  },
+                  {
+                      "id":  "no_throw_no_catch",
+                      "file":  "code/no_throw_no_catch.rio",
+                      "expect":  "try ok\nend"
+                  },
+                  {
+                      "id":  "finally_normal_path",
+                      "file":  "code/finally_normal_path.rio",
+                      "expect":  "try\nfinally\nend"
+                  },
+                  {
+                      "id":  "finally_after_catch",
+                      "file":  "code/finally_after_catch.rio",
+                      "expect":  "catch\nfinally\nend"
+                  },
+                  {
+                      "id":  "finally_no_catch_reraises",
+                      "file":  "code/finally_no_catch_reraises.rio",
+                      "expect":  "inner finally\nouter caught\ndeep"
+                  },
+                  {
+                      "id":  "cross_function",
+                      "file":  "code/cross_function.rio",
+                      "expect":  "from boom\nend"
+                  },
+                  {
+                      "id":  "cross_two_frames",
+                      "file":  "code/cross_two_frames.rio",
+                      "expect":  "three deep"
+                  },
+                  {
+                      "id":  "nested_inner_handles",
+                      "file":  "code/nested_inner_handles.rio",
+                      "expect":  "inner got\ninner\nafter inner"
+                  },
+                  {
+                      "id":  "nested_outer_handles",
+                      "file":  "code/nested_outer_handles.rio",
+                      "expect":  "outer got\npass through"
+                  },
+                  {
+                      "id":  "loop_try_break",
+                      "file":  "code/loop_try_break.rio",
+                      "expect":  "0\n1\nloop done\npost loop"
+                  },
+                  {
+                      "id":  "loop_try_continue",
+                      "file":  "code/loop_try_continue.rio",
+                      "expect":  "1\n3\n4\ndone"
+                  },
+                  {
+                      "id":  "ret_inside_try",
+                      "file":  "code/ret_inside_try.rio",
+                      "expect":  "111\n222\nafter ret"
+                  },
+                  {
+                      "id":  "ret_runs_finally",
+                      "file":  "code/ret_runs_finally.rio",
+                      "expect":  "finally in f\n1\ndone"
+                  },
+                  {
+                      "id":  "break_runs_finally",
+                      "file":  "code/break_runs_finally.rio",
+                      "expect":  "0\nfin\nfin\ndone"
+                  },
+                  {
+                      "id":  "uncaught_aborts",
+                      "file":  "code/uncaught_aborts.rio",
+                      "expect":  "before",
+                      "exitCode":  3
+                  }
+              ]
+}

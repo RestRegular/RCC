@@ -1,0 +1,9 @@
+fun dup(x: int): void { sout("dup-int") }
+fun dup(x: float): void { sout("dup-float") }
+fun solo(x: int): void { sout("solo") }
+fun main(): void {
+    dup(1)
+    dup(1.5)
+    solo(2)
+}
+main()

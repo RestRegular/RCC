@@ -1,0 +1,262 @@
+{
+    "cases":  [
+                  {
+                      "id":  "A1-a-ret-b.clear",
+                      "file":  "code/A1-a-ret-b.clear.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "A1ctl-clear",
+                      "file":  "code/A1ctl-clear.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "A2-release",
+                      "file":  "code/A2-release.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "A3-fill-E",
+                      "file":  "code/A3-fill-E.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "A3ctl-clear-fill",
+                      "file":  "code/A3ctl-clear-fill.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "B1-take-Empty",
+                      "file":  "code/B1-take-Empty.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "B2-take",
+                      "file":  "code/B2-take.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "B3-take-Full",
+                      "file":  "code/B3-take-Full.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "C1-pool.new-T",
+                      "file":  "code/C1-pool.new-T.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "C2-Pool",
+                      "file":  "code/C2-Pool.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "C3-pool.new",
+                      "file":  "code/C3-pool.new.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "D1-ensures-p-Take",
+                      "file":  "code/D1-ensures-p-Take.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "D2-ensures-zzz",
+                      "file":  "code/D2-ensures-zzz.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "D3-ensures-t-Take",
+                      "file":  "code/D3-ensures-t-Take.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "D4-ensures-t",
+                      "file":  "code/D4-ensures-t.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "F1-get_mut",
+                      "file":  "code/F1-get_mut.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "F2-get_mut",
+                      "file":  "code/F2-get_mut.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "F3-get_mut",
+                      "file":  "code/F3-get_mut.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "G1-writes-q.name-q",
+                      "file":  "code/G1-writes-q.name-q.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "G2-from-zz.name-zz",
+                      "file":  "code/G2-from-zz.name-zz.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "G3-from-p-ret-q",
+                      "file":  "code/G3-from-p-ret-q.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "G4-from-p-ret-p",
+                      "file":  "code/G4-from-p-ret-p.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "G5-writes-p.name",
+                      "file":  "code/G5-writes-p.name.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "H1",
+                      "file":  "code/H1.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "H2",
+                      "file":  "code/H2.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "I1-writes-p.name-p.name",
+                      "file":  "code/I1-writes-p.name-p.name.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "I2-r-NLL",
+                      "file":  "code/I2-r-NLL.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "I3-writes-p-vs-p.name",
+                      "file":  "code/I3-writes-p-vs-p.name.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "I4-writes-p.hp-p.name",
+                      "file":  "code/I4-writes-p.hp-p.name.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "I5-writes",
+                      "file":  "code/I5-writes.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "I6-vs",
+                      "file":  "code/I6-vs.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "I7",
+                      "file":  "code/I7.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "I8-take-vs-4.2",
+                      "file":  "code/I8-take-vs-4.2.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "I9-mut-vs",
+                      "file":  "code/I9-mut-vs.rio",
+                      "compileOnly":  true,
+                      "expectFailure":  true
+                  },
+                  {
+                      "id":  "I10-p.n-p.name",
+                      "file":  "code/I10-p.n-p.name.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "J1-Take",
+                      "file":  "code/J1-Take.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "J2-Take",
+                      "file":  "code/J2-Take.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "J3-Ref",
+                      "file":  "code/J3-Ref.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "J4-Mut",
+                      "file":  "code/J4-Mut.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "J5-Content",
+                      "file":  "code/J5-Content.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "J6-Body-clear",
+                      "file":  "code/J6-Body-clear.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "J7-return-t.take-ensures-t",
+                      "file":  "code/J7-return-t.take-ensures-t.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  },
+                  {
+                      "id":  "J8-var-c-t.take-ensures-t",
+                      "file":  "code/J8-var-c-t.take-ensures-t.rio",
+                      "compileOnly":  true,
+                      "expect":  ""
+                  }
+              ]
+}

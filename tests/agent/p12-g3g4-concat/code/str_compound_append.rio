@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var s: str = "a"
+s += "b"
+s += "c"
+sout(s)

@@ -1,0 +1,13 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Empty {
+    var a: int, b: int
+}
+fun main(): void {
+    var e = Empty()
+    sout(e.a)
+    sout(e.b)
+    e.a = 7
+    sout(e.a)
+    sout(e.b)
+}
+main()

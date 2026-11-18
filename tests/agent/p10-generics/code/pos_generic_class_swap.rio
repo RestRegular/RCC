@@ -1,0 +1,16 @@
+class Pair[A, B] {
+    var first: A
+    var second: B
+    ctor(a: A, b: B) {
+        this.first = a
+        this.second = b
+    }
+    fun swap(): Pair[B, A] { ret Pair[B, A](this.second, this.first) }
+}
+fun main(): void {
+    var p = Pair[int, str](7, "x")
+    var q = p.swap()
+    sout(q.first)
+    sout(q.second)
+}
+main()

@@ -1,0 +1,16 @@
+{
+    "cases": [
+        { "id": "pos_list_get", "file": "code/pos_list_get.rio", "expect": "20" },
+        { "id": "pos_list_get_oob", "file": "code/pos_list_get_oob.rio", "expect": "-1" },
+        { "id": "pos_list_get_negative", "file": "code/pos_list_get_negative.rio", "expect": "-1" },
+        { "id": "pos_dict_get", "file": "code/pos_dict_get.rio", "expect": "6" },
+        { "id": "pos_dict_get_missing", "file": "code/pos_dict_get_missing.rio", "expect": "-1" },
+        { "id": "pos_null_ret", "file": "code/pos_null_ret.rio", "expect": "4\n-1" },
+        { "id": "pos_nullable_field", "file": "code/pos_nullable_field.rio", "expect": "7" },
+        { "id": "pos_index_still_zero", "file": "code/pos_index_still_zero.rio", "expect": "0" },
+        { "id": "neg_nullable_to_nonnull", "file": "code/neg_nullable_to_nonnull.rio", "expectFailure": true, "mustMatch": "cannot assign a nullable value" },
+        { "id": "neg_if_var_non_nullable", "file": "code/neg_if_var_non_nullable.rio", "expectFailure": true, "mustMatch": "requires a nullable value" },
+        { "id": "neg_value_type_nullable", "file": "code/neg_value_type_nullable.rio", "expectFailure": true, "mustMatch": "cannot be nullable" },
+        { "id": "neg_scope_leak", "file": "code/neg_scope_leak.rio", "expectFailure": true, "mustMatch": "Undefined variable: p" }
+    ]
+}

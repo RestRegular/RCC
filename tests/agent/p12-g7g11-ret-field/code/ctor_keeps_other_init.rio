@@ -1,0 +1,11 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class A {
+    var p: int = 5
+    var q: int = 6
+    ctor() {
+        this.q = 100
+    }
+}
+var o = A()
+sout(o.p)
+sout(o.q)

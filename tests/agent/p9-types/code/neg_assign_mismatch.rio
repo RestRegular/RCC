@@ -1,0 +1,5 @@
+fun main(): void {
+    var x = 1
+    x = "str"
+}
+main()

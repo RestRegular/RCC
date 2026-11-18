@@ -34,6 +34,8 @@ namespace ast
     class ExpressionNode;
     class FunctionDefinitionNode;
     class ClassDefinitionNode;
+    // 决议 A（2026-11-18）：值语义 struct 的 AST 节点。
+    class StructDefinitionNode;
     class InfixExpressionNode;
     class IndexExpressionNode;
     class BlockRangerNode;
@@ -136,6 +138,13 @@ namespace backend
         // 寄存器参数落在 shadow space 内（pos*8，0..24），
         // 溢出参数落在 shadow space 之后（shadow + (pos-4)*8）。
         size_t argSlotOffset(size_t pos) const;
+        // 决议 B：容器内建 get() —— 返回 `T?`，越界/未命中给 null（不 panic）。
+        void emitListGetOrNull(const std::shared_ptr<ast::ExpressionNode>& receiver,
+                               const std::shared_ptr<ast::ExpressionNode>& indexExpr,
+                               const sema::TypePtr& elemType);
+        void emitDictGetOrNull(const std::shared_ptr<ast::ExpressionNode>& receiver,
+                               const std::shared_ptr<ast::ExpressionNode>& keyExpr,
+                               const sema::TypePtr& valType);
         // 把实参求值并装进 ABI 参数寄存器，超出的写进调用者预留的栈槽，
         // 最后**自己**把整块调用区（shadow space + 溢出槽）从 %rsp 上预留出来。
         // 返回值是预留的字节数，调用点负责 `call` 之后 `addRsp(该值)`。
@@ -719,6 +728,16 @@ namespace backend
         // 只有显式标注时才校验 ret（推断类型来自 ret 自身，自证无意义）。
         sema::TypePtr _functionReturnType;
         bool _functionReturnAnnotated = false;
+        // 决议 A：当前函数返回 struct 时，调用方传入的返回缓冲区。
+        // 存的是**装着指针的栈槽**（`-N(%rbp)`），与 emitStructAddrOf 的
+        // 约定一致。非 struct 返回时为空。
+        //
+        // 为什么必须由调用方提供：struct 的值是一块内存，如果被调方在自己
+        // 的帧里造一个临时槽再返回它的地址，ret 之后那块栈马上被调用方
+        // 的下一层调用覆盖 —— 返回的 struct 会读到垃圾。
+        std::string _structRetBufSlot;
+        // 当前函数是否把第一个整型寄存器让给了隐藏的返回缓冲区指针。
+        bool _hasStructRetBuf = false;
         // 循环栈：{ continue 目标标签, break 目标标签 }
         struct LoopContext
         {
@@ -896,6 +915,44 @@ namespace backend
             std::string owner;
             std::shared_ptr<ast::FunctionDefinitionNode> def;
         };
+
+        // ---------- 决议 A（2026-11-18）：值语义 struct ----------
+        //
+        // 与 class 的根本区别：struct **不是指针**，它的值就是那几块字节本身。
+        // 因此布局是「按声明顺序把字段内联排开」，没有头部、没有 8 字节对齐
+        // 到槽的浪费，`var b = a` 是**逐字节复制**（两个独立对象），而 class
+        // 的 `var b = a` 只是复制指针（两个壳子共享同一对象）。
+        //
+        // 为什么字段限定为纯标量（int/float/bool/char）：struct 的复制是
+        // 浅拷贝。若允许 str（指针+长度）或 list/dict/class，复制后两份都
+        // 指向同一块堆内存，谁负责释放就成了悬案 —— 要么双重释放，要么
+        // 泄漏。纯标量没有堆资源，浅拷贝天然安全，所以也不需要登记 drop
+        // （needsDrop 对 struct 恒为 false）。
+        struct StructInfo
+        {
+            std::string name;
+            // 字段按**声明顺序**排列；偏移是「前面所有字段大小之和」。
+            std::vector<std::string> fieldNames;
+            std::map<std::string, long long> fieldOffsets;
+            std::map<std::string, sema::TypePtr> fieldTypes;
+            // 字段默认值（`var x: int = 1`），按声明顺序收集；构造时先按位置
+            // 写构造器实参，没覆盖到的字段用默认值，再没有就零初始化。
+            std::vector<std::pair<std::string, std::shared_ptr<ast::ExpressionNode>>> fieldDefaults;
+            long long size = 0;                          // 对象字节数
+            bool layoutDone = false;
+        };
+        // 阶段 A：登记 struct 名与字段（不发射指令）。
+        void registerStruct(const std::shared_ptr<ast::StructDefinitionNode>& node);
+        // 阶段 B：算字段偏移与总大小，顺带校验「字段只能是纯标量」。
+        void computeStructLayout(const std::string& name);
+        StructInfo* findStruct(const std::string& name);
+        const StructInfo* findStruct(const std::string& name) const;
+        // struct 字段偏移；找不到返回 -1。
+        long long findStructFieldOffset(const std::string& structName,
+                                        const std::string& field) const;
+        // 把 `Pt` 这样的名字解析成 StructType（不是 struct 就返回 nullptr）。
+        sema::TypePtr structTypeOf(const std::string& name) const;
+
         // 阶段 A：只登记类名、基类、字段、方法，不发射任何指令。
         void registerClass(const std::shared_ptr<ast::ClassDefinitionNode>& node);
         // 生命周期标签 `static` 的字段：分配 .bss 全局槽。
@@ -934,6 +991,22 @@ namespace backend
         void emitConstructorCall(const std::string& className,
                                  const std::shared_ptr<ast::ExpressionNode>& callNode,
                                  const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // ── 决议 A：值语义 struct 的发射 ────────────────────────────────────
+        // `Pt(1, 2)`：按字段声明顺序位置初始化。结果不是堆指针，而是
+        // **一块栈上的值**；因为寄存器装不下多字宽的值，这里把它落在
+        // 一个临时槽里，并把槽地址留在 %rax（调用方负责拷走）。
+        void emitStructConstructor(const std::string& structName,
+                                   const std::shared_ptr<ast::ExpressionNode>& callNode,
+                                   const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // 把 srcAddr 处的 struct 值逐字节拷到 dstAddr（都用 core_mem_copy）。
+        // 地址由调用方算好放进这两个寄存器/槽位表达式里。
+        void emitStructCopy(const std::string& dstAddr, const std::string& srcAddr, long long size);
+        // 表达式求值后拿它的**地址**（struct 值语义专用）。
+        // 变量 → 槽位地址；构造调用 → 临时槽地址；字段 → 基址+偏移。
+        // 返回空串表示推不出来（调用方负责报错）。
+        std::string emitStructAddrOf(const std::shared_ptr<ast::ExpressionNode>& node);
+        // 从表达式推出 struct 名（推不出来返回空串）。
+        std::string structNameOf(const std::shared_ptr<ast::ExpressionNode>& node) const;
         // 方法调用 `p.sum()` / `p.scale(3)`。
         void emitMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
                             const std::shared_ptr<ast::ExpressionNode>& callNode,
@@ -979,6 +1052,9 @@ namespace backend
         // （声明阶段），而不是「未知类型」报错。
         sema::TypePtr typeFromLabelNode(const std::shared_ptr<ast::LabelNode>& label,
                                         const std::vector<std::string>& genericParams = {}) const;
+        // 决议 B：解析 `T?` 里的那个 T（不做可空包装，避免递归套娃）。
+        sema::TypePtr typeFromLabelNodeNonNull(const std::shared_ptr<ast::LabelNode>& label,
+                                               const std::vector<std::string>& genericParams) const;
         // 类型位置上的表达式转成类型：`float`、`Box[int]`、`list[int]`。
         sema::TypePtr typeFromTypeArgNode(const std::shared_ptr<ast::ExpressionNode>& node,
                                           const std::vector<std::string>& genericParams) const;
@@ -1150,6 +1226,8 @@ namespace backend
         std::string _currentClass;
         // 类登记表
         std::map<std::string, ClassInfo> _classes;
+        // 决议 A：值语义 struct 登记表
+        std::map<std::string, StructInfo> _structs;
 
         // ---------- P11：重载 ----------
         //

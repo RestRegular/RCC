@@ -256,6 +256,9 @@ namespace ast {
     class LabelNode final : public ExpressionNode {
         std::vector<std::string> labelPath;
         std::vector<std::shared_ptr<ListExpressionNode>> labelDesNodes {};
+        // 决议 B：类型标签后面跟了 `?`，表示「可空」。
+        // `var x: int? = f()` / `fun f(): int?` 都靠这一位表达。
+        bool nullable = false;
     public:
         explicit LabelNode(const std::vector<Token> &labelPathToken);
         void appendLabelDesNode(const std::shared_ptr<ListExpressionNode> &labelDesNode);
@@ -263,6 +266,8 @@ namespace ast {
         [[nodiscard]] std::vector<std::string> getLabelPath() const;
         [[nodiscard]] std::vector<std::shared_ptr<ListExpressionNode>> getLabelDesNodes() const;
         void appendLabelPath(const Token& token);
+        void setNullable(bool value);
+        [[nodiscard]] bool isNullable() const;
     };
 
     class RangerNode : public ExpressionNode {
@@ -525,6 +530,12 @@ namespace ast {
         std::shared_ptr<ExpressionNode> bodyNode;
         // P13-2/L2(Q-C)：`if (cond): T { ... }` 的 `: T` 标注（空 = 未标注）
         std::vector<std::shared_ptr<LabelNode>> resultLabels;
+        // 决议 B：`if var p = <expr> { ... }` 的绑定变量名。
+        //
+        // 非空时语义是「从可空表达式里取值」：conditionNode 就是那个可空
+        // 表达式本身，p 只在 then 块里可见且类型是解包后的非空 T。
+        // 空串 = 普通条件分支。
+        std::string bindingName;
     public:
         explicit BranchNode(
             const Token &branchOpToken,
@@ -534,6 +545,8 @@ namespace ast {
         [[nodiscard]] std::shared_ptr<ExpressionNode> getConditionNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
         [[nodiscard]] const std::vector<std::shared_ptr<LabelNode>>& getResultLabels() const;
+        void setBindingName(const std::string& name);
+        [[nodiscard]] const std::string& getBindingName() const;
     };
 
     class ConditionNode final : public ExpressionNode {
@@ -639,6 +652,29 @@ namespace ast {
                 const std::shared_ptr<ExpressionNode> &nameNode_,
                 const std::shared_ptr<ExpressionNode> &bodyNode_);
         [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabelNode() const;
+        [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
+        [[nodiscard]] std::shared_ptr<ExpressionNode> getNameNode() const;
+        [[nodiscard]] Pos getPos() const override;
+    };
+
+    // A（docs/pending_designs.md §A）：值语义 struct 定义。
+    //
+    // 与 ClassDefinitionNode 结构一致（名字 + 花括号体），但语义完全不同：
+    //   * 无继承 —— 名字节点上的标签一律忽略/报错
+    //   * 字段只能是标量（int/float/bool/char），布局按声明顺序**内联**
+    //     （不是 8 字节槽数组，而是按各自 getSize() 紧凑排列）
+    //   * 赋值 = 逐字节拷贝（值语义），不参与 Content 状态格与移动/消耗
+    // 之所以不复用 ClassDefinitionNode 加个 bool：两者的登记表
+    // （_classes vs _structs）、布局规则、拷贝路径全不同，混在一起
+    // 只会让每条路径都要判一次「这个类是 struct 吗」。
+    class StructDefinitionNode final : public ExpressionNode {
+        std::shared_ptr<ExpressionNode> nameNode;
+        std::shared_ptr<ExpressionNode> bodyNode;
+    public:
+        explicit StructDefinitionNode(
+                const Token &structToken,
+                const std::shared_ptr<ExpressionNode> &nameNode_,
+                const std::shared_ptr<ExpressionNode> &bodyNode_);
         [[nodiscard]] std::shared_ptr<ExpressionNode> getBodyNode() const;
         [[nodiscard]] std::shared_ptr<ExpressionNode> getNameNode() const;
         [[nodiscard]] Pos getPos() const override;

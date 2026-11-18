@@ -1,0 +1,8 @@
+import shapes
+fun main() {
+    var p = Point(3, 4)
+    sout(p.sum())
+    var q = shapes.Point(10, 20)
+    sout(q.sum())
+}
+main()

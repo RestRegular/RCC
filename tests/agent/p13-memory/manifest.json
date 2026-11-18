@@ -1,0 +1,16 @@
+{
+    "name":  "p13-memory",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:04:19.7093940Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "内存模型探针：分配/释放、容器底层布局、指针与 any 的表示",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  28,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

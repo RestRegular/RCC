@@ -3,7 +3,7 @@
 > 适用于 RCC v1.22.0（P12 收尾版本）。
 >
 > **本文档的纪律**：只写**已验证可用**的语法与 API。每一项都在
-> `test_scripts/` 里有对应回归用例；没验证过的内容不写进来，避免「文档说有、
+> `tests/agent/` 里有对应回归用例；没验证过的内容不写进来，避免「文档说有、
 > 编译器说没有」。已知限制单独列在第八章，不含糊其辞。
 
 ---
@@ -88,7 +88,7 @@ hello.exe
 或用便捷脚本：
 
 ```bat
-scripts\run.bat -i tests\test_1_builtins
+scripts\run.bat -i tests\user\main.rio
 ```
 
 **跑全部测试**：
@@ -131,7 +131,7 @@ Hello, Rio!
 
 | 类别 | 关键字 |
 |---|---|
-| 声明 | `var` `const` `fun` `class` `ctor` |
+| 声明 | `var` `const` `fun` `class` `struct` `ctor` |
 | 类型 | `int` `float` `bool` `str` `char` `void` `list` `dict` `ptr` `func` `any` |
 | 控制流 | `if` `else` `while` `for` `break` `continue` `ret` |
 | 异常 | `try` `catch` `finally` `throw` |
@@ -155,6 +155,8 @@ Hello, Rio!
 | `ptr` | 无类型裸地址 | 由 `core_alloc` 等获得 |
 | `func` | 函数值 | `(x: int) -> { ret x }` |
 | `any` | 指针族值（`str`/`list`/`dict`/`ptr`），见 8.7 | — |
+| `T?` | 可空类型，`T` 必须是引用型（见 3.5） | `null` |
+| `struct` | 值语义复合类型（见 3.4） | 各字段零值 |
 
 **零值**：声明但不初始化时，得到该类型的零值。
 
@@ -271,6 +273,19 @@ for ({var i = 0; i < 5; i += 1}) {
 
 **`break` / `continue`**：跳出 / 继续当前循环。
 
+**`if var` 取值绑定**（可空类型专用，见 3.7）：
+
+```rio
+var xs = [10, 20, 30]
+if var p = xs.get(1) {
+    sout(p)          // p 是 int，不是 int?
+} else {
+    sout(-1)         // 越界 / 未命中
+}
+```
+
+绑定变量 `p` **只在 then 块里可见**，出了块就不存在；else 里也看不见它。
+
 **`ret`**：返回值。`ret` 不带表达式表示返回 `void`。
 
 ```rio
@@ -346,7 +361,79 @@ while i < size(ks) {
 
 > 字典内部是**线性数组**，遍历顺序 = 插入顺序。键只读，不能通过返回的列表改回字典。
 
-### 3.8 字符串
+### 3.8 结构体（值语义）
+
+`struct` 与 `class` 的区别是**赋值语义**：`class` 赋值拷贝指针（两个名字指向同一个对象），`struct` 赋值**逐字节拷贝**（两个变量各自独立）。
+
+```rio
+struct Pt {
+    var x: int
+    var y: int
+}
+
+var a = Pt(1, 2)
+var b = a          // 拷贝，不是共享
+b.x = 99
+sout(a.x)          // 1 —— a 不受影响
+sout(b.x)          // 99
+```
+
+**字段限制**：struct 只能装**标量字段**（`int` / `float` / `bool` / `char`）。放 `str`、`list`、`dict` 或另一个 class 会报错 —— 因为值拷贝会制造共享的堆所有权，违反 Content 唯一所有权规则。需要引用型字段时用 `class`。
+
+**不支持**：继承、方法、构造器（`ctor`）。初始化按字段声明顺序位置传参；不给参数时全部字段取零值。字段可以有默认值：
+
+```rio
+struct Vec {
+    var x: float = 0.0
+    var y: float = 0.0
+}
+var v = Vec()      // x=0.0, y=0.0
+```
+
+**取引用**：`&s` 得到 `Ref[Pt]`，`&s.x` 是展开到字段的子引用。
+
+**struct 与内存模型**：struct **不进** Content 状态格，不参与移动 / 消耗 —— 与 `int` 同级。它的拷贝不受唯一所有权约束，因为 struct 只含纯值、不持有任何堆资源。
+
+### 3.9 可空类型
+
+**只有引用型可以可空**：`str?`、`list?`、`dict?`、`class?`、`Ref[T]?` 等。`int?`、`float?`、`bool?` 是**编译错误** —— 值类型没有「空」这个状态，用零值表达。
+
+```rio
+fun find(n: int): Box? {
+    if n > 0 {
+        ret Box(n)
+    }
+    ret null        // 显式返回「没有」
+}
+```
+
+**取值必须用 `if var`**：`T?` 不能直接当 `T` 用。
+
+```rio
+var maybe = find(3)
+var x: Box = maybe       // 编译错误：可空不能直接赋给非可空
+
+if var p = maybe {       // 正确：取出非空值
+    sout(p.v)
+}
+```
+
+反方向是允许的：`T` 可以隐式提升为 `T?`。
+
+**容器 `get()`**：`xs.get(i)` / `d.get(k)` 返回 `T?`，越界或键不存在时给 `null`，**不 panic**。注意与 `xs[i]` 的区别：下标访问越界仍是**零值**，只有 `get()` 能表达「没有」。
+
+```rio
+var xs = [10, 20]
+if var v = xs.get(5) {
+    sout(v)
+} else {
+    sout("out of range")     // 走这里
+}
+```
+
+> 编译器**不做**隐式空检查：`p.v` 在 `p` 为 null 时是未定义行为。安全性由「必须先 `if var` 取出」这条规则保证 —— 你拿到的非空绑定一定不是 null。
+
+### 3.10 字符串
 
 ```rio
 var s = "hello"

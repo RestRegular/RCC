@@ -1,0 +1,6 @@
+import(u="utilx", m="mathx")
+fun main() {
+    sout(u.twice(21))
+    sout(m.add(2, 3))
+}
+main()

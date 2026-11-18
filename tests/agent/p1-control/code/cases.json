@@ -1,0 +1,69 @@
+{
+    "cases":  [
+                  {
+                      "id":  "while",
+                      "file":  "code/while.rio",
+                      "expect":  "0\n1\n2"
+                  },
+                  {
+                      "id":  "until",
+                      "file":  "code/until.rio",
+                      "expect":  "0\n1\n2"
+                  },
+                  {
+                      "id":  "for_c_style",
+                      "file":  "code/for_c_style.rio",
+                      "expect":  "0\n1\n2\n3"
+                  },
+                  {
+                      "id":  "for_with_step",
+                      "file":  "code/for_with_step.rio",
+                      "expect":  "10\n6\n2"
+                  },
+                  {
+                      "id":  "break",
+                      "file":  "code/break.rio",
+                      "expect":  "1\n2"
+                  },
+                  {
+                      "id":  "continue",
+                      "file":  "code/continue.rio",
+                      "expect":  "1\n3\n4\n5"
+                  },
+                  {
+                      "id":  "nested_continue",
+                      "file":  "code/nested_continue.rio",
+                      "expect":  "6"
+                  },
+                  {
+                      "id":  "nested_break",
+                      "file":  "code/nested_break.rio",
+                      "expect":  "10"
+                  },
+                  {
+                      "id":  "break_in_for",
+                      "file":  "code/break_in_for.rio",
+                      "expect":  "0\n1\n2\n3"
+                  },
+                  {
+                      "id":  "continue_in_for",
+                      "file":  "code/continue_in_for.rio",
+                      "expect":  "0\n1\n3\n4"
+                  },
+                  {
+                      "id":  "elif_chain",
+                      "file":  "code/elif_chain.rio",
+                      "expect":  "C"
+                  },
+                  {
+                      "id":  "while_with_float",
+                      "file":  "code/while_with_float.rio",
+                      "expect":  "0.0\n0.5\n1.0"
+                  },
+                  {
+                      "id":  "loop_accumulate",
+                      "file":  "code/loop_accumulate.rio",
+                      "expect":  "sum 1..10: 55"
+                  }
+              ]
+}

@@ -1,0 +1,16 @@
+{
+    "name":  "p12-3b-io-str",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:04:19.6884596Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "io 与 str 模块的分层验收（compile / api / behavior）",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  25,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

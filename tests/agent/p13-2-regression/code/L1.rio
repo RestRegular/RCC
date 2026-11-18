@@ -1,0 +1,6 @@
+fun main(): void {
+ {
+  sout(1)
+ }
+ sout(2)
+}

@@ -1,0 +1,9 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class A {
+    var x: int = 7
+    ctor(v: int) {
+        this.x = v
+    }
+}
+var o = A(99)
+sout(o.x)

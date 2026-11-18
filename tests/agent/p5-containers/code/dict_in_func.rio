@@ -1,0 +1,9 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun make_list() {
+    ret [100, 200, 300]
+}
+fun make_dict() {
+    ret {"k": 77}
+}
+sout(make_list()[1])
+sout(make_dict()["k"])

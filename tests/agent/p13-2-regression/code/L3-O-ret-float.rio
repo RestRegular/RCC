@@ -1,0 +1,6 @@
+class C {
+ fun one(): float { ret 1 }
+}
+fun main(): void { var c = C()
+ sout(c.one())
+}

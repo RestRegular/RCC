@@ -1,0 +1,6 @@
+fun sout(*args, end="\n"): void { encapsulated }
+class Base { var b: int = 11 }
+class Derived: Base { var d: int = 22 }
+var o = Derived()
+sout(o.b)
+sout(o.d)

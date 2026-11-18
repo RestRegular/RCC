@@ -1,0 +1,8 @@
+class Box[T] {
+    var v: T
+    ctor(val: T) { this.v = val }
+}
+fun main(): void {
+    var b = Box[int, str](1, "x")
+}
+main()

@@ -1,0 +1,5 @@
+fun mix[T](x: T, a: int = 1, b: int = 2): int { ret a * 10 + b }
+fun main(): void {
+    sout(mix(0, b = 9))
+}
+main()

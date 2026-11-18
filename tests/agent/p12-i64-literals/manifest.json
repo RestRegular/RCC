@@ -1,0 +1,16 @@
+{
+    "name":  "p12-i64-literals",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:01:50.2688647Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "32 位边界回归 + i64 两端 + 溢出诊断",
+    "entry":  "execute.ps1",
+    "timeoutSec":  300,
+    "caseCount":  25,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

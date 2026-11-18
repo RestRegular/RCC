@@ -1,0 +1,5 @@
+class ID {
+    var _number: int static = 0, num: int
+    ctor () { this._number = this._number + 1  this.num = this._number }
+}
+fun main(): void { var a: ID = ID() }

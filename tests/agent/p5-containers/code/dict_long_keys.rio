@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var d = {"ab": 1, "abc": 2, "abcd": 3}
+sout(d["abc"])
+sout(d["abcd"])
+sout(d["ab"])

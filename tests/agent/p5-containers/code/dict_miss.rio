@@ -1,0 +1,4 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var d = {"x": 1, "y": 2}
+sout(d["zzz"] == null)
+sout(d["x"] == null)

@@ -1,0 +1,16 @@
+{
+    "name":  "p13-2-regression",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:10:16.6802022Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "P13-2 已实施成果回归：语法/类型/所有权/生命周期各层的编译期行为（126 条，只验编译成功或失败 + 诊断片段）",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  126,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

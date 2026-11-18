@@ -1,0 +1,4 @@
+class A {
+ var n: int zzz = 0
+}
+fun main(): void { var a: A = A() }

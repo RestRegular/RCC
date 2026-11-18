@@ -1,0 +1,2 @@
+fun pair(a: Mut[int], b: Mut[int]): int { ret 1 }
+fun main(): void { var xs = [1,2,3]; var x = pair(xs.get_mut(0), xs.get_mut(1)) }

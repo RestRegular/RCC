@@ -1,0 +1,5 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var xs = [10, 20, 30, 40]
+sout(xs[0])
+sout(xs[2])
+sout(xs[3])

@@ -180,7 +180,7 @@ RCC/
 │       ├── fmt.rio
 │       └── iter.rio
 │
-├── tests/                       复用现有 17 个用例 + 新增
+├── tests/                       新测试体系：cases / agent / user 三区
 ├── docs/
 └── scripts/
 ```
@@ -602,3 +602,85 @@ P11 的实际做法见 `docs/p11_plan.md`：**§4.3 的「全部函数都修饰�
    方法重载仍未支持（`registerClassBody` 一个方法名一份定义），属 P12 范围。
 4. 下一步是 **P12（收尾）**：删旧 RA 路径、重写 `run.bat`/`test.bat`、
    重写标准库（`ds.rio` 的 `sout` 重复定义与 RA 迭代器）、发版。
+
+---
+
+## 十一、测试体系（现行）
+
+旧的 `tests/test_1_*` … `test_17_*` 十七个目录 + `test_scripts/*.ps1` 二十四套脚本
+已经全部移除。它们的问题是三重的：**判定逻辑有分歧**（`fc /W` 与逐字节比对对同一份
+输出可能给出不同结论）、**运行器靠硬编码清单**（每加一个套件都要改 `test_all.ps1`）、
+以及**用例不是数据**（想看某个用例覆盖了什么，只能读 PowerShell 源码）。
+
+现行体系用「测试集」作为唯一单位。每个测试集是一个自包含目录：
+
+```
+tests/
+├── new-test.ps1          # 生成测试集模板（参数式 / 引导式）
+├── validate.ps1          # 按契约校验所有测试集
+├── cases/                # A：用户提交的可复现问题（由 pack.ps1 进来）
+├── agent/                # C：Agent 维护的测试集
+│   └── _shared/driver.ps1   # 数据驱动套件的唯一判定逻辑
+└── user/                 # B：用户自由区，Agent 不动
+    ├── pack.ps1          # user → cases/<name>
+    └── run-all.ps1       # 扫描式运行器
+```
+
+### 11.1 测试集契约
+
+```
+<name>/
+├── manifest.json     # name/version/type/entry/timeoutSec/expected
+├── README.md
+├── code/             # 被测代码
+├── execute.ps1       # 唯一入口：构建 → 运行 → 判定（三阶段合一）
+├── input/
+└── expected/{output.txt, exit-code.txt}
+```
+
+**没有 `setup.ps1`**：环境准备并入 `execute.ps1` 的构建阶段，避免「两个脚本谁先跑」
+这种顺序问题。
+
+### 11.2 三种测试集的分工
+
+| 区域 | 谁写 | 谁校验 | 说明 |
+|---|---|---|---|
+| `cases/` | 用户（经 `pack.ps1`） | `validate.ps1` | 用户报告的可复现问题 |
+| `agent/` | Agent | `validate.ps1` | 回归套件，Agent 自己维护 |
+| `user/` | 用户 | **不校验** | 自由实验区，Agent 不得改动 |
+
+`user/` 刻意不纳入校验：它是给人随手试的地方，如果也要求符合契约，
+就等于逼用户先学会契约才能试代码。
+
+### 11.3 数据驱动
+
+`agent/` 下 17 个套件把用例表放进 `code/cases.json`，由 `_shared/driver.ps1`
+统一执行。字段：`id`、`file`（或 `main`+`files`）、`expect`、`matchMode`、
+`exitCode`、`expectFailure`、`mustMatch`（+`mustMatchLiteral`/`mustMatchRegex`）、
+`compileOnly`。
+
+三种片段匹配语义被**刻意保留**，因为它们对应老套件里真实存在的三种写法：
+`$out.Contains()`（字面）、`-match`（正则）、`-like "*x*"`（通配符）。
+统一成一种会静默放宽或收紧判定。
+
+### 11.4 运行器
+
+`tests/user/run-all.ps1` 是**扫描式**的：遍历 `tests/{agent,cases}` 下每个带
+`execute.ps1` 的目录并执行，汇总成一张表。新增测试集不需要改运行器 ——
+这是与旧 `test_all.ps1` 最关键的差别。
+
+```bat
+scripts\test.bat                      :: agent + cases
+scripts\test.bat -Area agent          :: 只跑 agent
+scripts\test.bat -Filter p13          :: 名字过滤
+scripts\test.bat -StopOnFail -KeepLog
+```
+
+### 11.5 两个 PowerShell 5.1 的坑（已在 driver 里处理）
+
+1. **原生 stderr 会被控制台宽度硬折行**。`& $exe ... 2>&1 | Out-String` 默认按
+   120 列折行，一条诊断可能从词中间被劈开（`instance-level` → `instance-l` +
+   `evel`），导致期望片段匹配失败，而且**是否触发取决于临时目录路径长度**。
+   解法：`Out-String -Width 10000`。
+2. **`$ErrorActionPreference='Stop'` 会把原生命令的 stderr 变成终止错误**。
+   预期失败的用例必须临时降级为 `Continue`，否则整个套件在第一例就崩。

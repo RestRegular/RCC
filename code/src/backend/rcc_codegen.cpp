@@ -435,6 +435,31 @@ namespace backend{
     bool CodeGen::sameValueFamily(const sema::TypePtr& a, const sema::TypePtr& b) const    {        if (!a || !b) return true;
         if (a->getKind() == sema::TypeKind::TK_UNKNOWN ||
             b->getKind() == sema::TypeKind::TK_UNKNOWN) return true;
+        // 决议 B：`T?` 与 `T` 的关系。
+        //
+        // 这里只做**对称**的内层比较：`T?` 与 `T` 视为同一族，`T?` 与 `T?`
+        // 比内层。方向性的规则（可空不能直接当非空用，必须先 `if var` 取出）
+        // 属于赋值点的语义，放在 checkAssignable 里 —— 因为本函数在重载打分
+        // 里是双向调用的，放方向判断会让打分自相矛盾。
+        const auto unwrapNullable = [](const sema::TypePtr& t) -> sema::TypePtr {
+            if (t && t->getKind() == sema::TypeKind::TK_NULLABLE)
+                return std::static_pointer_cast<sema::NullableType>(t)->getInnerType();
+            return t;
+        };
+        if (a->getKind() == sema::TypeKind::TK_NULLABLE ||
+            b->getKind() == sema::TypeKind::TK_NULLABLE)        {
+            const auto ai = unwrapNullable(a);
+            const auto bi = unwrapNullable(b);
+            if (!ai || !bi) return true;
+            return sameValueFamily(ai, bi);
+        }
+        if (a->getKind() == sema::TypeKind::TK_STRUCT && b->getKind() == sema::TypeKind::TK_STRUCT)        {
+            // 决议 A：struct 之间只认**同一个** struct 名。StructType::equals
+            // 已经比对名字，这里不能落进下面的「同 kind 即互通」——
+            // 那会让 `var q: Pt = other` 静默拷错大小。
+            return a->equals(b);
+        }
+        // 同类即互通（class/list/dict/func 等按 kind 放行，深究留给调用点）
         if (a->getKind() == b->getKind()) return true;
         // 数值族内部互通（int/float/char/bool 之间允许隐式转换）
         const auto numeric = [](const sema::TypePtr& t) {
@@ -621,6 +646,17 @@ namespace backend{
                 }
             }
             return std::string();
+        }
+        // 决议 B：方向性规则 —— 可空不能直接当非空用。
+        //
+        //   T  -> T?  允许（非空放进可空位置）
+        //   T? -> T   拒绝：值可能是 null，必须先 `if var p = r.get()` 取出。
+        //
+        // 内层是否同一族由下面的 sameValueFamily 判（它对可空做对称解包）。
+        if (sk == sema::TypeKind::TK_NULLABLE && tk != sema::TypeKind::TK_NULLABLE)        {
+            return "cannot assign a nullable value of type " + source->toString() +
+                   " to a non-nullable target of type " + target->toString() +
+                   "; extract it first with 'if var x = <expr> { ... }' (decision B)";
         }
         if (sameValueFamily(target, source)) return std::string();
         return "cannot assign a value of type " + source->toString() +
@@ -1880,6 +1916,12 @@ namespace backend{
             if (countIt != defCount.end() && countIt->second >= 2) continue;
             const std::string emitName = (sig.name == "main") ? "__rio_user_main" : sig.name;
             registerSignatureEffects(emitName, sig.def, sig.paramNames);
+            // 返回类型也要在这里登记：顶层 var 的全局槽大小取自 inferType，
+            // 而 inferType 查的就是 _functionReturns。只等 emitFunctionDefinition
+            // 里填就太晚了 —— 那时全局槽早按 int 分完 8 字节了。
+            if (sig.retType && sig.retType->getKind() != sema::TypeKind::TK_UNKNOWN)            {
+                _functionReturns[emitName] = sig.retType;
+            }
         }
         for (const auto& sig : all)        {
             const auto countIt = defCount.find(sig.name);
@@ -2323,6 +2365,15 @@ namespace backend{
                 const std::string cls = root ? classNameFromVariable(root->getName())
                                              : classNameOf(dot->getLeftNode());
                 if (field && !cls.empty()) inner = findFieldType(cls, field->getName());
+                // 决议 A：`&s.x`（s 是 struct）—— 字段类型来自 _structs。
+                if (!inner && field)                {
+                    if (const auto sowner = structNameOf(dot->getLeftNode()); !sowner.empty())                    {
+                        if (const StructInfo* st = findStruct(sowner))                        {
+                            const auto it = st->fieldTypes.find(field->getName());
+                            if (it != st->fieldTypes.end()) inner = it->second;
+                        }
+                    }
+                }
             }
             if (!inner) inner = inferType(refExpr->getOperand());
             return std::make_shared<sema::MemoryType>(sema::MemoryRole::REF, inner);
@@ -2371,8 +2422,7 @@ namespace backend{
                     if (mid)
                     {
                         // P13-2/L3-E（决议 §4.3）：list.get_mut(i) → Mut[元素类型]
-                        if (mid->getName() == "get_mut")                        {
-                            if (const auto lv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode()))                            {
+                        if (mid->getName() == "get_mut")                        {                            if (const auto lv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode()))                            {
                                 if (const auto s = const_cast<CodeGen*>(this)->lookupVar(lv->getName());
                                     s && s->type && s->type->getKind() == sema::TypeKind::TK_LIST)                                {
                                     const auto elem = std::static_pointer_cast<sema::ListType>(s->type)->getElemType();
@@ -2381,7 +2431,21 @@ namespace backend{
                                 }
                             }
                         }
-                        // P13-2/L3-A：Pool 静态方法返回 Pool 类型
+                        if (mid && mid->getName() == "get")                    {
+                        // 决议 B：list/dict 的 get(i)/get(k) 返回 `T?`。
+                        // 必须在 clone 分支附近、owner 判空之前判掉 ——
+                        // list/dict 是内置类型，classNameOf 为空。
+                        const auto rt = inferType(member->getLeftNode());
+                        if (rt && rt->getKind() == sema::TypeKind::TK_LIST)                        {
+                            const auto elem = std::static_pointer_cast<sema::ListType>(rt)->getElemType();
+                            return std::make_shared<sema::NullableType>(elem ? elem : sema::getIntType());
+                        }
+                        if (rt && rt->getKind() == sema::TypeKind::TK_DICT)                        {
+                            const auto val = std::static_pointer_cast<sema::DictType>(rt)->getValueType();
+                            return std::make_shared<sema::NullableType>(val ? val : sema::getIntType());
+                        }
+                    }
+                    // P13-2/L3-A：Pool 静态方法返回 Pool 类型
                         if (const auto ownerId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
                             ownerId && ownerId->getName() == "Pool" &&
                             (mid->getName() == "fixed" || mid->getName() == "boxed" ||
@@ -2444,6 +2508,8 @@ namespace backend{
             if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(callee))            {
                 // P6：`Point(10, 20)` 的结果类型就是这个类
                 if (findClass(id->getName())) return std::make_shared<sema::ClassType>(id->getName());
+                // 决议 A：`Pt(1, 2)` 的结果类型是这个 struct（值语义）。
+                if (const auto st = structTypeOf(id->getName())) return st;
                 // P10：泛型调用的结果类型要在**编译期**就定下来（不能等到
                 // 发射完再查表），否则 `var v = identity(1.5)` 的槽位会按 int
                 // 分配，把 double 位模式当整数存。
@@ -2525,6 +2591,16 @@ namespace backend{
                 // 落到下面会返回 int，于是 `var t: str = s.clone()` 赋值处报错。
                 if (fieldId && fieldId->getName() == "clone")                {
                     if (const auto rt = inferType(infix->getLeftNode())) return rt;
+                }
+                // 决议 A：struct 字段的静态类型来自 _structs（struct 没有
+                // 继承链，classNameOf 也推不出 struct 名）。
+                if (fieldId)                {
+                    if (const auto sowner = structNameOf(infix->getLeftNode()); !sowner.empty())                    {
+                        if (const StructInfo* st = findStruct(sowner))                        {
+                            const auto it = st->fieldTypes.find(fieldId->getName());
+                            if (it != st->fieldTypes.end() && it->second) return it->second;
+                        }
+                    }
                 }
                 const std::string owner = classNameOf(infix->getLeftNode());
                 if (fieldId && !owner.empty())                {
@@ -2936,6 +3012,8 @@ namespace backend{
         std::vector<std::shared_ptr<ast::ExpressionNode>> topLevelStatements;
         std::vector<std::shared_ptr<ast::FunctionDefinitionNode>> functionNodes;
         std::vector<std::shared_ptr<ast::ClassDefinitionNode>> classNodes;
+        // 决议 A：struct 声明与 class 一样是「声明」，不参与顶层语句执行。
+        std::vector<std::shared_ptr<ast::StructDefinitionNode>> structNodes;
         for (const auto& stmt : program->getStatements())        {
             if (!stmt) continue;
             // 语句节点需要先取出其内部表达式
@@ -2951,11 +3029,52 @@ namespace backend{
                 classNodes.push_back(cls);
                 continue;
             }
+            if (const auto st = std::dynamic_pointer_cast<ast::StructDefinitionNode>(expr))            {
+                structNodes.push_back(st);
+                continue;
+            }
             topLevelStatements.push_back(expr);
         }
         // P13-2/L0：类声明层面的"去伪"校验（重名 / 保留名），必须在
         // registerClass 之前做，否则重复类会被静默覆盖、类名冲突静默生效。
         if (validateL0ClassDeclarations(classNodes)) return;
+        // P6 阶段 A：登记所有类的名字、基类、字段、方法（不发射指令）。
+        for (const auto& cls : classNodes)        {
+            registerClass(cls);
+        }
+        // 决议 A：struct 与 class 并列登记，且必须排在
+        // registerOverloadSignatures 之前 —— 形参标注 `p: Pt` 要靠 _structs
+        // 才能解析成 StructType。
+        //
+        // 更要紧的是：必须排在下面**顶层 var 分配全局槽**之前。顶层 var 的
+        // 槽大小取自推断出的类型（`var p = Pt(1,2)` 的 inferType 走
+        // structTypeOf），如果 _structs 还空着，inferType 只会给出 int，
+        // 全局槽就只分到 8 字节 —— 两个 16 字节的 struct 变量会共用一块
+        // 内存，`a = b` 之后 `b.x = 99` 把 a 也改了（实测）。
+        for (const auto& st : structNodes)        {
+            registerStruct(st);
+        }
+        if (hasFailed()) return;
+        // 决议 A：struct 布局必须在**分配任何槽之前**算完。顶层 var 的全局
+        // 槽大小取自 structTypeOf，而后者读 st->size —— 布局没算就是 0，
+        // 退化成 8 字节，两个 16 字节的 struct 变量会共用一块内存。
+        // struct 没有继承，也不依赖类的布局，所以提前算没有副作用。
+        for (const auto& st : structNodes)        {
+            if (!st) continue;
+            const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(st->getNameNode());
+            if (!id) continue;
+            computeStructLayout(id->getName());
+        }
+        if (hasFailed()) return;
+        // P13-2/L0-2 + L0-4：类字段类型 + 多类型标签冲突校验
+        // （此时类表已齐，前向引用不成问题）。
+        if (validateL0FieldTypes(classNodes)) return;
+        if (validateL0LabelConflicts(program)) return;
+        if (validateL3TakeUsage(program)) return;
+        // P11：重载签名必须在发射**任何**函数体之前登记完 —— 否则前向调用
+        // （f1 里调用文件后面才定义的 f2）拿不到候选签名，决议就成了猜。
+        // 必须排在 registerClass 之后：形参类型 `x: Point` 要靠类登记表解析。
+        registerOverloadSignatures(functionNodes);
         // P12/G1a：顶层 `var` 必须放进全局静态槽，否则它只是 __rio_main 的
         // 局部变量，函数体里根本看不到（`math.rio` 的 `var pi: float const`
         // 就是这种顶层 var）。
@@ -2963,6 +3082,12 @@ namespace backend{
         // 做法：先扫出所有顶层 var 的名字并分配 .bss 槽，再把槽登记到
         // **最外层作用域**（_scopes.front()）。这样函数体 pushScope 之后
         // lookupVar 由内向外一定能命中它。
+        //
+        // 顺序要求：必须排在 registerStruct + computeStructLayout +
+        // registerOverloadSignatures **之后**。槽大小取自 inferType，
+        // `var p = mk(5, 6)` 这种要看 _functionReturns 才知道返回的是 16 字节
+        // 的 struct；签名没登记就只会给 8 字节，后一个 struct 变量会把它
+        // 覆盖掉（实测 st6：p.y 被 q.x 顶掉，sum2 结果 27 而不是 26）。
         for (const auto& expr : topLevelStatements)        {
             const auto varDef = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(expr);
             if (!varDef) continue;
@@ -2979,20 +3104,6 @@ namespace backend{
                 allocateGlobal(name, varType, varType->getSize());
             }
         }
-        // P6 阶段 A：登记所有类的名字、基类、字段、方法（不发射指令）。
-        for (const auto& cls : classNodes)        {
-            registerClass(cls);
-        }
-        if (hasFailed()) return;
-        // P13-2/L0-2 + L0-4：类字段类型 + 多类型标签冲突校验
-        // （此时类表已齐，前向引用不成问题）。
-        if (validateL0FieldTypes(classNodes)) return;
-        if (validateL0LabelConflicts(program)) return;
-        if (validateL3TakeUsage(program)) return;
-        // P11：重载签名必须在发射**任何**函数体之前登记完 —— 否则前向调用
-        // （f1 里调用文件后面才定义的 f2）拿不到候选签名，决议就成了猜。
-        // 必须排在 registerClass 之后：形参类型 `x: Point` 要靠类登记表解析。
-        registerOverloadSignatures(functionNodes);
         // P6 阶段 B：递归算字段偏移与对象大小（基类先算）。
         // P10：泛型类模板不在这里布局 —— 它没有具体字段类型，布局在
         // ensureClassInstance 里对每个实例单独算。
@@ -3002,6 +3113,8 @@ namespace backend{
             if (!id) continue;
             computeLayout(id->getName());
         }
+        // 决议 A：struct 布局已在上面（全局槽分配之前）算完 —— 这里不再重复。
+        if (hasFailed()) return;
         // 生命周期标签 `static` 的字段：为每个分配一块 .bss 全局槽。
         // 它们不属于实例布局，因此必须在 computeLayout 之外单独处理。
         emitStaticFieldSlots();
@@ -3209,6 +3322,26 @@ namespace backend{
         // 不是读字段的值。
         if (const auto refExpr = std::dynamic_pointer_cast<ast::RefExpressionNode>(node))        {
             const auto operand = refExpr->getOperand();
+            // 决议 A：`&s` / `&s.x`（s 是 struct 变量）取的是**值所在的地址**。
+            // 与 class 的 `&bob` 不同：class 变量槽里放的就是对象指针，
+            // 直接读槽即可；struct 变量槽里放的是值本身，必须取槽的地址。
+            // emitStructAddrOf 已经统一返回「装着指针的槽」，所以这里是 mov
+            // 而不是 lea —— 对那个槽做 lea 得到的是槽自己的地址。
+            if (const auto sowner = structNameOf(operand); !sowner.empty())            {
+                const std::string base = emitStructAddrOf(operand);
+                if (base.empty() || hasFailed()) return;
+                _asm.mov(base, "%rax");
+                return;
+            }
+            // `&s.x`：operand 是 DOT，且左边是 struct
+            if (const auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(operand);
+                dot && dot->getOpToken().getType() == core::TokenType::TOKEN_DOT &&
+                !structNameOf(dot->getLeftNode()).empty())            {
+                const std::string base = emitStructAddrOf(operand);
+                if (base.empty() || hasFailed()) return;
+                _asm.mov(base, "%rax");
+                return;
+            }
             if (const auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(operand);
                 dot && dot->getOpToken().getType() == core::TokenType::TOKEN_DOT)            {
                 const auto field = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getRightNode());
@@ -3500,6 +3633,13 @@ namespace backend{
             return;
         }
         const std::string src = addrOf(*slot);
+        // 决议 A：struct 变量在表达式里的「值」是它那块内存的**地址**
+        // （见 emitStructConstructor / emitStructCopy 的约定）。
+        // 传参、返回、赋值都从这个地址拷，所以这里必须给地址而不是首 8 字节。
+        if (slot->type && slot->type->getKind() == sema::TypeKind::TK_STRUCT)        {
+            _asm.lea(src, "%rax");
+            return;
+        }
         // 按槽位类型选加载指令：浮点进 %xmm0，其余进 %rax
         if (slot->type && slot->type->isFloat())        {
             _asm.inst("movsd", src, "%xmm0");
@@ -4011,6 +4151,25 @@ namespace backend{
             fail("Undefined variable in assignment: " + id->getName());
             return;
         }
+        // 决议 A：struct 赋值 = 逐字节拷贝，与 class 的「壳子赋值」完全不同。
+        // 必须在下面的 drop/alias 逻辑**之前**返回：struct 不进 Content 状态格、
+        // 不参与移动/消耗、没有 drop 粘合，走那条路只会把标量当指针释放。
+        if (slot->type && slot->type->getKind() == sema::TypeKind::TK_STRUCT)        {
+            const auto rhsType = inferType(rhs);
+            const auto why = checkAssignable(slot->type, rhsType);
+            if (!why.empty())            {
+                failAt(assign->getPos(),
+                       "Assignment to '" + id->getName() + "': " + why);
+                return;
+            }
+            const std::string src = emitStructAddrOf(rhs);
+            if (src.empty() || hasFailed()) return;
+            const std::string dst = allocateTemp(sema::getPtrType());
+            _asm.lea(addrOf(*slot), "%rax");
+            _asm.mov("%rax", dst);
+            emitStructCopy(dst, src, static_cast<long long>(slot->type->getSize()));
+            return;
+        }
         emitExpression(rhs);
         if (hasFailed()) return;
         const std::string dest = addrOf(*slot);
@@ -4179,6 +4338,21 @@ namespace backend{
                 slot = std::to_string(offset) + "(%rbp)";
             }
             if (hasInit)            {
+                // 决议 A：struct 是值语义 —— 初始化是**逐字节拷贝**，
+                // 而不是把 %rax 里那个指针存下来（那是 class 的语义）。
+                // 两条路径必须分开：struct 变量的槽位里装的是值本身，
+                // 装进去之后与源变量完全独立。
+                if (type && type->getKind() == sema::TypeKind::TK_STRUCT)                {
+                    const std::string src = emitStructAddrOf(def->getValueNode());
+                    if (src.empty() || hasFailed()) return;
+                    // emitStructCopy 的实参是「装着指针的槽」，目标也要先取地址。
+                    const std::string dst = allocateTemp(sema::getPtrType());
+                    _asm.lea(slot, "%rax");
+                    _asm.mov("%rax", dst);
+                    emitStructCopy(dst, src, static_cast<long long>(type->getSize()));
+                    if (hasFailed()) return;
+                }
+                else                {
                 emitExpression(def->getValueNode());
                 if (hasFailed()) return;
                 // 值在 %xmm0（浮点）或 %rax（其它），按目标类型选存储指令，
@@ -4200,9 +4374,19 @@ namespace backend{
  else                {
                     _asm.mov("%rax", slot);
                 }
+                }
             }
  else            {
-                if (type->isFloat())                {
+                if (type && type->getKind() == sema::TypeKind::TK_STRUCT)                {
+                    // struct 的零值 = 全部字段为 0（slot 是值本身，取地址给它）
+                    _asm.lea(slot, "%rcx");
+                    _asm.movImm(0, "%rdx");
+                    _asm.movImm(static_cast<long long>(type->getSize()), "%r8");
+                    _asm.subRsp(32);
+                    _asm.call("core_mem_set");
+                    _asm.addRsp(32);
+                }
+                else if (type->isFloat())                {
                     _asm.inst("xorpd", "%xmm0", "%xmm0");
                     _asm.inst("movsd", "%xmm0", slot);
                 }
@@ -4642,7 +4826,19 @@ namespace backend{
                 emitScopeDrops(i - 1, true);
             }
             if (retHasValue)            {
-                if (retIsFloat) _asm.inst("movsd", retSlot, "%xmm0");
+                if (_hasStructRetBuf && !_structRetBufSlot.empty() &&
+                    effType && effType->getKind() == sema::TypeKind::TK_STRUCT)                {
+                    // 决议 A：struct 返回值拷进**调用方**提供的缓冲区，
+                    // 然后把那个缓冲区地址放进 %rax 交给调用方。
+                    // 不能在本地帧里返回地址 —— ret 之后帧就没了。
+                    const std::string srcPtr = allocateTemp(sema::getPtrType());
+                    _asm.mov(retSlot, "%rax");
+                    _asm.mov("%rax", srcPtr);
+                    emitStructCopy(_structRetBufSlot, srcPtr,
+                                   static_cast<long long>(effType->getSize()));
+                    _asm.mov(_structRetBufSlot, "%rax");
+                }
+                else if (retIsFloat) _asm.inst("movsd", retSlot, "%xmm0");
                 else            _asm.mov(retSlot, "%rax");
             }
         }
@@ -4819,10 +5015,39 @@ namespace backend{
             const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(branchExpr);
             if (!branch) continue;
             const std::string nextLabel = _asm.newLabel("cond_next");
+            // 决议 B：`if var p = <expr>` —— 条件位置求值那个可空表达式，
+            // 判「指针是不是 0」决定走 then 还是 else；then 块里 p 绑定到
+            // 解包后的非空值。
+            //
+            // 必须先求值到临时槽再判空：emitExpression 之后 %rax 就是那个
+            // 指针，但登记 p 需要一块**跨语句有效**的存储（then 块里可能
+            // 有调用，会冲掉寄存器）。
+            std::string bindingValueSlot;
+            sema::TypePtr bindingType;
+            if (!branch->getBindingName().empty())            {
+                const auto nullableType = inferType(branch->getConditionNode());
+                if (!nullableType || nullableType->getKind() != sema::TypeKind::TK_NULLABLE)                {
+                    failAt(branch->getConditionNode()->getPos(),
+                           "'if var " + branch->getBindingName() + " = ...' requires a nullable "
+                           "value of type 'T?' on the right-hand side, but got '" +
+                           (nullableType ? nullableType->toString() : std::string("?")) +
+                           "' (decision B)");
+                    return;
+                }
+                bindingType = std::static_pointer_cast<sema::NullableType>(nullableType)->getInnerType();
+                // 求值到临时槽再判空：then 块里可能有调用，会冲掉寄存器。
+                emitExpression(branch->getConditionNode());
+                if (hasFailed()) return;
+                bindingValueSlot = allocateTemp(bindingType);
+                _asm.mov("%rax", bindingValueSlot);
+                _asm.mov(bindingValueSlot, "%rax");
+                _asm.inst("testq", "%rax", "%rax");
+                _asm.je(nextLabel);
+            }
             // else 分支在 AST 里不是「无条件的」，而是带一个合成的
             // BooleanLiteralNode(true) 条件（见 buildConditionExpression）。
             // 只认「条件为字面 true」当无条件 else：有它就没有 fall-through 路径。
-            if (!isAlwaysTrueCondition(branch->getConditionNode()))            {
+            else if (!isAlwaysTrueCondition(branch->getConditionNode()))            {
                 emitExpression(branch->getConditionNode());
                 _asm.inst("testq", "%rax", "%rax");
                 _asm.je(nextLabel);
@@ -4849,6 +5074,15 @@ namespace backend{
             // 必须在 pushScope 之前恢复，否则栈深度对不上。
             restoreMoveStates(entryStates);
             pushScope();
+            // 决议 B：绑定变量只在这一层（then 块）可见 —— 正好是刚 push
+            // 的这一层，popScope 之后自然消失。
+            if (!bindingValueSlot.empty() && bindingType)            {
+                const long long off = allocateSlot(branch->getBindingName(), bindingType,
+                                                   bindingType->getSize());
+                const std::string slot = std::to_string(off) + "(%rbp)";
+                _asm.mov(bindingValueSlot, "%rax");
+                _asm.mov("%rax", slot);
+            }
             if (!ifValueSlot.empty())            {
                 _ifStack.push_back({endLabel, ifValueSlot, annotatedType,
                                     _scopeDrops.size(), _ehStack.size(), ++_scopeEnterSeq});
@@ -5410,7 +5644,9 @@ namespace backend{
         const auto t = (type && type->getKind() != sema::TypeKind::TK_VOID)
                            ? type
                            : sema::getIntType();
-        const long long offset = allocateSlot(name, t, 8);
+        const long long offset = allocateSlot(name, t, static_cast<size_t>(t->getSize()) < 8
+                                                          ? 8
+                                                          : static_cast<size_t>(t->getSize()));
         return std::to_string(offset) + "(%rbp)";
     }
     void CodeGen::flattenListElements(const std::shared_ptr<ast::ExpressionNode>& body,
@@ -6322,6 +6558,119 @@ namespace backend{
         }
         fail("Index access on a non-container value: " + node->toString());
     }
+    // 决议 B：`xs.get(i)` —— 返回 `T?`，越界给 null，不 panic。
+    //
+    // 与 `xs[i]` 的分工（用户裁决）：`[i]` 保持原语义「越界读零值」，
+    // get() 才是能表达「没有」的那个。两者的返回值在 %rax 里都是
+    // 8 字节指针/值，区别只在类型层面（`T?` 不能直接当 `T` 用，
+    // 必须 `if var p = xs.get(i)` 取出），所以这里不需要额外的标签位。
+    //
+    // 越界与负下标都返回 0：`cmpq` + `jae` 是无符号比较，负下标会
+    // 变成巨大的无符号数，同样被拦下。
+    void CodeGen::emitListGetOrNull(const std::shared_ptr<ast::ExpressionNode>& receiver,
+                                    const std::shared_ptr<ast::ExpressionNode>& indexExpr,
+                                    const sema::TypePtr& elemType)    {
+        const auto recvTypeForSlot = inferType(receiver);
+        const std::string contSlot = allocateTemp(recvTypeForSlot ? recvTypeForSlot : sema::getIntType());
+        emitExpression(receiver);
+        if (hasFailed()) return;
+        _asm.mov("%rax", contSlot);
+        emitExpression(indexExpr);
+        if (hasFailed()) return;
+        const std::string missLabel = _asm.newLabel("lget_miss");
+        const std::string doneLabel = _asm.newLabel("lget_done");
+        _asm.mov(contSlot, "%rcx");
+        _asm.cmp("(%rcx)", "%rax");
+        _asm.inst("jae", missLabel);
+        // ABI v2：data 是 header+24 处的独立指针
+        _asm.inst("movq", "24(%rcx)", "%rcx");
+        _asm.inst("movq", "(%rcx,%rax,8)", "%rax");
+        _asm.jmp(doneLabel);
+        _asm.label(missLabel);
+        _asm.movImm(0, "%rax");
+        _asm.label(doneLabel);
+        if (elemType && elemType->isFloat())        {
+            _asm.inst("movq", "%rax", "%xmm0");
+        }
+    }
+    // 决议 B：`d.get(k)` —— 同 list 版，未命中给 null。
+    // 查找逻辑与 `d[k]` 完全一致（键可能是 str 也可能是数值），
+    // 差别只在未命中时返回 0 而不是零值 —— 其实两者一样，
+    // 真正区别是类型层面：get 返回 `V?`。
+    void CodeGen::emitDictGetOrNull(const std::shared_ptr<ast::ExpressionNode>& receiver,
+                                    const std::shared_ptr<ast::ExpressionNode>& keyExpr,
+                                    const sema::TypePtr& valType)    {
+        // 直接复用下标读取的实现：它的未命中分支本来就返回 0。
+        // 这里造不出 IndexExpressionNode（节点要 mainToken），所以
+        // 把那段逻辑内联一份 —— 比复制整段 dict 查找更省事的是：
+        // 借道一个临时变量，让 emitIndexExpression 走通用路径。
+        const auto dictType = inferType(receiver);
+        const auto keyType = dictType && dictType->getKind() == sema::TypeKind::TK_DICT
+                                 ? std::static_pointer_cast<sema::DictType>(dictType)->getKeyType()
+                                 : nullptr;
+        const auto keyExprType = inferType(keyExpr);
+        const bool keyIsStr = (keyExprType && keyExprType->getKind() == sema::TypeKind::TK_STR) ||
+                              (keyType && keyType->getKind() == sema::TypeKind::TK_STR);
+        const bool keyIsFloat = keyExprType && keyExprType->isFloat();
+        const std::string contSlot = allocateTemp(dictType ? dictType : sema::getIntType());
+        emitExpression(receiver);
+        if (hasFailed()) return;
+        _asm.mov("%rax", contSlot);
+        const std::string keySlot = allocateTemp(keyIsStr ? sema::getStrType() : sema::getIntType());
+        const std::string iSlot = allocateTemp(sema::getIntType());
+        emitExpression(keyExpr);
+        if (hasFailed()) return;
+        if (keyIsFloat) _asm.inst("movq", "%xmm0", "%rax");
+        _asm.mov("%rax", keySlot);
+        _asm.movImm(0, "%rax");
+        _asm.mov("%rax", iSlot);
+        const std::string loopLabel = _asm.newLabel("dget_loop");
+        const std::string nextLabel = _asm.newLabel("dget_next");
+        const std::string missLabel = _asm.newLabel("dget_miss");
+        const std::string doneLabel = _asm.newLabel("dget_done");
+        _asm.label(loopLabel);
+        _asm.mov(iSlot, "%rax");
+        _asm.mov(contSlot, "%rcx");
+        _asm.cmp("(%rcx)", "%rax");
+        _asm.inst("jae", missLabel);
+        _asm.inst("movq", "16(%rcx)", "%rdx");
+        _asm.inst("movq", "(%rdx,%rax,8)", "%rdx");
+        _asm.mov(keySlot, "%r8");
+        if (keyIsStr)        {
+            _asm.inst("movq", "(%rdx)", "%r9");
+            _asm.inst("movq", "(%r8)", "%r10");
+            _asm.cmp("%r10", "%r9");
+            _asm.jne(nextLabel);
+            _asm.lea("16(%rdx)", "%rcx");
+            _asm.lea("16(%r8)", "%rdx");
+            _asm.mov("%r9", "%r8");
+            _asm.subRsp(32);
+            _asm.call("core_mem_eq");
+            _asm.addRsp(32);
+            _asm.inst("testl", "%eax", "%eax");
+            _asm.je(nextLabel);
+        }
+ else        {
+            _asm.cmp("%r8", "%rdx");
+            _asm.jne(nextLabel);
+        }
+        _asm.mov(contSlot, "%rcx");
+        _asm.mov(iSlot, "%rax");
+        _asm.inst("movq", "24(%rcx)", "%rdx");
+        _asm.inst("movq", "(%rdx,%rax,8)", "%rax");
+        _asm.jmp(doneLabel);
+        _asm.label(nextLabel);
+        _asm.mov(iSlot, "%rax");
+        _asm.inst("addq", "$1", "%rax");
+        _asm.mov("%rax", iSlot);
+        _asm.jmp(loopLabel);
+        _asm.label(missLabel);
+        _asm.movImm(0, "%rax");
+        _asm.label(doneLabel);
+        if (valType && valType->isFloat())        {
+            _asm.inst("movq", "%rax", "%xmm0");
+        }
+    }
     size_t CodeGen::argSlotOffset(const size_t pos) const    {
         // 调用区布局（相对调用点 %rsp）：
         //   [0, 32)          shadow space，第 pos 个寄存器参数暂存在 pos*8
@@ -6415,6 +6764,26 @@ namespace backend{
                 _asm.inst("cvtsi2sdq", "%rax", "%xmm0");
             }
             const std::string addr = std::to_string(argSlotOffset(argStart + i)) + "(%rsp)";
+            // 决议 A：struct 实参 —— 表达式给出的 %rax 是**指向某块 struct 的
+            // 指针**（可能是变量的槽、可能是刚返回的调用缓冲区）。必须立刻把
+            // 值拷进本次调用专属的暂存槽，再把**那个槽的地址**当实参传下去。
+            //
+            // 不拷的后果（实测）：`sum2(mk(1,2), mk(10,20))` 两次 mk 复用同一块
+            // 返回缓冲区，第一个实参还没被读就被第二次调用覆盖 —— 结果错位。
+            const bool argIsStruct = i < paramTypes.size() && paramTypes[i] &&
+                                     paramTypes[i]->getKind() == sema::TypeKind::TK_STRUCT;
+            if (argIsStruct)            {
+                const std::string src = allocateTemp(sema::getPtrType());
+                _asm.mov("%rax", src);
+                const std::string buf = allocateTemp(paramTypes[i]);
+                const std::string dst = allocateTemp(sema::getPtrType());
+                _asm.lea(buf, "%rax");
+                _asm.mov("%rax", dst);
+                emitStructCopy(dst, src, static_cast<long long>(paramTypes[i]->getSize()));
+                _asm.lea(buf, "%rax");
+                _asm.mov("%rax", addr);
+                continue;
+            }
             if (targetIsFloat[i])            {
                 _asm.inst("movsd", "%xmm0", addr);
             }
@@ -6871,6 +7240,13 @@ namespace backend{
                 emitConstructorCall(n, node, args);
                 return;
             }
+            // 决议 A：`Pt(1, 2)` —— struct 按字段顺序位置构造。
+            // 必须排在 findClass 之后、间接调用之前：struct 名不是变量，
+            // 也不是函数符号，走别的分支都会落到「Undefined variable」。
+            if (lookupVar(n) == nullptr && findStruct(n) != nullptr)            {
+                emitStructConstructor(n, node, args);
+                return;
+            }
             if (lookupVar(n) != nullptr)            {
                 // 局部变量遮蔽了同名函数，或者这个名字根本不是函数：
                 // 一律当成「槽位里放着函数值」处理。
@@ -6994,15 +7370,43 @@ namespace backend{
         if (const auto found = _functionParamAnnotated.find(fname); found != _functionParamAnnotated.end())        {
             annotatedMask = &found->second;
         }
-        const size_t callArea = emitArgsToRegisters(callArgs, fname, paramTypes, 0, annotatedMask);
+        // 决议 A：返回 struct 的函数，调用方先备好返回缓冲区，把它的地址
+        // 当**第一个整型实参**传进去（被调方见 emitFunctionBody 的
+        // __p5_retbuf）。缓冲区必须在这里分配：它的生命周期要跨过这次调用，
+        // 不能让被调方在自己帧里造。
+        const auto retIt = _functionReturns.find(fname);
+        const auto retType = retIt != _functionReturns.end() ? retIt->second : nullptr;
+        std::string structRetBuf;
+        size_t argStart = 0;
+        if (retType && retType->getKind() == sema::TypeKind::TK_STRUCT)        {
+            const std::string buf = allocateTemp(retType);
+            _asm.lea(buf, "%rax");
+            const std::string keep = allocateTemp(sema::getPtrType());
+            _asm.mov("%rax", keep);
+            structRetBuf = keep;
+            argStart = 1;
+        }
+        const size_t callArea = emitArgsToRegisters(callArgs, fname, paramTypes, argStart, annotatedMask);
         if (hasFailed())        {
             return;
         }
+        if (structRetBuf.empty())        {
+            if (!applyWriteEffects(emitName, fname, callArgs, node->getPos())) return;
+            // emitArgsToRegisters 已经预留好调用区（shadow space + 溢出栈槽），
+            // 且保证 %rsp 16 字节对齐，这里只负责调用与回收。
+            _asm.call(emitName);
+            _asm.addRsp(callArea);
+            return;
+        }
+        // 有返回缓冲区：先把指针装进 %rcx（第一个整型寄存器），再调用。
         if (!applyWriteEffects(emitName, fname, callArgs, node->getPos())) return;
-        // emitArgsToRegisters 已经预留好调用区（shadow space + 溢出栈槽），
-        // 且保证 %rsp 16 字节对齐，这里只负责调用与回收。
+        _asm.mov(structRetBuf, "%rcx");
         _asm.call(emitName);
         _asm.addRsp(callArea);
+        // 被调方已经把值拷进缓冲区，并把缓冲区地址放进 %rax；
+        // 表达式结果就是那个地址（值语义约定）。这里重新装一次是因为
+        // applyWriteEffects / 调用本身可能已经冲掉了 %rax。
+        _asm.mov(structRetBuf, "%rax");
     }
     bool CodeGen::isModuleName(const std::string& name) const    {
         for (const auto& m : _moduleNames)        {
@@ -7376,6 +7780,9 @@ namespace backend{
         }
         if (name.empty()) return sema::getUnknownType();
         if (findClass(name)) return std::make_shared<sema::ClassType>(name);
+        // 决议 A：`x: Pt` 的 Pt 是 struct 时解析成 StructType（携带大小，
+        // 这样 allocateSlot 能一次开出正确的槽宽）。
+        if (const auto st = structTypeOf(name)) return st;
         return sema::getUnknownType();
     }
     // ============================================================
@@ -7502,6 +7909,29 @@ namespace backend{
     }
     sema::TypePtr CodeGen::typeFromLabelNode(const std::shared_ptr<ast::LabelNode>& label,
                                              const std::vector<std::string>& genericParams) const    {        if (!label) return sema::getUnknownType();
+        // 决议 B：`T?` —— 先按普通 `T` 解析出 inner，再包一层 NullableType。
+        // 只有引用型可空（用户裁决）：值类型没有「空」这个状态。
+        if (label->isNullable())        {
+            const auto inner = typeFromLabelNodeNonNull(label, genericParams);
+            if (!inner || inner->getKind() == sema::TypeKind::TK_UNKNOWN) return inner;
+            if (!inner->isPointerLike() && inner->getKind() != sema::TypeKind::TK_NULLABLE)            {
+                // failAt 不是 const 成员（它要写失败标志），这里只能转一下。
+                // 语义上没副作用之外的东西：它只是登记一条诊断。
+                const_cast<CodeGen*>(this)->failAt(
+                    label->getPos(),
+                    "type '" + inner->toString() + "' cannot be nullable; only reference types "
+                    "(str/list/dict/class/Ref/Mut/Take/Pool) may be written as 'T?' (decision B)");
+                return sema::getUnknownType();
+            }
+            if (inner->getKind() == sema::TypeKind::TK_NULLABLE) return inner;
+            return std::make_shared<sema::NullableType>(inner);
+        }
+        return typeFromLabelNodeNonNull(label, genericParams);
+    }
+
+    sema::TypePtr CodeGen::typeFromLabelNodeNonNull(const std::shared_ptr<ast::LabelNode>& label,
+                                                    const std::vector<std::string>& genericParams) const    {
+        if (!label) return sema::getUnknownType();
         const std::string base = label->getFullLabel();
         // 泛型形参：声明阶段 T 是合法的「洞」，不是未知类型。
         // 实例化发射阶段则必须解析成**具体**类型 —— 槽位大小、走整型还是
@@ -8165,6 +8595,106 @@ namespace backend{
         }
         cls->size = offset;
     }
+    // ── 决议 A：值语义 struct ──────────────────────────────────────────────
+    // 登记一个 `struct Name { var x: int ... }`。与 class 的三点不同：
+    //   1. 不支持继承（解析阶段已禁止标签，这里也不再沿链查找）；
+    //   2. 字段只允许标量（int/float/bool/char），有非标量字段直接报错；
+    //   3. 布局按声明顺序内联，没有对象头，赋值是逐字节拷贝。
+    // 每个字段仍占满一个 8 字节槽位：struct 是纯值类型，字段宽度按 8 字节
+    // 对齐不会影响语义（拷贝与布局都由编译器自己算），却能让字段读写复用
+    // class 那套 `mov offset(%rax)` / `mov %rax, offset(%r10)` 单字指令，
+    // 不必为 bool/char 单独引入子字宽存取路径。
+    void CodeGen::registerStruct(const std::shared_ptr<ast::StructDefinitionNode>& node)    {
+        if (!node) return;
+        const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node->getNameNode());
+        if (!id) return;
+        StructInfo info;
+        info.name = id->getName();
+        const auto body = std::dynamic_pointer_cast<ast::BlockRangerNode>(node->getBodyNode());
+        if (!body)        {
+            fail("struct '" + info.name + "' must be defined with a body.");
+            return;
+        }
+        for (const auto& stmt : body->getBodyExpressions())        {
+            if (!stmt) continue;
+            const auto varDef = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(stmt);
+            if (!varDef)            {
+                // 方法/构造器/继承在 struct 里都没有意义（值类型没有 vtable，
+                // 也不做所有权管理），直接拒绝而不是默默忽略。
+                failAt(stmt->getPos(),
+                       "struct '" + info.name + "' only supports scalar field declarations; "
+                       "methods, constructors and inheritance are not allowed in a struct.");
+                return;
+            }
+            for (const auto& def : varDef->getVarDefs())            {
+                if (!def || !def->getNameNode()) continue;
+                const std::string fname = def->getNameNode()->getName();
+                sema::TypePtr ftype = sema::getIntType();
+                if (def->hasLabels()) ftype = typeFromLabelList(def->getLabelNodes(), {});
+                if (!ftype || ftype->getKind() == sema::TypeKind::TK_UNKNOWN)                {
+                    failAt(stmt->getPos(),
+                           "struct field '" + fname + "' of '" + info.name + "' has an unknown type.");
+                    return;
+                }
+                // 决议 A-2：只允许标量字段。str 是「指针+长度」的头，值拷贝
+                // 只浅复制指针 → 共享堆数据 → double-free/悬垂；ptr/list/dict/
+                // class/Body/Content 同理，都不允许内联进 struct。
+                const auto k = ftype->getKind();
+                const bool scalar = k == sema::TypeKind::TK_INT || k == sema::TypeKind::TK_FLOAT ||
+                                    k == sema::TypeKind::TK_BOOL || k == sema::TypeKind::TK_CHAR;
+                if (!scalar)                {
+                    failAt(stmt->getPos(),
+                           "struct field '" + fname + "' of '" + info.name + "' has type '" +
+                           ftype->toString() + "'; a struct may only contain scalar fields "
+                           "(int/float/bool/char), because a value copy would otherwise share "
+                           "heap ownership.");
+                    return;
+                }
+                if (def->hasInitialValue())                {
+                    // 字段默认值先记下来，构造时按顺序写入（构造器参数没给到的
+                    // 位置用它，再没有就零初始化）。
+                    info.fieldDefaults.emplace_back(fname, def->getValueNode());
+                }
+                info.fieldNames.push_back(fname);
+                info.fieldTypes[fname] = ftype;
+            }
+        }
+        _structs[info.name] = std::move(info);
+    }
+    void CodeGen::computeStructLayout(const std::string& name)    {
+        StructInfo* st = findStruct(name);
+        if (!st) return;
+        if (st->layoutDone) return;
+        st->layoutDone = true;
+        long long offset = 0;
+        for (const auto& fname : st->fieldNames)        {
+            st->fieldOffsets[fname] = offset;
+            offset += 8;
+        }
+        // 0 字段的 struct 也至少占 8 字节，避免两个变量共用同一偏移。
+        st->size = offset < 8 ? 8 : offset;
+    }
+    CodeGen::StructInfo* CodeGen::findStruct(const std::string& name)    {
+        auto it = _structs.find(name);
+        return it == _structs.end() ? nullptr : &it->second;
+    }
+    const CodeGen::StructInfo* CodeGen::findStruct(const std::string& name) const    {
+        auto it = _structs.find(name);
+        return it == _structs.end() ? nullptr : &it->second;
+    }
+    long long CodeGen::findStructFieldOffset(const std::string& structName,
+                                             const std::string& field) const    {
+        const StructInfo* st = findStruct(structName);
+        if (!st) return -1;
+        auto it = st->fieldOffsets.find(field);
+        return it == st->fieldOffsets.end() ? -1 : it->second;
+    }
+    sema::TypePtr CodeGen::structTypeOf(const std::string& name) const    {
+        const StructInfo* st = findStruct(name);
+        if (!st) return nullptr;
+        const size_t size = st->size > 0 ? static_cast<size_t>(st->size) : 8;
+        return std::make_shared<sema::StructType>(name, size);
+    }
     std::map<std::string, CodeGen::MethodRef> CodeGen::collectMethods(const std::string& name) const    {
         std::map<std::string, MethodRef> out;
         // 沿继承链往上走，再从最顶层的基类往下覆盖，派生类同名方法胜出。
@@ -8272,6 +8802,20 @@ namespace backend{
             const auto inner = std::dynamic_pointer_cast<sema::MemoryType>(slot->type)->getInnerType();
             if (inner && inner->getKind() == sema::TypeKind::TK_CLASS)
                 return std::static_pointer_cast<sema::ClassType>(inner)->getName();
+        }
+        // 决议 B：`var p: Box? = ...` 之后 `p.v` 要能解析出字段归属。
+        // 可空在代码生成层面就是「指针可能是 0」，字段访问与普通类完全一样，
+        // 所以这里直接穿透到内层类名。安全性由 `if var` 取值的规则保证，
+        // 编译器不做运行时判空（用户裁决：不引入隐式空检查）。
+        if (slot->type->getKind() == sema::TypeKind::TK_NULLABLE)        {
+            const auto inner = std::dynamic_pointer_cast<sema::NullableType>(slot->type)->getInnerType();
+            if (inner && inner->getKind() == sema::TypeKind::TK_CLASS)
+                return std::static_pointer_cast<sema::ClassType>(inner)->getName();
+            if (inner && inner->getKind() == sema::TypeKind::TK_MEMORY)            {
+                const auto deep = std::dynamic_pointer_cast<sema::MemoryType>(inner)->getInnerType();
+                if (deep && deep->getKind() == sema::TypeKind::TK_CLASS)
+                    return std::static_pointer_cast<sema::ClassType>(deep)->getName();
+            }
         }
         return std::string();
     }
@@ -8547,6 +9091,32 @@ namespace backend{
             fail("Attribute name must be an identifier: " + node->toString());
             return;
         }
+        // 决议 A：struct 字段读取。struct 的「值」是一块内存，左边求值后
+        // %rax 是地址（见 emitStructAddrOf），所以这里必须走地址路径，
+        // 不能走 class 那条「%rax 就是对象指针」的路径 —— 两者的求值
+        // 结果语义不同（class 的 %rax 是堆对象，struct 的是栈上值）。
+        if (const auto owner = structNameOf(infix->getLeftNode()); !owner.empty())        {
+            const long long off = findStructFieldOffset(owner, fieldId->getName());
+            if (off < 0)            {
+                fail("struct " + owner + " has no field named '" + fieldId->getName() + "'");
+                return;
+            }
+            const std::string base = emitStructAddrOf(infix->getLeftNode());
+            if (base.empty() || hasFailed()) return;
+            _asm.mov(base, "%rax");
+            const std::string addr = std::to_string(off) + "(%rax)";
+            const StructInfo* st = findStruct(owner);
+            sema::TypePtr ftype;
+            if (st)            {
+                const auto it = st->fieldTypes.find(fieldId->getName());
+                if (it != st->fieldTypes.end()) ftype = it->second;
+            }
+            if (ftype && ftype->isFloat())            {
+                _asm.inst("movsd", addr, "%xmm0");
+            }
+            _asm.mov(addr, "%rax");
+            return;
+        }
         const std::string owner = classNameOf(infix->getLeftNode());
         if (owner.empty())        {
             // P8：`mod.SOMETHING` 不是方法调用。模块在加载期已内联，
@@ -8602,6 +9172,53 @@ namespace backend{
         const auto fieldId = std::dynamic_pointer_cast<ast::IdentifierNode>(target->getRightNode());
         if (!fieldId)        {
             fail("Attribute name must be an identifier: " + target->toString());
+            return;
+        }
+        // 决议 A：struct 字段写入。与 class 的区别同读取：左边求值得到的是
+        // struct 值的**地址**（不是堆对象指针），偏移也来自 _structs。
+        if (const auto sowner = structNameOf(target->getLeftNode()); !sowner.empty())        {
+            const long long off = findStructFieldOffset(sowner, fieldId->getName());
+            if (off < 0)            {
+                fail("struct " + sowner + " has no field named '" + fieldId->getName() + "'");
+                return;
+            }
+            const StructInfo* st = findStruct(sowner);
+            sema::TypePtr ftype;
+            if (st)            {
+                const auto it = st->fieldTypes.find(fieldId->getName());
+                if (it != st->fieldTypes.end()) ftype = it->second;
+            }
+            const bool destIsFloat = ftype && ftype->isFloat();
+            // 先算值并暂存，再算左边地址 —— 两边都可能含调用。
+            emitExpression(value);
+            if (hasFailed()) return;
+            const auto vtype = inferType(value);
+            const bool srcIsFloat = vtype && vtype->isFloat();
+            if (destIsFloat && !srcIsFloat)            {
+                _asm.inst("cvtsi2sdq", "%rax", "%xmm0");
+            }
+            else if (!destIsFloat && srcIsFloat)            {
+                _asm.inst("cvttsd2siq", "%xmm0", "%rax");
+            }
+            const std::string keep = allocateTemp(destIsFloat ? sema::getFloatType() : sema::getIntType());
+            if (destIsFloat)            {
+                _asm.inst("movsd", "%xmm0", keep);
+            }
+            else            {
+                _asm.mov("%rax", keep);
+            }
+            const std::string base = emitStructAddrOf(target->getLeftNode());
+            if (base.empty() || hasFailed()) return;
+            _asm.mov(base, "%r10");
+            const std::string faddr = std::to_string(off) + "(%r10)";            if (destIsFloat)            {
+                _asm.mov(keep, "%rax");
+                _asm.inst("movsd", "%rax", "%xmm0");
+                _asm.inst("movsd", "%xmm0", faddr);
+            }
+            else            {
+                _asm.mov(keep, "%rax");
+                _asm.mov("%rax", faddr);
+            }
             return;
         }
         const std::string owner = classNameOf(target->getLeftNode());
@@ -8680,6 +9297,230 @@ namespace backend{
             _asm.mov(valueSlot, "%rax");
             _asm.mov("%rax", addr);
         }
+    }
+    // ── 决议 A：值语义 struct 的发射 ────────────────────────────────────────
+    // 关键约定：struct 的「值」不是寄存器里那 8 个字节，而是**一块内存**。
+    // 因此凡是出现 struct 的地方，%rax 里放的都是**该值的地址**，由调用方
+    // 决定是拷走（赋值/传参）还是就地读字段（`p.x`）。
+    // 这么设计的原因：struct 可能有 3、5、17 个字段，寄存器装不下，Win64
+    // 也没有「按值传结构体」的通用寄存器约定；统一用地址 + core_mem_copy
+    // 能让赋值/传参/返回走同一条路径，且天然是逐字节深拷贝（字段全是标量，
+    // 没有需要单独处理的堆资源）。
+    void CodeGen::emitStructCopy(const std::string& dstSlot, const std::string& srcSlot,
+                                 long long size)    {
+        // 参数约定与 emitStructAddrOf 一致：两个参数都是**装着指针的栈槽**
+        // （`-N(%rbp)`），不是内存操作数。
+        //
+        // 为什么不用 core_mem_copy：struct 返回值的源指针指向**被调帧**里的
+        // 临时槽，帧已经 ret 掉了。若这里再发一次 call，被调函数的栈帧会
+        // 正好覆盖那块内存，拷到的就是垃圾。改成内联逐字搬，中间没有任何
+        // 调用，源指针在拷贝期间必然有效。
+        // 字段都占满 8 字节槽（见 computeStructLayout），所以按 8 字节搬。
+        const long long n = size > 0 ? size : 8;
+        _asm.mov(dstSlot, "%r10");
+        _asm.mov(srcSlot, "%r11");
+        for (long long off = 0; off < n; off += 8)        {
+            _asm.inst("movq", std::to_string(off) + "(%r11)", "%rax");
+            _asm.inst("movq", "%rax", std::to_string(off) + "(%r10)");
+        }
+        _asm.mov("%r10", "%rax");
+    }
+    void CodeGen::emitStructConstructor(const std::string& structName,
+                                        const std::shared_ptr<ast::ExpressionNode>& callNode,
+                                        const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)    {
+        const StructInfo* st = findStruct(structName);
+        if (!st)        {
+            fail("Unknown struct: " + structName);
+            return;
+        }
+        if (args.size() > st->fieldNames.size())        {
+            failAt(callNode ? callNode->getPos() : utils::getUnknownPos(),
+                   "struct '" + structName + "' has " + std::to_string(st->fieldNames.size()) +
+                   " field(s), but " + std::to_string(args.size()) + " initializer(s) were given.");
+            return;
+        }
+        const long long size = st->size > 0 ? st->size : 8;
+        // 结果落在一块临时栈槽里（大小 = struct 总字节数，allocateTemp 会按
+        // 类型的 getSize() 分配），%rax 最后放它的**地址**。
+        const std::string buf = allocateTemp(structTypeOf(structName));
+        // 先整体清零：没给初始化器的字段（含只有默认值的）默认 0。
+        _asm.lea(buf, "%rcx");
+        _asm.movImm(0, "%rdx");
+        _asm.movImm(size, "%r8");
+        _asm.subRsp(32);
+        _asm.call("core_mem_set");
+        _asm.addRsp(32);
+        // 写一个字段：值已在 %rax（整数）或 %xmm0（浮点），落到 buf+off。
+        const auto storeField = [&](const std::string& fname, bool destIsFloat) {
+            _asm.lea(buf, "%r10");
+            const std::string faddr = std::to_string(st->fieldOffsets.at(fname)) + "(%r10)";
+            if (destIsFloat)            {
+                _asm.inst("movsd", "%xmm0", faddr);
+            }
+            else            {
+                _asm.mov("%rax", faddr);
+            }
+        };
+        // 按字段声明顺序逐位写入。每个字段单独求值 + 立即落盘，
+        // 因为后面的求值（可能含调用）会冲掉 %rax。
+        for (size_t i = 0; i < args.size(); ++i)        {
+            if (!args[i]) continue;
+            const auto& fname = st->fieldNames[i];
+            const auto ftype = st->fieldTypes.at(fname);
+            emitExpression(args[i]);
+            if (hasFailed()) return;
+            const auto atype = inferType(args[i]);
+            const bool destIsFloat = ftype && ftype->isFloat();
+            const bool srcIsFloat = atype && atype->isFloat();
+            if (destIsFloat && !srcIsFloat)            {
+                _asm.inst("cvtsi2sdq", "%rax", "%xmm0");
+            }
+            else if (!destIsFloat && srcIsFloat)            {
+                _asm.inst("cvttsd2siq", "%xmm0", "%rax");
+            }
+            storeField(fname, destIsFloat);
+        }
+        // 没给初始化器、但有默认值的字段：用默认值（按字段顺序，跳过已给的）。
+        for (const auto& [fname, valueNode] : st->fieldDefaults)        {
+            if (!valueNode) continue;
+            size_t idx = 0;
+            bool found = false;
+            for (size_t i = 0; i < st->fieldNames.size(); ++i)            {
+                if (st->fieldNames[i] == fname)                {
+                    idx = i;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found || idx < args.size()) continue; // 构造器实参优先
+            const auto ftype = st->fieldTypes.at(fname);
+            emitExpression(valueNode);
+            if (hasFailed()) return;
+            const auto atype = inferType(valueNode);
+            const bool destIsFloat = ftype && ftype->isFloat();
+            const bool srcIsFloat = atype && atype->isFloat();
+            if (destIsFloat && !srcIsFloat)            {
+                _asm.inst("cvtsi2sdq", "%rax", "%xmm0");
+            }
+            else if (!destIsFloat && srcIsFloat)            {
+                _asm.inst("cvttsd2siq", "%xmm0", "%rax");
+            }
+            storeField(fname, destIsFloat);
+        }
+        // 结果 = 这块临时存储的地址（值语义：%rax 里是地址，不是首 8 字节）。
+        _asm.lea(buf, "%rax");
+    }
+    std::string CodeGen::structNameOf(const std::shared_ptr<ast::ExpressionNode>& node) const    {
+        if (!node) return {};
+        // 直接是变量：槽位类型是 StructType，或者是内嵌 struct 的 Ref/Mut
+        // 引用（`var r = &p` 之后 `r.x` 必须能用 —— 引用的指向类型是 struct）。
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node))        {
+            const auto slot = const_cast<CodeGen*>(this)->lookupVar(id->getName());
+            if (!slot || !slot->type) return {};
+            auto t = slot->type;
+            if (t->getKind() == sema::TypeKind::TK_MEMORY)            {
+                const auto mt = std::dynamic_pointer_cast<sema::MemoryType>(t);
+                if (!mt) return {};
+                t = mt->getInnerType();
+                if (!t) return {};
+            }
+            if (t->getKind() != sema::TypeKind::TK_STRUCT) return {};
+            return std::static_pointer_cast<sema::StructType>(t)->getName();
+        }
+        // `Pt(1, 2)` 构造调用
+        if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node))        {
+            if (const auto calleeId = std::dynamic_pointer_cast<ast::IdentifierNode>(call->getLeftNode()))            {
+                if (findStruct(calleeId->getName())) return calleeId->getName();
+            }
+            return {};
+        }
+        // `p.x`：字段类型是 struct 时递归（struct 字段只允许标量，所以这里
+        // 实际不会命中；保留是为了 struct 嵌套放开后的前向兼容）。
+        if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node);
+            infix && infix->getOpToken().getType() == core::TokenType::TOKEN_DOT)        {
+            const auto owner = structNameOf(infix->getLeftNode());
+            if (owner.empty()) return {};
+            const auto fieldId = std::dynamic_pointer_cast<ast::IdentifierNode>(infix->getRightNode());
+            if (!fieldId) return {};
+            const StructInfo* st = findStruct(owner);
+            if (!st) return {};
+            const auto it = st->fieldTypes.find(fieldId->getName());
+            if (it == st->fieldTypes.end() || !it->second) return {};
+            if (it->second->getKind() != sema::TypeKind::TK_STRUCT) return {};
+            return std::static_pointer_cast<sema::StructType>(it->second)->getName();
+        }
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))        {
+            return structNameOf(paren->getRangerNode());
+        }
+        return {};
+    }
+    std::string CodeGen::emitStructAddrOf(const std::shared_ptr<ast::ExpressionNode>& node)    {
+        if (!node) return {};
+        // 返回值的约定：**总是**返回一个临时栈槽 `-N(%rbp)`，槽里装着指针。
+        // 调用方统一用 `_asm.mov(结果, "%rax")` 取指针。
+        //
+        // 为什么不用「返回内存操作数」：`addrOf(*slot)` 得到的是 `-16(%rbp)`，
+        // 它作为 `leaq` 的源是地址，作为 `movq` 的源却是内容 —— 同一个字符串
+        // 在两种用法下含义相反。统一成「槽里装指针」就不会有这种歧义。
+        const auto stash = [&](const std::string& memOperand) -> std::string {
+            const std::string keep = allocateTemp(sema::getPtrType());
+            _asm.lea(memOperand, "%rax");
+            _asm.mov("%rax", keep);
+            return keep;
+        };
+        // 变量：槽的地址就是 struct 值的地址。但 Ref/Mut 引用变量的槽里
+        // 装的是**指针**（指向别人那块 struct），此时要读槽取出指针，
+        // 不能再取槽自己的地址。
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node))        {
+            const auto slot = lookupVar(id->getName());
+            if (!slot)            {
+                fail("Undefined variable: " + id->getName());
+                return {};
+            }
+            if (slot->type && slot->type->getKind() == sema::TypeKind::TK_MEMORY)            {
+                const auto keep = allocateTemp(sema::getPtrType());
+                _asm.mov(addrOf(*slot), "%rax");
+                _asm.mov("%rax", keep);
+                return keep;
+            }
+            return stash(addrOf(*slot));
+        }
+        // 构造调用 / 返回 struct 的函数调用：两者都把地址放在 %rax
+        // （构造器见 emitStructConstructor，普通函数见 emitReturn 的
+        // retSlot），所以统一 emitExpression 后转存即可。
+        if (std::dynamic_pointer_cast<ast::FunctionCallNode>(node))        {
+            const auto t = inferType(node);
+            if (!t || t->getKind() != sema::TypeKind::TK_STRUCT) return {};
+            emitExpression(node);
+            if (hasFailed()) return {};
+            const std::string keep = allocateTemp(sema::getPtrType());
+            _asm.mov("%rax", keep);
+            return keep;
+        }
+        // 字段：先取左边 struct 的指针，再加字段偏移。
+        if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node);
+            infix && infix->getOpToken().getType() == core::TokenType::TOKEN_DOT)        {
+            const auto fieldId = std::dynamic_pointer_cast<ast::IdentifierNode>(infix->getRightNode());
+            if (!fieldId) return {};
+            const auto owner = structNameOf(infix->getLeftNode());
+            if (owner.empty()) return {};
+            const long long off = findStructFieldOffset(owner, fieldId->getName());
+            if (off < 0)            {
+                fail("struct " + owner + " has no field named '" + fieldId->getName() + "'");
+                return {};
+            }
+            const std::string base = emitStructAddrOf(infix->getLeftNode());
+            if (base.empty() || hasFailed()) return {};
+            const std::string keep = allocateTemp(sema::getPtrType());
+            _asm.mov(base, "%rax");
+            if (off != 0) _asm.inst("addq", "$" + std::to_string(off), "%rax");
+            _asm.mov("%rax", keep);
+            return keep;
+        }
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))        {
+            return emitStructAddrOf(paren->getRangerNode());
+        }
+        return {};
     }
     void CodeGen::emitConstructorCall(const std::string& className,
                                       const std::shared_ptr<ast::ExpressionNode>& callNode,
@@ -8839,6 +9680,35 @@ namespace backend{
                        "dict and memory-model types need a dedicated primitive)");
                 return;
             }
+        }
+        // 决议 B：list/dict 内建 get(i) / get(k) —— 返回 `T?`，越界给 null，
+        // **不 panic**（用户明确否决了「get() 越界 panic」的提案）。
+        //
+        // 与 `xs[i]` 的区别就在这一点：`[i]` 保持原语义（越界读零值），
+        // get() 才能表达「没有」。所以 get 的返回类型是 NullableType，
+        // 只能配 `if var p = xs.get(i)` 使用。
+        //
+        // 必须在 owner 检查之前：receiver 是 list/dict（内置类型，
+        // classNameOf 为空），落到后面会报 "Cannot determine the object type"。
+        if (methodId->getName() == "get" && args.size() == 1)        {
+            const auto recvType = inferType(member->getLeftNode());
+            const auto recvKind = recvType ? recvType->getKind() : sema::TypeKind::TK_UNKNOWN;
+            if (recvKind == sema::TypeKind::TK_LIST)            {
+                const auto elemType =
+                    std::static_pointer_cast<sema::ListType>(recvType)->getElemType();
+                emitListGetOrNull(member->getLeftNode(), args[0], elemType);
+                return;
+            }
+            if (recvKind == sema::TypeKind::TK_DICT)            {
+                const auto valType =
+                    std::static_pointer_cast<sema::DictType>(recvType)->getValueType();
+                emitDictGetOrNull(member->getLeftNode(), args[0], valType);
+                return;
+            }
+            failAt(member->getPos(),
+                   "get(): receiver must be a list or dict, but got '" +
+                   (recvType ? recvType->toString() : std::string("?")) + "'");
+            return;
         }
         // P13-2/L3-E（决议 §4.3）：list 内建 get_mut(i) ——
         // 返回元素槽的 Mut 视图（元素地址），登记 xs[*]+i 路径。
@@ -10061,6 +10931,17 @@ namespace backend{
         const auto& floatRegs = _abi.getFloatArgRegs();
         const size_t registerSlots = intRegs.size() < floatRegs.size() ? intRegs.size() : floatRegs.size();
         size_t argPos = 0;
+        // 决议 A：返回 struct 的函数，调用方通过**第一个整型寄存器**传入一块
+        // 返回缓冲区的地址。这里把它存进一个隐藏局部槽，`ret <struct>` 时
+        // 拷进去。与 hasThis 一样占掉一个寄存器位置，用户形参整体后移。
+        _hasStructRetBuf = retType && retType->getKind() == sema::TypeKind::TK_STRUCT;
+        _structRetBufSlot.clear();
+        if (_hasStructRetBuf)        {
+            const long long off = allocateSlot("__p5_retbuf", sema::getPtrType(), 8);
+            _structRetBufSlot = std::to_string(off) + "(%rbp)";
+            _asm.mov(intRegs[argPos], _structRetBufSlot);
+            argPos += 1;
+        }
         // P6：构造器/方法有隐藏的 this 参数，占掉第一个整型寄存器（%rcx），
         // 用户形参整体后移一格。this 存成一个普通局部槽位，这样函数体里
         // `this.x` 走的是和普通变量完全一样的取址路径。
@@ -10076,7 +10957,10 @@ namespace backend{
         for (size_t i = 0; i < paramNames.size(); ++i)        {
             auto pt = (i < paramTypes.size()) ? paramTypes[i] : sema::getIntType();
             if (!pt || pt->getKind() == sema::TypeKind::TK_UNKNOWN) pt = sema::getIntType();
-            const long long offset = allocateSlot(paramNames[i], pt, pt->getSize());
+            const long long offset = allocateSlot(paramNames[i], pt,
+                                                 pt->getKind() == sema::TypeKind::TK_STRUCT
+                                                     ? static_cast<size_t>(pt->getSize())
+                                                     : pt->getSize());
             const std::string slot = std::to_string(offset) + "(%rbp)";
             // P13-1（D9 规则 C）：形参一律**借用** —— 被调函数不释放它，
             // 调用方负责。登记成借用后，`ret 形参` / 把它塞进容器都会被
@@ -10095,6 +10979,26 @@ namespace backend{
                 _opaqueMoveVars.insert(paramNames[i]);
             }
             const size_t pos = argPos + i;
+            // 决议 A：struct 形参 —— 调用方传的是**指向它那份 struct 的指针**。
+            // 值语义要求被调方拿到自己独立的副本，所以这里必须逐字拷进本地
+            // 槽，而不是把指针存下来（否则形参一改，调用方的变量跟着变）。
+            if (pt->getKind() == sema::TypeKind::TK_STRUCT)            {
+                if (pos < registerSlots)                {
+                    _asm.mov(intRegs[pos], "%r11");
+                }
+                else                {
+                    const std::string from =
+                        std::to_string(_abi.getStackArgOffset(pos - registerSlots) + 8) + "(%rbp)";
+                    _asm.mov(from, "%r11");
+                }
+                _asm.lea(slot, "%r10");
+                const long long n = pt->getSize() > 0 ? pt->getSize() : 8;
+                for (long long off = 0; off < n; off += 8)                {
+                    _asm.inst("movq", std::to_string(off) + "(%r11)", "%rax");
+                    _asm.inst("movq", "%rax", std::to_string(off) + "(%r10)");
+                }
+                continue;
+            }
             if (pos < registerSlots)            {
                 if (pt->isFloat())                {
                     _asm.inst("movsd", floatRegs[pos], slot);

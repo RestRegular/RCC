@@ -1,0 +1,1 @@
+fun main(): void { var i = 0; var x = while (i < 3): int { i += 1 } }

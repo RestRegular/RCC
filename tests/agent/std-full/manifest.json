@@ -1,0 +1,16 @@
+{
+    "name":  "std-full",
+    "version":  "1.0",
+    "createdAt":  "2026-11-18T06:04:19.7212094Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "6 个 std 模块的全量验收：compile 层 + api 层 + behavior 层，含公开函数覆盖率校验",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  220,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

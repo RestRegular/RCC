@@ -1,0 +1,6 @@
+class C {
+ fun f(): void { ret 1 }
+}
+fun main(): void { var c = C()
+ c.f()
+}

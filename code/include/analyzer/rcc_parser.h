@@ -105,6 +105,9 @@ namespace parser {
         ExpressionNodePtr buildBoolExpression();
         ExpressionNodePtr buildBreakExpression();
         ExpressionNodePtr buildClassExpression();
+        // A：`struct Pt { var x: int, y: int }` 值语义结构体声明（与 class 并列，
+        // 但**不支持继承**，字段只能是标量）。
+        ExpressionNodePtr buildStructExpression();
         ExpressionNodePtr buildContinueExpression();
         ExpressionNodePtr buildFloatExpression();
         ExpressionNodePtr buildForExpression();

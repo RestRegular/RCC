@@ -1,0 +1,1 @@
+fun f(a: int): int garbage[a] { ret a }

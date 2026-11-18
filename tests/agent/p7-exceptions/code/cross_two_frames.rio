@@ -1,0 +1,17 @@
+fun sout(*args, end="\n"): void { encapsulated }
+fun lvl3() {
+    throw "three deep"
+}
+fun lvl2() {
+    lvl3()
+    sout("NOT REACHED 2")
+}
+fun lvl1() {
+    lvl2()
+    sout("NOT REACHED 1")
+}
+try {
+    lvl1()
+} catch(e) {
+    sout(e)
+}

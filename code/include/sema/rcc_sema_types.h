@@ -30,10 +30,12 @@ namespace sema
         TK_DICT,
         TK_FUNC,
         TK_CLASS,
+        TK_STRUCT,    // A：值语义结构体（docs/pending_designs.md §A）
         TK_PTR,
         TK_GENERIC,   // P10：泛型形参占位（`fun f[T](x: T)` 里的 T）
         TK_MEMORY,    // P13-2/L3：内存模型特殊类型（Body/Content/Ref/Mut/Take）
         TK_POOL,      // P13-2/L3-A：Pool 类型（标准库普通类型，管理对象出生地）
+        TK_NULLABLE,  // B：可空类型 `T?`（只有引用型可空）
         TK_UNKNOWN,   // 尚未推导出，用于报错前占位
     };
 
@@ -74,8 +76,11 @@ namespace sema
             return ValueClass::VC_INTEGER;
         }
 
-        // 在栈上/寄存器中占用的字节数
-        [[nodiscard]] size_t getSize() const
+        // 在栈上/寄存器中占用的字节数。
+        //
+        // 值语义 struct 的大小不是固定值，要由后端按字段布局算出来，所以
+        // 这一项是 virtual：StructType 覆盖它返回登记时写入的字节数。
+        [[nodiscard]] virtual size_t getSize() const
         {
             switch (_kind)
             {
@@ -100,9 +105,11 @@ namespace sema
             case TypeKind::TK_DICT:  return "dict";
             case TypeKind::TK_FUNC:  return "func";
             case TypeKind::TK_CLASS: return "class";
+            case TypeKind::TK_STRUCT: return "struct";
             case TypeKind::TK_PTR:   return "ptr";
             case TypeKind::TK_MEMORY: return "memory";
             case TypeKind::TK_POOL:   return "Pool";
+            case TypeKind::TK_NULLABLE: return "nullable";
             default:              return "unknown";
             }
         }
@@ -250,6 +257,42 @@ namespace sema
         std::string _name;
     };
 
+    // ---------- A：值语义 struct 类型 ----------
+    //
+    // 与 ClassType 的关键差别（docs/pending_designs.md §A）：
+    //   * 对象**不是**指针，而是按字段顺序内联的一块值；`var b = a` 逐字节拷贝
+    //   * 因此它**不是** isPointerLike，不参与指针族互通，也不进 Content 状态格
+    //   * 大小由后端按字段布局算出来（getSize 返回登记时的字节数），
+    //     而不是固定的 8 字节 —— 这是 Type::getSize 变成 virtual 的唯一原因
+    // sema 层只带名字和大小，字段表（偏移/类型）在后端 CodeGen 的 _structs 里。
+    class StructType final : public Type
+    {
+    public:
+        StructType(std::string name, size_t size)
+            : Type(TypeKind::TK_STRUCT), _name(std::move(name)), _size(size) {}
+
+        [[nodiscard]] const std::string& getName() const { return _name; }
+
+        [[nodiscard]] size_t getSize() const override { return _size; }
+
+        void setSize(size_t size) { _size = size; }
+
+        [[nodiscard]] std::string toString() const override
+        {
+            return _name.empty() ? std::string("struct") : _name;
+        }
+
+        [[nodiscard]] bool equals(const TypePtr& other) const override
+        {
+            if (!other || other->getKind() != TypeKind::TK_STRUCT) return false;
+            return _name == std::static_pointer_cast<StructType>(other)->_name;
+        }
+
+    private:
+        std::string _name;
+        size_t _size;
+    };
+
     // ---------- 函数类型 ----------
     class FunctionType final : public Type
     {
@@ -388,6 +431,45 @@ namespace sema
 
     private:
         MemoryRole _role;
+        TypePtr _inner;
+    };
+
+    // 决议 B：可空类型 `T?`。
+    //
+    // 语义：这个位置上可能「有值」，也可能是 null（缺失）。只有**引用型**
+    // 才允许可空 —— 用户 2026-11-17 裁决（memory 388a73e0）：值类型没有
+    // 「空」这个状态，硬造一个零值等于把 0 和「没有」混为一谈。
+    //
+    // 在代码生成层面它和 inner 完全一样（指针就是指针，null 就是 0），
+    // 单独一个类型只是为了让 `if var p = r.get()` 能校验 RHS 确实是 T?，
+    // 并让 `T?` 与 `T` 不相等（否则可空校验形同虚设）。
+    class NullableType final : public Type
+    {
+    public:
+        explicit NullableType(TypePtr inner)
+            : Type(TypeKind::TK_NULLABLE), _inner(std::move(inner)) {}
+
+        [[nodiscard]] const TypePtr& getInnerType() const { return _inner; }
+
+        [[nodiscard]] size_t getSize() const override
+        {
+            return _inner ? _inner->getSize() : 8;
+        }
+
+        [[nodiscard]] std::string toString() const override
+        {
+            return (_inner ? _inner->toString() : std::string("?")) + "?";
+        }
+
+        [[nodiscard]] bool equals(const TypePtr& other) const override
+        {
+            if (!other || other->getKind() != TypeKind::TK_NULLABLE) return false;
+            const auto o = std::static_pointer_cast<NullableType>(other);
+            if (!_inner || !o->_inner) return !_inner && !o->_inner;
+            return _inner->equals(o->_inner);
+        }
+
+    private:
         TypePtr _inner;
     };
 

@@ -1,0 +1,8 @@
+fun sout(*args, end="\n"): void { encapsulated }
+var a = [1, 2]
+var b = [3, 4]
+var c = a + b
+sout(c[0])
+sout(c[1])
+sout(c[2])
+sout(c[3])
