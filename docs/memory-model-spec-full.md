@@ -145,10 +145,10 @@ P13-1 里局部变量与临时值都不写 `in`，`ret xs` 的移动由所有权
 | 确定 Full | `r.name` | 直接访问，零开销 |
 | 确定 Empty | `r.name` | 编译错误 |
 | 不确定（`?`） | `r.name` | 编译错误，提示改用 `get()` |
-| 不确定 | `r.get()?.name` | 返回 `Maybe`，由程序员处理空 |
+| 不确定 | `r.get()?.name` | 返回 `T?`，由程序员处理空 |
 
 - `Ref` 参数默认要求 Full。`Ref<T?>` 表示接受空壳。
-- `if let Some(p) = r.get() { ... }` 块内，`p` 为确定 Full 的引用。
+- `if var p = r.get() { ... }` 块内，`p` 为确定 Full 的引用（`p` 仅在 then 块可见）。
 - flag 仅被 `get()` 与状态转换读写。
 
 ### 3.5 内容转移操作
@@ -459,14 +459,12 @@ pool.release(bob)
 
 | 写法 | 窄化结果 |
 |---|---|
-| `if let Some(p) = r.get() { A } else { B }` | A 中 r: F，`p` 为确定 Full；B 中 r: E |
-| `match r.get() { Some(p) => .., None => .. }` | 同上 |
-| `let Some(p) = r.get() else { return }` | else 分支发散，其后 r: F |
+| `if var p = r.get() { A } else { B }` | A 中 r: F，`p` 为确定 Full；B 中 r: E |
 | `if r.is_full() { A }` | A 中 r: F；`is_empty()` 同理 |
 | `a && b` / `a \|\| b` | 按短路求值逐子条件窄化 |
 | `if a.is(b) { .. } else { .. }` | else 分支得到 `a ≠ b` |
 
-窄化后的合流：`if let` 之后（无发散）r 为 `?`，除非两支都把它推到同一状态。
+窄化后的合流：`if var` 之后（无发散）r 为 `?`，除非两支都把它推到同一状态。
 
 ### 8.3 窄化的作用对象与失效
 
@@ -485,7 +483,7 @@ pool.release(bob)
 
 **闭包**：不带走窄化事实，闭包内捕获的 `Ref` 按 `?` 处理。只在创建点同步调用的二等闭包等价于内联，沿用调用点的事实。
 
-### 8.4 `if` / `match` / 块作为表达式：目的地传递
+### 8.4 `if` / 块作为表达式：目的地传递
 
 值产生表达式接收一个**目的地**，即接收它的绑定的出生地：
 
@@ -555,7 +553,7 @@ fn pick_into(cond: bool, slot: Take<Player>) ensures slot is Full {
 ### 9.1 基本取舍
 
 - **有异常，但没有展开（unwinding）。** 异常沿着显式帧链长跳，**不运行任何沿途销毁**。
-- 可恢复失败仍推荐用 `Result` / `Maybe` 显式表达；异常是已有的语言特性，不强制使用。
+- 可恢复失败仍推荐用 `T?` 显式表达（本规范不引入 `Result` / `Maybe` 类型）；异常是已有的语言特性，不强制使用。
 - 不可恢复的情况（`abort()`、内存耗尽）直接终止进程，**不运行任何销毁**。
 - 因此「每个对象恰好销毁一次」这条不变量**只在正常控制流路径上成立**；
   异常路径**不保证**销毁，等价于「异常即泄漏」。这是显式接受的代价。
@@ -675,7 +673,7 @@ lock c as g {                                      // 显式加锁，可能阻�
 ```
 let ch: Chan<Msg> = Chan.new() in local
 ch.send(c)                                         // 消耗 Content c（→ X），堆数据所有权转交
-let m = ch.recv() in local                         // 阻塞；返回 Maybe<Content>（通道关闭为 None）
+let m = ch.recv() in local                         // 阻塞；返回 Content<Msg>?（通道关闭为 null）
 ```
 
 - `Chan<T>` 是 `Locked` 的一种，`share()` 后双方持 `Ref`。
@@ -732,7 +730,7 @@ fn main() {
     c.hp += 5
     if c.hp > 20 { bob.fill(c) }             // c: X，bob: F
     else         { archive(c, graveyard) }   // c: X，bob: E；合流 bob: ?
-    if let Some(p) = bob.get() { show(p) }
+    if var p = bob.get() { show(p) }
 
     team.clear()
     pool.release(bob)
@@ -903,10 +901,11 @@ P12 的 `lib/std/ds.rio` 按现有后端能力实现，与模型的差距是**�
 11. **容器元素路径**：动态下标保守冲突；`split_at(k)` / `split_from(k)` 的区间路径已实现（`xs.items[lo..hi)`，两段可共存），越界 panic。
 12. **推断签名的跨模块兼容**：推断出的签名保存在库的编译产物里，版本兼容策略未定。
 13. **条件销毁诊断**：8.4 第 3 点的警告 / 错误边界是否合适。
-14. **P13-2 的类型系统前置缺口**（2026-11-17 裁决 D19，登记）：本规范依赖
-    `struct`、`Maybe`、`if let` / `match`，而 Rio 目前只有**引用语义**的 `class` 和 `T?`。
+14. **P13-2 的类型系统前置缺口**（2026-11-17 裁决 D19，**已闭合**）：本规范曾依赖
+    `struct`、`Maybe`、`if let` / `match`，而 Rio 当时只有**引用语义**的 `class` 和 `T?`。
     `class` 的 `var b = a` 是**指针拷贝**，与 Content 的唯一所有权直接冲突。
-    在 P13-2 开工前必须单独裁决「值语义结构体从哪来」，否则 P13-2 无法落地。
+    **现状（2026-11-18）**：值语义 `struct` 已裁决并实施（独立关键字、标量字段、值拷贝、不进 Content 状态格）；
+    可空性统一用 `T?` + `if var` 窄化，**不引入 `Maybe`、`if let`、`match`**（`match` 与通用绑定糖已按用户裁决删除，见 `docs/pending_designs.md`）。
 15. **异常对象本身的出生地与归属**：第 9 节 9.2 第 4 条定为「P13-1 不释放」，长期归属待定。
 
 ---
