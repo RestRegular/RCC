@@ -548,6 +548,38 @@ namespace backend{
         }
         // 一侧是容器、另一侧不是：交给 sameValueFamily 判（它会拒绝，
         // 因为非指针族与容器跨族）。
+        // ---------- 类：只有同一类或基类方向可赋值 ----------
+        //
+        // sameValueFamily 里「指针族互通」是为了让 rt 的位级中转（`var s: str = p`、
+        // `_dsLoadI64` 的伪造 str 头）能过，那条放宽针对的是 str/list/dict/ptr。
+        // 但 ClassType 也 isPointerLike，于是 `var a: Enemy = Player("x")` 静默
+        // 通过 —— 编译期认了，运行时按 Enemy 的字段布局去读 Player 对象，
+        // 字段错位。
+        //
+        // Rio **有**继承（`class Derived: Base`，基类字段排在前面，见
+        // computeLayout），所以判据是「source 是 target 本身或它的派生类」，
+        // 即沿 baseName 链往上找得到 target。反方向（把 Base 当 Derived）
+        // 会少字段，必须拒绝。
+        if (tk == sema::TypeKind::TK_CLASS && sk == sema::TypeKind::TK_CLASS)        {
+            const auto tn = std::static_pointer_cast<sema::ClassType>(target)->getName();
+            const auto sn = std::static_pointer_cast<sema::ClassType>(source)->getName();
+            if (!tn.empty() && !sn.empty() && tn != sn)            {
+                bool isDerived = false;
+                std::string cur = sn;
+                // 防御成环（非法继承链）时不要死循环。
+                for (size_t guard = 0; guard < 64 && !cur.empty(); ++guard)                {
+                    const auto info = findClass(cur);
+                    if (!info || info->baseName.empty()) break;
+                    cur = info->baseName;
+                    if (cur == tn) { isDerived = true; break; }
+                }
+                if (!isDerived)                {
+                    return "cannot assign a value of type " + sn + " to a target of type " + tn +
+                           " (not the same class or a derived class)";
+                }
+            }
+            return std::string();
+        }
         if (sameValueFamily(target, source)) return std::string();
         return "cannot assign a value of type " + source->toString() +
                " to a target of type " + target->toString();
@@ -4084,6 +4116,34 @@ namespace backend{
                                std::to_string(allBirths.size()) +
                                " birth place labels ('" + allBirths[0] + "', '" + allBirths[1] +
                                "'); at most one birth place label is allowed (P13-2 / §2.2)");
+                        return;
+                    }
+                    // 决议 §2.2：「出生地标签必须是一个 Pool 类型的变量名」。
+                    //
+                    // 修前标签区里既不解析成类型、又不是 Pool 变量的名字被**静默
+                    // 丢弃** —— 出生地靠 findBirthPlaceLabel 的 lookupVar 认，
+                    // 认不出就当没写。于是 `var p: Player nosuchpool = Player("a")`
+                    // 通过编译，pool 名字拼错也不报，运行时落进默认池。
+                    //
+                    // 判据顺序与 §2.2/Q-A 一致：能解析成具体类型（含泛型形参）的
+                    // 是类型标签，跳过；剩下的必须能解析成 Pool 类型变量。
+                    for (const auto& label : def->getLabelNodes())                    {
+                        if (!label) continue;
+                        const auto full = label->getFullLabel();
+                        if (full.empty() || full == "any") continue;
+                        bool isGenericParam = false;
+                        for (const auto& g : _currentGenericParams)                        {
+                            if (g == full) { isGenericParam = true; break; }
+                        }
+                        if (isGenericParam) continue;
+                        const auto t = typeFromLabelNode(label, _currentGenericParams);
+                        if (t && t->getKind() != sema::TypeKind::TK_UNKNOWN) continue;
+                        const auto slot = const_cast<CodeGen*>(this)->lookupVar(full);
+                        if (slot && slot->type &&
+                            slot->type->getKind() == sema::TypeKind::TK_POOL) continue;
+                        failAt(def->getNameNode()->getPos(),
+                               "L3: unknown label '" + full + "' in declaration of '" + name +
+                               "'; a birth place label must name a Pool variable (P13-2 / §2.2)");
                         return;
                     }
                 }

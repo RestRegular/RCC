@@ -204,6 +204,23 @@ $catchRead = "$classP`nfun f(t: Take[Player]): str ensures[?t] {`n try {`n  var 
 Test-Case "L3-I catch 里 ? 态仍可读字段" $catchRead $true ""
 
 Write-Host ""
+Write-Host "=== L3-J：出生地标签校验 + 类赋值方向（决议 §2.2） ==="
+# 决议 §2.2：「出生地标签必须是一个 Pool 类型的变量名」。
+# 修前标签区里既不解析成类型、又不是 Pool 变量的名字被静默丢弃 ——
+# 出生地靠 lookupVar 认，认不出就当没写，于是 pool 名字拼错也不报。
+$poolDecl = "var pl: Pool = Pool.fixed(4)"
+Test-Case "L3-J 未声明的出生地标签报错" "$poolDecl`n$classP`nfun main(): void {`n var p: Player nosuchpool = Player(`"a`")`n}" $false "unknown label"
+Test-Case "L3-J 声明过的 Pool 作出生地合法" "$poolDecl`n$classP`nfun main(): void {`n var p: Player pl = Player(`"a`")`n}" $true ""
+Test-Case "L3-J 普通类型标签不受影响" "$classP`nfun main(): void {`n var p: Player = Player(`"a`")`n}" $true ""
+
+# 决议 §2.2 / 继承：不同类名之间不可赋值（ClassType 也 isPointerLike，
+# 修前 sameValueFamily 的「指针族互通」把它一起放过了）。
+$baseDerived = "class B1 {`n var v: int`n ctor(a: int) { this.v = a }`n}`nclass D1: B1 {`n var e: int`n ctor(a: int, b: int) { super(a) this.e = b }`n}"
+Test-Case "L3-J 无关类之间赋值报错" "$classP`nclass Enemy {`n var name: str`n ctor(n: str) { this.name = n }`n}`nfun main(): void { var a: Enemy = Player(`"x`") }" $false "not the same class"
+Test-Case "L3-J 派生类赋给基类合法" "$baseDerived`nfun main(): void { var b: B1 = D1(1, 2) }" $true ""
+Test-Case "L3-J 基类赋给派生类报错" "$baseDerived`nfun main(): void { var d: D1 = B1(1) }" $false "not the same class"
+
+Write-Host ""
 Write-Host "=== 汇总：PASS=$script:pass FAIL=$script:fail ==="
 Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 if ($script:fail -gt 0) { exit 1 }

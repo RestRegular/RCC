@@ -43,6 +43,8 @@
 > 已实现，见下文「L3-H」一节。
 > **方法上的 `writes`/`from`/`ensures` 校验、try/catch 后 `Take` 回 `?` 已不在本表**：
 > 2026-11-18 已实现，见下文「L3-I」一节。
+> **未声明的出生地标签、类赋值方向已不在本表**：2026-11-18 已实现，
+> 见下文「L3-J」一节。
 
 | 项 | 决议依据 | 实测表现 |
 |---|---|---|
@@ -103,7 +105,7 @@
 | §4.2 writes 调用点效果缺失 | `writes` 只在泛型定义处做形态校验，调用点从不读 | 效果表 + 调用点映射 + §4.1 前缀冲突检查 |
 | take / mut / 字段赋值不查活跃子引用 | 冲突检查只在 `get_mut` / `release` / `clear` 三处 | 三处本地写路径统一走 `checkWriteConflicts` |
 
-验证：`tests/p13_2_regression.ps1` 94 条全 PASS（L3-G 15 + L3-H 10 + L3-I 9 条）；
+验证：`tests/p13_2_regression.ps1` 100 条全 PASS（L3-G 15 + L3-H 10 + L3-I 9 + L3-J 6 条）；
 `tests/_probe/verify_fixes.ps1` 43 条全 PASS。
 
 ## L3-G：分支 / 循环的状态合流（2026-11-18 实现）
@@ -284,6 +286,59 @@ fun f(t: Take[Player]): int ensures[!t] {
 | catch 后 `ret` 不沿用 try 的 take | exit=0（承诺被沿用） | 报 unknown state |
 | 正常路径不受 catch 的 `?` 污染 | — | 通过 |
 | catch 里 `?` 态仍可 take / 读字段 | — | 通过 |
+## L3-J：出生地标签校验 + 类赋值方向（2026-11-18 实现）
+
+### 1. 未声明的出生地标签被静默丢弃
+
+决议 §2.2：「出生地标签必须是一个 Pool 类型的变量名」。但标签区里既解析不成
+类型、又不是 Pool 变量的名字，修前被**直接忽略** —— 出生地靠
+`findBirthPlaceLabel` 的 `lookupVar` 认，认不出就当没写：
+
+```rio
+var p: Player nosuchpool = Player("a")   // 修前 exit=0，落进默认池
+```
+
+pool 名字拼错、或从没声明过，编译器都不吭声，运行时悄悄用默认池，
+事后排查毫无线索。
+
+修法：在 `emitVariableDefinition` 的标签区检查里补一条 —— 按 §2.2 / Q-A 的
+判定顺序（内置类型 → 泛型形参 → 自定义类 → Pool 变量）逐个过，能解析成
+具体类型的是类型标签，剩下的必须能解析成 Pool 类型变量，否则报
+`unknown label '<name>' ... must name a Pool variable`。
+
+### 2. 类赋值方向
+
+`checkAssignable` 对 `TK_CLASS` 落到 `sameValueFamily`，而后者有一条
+「指针族互通」的放宽（为了让 rt 的位级中转 `var s: str = p`、
+`_dsLoadI64` 的伪造 str 头能过）。`ClassType` 也 `isPointerLike`，
+于是这条放宽把类赋值一起放过了：
+
+```rio
+class Player { ... }
+class Enemy  { ... }
+var a: Enemy = Player("x")   // 修前 exit=0
+```
+
+编译期认了，运行时按 `Enemy` 的字段布局去读 `Player` 对象 —— 字段错位。
+
+修法：`TK_CLASS` × `TK_CLASS` 单独判。**Rio 有继承**（`class Derived: Base`，
+基类字段排在前面，见 `computeLayout`），所以判据是「source 是 target 本身
+或它的派生类」，沿 `baseName` 链往上找；反方向（把 `Base` 当 `Derived`）
+会少字段，拒绝。带 64 层防御，非法继承链成环时不会死循环。
+
+注意 `tests/test_17_class_inheritance` 就是继承用例，第一版判据写成
+「不同类名一律拒绝」会误伤它 —— 这是本次改动唯一需要小心的地方。
+
+### 实测（`tests/p13_2_regression.ps1` L3-J 6 条）
+
+| 用例 | 修前 | 修后 |
+|---|---|---|
+| 未声明的出生地标签 `nosuchpool` | exit=0 静默丢弃 | 报 unknown label |
+| 声明过的 Pool 作出生地 | 通过 | 通过 |
+| 普通类型标签 | 通过 | 通过 |
+| 无关类之间赋值 `Enemy = Player` | exit=0 | 报 not the same class |
+| 派生类赋给基类 `Base = Derived` | 通过 | 通过 |
+| 基类赋给派生类 `Derived = Base` | exit=0 | 报 not the same class |
 ## 未实现项清单（2026-11-18 复核，逐项实测）
 
 > 本节是上文「剩余项与状态」的补充说明。所有结论均由 `tests/_probe/fix/`
