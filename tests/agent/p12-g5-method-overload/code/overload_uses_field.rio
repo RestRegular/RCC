@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 class A {
     var base: int = 5
     fun m(x: int): int { ret this.base + x }

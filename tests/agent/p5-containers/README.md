@@ -4,7 +4,7 @@ list / dict 字面量、索引、迭代、内建方法
 
 - 类型: regression
 - 用例数: 15
-- 入口: `execute.ps1`（转接 `tests/agent/_shared/driver.ps1`）
+- 入口: `execute.ps1`（转接 `tests/_shared/driver.ps1`）
 
 ## 结构
 

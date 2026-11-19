@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 var x: int = 10
 fun f(): int {
     var x: int = 99

@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 var g: int = 7
 fun readG(): int { ret g }
 sout(readG())

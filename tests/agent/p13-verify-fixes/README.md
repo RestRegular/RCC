@@ -4,7 +4,7 @@ P13-2 审阅发现的 A-J 类缺陷修复验证（43 条，只验编译成功或
 
 - 类型: regression
 - 用例数: 43
-- 入口: `execute.ps1`（转接 `tests/agent/_shared/driver.ps1`）
+- 入口: `execute.ps1`（转接 `tests/_shared/driver.ps1`）
 
 ## compileOnly
 

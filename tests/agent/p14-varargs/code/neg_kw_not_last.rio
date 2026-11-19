@@ -1,0 +1,7 @@
+fun kw(**opts: int, a: int): void {
+    sout(a)
+}
+fun main(): void {
+    kw(a=1)
+}
+main()

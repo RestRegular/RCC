@@ -1,5 +1,5 @@
 // L3：闭包返回标量仍然正常（确认上一条的拒绝没有误伤间接调用本身）
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 fun main(): void {
     var f = () -> { ret 42 }
     var v: int = f()

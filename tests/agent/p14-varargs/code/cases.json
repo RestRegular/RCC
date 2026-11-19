@@ -1,0 +1,76 @@
+{
+  "cases": [
+    {
+      "id": "pos_collect",
+      "file": "code/pos_collect.rio",
+      "expect": "7\n8\n9"
+    },
+    {
+      "id": "pos_empty",
+      "file": "code/pos_empty.rio",
+      "expect": "0"
+    },
+    {
+      "id": "pos_kwargs",
+      "file": "code/pos_kwargs.rio",
+      "expect": "pre\n11\n22"
+    },
+    {
+      "id": "pos_mixed",
+      "file": "code/pos_mixed.rio",
+      "expect": "1\n2\n3"
+    },
+    {
+      "id": "pos_spread",
+      "file": "code/pos_spread.rio",
+      "expect": "11\n22"
+    },
+    {
+      "id": "pos_generic",
+      "file": "code/pos_generic.rio",
+      "expect": "1\n1.5"
+    },
+    {
+      "id": "neg_annotation",
+      "file": "code/neg_annotation.rio",
+      "expectFailure": true,
+      "mustMatch": "requires an explicit element type annotation"
+    },
+    {
+      "id": "neg_generic_mixed",
+      "file": "code/neg_generic_mixed.rio",
+      "expectFailure": true,
+      "mustMatch": "T is int"
+    },
+    {
+      "id": "neg_kw_not_last",
+      "file": "code/neg_kw_not_last.rio",
+      "expectFailure": true,
+      "mustMatch": "must be the last parameter"
+    },
+    {
+      "id": "pos_spread_fixed",
+      "file": "code/pos_spread_fixed.rio",
+      "expect": "6\n15"
+    },
+    {
+      "id": "neg_spread_count_mismatch",
+      "file": "code/neg_spread_count_mismatch.rio",
+      "expect": "",
+      "exitCode": 3,
+      "stderrContains": "argument count mismatch"
+    },
+    {
+      "id": "neg_spread_kwargs_to_fixed",
+      "file": "code/neg_spread_kwargs_to_fixed.rio",
+      "expectFailure": true,
+      "mustMatch": "only allowed when the callee has"
+    },
+    {
+      "id": "neg_spread_middle",
+      "file": "code/neg_spread_middle.rio",
+      "expectFailure": true,
+      "mustMatch": "must be the final argument"
+    }
+  ]
+}

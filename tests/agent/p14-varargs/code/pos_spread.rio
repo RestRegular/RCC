@@ -1,0 +1,11 @@
+fun g(*xs: int): void {
+    sout(xs[0])
+    sout(xs[1])
+}
+fun fwd(*xs: int): void {
+    g(*xs)
+}
+fun main(): void {
+    fwd(11, 22)
+}
+main()

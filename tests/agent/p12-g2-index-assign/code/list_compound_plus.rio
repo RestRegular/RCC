@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 var li = [1, 2, 3]
 li[1] += 10
 sout(li[0])

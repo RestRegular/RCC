@@ -3,27 +3,31 @@
 #
 #  两种用法：
 #    参数式（给 Agent 用，配合 -NonInteractive 缺参直接失败）
-#      ./new-test.ps1 -Name "issue-003-login-timeout" -Type repro -Target cases -Description "登录超时导致500"
+#      ./new-test.ps1 -Name "issue-003-login-timeout" -Type repro -Target user -Description "登录超时导致500"
 #
 #    引导式（给人用，缺哪个问哪个）
 #      ./new-test.ps1
 #
-#  生成的骨架：
+#  生成的骨架（**数据驱动**，判定逻辑不写进测试集）：
 #    <Target>/<Name>/
-#      manifest.json   元数据
-#      README.md       人读说明
-#      code/           被测代码 / 复现脚本
-#      input/          输入数据（可选）
-#      expected/       期望结果（output.txt + exit-code.txt）
-#      execute.ps1     入口：构建 + 编译 + 运行（三阶段合一）
+#      manifest.json      元数据
+#      README.md          人读说明
+#      code/cases.json    用例清单（数据）
+#      code/smoke.rio     示例用例源文件
+#      input/             输入数据（可选，driver 不用）
+#      expected/          output.txt + exit-code.txt（套件级汇总）
+#      execute.ps1        薄壳：dot-source tests/_shared/driver.ps1
 #
-#  注意：**不生成 setup.ps1**。环境准备逻辑并入 execute.ps1 的「构建/编译」阶段。
+#  判定逻辑只有一份：tests/_shared/driver.ps1。
+#  agent / cases / user 三区的测试集格式完全相同，user 区生成的也是数据驱动。
+#
+#  注意：**不生成 setup.ps1**。环境准备逻辑并入 driver 的构建阶段。
 # ============================================================================
 
 param(
     [string]$Name,
     [ValidateSet("repro", "regression", "smoke")][string]$Type,
-    [ValidateSet("cases", "agent")][string]$Target,
+    [ValidateSet("cases", "agent", "user")][string]$Target,
     [string]$Description,
     [int]$TimeoutSec = 60,
     [switch]$Force,           # 已存在时覆盖
@@ -55,8 +59,8 @@ if (-not $Name -or -not $Type -or -not $Target) {
     }
     if (-not $Target)      {
         do {
-            $Target = Read-Host "目标目录 (cases/agent)"
-        } until ($Target -in @('cases', 'agent'))
+            $Target = Read-Host "目标目录 (cases/agent/user)"
+        } until ($Target -in @('cases', 'agent', 'user'))
     }
     if (-not $Description) { $Description = Read-Host "描述（可空）" }
 }
@@ -65,8 +69,8 @@ if (-not $Name -or -not $Type -or -not $Target) {
 if ($Type -notin @('repro', 'regression', 'smoke')) {
     throw "类型非法：'$Type'（只能是 repro / regression / smoke）"
 }
-if ($Target -notin @('cases', 'agent')) {
-    throw "目标目录非法：'$Target'（只能是 cases / agent）"
+if ($Target -notin @('cases', 'agent', 'user')) {
+    throw "目标目录非法：'$Target'（只能是 cases / agent / user）"
 }
 if ($TimeoutSec -le 0) { throw "超时必须是正整数秒：$TimeoutSec" }
 
@@ -109,6 +113,7 @@ $manifest = [ordered]@{
     description = $Description
     entry       = "execute.ps1"
     timeoutSec  = $TimeoutSec
+    caseCount   = 1
     expected    = [ordered]@{
         exitCode   = 0
         outputFile = "expected/output.txt"
@@ -118,57 +123,100 @@ $manifest = [ordered]@{
 Write-Text (Join-Path $dst "manifest.json") ($manifest | ConvertTo-Json -Depth 5)
 
 # ---------------------------------------------------------------------------
-#  6. 写 execute.ps1 模板（构建 → 运行 → 判定 三阶段合一）
+#  6. 写 execute.ps1 薄壳（只做转接，判定逻辑在 tests/_shared/driver.ps1）
 # ---------------------------------------------------------------------------
+# $PSScriptRoot = tests/<Target>/<Name>；上溯两级到 tests/，再进 _shared/。
 $executeTemplate = @'
+# 数据驱动套件：判定逻辑只有一份，在 tests/_shared/driver.ps1
+# 本文件只做转接，请不要在这里写判定代码（否则各套件语义会漂移）。
 param([string]$WorkDir = $PSScriptRoot)
 $ErrorActionPreference = "Stop"
-Set-Location $WorkDir
 
-# === 1. 构建/编译（幂等：重复跑不报错）===
-# 例：dotnet build ./code/xxx.csproj -c Release
-# 例：gcc ./code/main.c -o ./code/main.exe
-# 例：& "$repo\release\RCC.exe" -build --path ./code/main.rio --output ./code/main.exe
-
-# === 2. 运行（读 input/，用 env 传参）===
-# 例：./code/main.exe < ./input/data.txt
-
-# === 3. 结果判定（stdout 供 expected/output.txt 比对，退出码表达成败）===
-Write-Output "TODO: 输出实际结果"
-exit 0
+. (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) '_shared\driver.ps1')
+Invoke-RioSuite -WorkDir $WorkDir
 '@
 Write-Text (Join-Path $dst "execute.ps1") $executeTemplate
 
 # ---------------------------------------------------------------------------
-#  7. 写 README.md
+#  7. 写 code/cases.json + 示例用例（数据驱动的「数据」部分）
+# ---------------------------------------------------------------------------
+$caseId = 'smoke'
+$sampleRio = @"
+fun main(): void {
+    sout("hello from $Name")
+}
+main()
+"@
+Write-Text (Join-Path $dst "code\$caseId.rio") $sampleRio
+
+$cases = [ordered]@{
+    cases = @(
+        [ordered]@{
+            id     = $caseId
+            file   = "code/$caseId.rio"
+            expect = "hello from $Name"
+        }
+    )
+}
+Write-Text (Join-Path $dst "code\cases.json") ($cases | ConvertTo-Json -Depth 5)
+
+# ---------------------------------------------------------------------------
+#  8. 写 README.md
 # ---------------------------------------------------------------------------
 $readme = @"
 # $Name
 
 - 类型: $Type
 - 描述: $Description
-- 入口: execute.ps1
+- 用例数: 1
+- 入口: ``execute.ps1``（转接 ``tests/_shared/driver.ps1``）
 - 超时: ${TimeoutSec}s
 
-## 约定
-- code/     : 被测代码，execute.ps1 负责构建与运行
-- input/    : 输入数据
-- expected/ : 期望输出 / 退出码
+## 结构
 
-## 三阶段契约
-execute.ps1 一个入口跑完 构建 → 运行 → 判定：
-- 构建幂等，重复执行不报错
-- stdout 与 expected/output.txt 比对
-- 退出码 0 表示通过
+``````
+code/cases.json   用例清单（id / 源文件 / 期望）
+code/smoke.rio    示例用例（每个用例一个可直接编译的源文件）
+input/            输入数据（driver 当前不用，保留占位）
+expected/         套件级汇总（由 driver 打印）
+``````
+
+## 用例字段
+
+| 字段 | 含义 |
+| --- | --- |
+| ``id`` | 用例名，唯一 |
+| ``file`` | 单文件用例的源码路径（相对套件根） |
+| ``main`` + ``files`` | 多文件用例：``main`` 是编译入口，``files`` 是全部源文件 |
+| ``expect`` | 期望 stdout（CRLF 归一后比对，尾部空白忽略） |
+| ``matchMode`` | ``equals``（默认）或 ``ignoreWhitespace`` |
+| ``exitCode`` | 期望运行退出码，默认 0 |
+| ``expectFailure`` | ``true`` 表示必须**编译失败** |
+| ``mustMatch`` | 期望失败的诊断片段（配 ``mustMatchLiteral`` / ``mustMatchRegex``） |
+| ``compileOnly`` | 只验编译通过，不运行 |
+
+## 怎么加用例
+
+1. 在 ``code/`` 下写一个 ``<id>.rio`` 源文件。
+2. 在 ``code/cases.json`` 的 ``cases`` 数组里加一项，填 ``id`` / ``file`` / ``expect``。
+3. 跑 ``./execute.ps1``，driver 会自动编译、运行、逐例比对并打印汇总。
+
+判定逻辑只在 ``tests/_shared/driver.ps1`` 这一份，三区（agent / cases / user）共用。
 "@
 Write-Text (Join-Path $dst "README.md") $readme
 
 # ---------------------------------------------------------------------------
-#  8. 写占位文件
+#  9. 写 expected/ 占位与 input/ 占位
 # ---------------------------------------------------------------------------
-Write-Text (Join-Path $dst "code/.gitkeep") ""
-Write-Text (Join-Path $dst "input/.gitkeep") ""
-Write-Text (Join-Path $dst "expected/output.txt") ""
+Write-Text (Join-Path $dst "expected/output.txt") "结果：通过 1，失败 0"
 Write-Text (Join-Path $dst "expected/exit-code.txt") "0"
+Write-Text (Join-Path $dst "expected/README.txt") @"
+本套件为**数据驱动**，逐用例期望值在 ``code/cases.json``。
+
+整体约定：
+- stdout：驱动打印 ``结果：通过 N，失败 0``
+- 退出码：0 表示全部用例通过，1 表示有失败（失败明细与临时目录会一并打印）
+"@
+Write-Text (Join-Path $dst "input/.gitkeep") ""
 
 Write-Host "✅ 已创建: $dst"

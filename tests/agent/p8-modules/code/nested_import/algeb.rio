@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 import mathx
 fun square(a: int): int { ret mathx.mul(a, a) }
 fun cube(a: int): int { ret mathx.mul(mathx.mul(a, a), a) }

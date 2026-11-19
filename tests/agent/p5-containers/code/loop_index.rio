@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 var xs = [2, 4, 6, 8]
 var sum = 0
 var i = 0

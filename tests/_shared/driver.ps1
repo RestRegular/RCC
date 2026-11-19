@@ -1,16 +1,16 @@
 # ============================================================================
-#  driver.ps1 —— tests/agent 下数据驱动测试集的**唯一判定逻辑**
+#  driver.ps1 —— 数据驱动测试集的**唯一判定逻辑**（agent / cases / user 三区共用）
 #
-#  为什么有这个东西：26 个套件若各自内联一份「编译→运行→比对」的代码，
+#  为什么有这个东西：若每个套件各自内联一份「编译→运行→比对」的代码，
 #  判定语义迟早漂移（旧系统就吃过这个亏：`fc /W` 与逐字节比对对同一份输出
 #  给出不同结论）。所以判定只有这一份，套件只提供**数据**（code/cases.json
-#  + code/*.rio），execute.ps1 只做三行转接。
+#  + code/*.rio），execute.ps1 只做转接。
 #
 #  目录约定：
-#    tests/agent/_shared/driver.ps1     ← 本文件（下划线开头 = 内部目录，validate 跳过）
-#    tests/agent/<suite>/execute.ps1    ← 薄壳，dot-source 本文件
-#    tests/agent/<suite>/code/cases.json ← 用例清单
-#    tests/agent/<suite>/code/*.rio      ← 每个用例一个可直接编译的源文件
+#    tests/_shared/driver.ps1           ← 本文件（下划线开头 = 内部目录，validate 跳过）
+#    tests/<area>/<suite>/execute.ps1   ← 薄壳，dot-source 本文件（area = agent/cases/user）
+#    tests/<area>/<suite>/code/cases.json ← 用例清单
+#    tests/<area>/<suite>/code/*.rio      ← 每个用例一个可直接编译的源文件
 #
 #  cases.json 结构：
 #    {

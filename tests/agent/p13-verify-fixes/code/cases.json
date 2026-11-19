@@ -177,8 +177,8 @@
                   {
                       "id":  "I5-writes",
                       "file":  "code/I5-writes.rio",
-                      "compileOnly":  true,
-                      "expect":  ""
+                      "expectFailure":  true,
+                      "mustMatchLiteral":  "conflicts with the live sub-reference"
                   },
                   {
                       "id":  "I6-vs",

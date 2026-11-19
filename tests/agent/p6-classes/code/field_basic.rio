@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 class Point {
     var x: int, y: int
     ctor(a: int, b: int) {

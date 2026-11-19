@@ -4,7 +4,7 @@ import、限定调用、嵌套与菱形依赖、循环导入报错
 
 - 类型: regression
 - 用例数: 13
-- 入口: `execute.ps1`（转接 `tests/agent/_shared/driver.ps1`）
+- 入口: `execute.ps1`（转接 `tests/_shared/driver.ps1`）
 
 ## 结构
 

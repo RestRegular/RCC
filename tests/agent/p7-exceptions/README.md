@@ -4,7 +4,7 @@ throw / try / catch / finally 与跨函数传播、退出码
 
 - 类型: regression
 - 用例数: 17
-- 入口: `execute.ps1`（转接 `tests/agent/_shared/driver.ps1`）
+- 入口: `execute.ps1`（转接 `tests/_shared/driver.ps1`）
 
 ## 结构
 

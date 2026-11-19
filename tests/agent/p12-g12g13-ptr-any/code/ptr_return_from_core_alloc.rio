@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 fun cp(): ptr {
     var p = core_alloc(32, 8)
     ret p

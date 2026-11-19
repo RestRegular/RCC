@@ -487,4 +487,4 @@ $enc  = New-Object System.Text.UTF8Encoding($false)
 & release\RCC.exe -s --p tests\_x.rio
 ```
 
-本次审计产生的全部临时探针已清理，`tests\` 只剩 `test.rio`（用户手写）与 `build_and_run.ps1`。
+本次审计产生的全部临时探针已清理，`tests\` 只剩 `test_closure.rio`（用户手写）与 `build_and_run.ps1`。

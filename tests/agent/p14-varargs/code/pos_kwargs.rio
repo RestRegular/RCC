@@ -1,0 +1,9 @@
+fun kw(prefix: str, **opts: int): void {
+    sout(prefix)
+    sout(opts["a"])
+    sout(opts["b"])
+}
+fun main(): void {
+    kw("pre", a=11, b=22)
+}
+main()

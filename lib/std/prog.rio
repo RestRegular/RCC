@@ -23,7 +23,7 @@
  * @param args    传给回调的位置参数
  * @param kwargs  传给回调的关键字参数
  */
-fun entry(arg, *args, **kwargs): void {
+fun entry(arg: any, *args: any, **kwargs: any): void {
 }
 
 /**

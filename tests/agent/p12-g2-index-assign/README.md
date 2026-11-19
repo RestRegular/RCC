@@ -4,7 +4,7 @@ list/dict 索引赋值，str 元素写必须编译期报错
 
 - 类型: regression
 - 用例数: 17
-- 入口: `execute.ps1`（转接 `tests/agent/_shared/driver.ps1`）
+- 入口: `execute.ps1`（转接 `tests/_shared/driver.ps1`）
 
 ## 结构
 

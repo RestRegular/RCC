@@ -1,0 +1,9 @@
+fun mixed(a: int, *rest: int): void {
+    sout(a)
+    sout(rest[0])
+    sout(rest[1])
+}
+fun main(): void {
+    mixed(1, 2, 3)
+}
+main()

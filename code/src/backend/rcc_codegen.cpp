@@ -262,6 +262,25 @@ namespace backend
                 collectParamDefaults(paren->getRangerNode(), out);
             }
         }
+        // 变长形参解码：`*name` / `**name` 在 AST 里是
+        // UnaryExpressionNode(TOKEN_STAR/TOKEN_DOUBLE_STAR, IdentifierNode(name))。
+        // 若星号右边是逗号表达式（解析器对 `**opts: T, a: U` 的产物），id 置空，
+        // 由调用方按「畸形变长声明」报错。
+        static bool decodeVariadicParam(const std::shared_ptr<ast::ExpressionNode>& node,
+                                        bool& isKeyword, std::shared_ptr<ast::IdentifierNode>& id)
+        {
+            isKeyword = false;
+            id.reset();
+            const auto unary = std::dynamic_pointer_cast<ast::UnaryExpressionNode>(node);
+            if (!unary)
+                return false;
+            const auto t = unary->getOpToken().getType();
+            if (t != core::TokenType::TOKEN_STAR && t != core::TokenType::TOKEN_DOUBLE_STAR)
+                return false;
+            isKeyword = (t == core::TokenType::TOKEN_DOUBLE_STAR);
+            id = std::dynamic_pointer_cast<ast::IdentifierNode>(unary->getRightNode());
+            return true;
+        }
         // 递归收集形参名。Rio 的形参在 AST 里以多种嵌套形态出现：        //   IdentifierNode("a") 单参数
         //   InfixExpressionNode(',', left, right)       逗号分隔的多个参数
         //   BlockRangerNode{...}                        括号包裹
@@ -274,6 +293,18 @@ namespace backend
             {
                 out.push_back(id->getName());
                 return;
+            }
+            // 变长形参 `*args` / `**kwargs`：解包出里面的标识符名，让函数体里
+            // 能像普通变量一样引用它（它是 list[T] / dict[str,T]）。
+            {
+                bool isKw = false;
+                std::shared_ptr<ast::IdentifierNode> vid;
+                if (decodeVariadicParam(node, isKw, vid))
+                {
+                    if (vid)
+                        out.push_back(vid->getName());
+                    return;
+                }
             }
             if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
             {
@@ -628,6 +659,149 @@ namespace backend
                "cannot use a nullable value of type '" + t->toString() + "' as " + what +
                    "; it may be null — narrow it first with `if var p = <expr> { ... }`, then use 'p' "
                    "(decision B: nullable values must be narrowed before use)");
+        return true;
+    }
+    // 把一串表达式连成逗号中缀链（与 parser 产出的 `a, b, c` 同形），
+    // 作为 list 字面量的 body。空表 body 为 nullptr。
+    static std::shared_ptr<ast::ExpressionNode> buildCommaChain(
+        const std::vector<std::shared_ptr<ast::ExpressionNode>>& items, const utils::Pos& pos)
+    {
+        std::shared_ptr<ast::ExpressionNode> acc;
+        for (const auto& it : items)
+        {
+            if (!acc)
+            {
+                acc = it;
+                continue;
+            }
+            core::Token comma(pos, ",");
+            comma.setType(core::TokenType::TOKEN_COMMA);
+            acc = std::make_shared<ast::InfixExpressionNode>(
+                comma, ast::NodeType::INFIX, comma, acc, it);
+        }
+        return acc;
+    }
+    // 形参按出现顺序编号（与 collectParamNames 的输出顺序一致）。
+    // 每遇到一个形参（含变长槽）索引 +1，把变长槽的下记进 VariadicInfo。
+    static void variadicIndexWalk(const std::shared_ptr<ast::ExpressionNode>& node,
+                                  size_t& index, size_t& posIdx, size_t& kwIdx,
+                                  bool& hasPos, bool& hasKw)
+    {
+        if (!node)
+            return;
+        bool isKw = false;
+        std::shared_ptr<ast::IdentifierNode> vid;
+        if (decodeVariadicParam(node, isKw, vid))
+        {
+            const size_t myIndex = index++;
+            if (vid)
+            {
+                if (isKw)
+                {
+                    hasKw = true;
+                    kwIdx = myIndex;
+                }
+                else
+                {
+                    hasPos = true;
+                    posIdx = myIndex;
+                }
+            }
+            return;
+        }
+        if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
+        {
+            if (infix->getOpToken().getType() == core::TokenType::TOKEN_COMMA)
+            {
+                variadicIndexWalk(infix->getLeftNode(), index, posIdx, kwIdx, hasPos, hasKw);
+                variadicIndexWalk(infix->getRightNode(), index, posIdx, kwIdx, hasPos, hasKw);
+                return;
+            }
+            variadicIndexWalk(infix->getLeftNode(), index, posIdx, kwIdx, hasPos, hasKw);
+            return;
+        }
+        if (const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(node))
+        {
+            variadicIndexWalk(assign->getAssignPair().first, index, posIdx, kwIdx, hasPos, hasKw);
+            return;
+        }
+        if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))
+        {
+            for (const auto& e : block->getBodyExpressions())
+                variadicIndexWalk(e, index, posIdx, kwIdx, hasPos, hasKw);
+            return;
+        }
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))
+        {
+            variadicIndexWalk(paren->getRangerNode(), index, posIdx, kwIdx, hasPos, hasKw);
+            return;
+        }
+        if (const auto list = std::dynamic_pointer_cast<ast::ListExpressionNode>(node))
+        {
+            variadicIndexWalk(std::dynamic_pointer_cast<ast::ExpressionNode>(list->getBodyNode()),
+                              index, posIdx, kwIdx, hasPos, hasKw);
+            return;
+        }
+        // 普通形参
+        ++index;
+    }
+    void CodeGen::collectVariadicDetails(const std::shared_ptr<ast::ExpressionNode>& node, VariadicInfo& info)
+    {
+        size_t index = 0;
+        bool hasPos = false, hasKw = false;
+        variadicIndexWalk(node, index, info.positionalIndex, info.keywordIndex, hasPos, hasKw);
+        info.positional = hasPos;
+        info.keyword = hasKw;
+        info.fixedCount = index; // 现在 paramNames 里含变长槽，这就是总形参数
+    }
+    bool CodeGen::checkVariadicAnnotations(const std::shared_ptr<ast::ExpressionNode>& node,
+                                           const std::string& fname, const utils::Pos& pos)
+    {
+        if (!node)
+            return true;
+        bool isKw = false;
+        std::shared_ptr<ast::IdentifierNode> vid;
+        if (decodeVariadicParam(node, isKw, vid))
+        {
+            if (!vid)
+            {
+                failAt(pos, "Malformed variadic parameter in function '" + fname +
+                                "': `**kwargs` must be the last parameter");
+                return false;
+            }
+            bool hasAnnotation = false;
+            for (const auto& label : vid->getLabels())
+                if (label && !label->getFullLabel().empty())
+                {
+                    hasAnnotation = true;
+                    break;
+                }
+            if (!hasAnnotation)
+            {
+                failAt(pos, "Variadic parameter '" + vid->getName() + "' in function '" + fname +
+                                "' requires an explicit element type annotation, e.g. *" +
+                                vid->getName() + ": int");
+                return false;
+            }
+            return true;
+        }
+        if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
+            return checkVariadicAnnotations(infix->getLeftNode(), fname, pos) &&
+                   checkVariadicAnnotations(infix->getRightNode(), fname, pos);
+        if (const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(node))
+            return checkVariadicAnnotations(assign->getAssignPair().first, fname, pos);
+        if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))
+        {
+            for (const auto& e : block->getBodyExpressions())
+                if (!checkVariadicAnnotations(e, fname, pos))
+                    return false;
+            return true;
+        }
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))
+            return checkVariadicAnnotations(paren->getRangerNode(), fname, pos);
+        if (const auto list = std::dynamic_pointer_cast<ast::ListExpressionNode>(node))
+            return checkVariadicAnnotations(std::dynamic_pointer_cast<ast::ExpressionNode>(list->getBodyNode()),
+                                            fname, pos);
         return true;
     }
     std::string CodeGen::checkAssignable(const sema::TypePtr& target, const sema::TypePtr& source) const
@@ -9867,10 +10041,27 @@ namespace backend
         // 否则实参个数和位置都对不上形参签名。
         // 个数校验必须排在摊平**之前**：摊平会把缺省实参补进来，
         // 之后就再也看不出「用户到底少传了几个」。
-        checkCallArity(fname, args, node->getPos(), fname);
+        // Q7-a：非变长函数若带调用点 `*xs` 展开，先合成 xs[i] 实参并插入
+        // 运行时长度检查，再交给 arity 校验；否则 checkCallArity 会把它当成
+        // 「只给了 1 个实参」直接拒绝。变长函数走 packVariadicArgs 里的处理。
+        const bool isVariadic = _functionVariadic.find(fname) != _functionVariadic.end();
+        std::vector<std::shared_ptr<ast::ExpressionNode>> workArgs = args;
+        if (!isVariadic && _functionParams.find(fname) != _functionParams.end())
+        {
+            workArgs = expandSpreadForFixedParams(fname, args, node->getPos());
+            if (hasFailed())
+                return;
+        }
+        checkCallArity(fname, workArgs, node->getPos(), fname);
         if (hasFailed())
             return;
-        const auto callArgs = normalizeCallArgs(args, fname);
+        // 变长函数不走 normalizeCallArgs：它会按固定形参个数摊平实参，
+        // 把多余实参丢掉。变长实参由 packVariadicArgs 统一打包成容器。
+        std::vector<std::shared_ptr<ast::ExpressionNode>> callArgs =
+            isVariadic ? packVariadicArgs(workArgs, fname, node->getPos())
+                       : normalizeCallArgs(workArgs, fname);
+        if (hasFailed())
+            return;
         // 用户自定义的 main 在 codegen 里发射为 __rio_user_main
         const std::string emitName = (fname == "main") ? "__rio_user_main" : fname;
         // 有形参签名就按形参类型走寄存器（能处理隐式 int<->float 转换）
@@ -10013,6 +10204,302 @@ namespace backend
         }
         return slots;
     }
+    std::vector<std::shared_ptr<ast::ExpressionNode>>
+    CodeGen::packVariadicArgs(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                              const std::string& fname, const utils::Pos& pos)
+    {
+        const auto varIt = _functionVariadic.find(fname);
+        const auto namesIt = _functionParamNames.find(fname);
+        if (varIt == _functionVariadic.end() || namesIt == _functionParamNames.end())
+            return args; // 非变长函数：原样返回
+        const VariadicInfo& info = varIt->second;
+        const auto& names = namesIt->second;
+        const size_t total = names.size(); // 固定形参 + 变长槽（变长槽已在 paramNames 里）
+        // ---- Q7-b：调用点展开的位置限制 ----
+        // 扫描实参，识别 `*xs` / `**d`；位置展开只能在末尾，命名展开只能在最后。
+        std::shared_ptr<ast::ExpressionNode> spreadPos; // `*xs`
+        std::shared_ptr<ast::ExpressionNode> spreadKw;  // `**d`
+        for (size_t i = 0; i < args.size(); ++i)
+        {
+            bool kw = false;
+            std::shared_ptr<ast::IdentifierNode> vid;
+            if (!decodeVariadicParam(args[i], kw, vid))
+                continue;
+            if (kw)
+            {
+                if (i + 1 != args.size() || spreadKw || spreadPos)
+                {
+                    failAt(pos, "`**d` expansion must be the final argument and appear at most once");
+                    return args;
+                }
+                spreadKw = args[i];
+            }
+            else
+            {
+                if (spreadPos || spreadKw)
+                {
+                    failAt(pos, "`*xs` expansion must precede any `**d` and appear at most once");
+                    return args;
+                }
+                spreadPos = args[i];
+            }
+        }
+        // 拆出「被展开的容器」里的标识符名（供直接传参），以及它的静态类型。
+        auto spreadId = [&](const std::shared_ptr<ast::ExpressionNode>& sp) -> std::string
+        {
+            bool kw = false;
+            std::shared_ptr<ast::IdentifierNode> vid;
+            if (sp && decodeVariadicParam(sp, kw, vid) && vid)
+                return vid->getName();
+            return std::string();
+        };
+        // ---- 分离固定实参 / 多余位置实参 / 命名实参 ----
+        std::vector<std::shared_ptr<ast::ExpressionNode>> fixedArgs;   // 位置，按出现顺序
+        std::vector<std::shared_ptr<ast::ExpressionNode>> extraPos;    // 进 *args 的 list
+        std::vector<std::pair<std::string, std::shared_ptr<ast::ExpressionNode>>> extraNamed; // 进 **kwargs 的 dict
+        std::vector<std::shared_ptr<ast::ExpressionNode>> namedAssigns; // 保留的命名实参（对应固定形参）
+        // 固定形参的下标 = 所有形参位里除变长槽以外的那些（允许变长槽在中间）。
+        std::vector<size_t> fixedIndices;
+        for (size_t i = 0; i < total; ++i)
+            if (!(info.positional && i == info.positionalIndex) &&
+                !(info.keyword && i == info.keywordIndex))
+                fixedIndices.push_back(i);
+        const size_t fixedCount = fixedIndices.size();
+        for (const auto& a : args)
+        {
+            if (a == spreadPos || a == spreadKw)
+                continue;
+            if (const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(a))
+            {
+                if (const auto target = std::dynamic_pointer_cast<ast::IdentifierNode>(assign->getAssignPair().first))
+                {
+                    // 这个命名实参对应哪个固定形参？
+                    bool isFixed = false;
+                    for (const size_t idx : fixedIndices)
+                        if (idx < names.size() && names[idx] == target->getName())
+                            isFixed = true;
+                    if (isFixed)
+                        namedAssigns.push_back(a);
+                    else
+                        extraNamed.emplace_back(target->getName(), assign->getAssignPair().second);
+                    continue;
+                }
+            }
+            if (fixedArgs.size() < fixedCount)
+                fixedArgs.push_back(a);
+            else
+                extraPos.push_back(a);
+        }
+        // ---- 构造结果：与 paramNames 等长 ----
+        std::vector<std::shared_ptr<ast::ExpressionNode>> out(total, nullptr);
+        // 固定位：先放位置实参
+        for (size_t i = 0; i < fixedArgs.size() && i < fixedIndices.size(); ++i)
+            out[fixedIndices[i]] = fixedArgs[i];
+        // 命名实参（对应固定形参）按名字落到对应位置
+        for (const auto& na : namedAssigns)
+        {
+            const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(na);
+            const auto target = std::dynamic_pointer_cast<ast::IdentifierNode>(assign->getAssignPair().first);
+            for (const size_t idx : fixedIndices)
+                if (names[idx] == target->getName())
+                    out[idx] = assign->getAssignPair().second;
+        }
+        //  unnamed 固定形参缺的位用 null（后续 emitArgsToRegisters 会按类型处理；
+        //  真正缺失由 checkCallArity 报错，这里只保证向量大小正确）。
+        // ---- *args 槽 ----
+        if (info.positional && info.positionalIndex < total)
+        {
+            const std::string sid = spreadId(spreadPos);
+            if (!sid.empty())
+            {
+                // Q7-a：对变长 callee，`f(*xs)` 直接把 xs 这个容器传进去。
+                const auto unary = std::dynamic_pointer_cast<ast::UnaryExpressionNode>(spreadPos);
+                out[info.positionalIndex] = unary ? unary->getRightNode() : spreadPos;
+            }
+            else
+            {
+                const auto body = buildCommaChain(extraPos, pos);
+                core::Token lb(pos, "["), rb(pos, "]");
+                out[info.positionalIndex] =
+                    std::make_shared<ast::ListExpressionNode>(lb, rb, body);
+            }
+        }
+        else if (!extraPos.empty())
+        {
+            failAt(pos, "Function '" + fname + "' has no *args but " +
+                            std::to_string(extraPos.size()) + " extra positional argument(s) were given");
+            return args;
+        }
+        // ---- **kwargs 槽 ----
+        if (info.keyword && info.keywordIndex < total)
+        {
+            const std::string kid = spreadId(spreadKw);
+            if (!kid.empty())
+            {
+                const auto unary = std::dynamic_pointer_cast<ast::UnaryExpressionNode>(spreadKw);
+                out[info.keywordIndex] = unary ? unary->getRightNode() : spreadKw; // Q7-c：直接传 dict
+            }
+            else
+            {
+                // 用逗号链串起 PairExpressionNode("key", value)
+                std::vector<std::shared_ptr<ast::ExpressionNode>> pairs;
+                for (const auto& kv : extraNamed)
+                {
+                    core::Token keyTok(pos, "\"" + kv.first + "\"");
+                    keyTok.setType(core::TokenType::TOKEN_STRING);
+                    auto key = std::make_shared<ast::StringLiteralNode>(keyTok);
+                    core::Token colon(pos, ":");
+                    colon.setType(core::TokenType::TOKEN_COLON);
+                    core::Token mainTok(pos, ":");
+                    pairs.push_back(std::make_shared<ast::PairExpressionNode>(mainTok, key, colon, kv.second));
+                }
+                const auto body = buildCommaChain(pairs, pos);
+                core::Token lb(pos, "{"), rb(pos, "}");
+                out[info.keywordIndex] =
+                    std::make_shared<ast::DictionaryExpressionNode>(lb, rb, body);
+            }
+        }
+        else if (!extraNamed.empty())
+        {
+            failAt(pos, "Function '" + fname + "' has no **kwargs but named argument '" +
+                            extraNamed.front().first + "' is not a parameter");
+            return args;
+        }
+        return out;
+    }
+    std::vector<std::shared_ptr<ast::ExpressionNode>>
+    CodeGen::packGenericVariadicArgs(const GenericFunction& generic,
+                                     const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                     const utils::Pos& pos) const
+    {
+        const size_t vi = generic.varIndex;
+        if (vi == static_cast<size_t>(-1) || vi >= generic.paramTypes.size())
+            return args;
+        const size_t fixedCount = generic.paramTypes.size() - 1; // 除变长槽外的固定形参数
+        std::vector<std::shared_ptr<ast::ExpressionNode>> out(generic.paramTypes.size(), nullptr);
+        // 固定位按出现顺序摆放，多余的进变长槽。
+        size_t fixedPos = 0;
+        std::vector<std::shared_ptr<ast::ExpressionNode>> extra;
+        for (const auto& a : args)
+        {
+            if (const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(a);
+                assign && std::dynamic_pointer_cast<ast::IdentifierNode>(assign->getAssignPair().first))
+                continue; // 命名实参（泛型变长暂不支持按名映射，交给后续）
+            if (fixedPos < fixedCount)
+            {
+                // 跳过变长槽那个下标
+                while (fixedPos < generic.paramTypes.size() && fixedPos == vi)
+                    ++fixedPos;
+                if (fixedPos < generic.paramTypes.size())
+                    out[fixedPos++] = a;
+            }
+            else
+                extra.push_back(a);
+        }
+        // 变长槽：把多余实参打包成 list 字面量。Q6 空调用得到空 list。
+        const auto body = buildCommaChain(extra, pos);
+        core::Token lb(pos, "["), rb(pos, "]");
+        out[vi] = std::make_shared<ast::ListExpressionNode>(lb, rb, body);
+        return out;
+    }
+    std::vector<std::shared_ptr<ast::ExpressionNode>>
+    CodeGen::expandSpreadForFixedParams(const std::string& fname,
+                                        const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                        const utils::Pos& pos)
+    {
+        // 找调用点展开符。只处理位置展开 `*xs`；命名展开 `**d` 对非变长函数
+        // 按 Q7-c 编译报错。Q7-b：`*xs` 只能在末尾、至多一个。
+        size_t spreadAt = args.size();
+        std::shared_ptr<ast::IdentifierNode> spreadId;
+        for (size_t i = 0; i < args.size(); ++i)
+        {
+            bool kw = false;
+            std::shared_ptr<ast::IdentifierNode> vid;
+            if (!decodeVariadicParam(args[i], kw, vid))
+                continue;
+            if (kw)
+            {
+                failAt(pos, "`**d` expansion is only allowed when the callee has **kwargs");
+                return args;
+            }
+            if (!vid)
+            {
+                failAt(pos, "Malformed `*xs` expansion");
+                return args;
+            }
+            if (spreadAt != args.size() || i + 1 != args.size())
+            {
+                failAt(pos, "`*xs` expansion must be the final argument and appear at most once");
+                return args;
+            }
+            spreadAt = i;
+            spreadId = vid;
+        }
+        if (spreadAt == args.size())
+            return args; // 没有展开，原样返回
+        // 固定形参数：签名里的形参个数（非变长函数，全部是固定形参）。
+        const auto paramsIt = _functionParams.find(fname);
+        if (paramsIt == _functionParams.end())
+        {
+            failAt(pos, "Cannot expand `*xs` into unknown function '" + fname + "'");
+            return args;
+        }
+        const size_t n = paramsIt->second.size();
+        const size_t explicitCount = spreadAt; // 展开符之前的位置实参数
+        if (explicitCount > n)
+        {
+            failAt(pos, "Function '" + fname + "' takes " + std::to_string(n) +
+                            " argument(s) but " + std::to_string(explicitCount) + " were given before `*xs`");
+            return args;
+        }
+        const size_t expandCount = n - explicitCount;
+        // ---- 运行时长度检查：len(xs) 必须等于 expandCount，否则 panic ----
+        // xs 是调用方变量，先把它的堆指针落到临时槽，再读长度头。
+        const auto xsSlot = lookupVar(spreadId->getName());
+        if (!xsSlot)
+        {
+            failAt(pos, "Undefined variable in `*xs` expansion: " + spreadId->getName());
+            return args;
+        }
+        const std::string contSlot = allocateTemp(xsSlot->type ? xsSlot->type : sema::getPtrType());
+        _asm.mov(addrOf(*xsSlot), "%rax"); // 不能 mem->mem，先过 %rax
+        _asm.mov("%rax", contSlot);
+        const std::string lenSlot = allocateTemp(sema::getIntType());
+        emitContainerLenTo(contSlot, lenSlot);
+        const auto okLabel = _asm.newLabel("spread_len_ok");
+        _asm.mov(lenSlot, "%rax");
+        _asm.movImm(static_cast<long long>(expandCount), "%rcx");
+        _asm.cmp("%rcx", "%rax");
+        _asm.je(okLabel);
+        {
+            const std::string msg = "`*xs` argument count mismatch in call to '" + fname + "': expected " +
+                                    std::to_string(n) + " argument(s), got " + std::to_string(explicitCount) +
+                                    " + len(*xs)";
+            const auto [label, len] = _asm.internStrValue(msg);
+            _asm.lea(label + "+16(%rip)", "%rcx");
+            _asm.movImm(static_cast<long long>(len), "%rdx");
+            _asm.subRsp(32);
+            _asm.call("core_panic_raise");
+            _asm.addRsp(32);
+        }
+        _asm.label(okLabel);
+        // ---- 合成 N 个 xs[i] 实参 ----
+        std::vector<std::shared_ptr<ast::ExpressionNode>> out;
+        for (size_t i = 0; i < spreadAt; ++i)
+            out.push_back(args[i]);
+        for (size_t k = 0; k < expandCount; ++k)
+        {
+            core::Token idxTok(pos, std::to_string(k));
+            idxTok.setType(core::TokenType::TOKEN_INTEGER);
+            auto idxLit = std::make_shared<ast::IntegerLiteralNode>(idxTok);
+            core::Token lb(pos, "["), rb(pos, "]");
+            auto bracket = std::make_shared<ast::BracketExpressionNode>(lb, rb,
+                                                                        std::static_pointer_cast<ast::ExpressionNode>(idxLit));
+            core::Token dotTok(pos, ".");
+            out.push_back(std::make_shared<ast::IndexExpressionNode>(dotTok, spreadId, bracket));
+        }
+        return out;
+    }
     void CodeGen::checkCallArity(const std::string& fname,
                                  const std::vector<std::shared_ptr<ast::ExpressionNode>>& args, const utils::Pos& pos,
                                  const std::string& displayName)
@@ -10020,11 +10507,16 @@ namespace backend
         const auto sigIt = _functionParams.find(fname);
         if (sigIt == _functionParams.end())
             return; // 不认识的名字：交给别的路径
-        const size_t declared = sigIt->second.size();
-        // 变长形参不占 paramTypes 的位置，多余实参算被它吃掉。
         const auto varIt = _functionVariadic.find(fname);
         const bool hasPositional = varIt != _functionVariadic.end() && varIt->second.positional;
         const bool hasKeyword = varIt != _functionVariadic.end() && varIt->second.keyword;
+        // 变长槽在 paramTypes/paramNames 里各占一位，但不是必填形参，
+        // 计算上/下界时要减掉，否则空调用 `f()` 会被当成少传了一个。
+        size_t declared = sigIt->second.size();
+        if (hasPositional)
+            --declared;
+        if (hasKeyword)
+            --declared;
         // 命名实参 `name=value` 不算位置实参，个数校验只数位置实参。
         size_t positional = 0;
         for (const auto& a : args)
@@ -10834,6 +11326,28 @@ namespace backend
             out.push_back(typeFromLabelList(id->getLabels(), _currentGenericParams));
             return;
         }
+        // 变长形参 `*args: T` -> list[T]，`**kwargs: T` -> dict[str,T]。
+        // 元素类型来自 inner id 的 label；无标注时留 unknown（由强制标注校验报错）。
+        {
+            bool isKw = false;
+            std::shared_ptr<ast::IdentifierNode> vid;
+            if (decodeVariadicParam(node, isKw, vid))
+            {
+                if (!vid)
+                {
+                    out.push_back(sema::getUnknownType());
+                    return;
+                }
+                auto elem = typeFromLabelList(vid->getLabels(), _currentGenericParams);
+                if (!elem)
+                    elem = sema::getUnknownType();
+                if (isKw)
+                    out.push_back(std::make_shared<sema::DictType>(sema::getStrType(), elem));
+                else
+                    out.push_back(std::make_shared<sema::ListType>(elem));
+                return;
+            }
+        }
         if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
         {
             if (infix->getOpToken().getType() == core::TokenType::TOKEN_COMMA)
@@ -10906,6 +11420,28 @@ namespace backend
             }
             out.push_back(text);
             return;
+        }
+        // 变长形参：标注文本取 inner id 的 label（元素类型 T）。
+        {
+            bool isKw = false;
+            std::shared_ptr<ast::IdentifierNode> vid;
+            if (decodeVariadicParam(node, isKw, vid))
+            {
+                std::string text;
+                if (vid)
+                {
+                    for (const auto& label : vid->getLabels())
+                    {
+                        if (label && !label->getFullLabel().empty())
+                        {
+                            text = label->getFullLabel();
+                            break;
+                        }
+                    }
+                }
+                out.push_back(text);
+                return;
+            }
         }
         if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
         {
@@ -14140,6 +14676,13 @@ namespace backend
                 break;
             }
         }
+        // 变长泛型：多余实参由 *args 收集，argc 无上界；下界里变长槽本身不必填。
+        if (g.varIndex != static_cast<size_t>(-1))
+        {
+            if (required > 0 && required - 1 == g.varIndex)
+                --required; // 变长槽不是必填
+            return argc >= required;
+        }
         return argc >= required && argc <= total;
     }
     // 这份泛型声明的形参类型与实参是否相容（只看「容器种类」这一层）。
@@ -14160,6 +14703,9 @@ namespace backend
         const size_t n = args.size() < g.paramTypes.size() ? args.size() : g.paramTypes.size();
         for (size_t i = 0; i < n; ++i)
         {
+            // 变长槽的实参会在后面打包成容器，这里拿标量去比会误判形状。
+            if (i == g.varIndex)
+                continue;
             const auto& formal = g.paramTypes[i];
             if (!formal)
                 continue;
@@ -14207,8 +14753,13 @@ namespace backend
                 continue;
             if (!genericArgsShapeMatch(*generic, args))
                 continue;
+            const bool needPack = generic->varIndex != static_cast<size_t>(-1);
+            std::vector<std::shared_ptr<ast::ExpressionNode>> deduceArgs =
+                needPack ? packGenericVariadicArgs(*generic, args,
+                                                   callNode ? callNode->getPos() : utils::Pos{})
+                         : args;
             std::map<std::string, sema::TypePtr> bindings;
-            if (!deduceTypeArgs(*generic, explicitArgs, args, bindings))
+            if (!deduceTypeArgs(*generic, explicitArgs, deduceArgs, bindings))
                 continue;
             auto ret = substituteGenerics(generic->retType, bindings);
             if (!ret || ret->getKind() == sema::TypeKind::TK_UNKNOWN || ret->getKind() == sema::TypeKind::TK_GENERIC)
@@ -14242,7 +14793,13 @@ namespace backend
             // 不会被 `[T, K]` 那份错误的报「takes 2」。
             if (!explicitArgs.empty() && explicitArgs.size() != generic->genericParams.size())
                 continue;
-            if (!deduceTypeArgs(*generic, explicitArgs, args, candidateBindings))
+            // Q4：变长泛型先把多余实参打包成 list[T]，否则 T 无从推导。
+            const bool needPack = generic->varIndex != static_cast<size_t>(-1);
+            std::vector<std::shared_ptr<ast::ExpressionNode>> deduceArgs =
+                needPack ? packGenericVariadicArgs(*generic, args,
+                                                   callNode ? callNode->getPos() : utils::Pos{})
+                         : args;
+            if (!deduceTypeArgs(*generic, explicitArgs, deduceArgs, candidateBindings))
                 continue;
             chosen = generic;
             bindings = std::move(candidateBindings);
@@ -14367,13 +14924,64 @@ namespace backend
             return false;
         }
         const GenericFunction& generic = *chosen;
+        // Q4 裁决 A：变长泛型按首参定 T，其余实参必须可赋给 T。
+        // 合成 list 字面量把混合元素悄悄退化成 int，所以要在这里按原始实参逐个校验。
+        if (generic.varIndex != static_cast<size_t>(-1) && !bindings.empty())
+        {
+            const size_t vi = generic.varIndex;
+            // 变长槽的元素类型 = paramTypes[vi] 的 list 元素，代入 bindings。
+            sema::TypePtr elemT;
+            const auto& formal = vi < generic.paramTypes.size() ? generic.paramTypes[vi] : nullptr;
+            if (formal && formal->getKind() == sema::TypeKind::TK_LIST)
+                elemT = substituteGenerics(std::static_pointer_cast<sema::ListType>(formal)->getElemType(), bindings);
+            if (elemT && elemT->getKind() != sema::TypeKind::TK_GENERIC &&
+                elemT->getKind() != sema::TypeKind::TK_UNKNOWN)
+            {
+                // 跳过固定形参对应的前几个实参，剩下的都是变长实参。
+                size_t fixedSeen = 0;
+                for (size_t i = 0; i < args.size(); ++i)
+                {
+                    if (std::dynamic_pointer_cast<ast::AssignmentNode>(args[i]))
+                        continue;
+                    if (fixedSeen < vi)
+                    {
+                        ++fixedSeen;
+                        continue;
+                    }
+                    const auto argT = inferType(args[i]);
+                    // Q4=A 要求严格统一：首参定 T 后其余实参类型必须与 T 完全相等。
+                    // 不能用 checkAssignable —— 它对数值族放行隐式转换（int<->float），
+                    // 那会让 pair(1, 2.5) 静默截断，正是裁决要挡的场景。
+                    if (!argT || !elemT->equals(argT))
+                    {
+                        failAt(args[i] ? args[i]->getPos() : (callNode ? callNode->getPos() : utils::Pos{}),
+                               "Variadic argument of '" + name + "' has type " +
+                                   (argT ? argT->toString() : "unknown") + " but T is " + elemT->toString() +
+                                   " (deduced from the first argument; use explicit *args: T or a matching type)");
+                        return true;
+                    }
+                }
+            }
+        }
         const std::string mangled = instantiateGeneric(name, bindings);
         if (mangled.empty())
         {
             failAt(callNode ? callNode->getPos() : utils::Pos{}, "Cannot instantiate generic function '" + name + "'");
             return true;
         }
-        const auto instArgs = normalizeCallArgs(args, mangled);
+        // Q4：把变长登记复制到 mangled 实例名，供 packVariadicArgs 使用。
+        if (generic.varIndex != static_cast<size_t>(-1))
+        {
+            VariadicInfo vi;
+            vi.fixedCount = generic.paramTypes.size();
+            vi.positional = true;
+            vi.positionalIndex = generic.varIndex;
+            _functionVariadic[mangled] = vi;
+        }
+        std::vector<std::shared_ptr<ast::ExpressionNode>> instArgs =
+            (generic.varIndex != static_cast<size_t>(-1))
+                ? packVariadicArgs(args, mangled, callNode ? callNode->getPos() : utils::Pos{})
+                : normalizeCallArgs(args, mangled);
         std::vector<sema::TypePtr> paramTypes;
         if (const auto p = _functionParams.find(mangled); p != _functionParams.end())
         {
@@ -14450,17 +15058,28 @@ namespace backend
             if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node->getCallNode()))
             {
                 const auto paramsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode());
-                if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(paramsNode))
+                const auto paramsRoot = paramsNode
+                    ? (std::dynamic_pointer_cast<ast::ParenRangerNode>(paramsNode)
+                           ? std::dynamic_pointer_cast<ast::ExpressionNode>(
+                                 std::dynamic_pointer_cast<ast::ParenRangerNode>(paramsNode)->getRangerNode())
+                           : paramsNode)
+                    : nullptr;
+                if (paramsRoot)
                 {
-                    collectParamNames(paren->getRangerNode(), generic.paramNames);
-                    collectParamTypesT(paren->getRangerNode(), generic.paramTypes);
-                    collectParamDefaults(paren->getRangerNode(), generic.defaults);
-                }
-                else if (paramsNode)
-                {
-                    collectParamNames(paramsNode, generic.paramNames);
-                    collectParamTypesT(paramsNode, generic.paramTypes);
-                    collectParamDefaults(paramsNode, generic.defaults);
+                    collectParamNames(paramsRoot, generic.paramNames);
+                    collectParamTypesT(paramsRoot, generic.paramTypes);
+                    collectParamDefaults(paramsRoot, generic.defaults);
+                    // 变长参数：查下标 + Q2 强制标注校验。
+                    bool hp = false, hk = false;
+                    collectVariadicFlags(paramsRoot, hp, hk);
+                    if (hp || hk)
+                    {
+                        if (!checkVariadicAnnotations(paramsRoot, fname, node->getPos()))
+                            return;
+                        VariadicInfo vi;
+                        collectVariadicDetails(paramsRoot, vi);
+                        generic.varIndex = vi.positional ? vi.positionalIndex : vi.keywordIndex;
+                    }
                 }
             }
             generic.retType = typeFromLabelList(node->getLabelNodes(), genericParams);
@@ -14597,24 +15216,32 @@ namespace backend
         // `**kwargs` 允许任意多个命名实参。它们不占 paramTypes 的位置，
         // 所以「收不收多余实参」只能单独登记。
         {
-            bool hasPositional = false, hasKeyword = false;
+            // 形参表的 AST 根（ParenRangerNode 里的逗号链），变长细节与标注校验都用它。
+            std::shared_ptr<ast::ExpressionNode> paramsRoot;
             if (const auto callInfix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node->getCallNode()))
             {
                 if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(callInfix->getRightNode()))
-                    collectVariadicFlags(paren->getRangerNode(), hasPositional, hasKeyword);
+                    paramsRoot = std::dynamic_pointer_cast<ast::ExpressionNode>(paren->getRangerNode());
                 else
-                    collectVariadicFlags(callInfix->getRightNode(), hasPositional, hasKeyword);
+                    paramsRoot = std::dynamic_pointer_cast<ast::ExpressionNode>(callInfix->getRightNode());
             }
             else
             {
-                collectVariadicFlags(node->getCallNode(), hasPositional, hasKeyword);
+                paramsRoot = node->getCallNode();
             }
-            VariadicInfo info;
-            info.fixedCount = paramNames.size();
-            info.positional = hasPositional;
-            info.keyword = hasKeyword;
+            bool hasPositional = false, hasKeyword = false;
+            collectVariadicFlags(paramsRoot, hasPositional, hasKeyword);
             if (hasPositional || hasKeyword)
+            {
+                if (!checkVariadicAnnotations(paramsRoot, fname, node->getPos()))
+                    return;
+                VariadicInfo info;
+                info.fixedCount = paramNames.size();
+                collectVariadicDetails(paramsRoot, info);
+                info.positional = hasPositional;
+                info.keyword = hasKeyword;
                 _functionVariadic[fname] = info;
+            }
             else
                 _functionVariadic.erase(fname);
         }

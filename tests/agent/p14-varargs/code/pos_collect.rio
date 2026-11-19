@@ -1,0 +1,9 @@
+fun show(*xs: int): void {
+    sout(xs[0])
+    sout(xs[1])
+    sout(xs[2])
+}
+fun main(): void {
+    show(7, 8, 9)
+}
+main()

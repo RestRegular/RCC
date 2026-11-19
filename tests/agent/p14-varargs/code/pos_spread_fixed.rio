@@ -1,0 +1,10 @@
+fun g(a: int, b: int, c: int): int {
+    ret a + b + c
+}
+fun main(): void {
+    var xs: list[int] = [1, 2, 3]
+    sout(g(*xs))
+    var ys: list[int] = [2, 3]
+    sout(g(10, *ys))
+}
+main()

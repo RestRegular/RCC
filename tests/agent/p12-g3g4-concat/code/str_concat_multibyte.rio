@@ -1,2 +1,2 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 sout("你好" + "世界")

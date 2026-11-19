@@ -1,5 +1,5 @@
 // 保留名只拦「没定义过」的情况：用户真写了同名函数，那就是他自己的函数。
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 fun release(x: int): void {
     sout(x)
 }

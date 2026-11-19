@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 var q: ptr = core_alloc(64, 8)
 core_mem_set(q, 0, 64)
 var base: int = q

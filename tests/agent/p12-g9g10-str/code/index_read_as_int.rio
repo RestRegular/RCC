@@ -1,3 +1,3 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 var s: str = "A"
 sout(s[0] + 1)

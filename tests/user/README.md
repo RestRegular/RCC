@@ -15,13 +15,25 @@
 
 ## 典型流程
 
+`new-test.ps1` 生成的是**数据驱动**骨架：用例写在 `code/cases.json` +
+`code/<id>.rio`，判定逻辑共用 `tests/_shared/driver.ps1`，`execute.ps1`
+只是转接薄壳（三区同构）。
+
 ```powershell
-# 1. 在这里写你的复现（main.rio + 说明，随便）
-# 2. 打包成正式测试集
+# 1. 用生成器建骨架（就在本区，Target=user）
+../new-test.ps1 -Name "issue-003-login-timeout" -Type repro -Target user -Description "登录超时导致500"
+
+# 2. 编辑生成的骨架：
+#    - code/smoke.rio    改成你的复现代码（或再加 <id>.rio）
+#    - code/cases.json   填 id / file / expect
+
+# 3. 本地验证（driver 自动编译、运行、逐例比对）
+./issue-003-login-timeout/execute.ps1
+
+# 4. 满意后打包成正式测试集
 ./pack.ps1 -Name "issue-003-login-timeout" -Type repro -Description "登录超时导致500"
 
-# 3. 补全 cases/<name>/execute.ps1 与 expected/output.txt 后验证
-../cases/issue-003-login-timeout/execute.ps1
+# 5. 全局校验
 ../validate.ps1
 ```
 

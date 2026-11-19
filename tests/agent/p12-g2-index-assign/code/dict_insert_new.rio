@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 var d = {"a": 1}
 d["b"] = 2
 sout(d["a"])

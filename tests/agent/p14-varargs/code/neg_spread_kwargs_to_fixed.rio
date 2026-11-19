@@ -1,0 +1,8 @@
+fun g(a: int): void {
+    sout(a)
+}
+fun main(): void {
+    var d: dict[str, int] = {"a": 1}
+    g(**d)
+}
+main()

@@ -1,0 +1,7 @@
+fun count(*xs: int): int {
+    ret 0
+}
+fun main(): void {
+    sout(count())
+}
+main()

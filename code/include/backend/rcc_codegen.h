@@ -965,8 +965,23 @@ namespace backend
             size_t fixedCount = 0;      // 非变长形参的个数
             bool positional = false;    // 有 `*args`
             bool keyword = false;       // 有 `**kwargs`
+            size_t positionalIndex = 0; // `*args` 在 paramNames/paramTypes 里的下标
+            size_t keywordIndex = 0;    // `**kwargs` 的下标
         };
         std::map<std::string, VariadicInfo> _functionVariadic;
+        // `collectParam*` 系列对变长形参做专门处理：
+        //   名字 -> inner id 名；类型 -> list[T] / dict[str,T]；标注 -> T 的原始文本。
+        // 检查变长形参是否都写了元素类型标注（Q2 强制标注，不豁免）。
+        bool checkVariadicAnnotations(const std::shared_ptr<ast::ExpressionNode>& node,
+                                      const std::string& fname, const utils::Pos& pos);
+        // 扫描形参表，把变长形参的下标/元素类型填进 VariadicInfo。
+        void collectVariadicDetails(const std::shared_ptr<ast::ExpressionNode>& node, VariadicInfo& info);
+        // 调用点：把多余位置实参打包成 list、未匹配的命名实参打包成 dict，
+        // 返回与 paramNames 等长、可直接交给 emitArgsToRegisters 的实参表。
+        std::vector<std::shared_ptr<ast::ExpressionNode>>
+        packVariadicArgs(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                         const std::string& fname, const utils::Pos& pos);
+
         // 调用点实参个数校验。只对已登记签名的函数生效；不认识的名字直接放过。
         // 变长形参只是「接受多余实参」，**不等于**实现了收集语义 —— 收集
         // 仍是待设计项（见 docs/p12_plan.md G1b）。
@@ -974,6 +989,14 @@ namespace backend
                             const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
                             const utils::Pos& pos,
                             const std::string& displayName);
+        // Q7-a：非变长函数遇到调用点 `*xs` 展开时的处理。
+        // 按固定形参数 N 合成 N 个 `xs[i]` 实参，并生成运行时长度检查
+        // （len(xs) != N -> panic）。返回展开后的实参数组；没有展开则原样返回。
+        // Q7-b：展开只能在末尾、至多一个；**d 不允许（只收位置展开）。
+        std::vector<std::shared_ptr<ast::ExpressionNode>>
+        expandSpreadForFixedParams(const std::string& fname,
+                                   const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                   const utils::Pos& pos);
         // 已登记但实现为 encapsulated 的函数（不发射函数体）
         std::map<std::string, bool> _encapsulatedFunctions;
         // 用户是否自己写了 fun main()（发射为 __rio_user_main）
@@ -1259,7 +1282,17 @@ namespace backend
             // 必须在声明阶段就收下来：泛型声明本身不发射，形参表只在这里出现一次，
             // 实例化时拿不到 AST 就补不出缺省实参（曾因此让 f(1) 读到栈垃圾）。
             std::map<std::string, std::shared_ptr<ast::ExpressionNode>> defaults;
+            // 变长参数（Q4）：*args 在 paramTypes 里的下标，SIZE_MAX 表示无。
+            // 推导前要把多余实参打包成 list[T]，否则 T 无从绑定。
+            size_t varIndex = static_cast<size_t>(-1);
         };
+        // 泛型变长参数的推导前打包：把 args 里超出固定形参位的那些包成
+        // list[T]（单个合成字面量），使 deduceTypeArgs 能从 list[T] 里解出 T。
+        // 返回打包后的实参数组（长度与 generic.paramTypes 相同）。
+        std::vector<std::shared_ptr<ast::ExpressionNode>>
+        packGenericVariadicArgs(const GenericFunction& generic,
+                                const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                const utils::Pos& pos) const;
         // 名字 -> 该名字下的**全部**泛型声明。
         //
         // 为什么是 vector 而不是单个 GenericFunction（P13 缺陷修复，2026-11-17）：

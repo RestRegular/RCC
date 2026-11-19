@@ -1,0 +1,7 @@
+fun first[T](*xs: T): T {
+    ret xs[0]
+}
+fun main(): void {
+    sout(first(1, 2.5))
+}
+main()

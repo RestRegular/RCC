@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 fun early(x: int): int {
     if x > 0 { ret 1 }
     ret 0

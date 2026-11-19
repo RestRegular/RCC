@@ -1,4 +1,4 @@
-fun sout(*args, end="\n"): void { encapsulated }
+fun sout(*args: any, end="\n"): void { encapsulated }
 var makeAdder = (n) -> {
     var adder = (x) -> { ret x + n }
     ret adder(10)

@@ -192,9 +192,9 @@ git grep -il "llvm" -- ":!docs/*" ":!logs/*"
 1. `.clang-format` 的 `BasedOnStyle: LLVM` 是格式化器风格名，与后端无关，删了会改变
    全仓库代码风格。
 2. `CMakeLists.txt` 那行是**主动声明**「no LLVM」，删掉反而丢失信息。
-3. `tests/test_13/14/15/test.rio` 第 1 行的注释属于**冻结的测试输入**——
+3. `tests/test_13/14/15/test.rio` 第 1 行的注释属于 **冻结的测试输入**——
    用户已明确要求 `tests/test_14_iter` 和 `tests/test_15_forinrange` 的
-   `test.rio` / `expected.txt` **保持不动**（不得为了让测试变绿而改期望）。
+   `test_closure.rio` / `expected.txt` **保持不动**（不得为了让测试变绿而改期望）。
    改这一行注释等于改动冻结输入。
 
 **修正后的通过标准**（本文件采用）：*不存在指向 LLVM 的**功能性**依赖* ——

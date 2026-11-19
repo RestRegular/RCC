@@ -71,6 +71,8 @@ $expectedSigs = @{
     ds   = @(
         'concat[T](a: list, b: list): list'
         'contains[T](xs: list, t: T): bool'
+        'contains[K](xs: dict, k: K): bool'
+        'contains[K, T](xs: dict, v: T): bool'
         'copy[T](xs: list): list'
         'dictKeys[K](d: dict): list'
         'dictRemove(d: dict, key: int): void'
