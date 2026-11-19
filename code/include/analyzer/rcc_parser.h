@@ -138,6 +138,9 @@ namespace parser {
         ExpressionNodePtr skipNewLineExpression();
         ExpressionNodePtr buildTryExpression();
         ExpressionNodePtr buildThrowExpression();
+        ExpressionNodePtr buildScopeExpression(); // P14-1b：`scope s { ... }`
+        ExpressionNodePtr buildSpawnExpression(); // P14-1b：`spawn` 作方法名标识符
+        ExpressionNodePtr buildLockExpression();  // P14-4：`lock c as g { ... }`
 
         // 中缀表达式构建函数
         ExpressionNodePtr buildInfixExpression(const ExpressionNodePtr &left);

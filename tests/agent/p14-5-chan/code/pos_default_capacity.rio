@@ -1,0 +1,16 @@
+// 正向：无参容量 Chan.new[T]() 用默认容量 16；交替 send/recv 越过回绕点不丢
+class Msg { var id: int  ctor(n: int) { this.id = n } }
+
+fun main(): void {
+    var ch: Chan[Msg] = Chan.new[Msg]()
+    var i = 0
+    var sum = 0
+    while i < 20 {
+        var m = Msg(i)
+        ch.send(m.take())
+        if var got = ch.recv() { sum = sum + got.id }
+        i = i + 1
+    }
+    sout(sum)
+}
+main()

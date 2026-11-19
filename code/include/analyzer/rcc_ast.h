@@ -88,6 +88,8 @@ namespace ast {
         WHILE, // while循环控制结构节点
         TRY, // try 语句
         THROW, // throw 语句
+        SCOPE, // P14-1b：`scope s { ... }` 结构化并发作用域语句
+        LOCK,  // P14-4：`lock c as g { ... }` 显式锁语句
     };
 
     // NodeType 的文本名（调试输出 / 符号导出用）。

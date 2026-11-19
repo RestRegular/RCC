@@ -492,6 +492,53 @@ namespace ast {
         return throwExpression;
     }
 
+    ScopeNode::ScopeNode(const Token &mainToken,
+            const std::shared_ptr<IdentifierNode> &name,
+            const std::shared_ptr<BlockRangerNode> &body)
+            : ExpressionNode(mainToken, NodeType::SCOPE), _name(name), _body(body) {}
+
+    NodeType ScopeNode::getRealType() const
+    {
+        return NodeType::SCOPE;
+    }
+
+    LockNode::LockNode(const Token &mainToken,
+            const std::shared_ptr<ExpressionNode> &lockExpr,
+            const std::shared_ptr<IdentifierNode> &guardName,
+            const std::shared_ptr<BlockRangerNode> &body)
+            : ExpressionNode(mainToken, NodeType::LOCK), _lockExpr(lockExpr),
+              _guardName(guardName), _body(body) {}
+
+    NodeType LockNode::getRealType() const
+    {
+        return NodeType::LOCK;
+    }
+
+    std::shared_ptr<ExpressionNode> LockNode::getLockExpr() const
+    {
+        return _lockExpr;
+    }
+
+    std::shared_ptr<IdentifierNode> LockNode::getGuardName() const
+    {
+        return _guardName;
+    }
+
+    std::shared_ptr<BlockRangerNode> LockNode::getBody() const
+    {
+        return _body;
+    }
+
+    std::shared_ptr<IdentifierNode> ScopeNode::getName() const
+    {
+        return _name;
+    }
+
+    std::shared_ptr<BlockRangerNode> ScopeNode::getBody() const
+    {
+        return _body;
+    }
+
     StringLiteralNode::StringLiteralNode(const Token& token)
     : LiteralNode(token, NodeType::STRING),
     value(StringManager::unescape(token.getValue())) {}

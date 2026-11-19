@@ -1,0 +1,10 @@
+// P14-3 负面：闭包体不得修改 Pool/容器结构（§10.4：不改结构）。
+class Player { var hp: int  ctor(h: int) { this.hp = h } }
+fun main(): void {
+    var pl = Pool.chunked(4)
+    var a: Player pl = pl.new[Player](10)
+    pl.par_each((p: Mut[Player]) -> {
+        pl.release(p)
+    })
+}
+main()

@@ -46,6 +46,10 @@ namespace core {
         {"catch", TokenType::TOKEN_CATCH},
         {"finally", TokenType::TOKEN_FINALLY},
         {"throw", TokenType::TOKEN_THROW},
+        {"scope", TokenType::TOKEN_SCOPE},
+        {"spawn", TokenType::TOKEN_SPAWN},
+        {"lock", TokenType::TOKEN_LOCK},
+        {"as", TokenType::TOKEN_AS},
         {"until", TokenType::TOKEN_UNTIL},
         {"ctor", TokenType::TOKEN_CTOR},
         {"pass", TokenType::TOKEN_PASS},
@@ -316,6 +320,10 @@ namespace core {
         case TokenType::TOKEN_LINK: return "TOKEN_LINK";
         case TokenType::TOKEN_OPERATOR: return "TOKEN_OPERATOR";
         case TokenType::TOKEN_PASS: return "TOKEN_PASS";
+        case TokenType::TOKEN_SCOPE: return "TOKEN_SCOPE";
+        case TokenType::TOKEN_SPAWN: return "TOKEN_SPAWN";
+        case TokenType::TOKEN_LOCK: return "TOKEN_LOCK";
+        case TokenType::TOKEN_AS: return "TOKEN_AS";
         case TokenType::TOKEN_UNTIL: return "TOKEN_UNTIL";
         case TokenType::TOKEN_VAR: return "TOKEN_VAR";
         case TokenType::TOKEN_RANGER: return "TOKEN_RANGER";

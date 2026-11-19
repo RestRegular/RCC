@@ -1,0 +1,17 @@
+// 跨函数 lock 重入负面：f 持锁 c 时调 g，g 又锁同一把 c -> 编译期拒绝（Q6）
+fun sout(*args: any, end="\n"): void { encapsulated }
+class Stats { var n: int  ctor() { this.n = 0 } }
+fun g(c: Ref[Locked[Stats]]): void {
+    lock c as h { h.n = h.n + 1 }
+}
+fun f(c: Ref[Locked[Stats]]): void {
+    lock c as g_guard {
+        g(c)
+    }
+}
+fun main(): void {
+    var counter: Locked[Stats] = Locked.new(Stats())
+    var shared = counter.share()
+    f(shared)
+}
+main()

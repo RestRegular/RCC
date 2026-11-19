@@ -1,0 +1,27 @@
+// P14-6 正向：两阶段写法在捕获场景下也不再崩溃（at/par_each boxed 修复回归）
+class Cell { var v: int  ctor(x: int) { this.v = x } }
+fun main(): void {
+    var src = Pool.chunked(8)
+    var dst = Pool.chunked(8)
+    var i = 0
+    while (i < 3) {
+        var a: Cell src = src.new[Cell](i + 100)
+        var b: Cell dst = dst.new[Cell](0)
+        i = i + 1
+    }
+    dst.par_each((d: Mut[Cell]) -> {
+        if var sp = src.at(0) {
+            var s: Cell = sp
+            d.v = s.v
+        }
+    })
+    var k = 0
+    while (k < 3) {
+        if var dp = dst.at(k) {
+            var d: Cell = dp
+            sout(d.v)
+        }
+        k = k + 1
+    }
+}
+main()

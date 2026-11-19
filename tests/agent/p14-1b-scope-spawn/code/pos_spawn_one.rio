@@ -1,0 +1,18 @@
+// 正向：单个 spawn，join 后计数平衡
+fun sout(*args: any, end="\n"): void { encapsulated }
+
+fun work(p: ptr): void {
+    core_mem_set(p, 7, 8)
+    core_free(p)
+}
+
+fun main(): void {
+    core_dbg_reset()
+    var a: ptr = core_alloc(16, 8)
+    scope s {
+        s.spawn(work(a))
+    }
+    sout(core_dbg_allocations())
+    sout(core_dbg_frees())
+}
+main()

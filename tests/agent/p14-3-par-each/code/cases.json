@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "id": "pos_mut_write",
+      "file": "code/pos_mut_write.rio",
+      "expect": "11\n21"
+    },
+    {
+      "id": "pos_capture_ref",
+      "file": "code/pos_capture_ref.rio",
+      "expect": "15\n25\n35\n25"
+    },
+    {
+      "id": "pos_multi_chunk_stress",
+      "file": "code/pos_multi_chunk_stress.rio",
+      "expect": "200"
+    },
+    {
+      "id": "pos_ref_read",
+      "file": "code/pos_ref_read.rio",
+      "expect": "7\n9"
+    },
+    {
+      "id": "neg_capture_write",
+      "file": "code/neg_capture_write.rio",
+      "expectFailure": true,
+      "mustMatch": "captured variable"
+    },
+    {
+      "id": "neg_take_element",
+      "file": "code/neg_take_element.rio",
+      "expectFailure": true,
+      "mustMatch": "cannot be Take"
+    },
+    {
+      "id": "neg_structure_mod",
+      "file": "code/neg_structure_mod.rio",
+      "expectFailure": true,
+      "mustMatch": "cannot modify pool/container structure"
+    }
+  ]
+}

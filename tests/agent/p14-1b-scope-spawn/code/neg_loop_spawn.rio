@@ -1,0 +1,14 @@
+// 检查：循环内 spawn 当前行为（Q4 要求首版拒绝带 Mut/Take 的循环 spawn）
+fun sout(*args: any, end="\n"): void { encapsulated }
+fun work(p: ptr): void { }
+fun main(): void {
+    var a: ptr = core_alloc(16, 8)
+    var i: int = 0
+    scope s {
+        while (i < 3) {
+            s.spawn(work(a))
+            i = i + 1
+        }
+    }
+}
+main()

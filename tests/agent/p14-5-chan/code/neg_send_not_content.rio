@@ -1,0 +1,9 @@
+// 拒绝：send 实参必须是 Content[T]，不是裸值
+class Msg { var id: int  ctor(n: int) { this.id = n } }
+
+fun main(): void {
+    var ch: Chan[Msg] = Chan.new[Msg](4)
+    var m = Msg(1)
+    ch.send(m)          // 未 take()，应编译失败
+}
+main()

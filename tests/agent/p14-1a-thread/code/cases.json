@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {
+      "id": "pos_thread_basic",
+      "file": "code/pos_thread_basic.rio",
+      "expect": "before join\nafter join\n1\n1"
+    },
+    {
+      "id": "pos_thread_stress",
+      "file": "code/pos_thread_stress.rio",
+      "expect": "1000\n1000\n0"
+    }
+  ]
+}

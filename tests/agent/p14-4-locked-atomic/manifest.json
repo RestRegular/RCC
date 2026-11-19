@@ -1,0 +1,16 @@
+{
+    "name":  "p14-4-locked-atomic",
+    "version":  "1.0",
+    "createdAt":  "2026-11-20T01:00:00Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "P14-4 显式同步：Locked/lock 二等值 guard、share 跨任务互斥、Atomic i64/i32 全套原子方法、throw unwind 解锁 + 拒绝用例（9 条）",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  9,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

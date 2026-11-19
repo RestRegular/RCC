@@ -87,6 +87,14 @@ extern fun proc_abort(): void
 // 写 stderr 后终止。msg 不需要以 0 结尾，长度由 len 指定。
 extern fun panic_raise(msg: ptr, len: int): void
 
+// ==================== P14-1a：结构化并发运行时地基 ====================
+// 仅运行时原语，不含任何语言层 scope/spawn 语义（那些在编译器里实现）。
+// thread_create：创建 OS 线程，入口 fn(arg)，返回线程句柄（ptr，失败返回 null）。
+// thread_join：等待线程结束并回收句柄；传 null 直接返回。
+// 名字带 core_ 前缀、与 core_win64.s 符号逐字一致（新后端用源码名直接做符号）。
+extern fun core_thread_create(fn: ptr, arg: ptr): ptr
+extern fun core_thread_join(handle: ptr): void
+
 // ============================ 栈探测 ==============================
 // Windows 上栈帧超过 4KB 时必须探测 guard page，否则会踩空。
 // 由编译器在函数序言里自动插入，不暴露给用户代码。
@@ -137,6 +145,39 @@ extern fun core_dbg_poison_bytes(): int
 extern fun core_pool_new(mode: int, cap: int): ptr
 extern fun core_pool_alloc(pool: ptr, elem_size: int): ptr
 extern fun core_pool_release(pool: ptr, slot: ptr): void
+// P14-3：Pool 枚举原语（par_each / pool.at）
+extern fun core_pool_count(pool: ptr): int
+extern fun core_pool_slot_at(pool: ptr, index: int): ptr
+
+// ==================== P14-4：显式同步运行时原语 ====================
+// 自旋锁（锁字 4 字节：0=未锁，1=已锁；xchg 隐含全屏障）
+extern fun core_lock_acquire(lockword: ptr): void
+extern fun core_lock_release(lockword: ptr): void
+// 原子：i64 返回值按 int（64 位）使用；i32 返回值只在低 32 位，
+// codegen 负责 movslq 符号扩展。全部顺序一致。
+extern fun core_atomic_load_i64(addr: ptr): int
+extern fun core_atomic_store_i64(addr: ptr, value: int): void
+extern fun core_atomic_fetch_add_i64(addr: ptr, value: int): int
+extern fun core_atomic_swap_i64(addr: ptr, value: int): int
+extern fun core_atomic_cas_i64(addr: ptr, expected: int, new_value: int): int
+extern fun core_atomic_fetch_op_i64(addr: ptr, value: int, op: int): int
+extern fun core_atomic_load_i32(addr: ptr): int
+extern fun core_atomic_store_i32(addr: ptr, value: int): void
+extern fun core_atomic_fetch_add_i32(addr: ptr, value: int): int
+extern fun core_atomic_swap_i32(addr: ptr, value: int): int
+extern fun core_atomic_cas_i32(addr: ptr, expected: int, new_value: int): int
+extern fun core_atomic_fetch_op_i32(addr: ptr, value: int, op: int): int
+
+// ==================== P14-5：Chan 有界通道运行时原语 ====================
+// 对象布局 48B 头 + cap*8 槽；一把自旋锁保护全部字段；满/空时解锁让出重试。
+// core_chan_new(capacity<=0) 用默认容量 16；返回值是指针（失败则 abort）。
+// core_chan_send 在已关闭通道上调用会 abort；core_chan_recv 在空且关闭时返回 null。
+// core_chan_drop 只释放通道对象本身，不递归释放残留载荷（无元素类型信息）。
+extern fun core_chan_new(capacity: int): ptr
+extern fun core_chan_send(ch: ptr, value: ptr): void
+extern fun core_chan_recv(ch: ptr): ptr
+extern fun core_chan_close(ch: ptr): void
+extern fun core_chan_drop(ch: ptr): void
 
 // ==================== P13-7：Link 成对引用原语 ====================
 // 全局边表维护成对关系（a.L 含 b ⟺ b.L' 含 a）。field 参数是编译期分配的

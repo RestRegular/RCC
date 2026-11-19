@@ -1,0 +1,8 @@
+// 拒绝：Chan.new 容量必须是整数字面量常量
+class Msg { var id: int  ctor(n: int) { this.id = n } }
+
+fun main(): void {
+    var n = 4
+    var ch: Chan[Msg] = Chan.new[Msg](n)   // 变量容量，应编译失败
+}
+main()

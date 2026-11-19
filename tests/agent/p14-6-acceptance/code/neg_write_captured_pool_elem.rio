@@ -1,0 +1,21 @@
+// P14-6 负面（Claude Q-A 要求）：闭包内经捕获 Pool 的 at() 取元素并写其字段，
+// 等价于写另一槽位，违反 §10.4「只写元素参数」，必须编译期拒绝。
+class Cell { var v: int  ctor(x: int) { this.v = x } }
+fun main(): void {
+    var src = Pool.chunked(8)
+    var dst = Pool.chunked(8)
+    var i = 0
+    while (i < 3) {
+        var a: Cell src = src.new[Cell](i + 100)
+        var b: Cell dst = dst.new[Cell](0)
+        i = i + 1
+    }
+    dst.par_each((d: Mut[Cell]) -> {
+        if var sp = src.at(0) {
+            var s: Cell = sp
+            s.v = s.v + 1
+        }
+    })
+    sout(1)
+}
+main()

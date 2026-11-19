@@ -1,0 +1,10 @@
+// Q13 负面：spawn 目标写可变全局 -> 编译期拒绝
+fun sout(*args: any, end="\n"): void { encapsulated }
+var g: int = 0
+fun work(p: ptr): void { g = g + 1 }
+fun main(): void {
+    var a: ptr = core_alloc(16, 8)
+    scope s { s.spawn(work(a)) }
+    sout(g)
+}
+main()

@@ -92,7 +92,12 @@ namespace parser {
         // try 语句
         {TokenType::TOKEN_TRY, &Parser::buildTryExpression},
         // throw 语句
-        {TokenType::TOKEN_THROW, &Parser::buildThrowExpression}
+        {TokenType::TOKEN_THROW, &Parser::buildThrowExpression},
+        // P14-1b：scope 语句 / spawn 方法名
+        {TokenType::TOKEN_SCOPE, &Parser::buildScopeExpression},
+        {TokenType::TOKEN_SPAWN, &Parser::buildSpawnExpression},
+        // P14-4：lock 语句
+        {TokenType::TOKEN_LOCK, &Parser::buildLockExpression}
     };
 
     std::map<core::TokenType, InfixExpressionBuilder> Parser::infixExpressionBuilders {

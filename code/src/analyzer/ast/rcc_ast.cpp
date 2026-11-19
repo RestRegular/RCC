@@ -89,6 +89,8 @@ namespace ast {
             case NodeType::PAIR: return "PAIR";
             case NodeType::TRY: return "TRY";
             case NodeType::THROW: return "THROW";
+            case NodeType::SCOPE: return "SCOPE";
+            case NodeType::LOCK: return "LOCK";
             default: return "UNKNOWN_NODE_TYPE";
         }
     }

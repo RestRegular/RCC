@@ -1,0 +1,17 @@
+// P14 收尾：pool.at() 越界返回 null，if var 窄化后安全；越界分支不崩溃。
+class Cell { var v: int  ctor(x: int) { this.v = x } }
+fun main(): void {
+    var pl = Pool.chunked(8)
+    var a: Cell pl = pl.new[Cell](42)
+    if var p = pl.at(0) {
+        var c: Cell = p
+        sout(c.v)
+    }
+    // 越界：at(99) 返回 null，if var 不进入，安全跳过。
+    if var q = pl.at(99) {
+        var d: Cell = q
+        sout(d.v)
+    }
+    sout("done")
+}
+main()

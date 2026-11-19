@@ -680,23 +680,38 @@ let m = ch.recv() in local                         // 阻塞；返回 Content<Ms
 - `send` 消耗，`recv` 在接收方指定的出生地创建 Content，没有共享，因此没有竞争。
 - Content 内含的引用，其来源出生地必须包住整个 scope。
 
-### 10.8 示例：粒子系统
+### 10.8 示例：粒子系统（Rio 落地版）
+
+> 2026-11-20 修订（用户批准）：原伪代码用 `par_zip` / `par_zip_into`，但 Q5=C 裁决首版不纳入，
+> 改用 `par_each` + 只读捕获另一类型 Pool + 槽位 id 查找；Q19 把签名里的 `Take<Pool>` 更正为
+> `Mut<Pool>`。`at()` 越界返回 null，必须 `if var` 窄化后使用（P14 收尾安全口径）。
 
 ```
-fn step(pool: Take<Pool<Particle>>, cfg: Ref<Config>) {
-    let forces: Pool<Force> = Pool.fixed(capacity: pool.len()) in local
-    scope s1 {                                      // 阶段 1：并行读
-        pool.par_zip_into(forces, |p: Ref<Particle>, f: Mut<Force>| {
+fun step(pool: Mut[Pool[Particle]], cfg: Ref[Config]): void {
+    // forces 与 particles 按同序同量创建、id 与槽位一一对应 —— 这是 Q5=C
+    // 推迟的 par_zip 形状不变式，示例靠这个约定成立（编译器不校验形状）。
+    var forces = Pool.chunked(8)
+
+    // 阶段 1：并行读 particles -> 并行写 forces
+    forces.par_each((f: Mut[Force]) -> {
+        if var pp = particles.at(f.id) {
+            var p: Particle = pp
             f.value = compute_force(p, cfg)
-        })
-    }
-    scope s2 {                                      // 阶段 2：并行写
-        pool.par_zip(forces, |p: Mut<Particle>, f: Ref<Force>| {
-            p.vel += f.value * cfg.dt
-        })
-    }
-}   // forces 在此销毁
+        }
+    })
+    // 阶段 2：并行读 forces -> 并行写 particles
+    pool.par_each((p: Mut[Particle]) -> {
+        if var fp = forces.at(p.id) {
+            var f: Force = fp
+            p.vel = p.vel + f.value * cfg.dt
+        }
+    })
+}   // 两条 par_each 各自自带 join，阶段顺序由 join 保证，无需显式 scope
 ```
+
+> `forces` 容量 8 是示例规模，不是设计；真实用法按粒子数创建。无 `pool.len()`（未新增接口）。
+> 阶段 1 在此版中是并行的：前提是两个 Pool 的形状不变式成立；若破坏该约定，`at()` 的 null
+> 分支会被走到（安全跳过），不会越界崩溃。
 
 ### 10.9 排除数据竞争的论证草图
 
@@ -706,6 +721,16 @@ fn step(pool: Take<Pool<Particle>>, cfg: Ref<Config>) {
 4. 引用的来源出生地包住 scope，所以任务运行期间所指槽位不会被销毁。
 5. 共享可变状态只通过 `Locked`，访问只在 `lock` 块内，块内二等值不逃逸。
 6. 未被静态覆盖的只有死锁与活锁。
+
+**同步点（happens-before，Q15）**：上述论证 2 的「不冲突」与跨任务可见性依赖下列同步点；它们构成 happens-before 关系的边，竞争排除论证以此为前提：
+
+- `spawn`：父线程在 spawn 调用点之前的写，happens-before 任务体开始。
+- `join`（scope 末隐式 join、par_each 自带 join）：任务体的全部写 happens-before join 返回后的父线程后续代码。
+- `lock` / `unlock`：同一 `Locked` 上，一次 unlock happens-before 其后成功取得的 lock。
+- `send` → `recv`：一次成功 `send` 的写 happens-before 对应 `recv` 返回后的接收方；`close` 唤醒所有阻塞的 recv。
+- `Atomic` 的每次顺序一致操作：按程序顺序全序，且对其它线程可见。
+
+> 首版只提供顺序一致；显式内存序（`§12.2`）不在范围内。任务不触碰可变全局/extern 目前靠约定（Q13 的跨函数汇总分析尚未实现），故上述论证 1 的静态强制是 P14 的已知限制。
 
 ---
 

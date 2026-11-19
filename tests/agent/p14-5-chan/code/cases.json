@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {
+      "id": "pos_basic",
+      "file": "code/pos_basic.rio",
+      "expect": "11\n22\nclosed"
+    },
+    {
+      "id": "pos_concurrent",
+      "file": "code/pos_concurrent.rio",
+      "expect": "0\n1\n2\n3\n4\n5\n6\n7\n8\n9"
+    },
+    {
+      "id": "pos_default_capacity",
+      "file": "code/pos_default_capacity.rio",
+      "expect": "190"
+    },
+    {
+      "id": "neg_send_not_content",
+      "file": "code/neg_send_not_content.rio",
+      "expectFailure": true,
+      "mustMatch": "Chan.send requires a Content"
+    },
+    {
+      "id": "neg_capacity_nonliteral",
+      "file": "code/neg_capacity_nonliteral.rio",
+      "expectFailure": true,
+      "mustMatch": "requires an integer literal capacity"
+    },
+    {
+      "id": "neg_unknown_method",
+      "file": "code/neg_unknown_method.rio",
+      "expectFailure": true,
+      "mustMatch": "has no method"
+    }
+  ]
+}

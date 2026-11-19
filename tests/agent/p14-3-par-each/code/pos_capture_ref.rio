@@ -1,0 +1,21 @@
+// P14-3 正向：闭包按引用捕获外部只读值（bonus），对每元素写。
+// 同时验证 pool.at(id) 按槽 id 只读查（Q5=C 的 par_zip 替代接口）。
+class Player { var hp: int  ctor(h: int) { this.hp = h } }
+fun main(): void {
+    var pl = Pool.chunked(2)
+    var a: Player pl = pl.new[Player](10)
+    var b: Player pl = pl.new[Player](20)
+    var c: Player pl = pl.new[Player](30)
+    var bonus: int = 5
+    pl.par_each((p: Mut[Player]) -> {
+        p.hp = p.hp + bonus
+    })
+    sout(a.hp)
+    sout(b.hp)
+    sout(c.hp)
+    if var xp = pl.at(1) {
+        var x: Player = xp
+        sout(x.hp)
+    }
+}
+main()

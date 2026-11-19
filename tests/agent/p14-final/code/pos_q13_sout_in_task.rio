@@ -1,0 +1,12 @@
+// Q13 正向：任务调白名单 sout（I/O 特化）与 core_* 运行时原语，允许。
+fun sout(*args: any, end="\n"): void { encapsulated }
+fun work(p: ptr): void {
+    core_mem_set(p, 7, 8)
+    sout("task-ok")
+    core_free(p)
+}
+fun main(): void {
+    var a: ptr = core_alloc(16, 8)
+    scope s { s.spawn(work(a)) }
+}
+main()

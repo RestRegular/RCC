@@ -1,0 +1,13 @@
+// P14-3 正向：对池每元素并行写（Mut[T]），块末自带 join 后结果正确。
+class Player { var hp: int  ctor(h: int) { this.hp = h } }
+fun main(): void {
+    var pl = Pool.chunked(2)
+    var a: Player pl = pl.new[Player](10)
+    var b: Player pl = pl.new[Player](20)
+    pl.par_each((p: Mut[Player]) -> {
+        p.hp = p.hp + 1
+    })
+    sout(a.hp)
+    sout(b.hp)
+}
+main()

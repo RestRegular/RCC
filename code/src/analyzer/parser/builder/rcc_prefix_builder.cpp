@@ -930,6 +930,106 @@ namespace parser {
         return std::make_shared<ThrowNode>(mainToken, throwExpression);
     }
 
+    // P14-1b：`s.spawn(...)` 中的 `spawn` 在 DOT 右侧作为方法名出现。
+    // parser 的 prefix 分发需要对 TOKEN_SPAWN 有 builder；这里把它当作
+    // 名字为 "spawn" 的标识符节点返回，后续由 codegen 的 DOT 成员特化处理。
+    ExpressionNodePtr Parser::buildSpawnExpression()
+    {
+        return std::make_shared<IdentifierNode>(currentToken());
+    }
+
+    // P14-1b：`scope s { ... }` —— s 是二等值句柄，块末隐式 join。
+    ExpressionNodePtr Parser::buildScopeExpression()
+    {
+        const auto& scopeToken = currentToken();
+        skipNextNewLineToken();
+        // scope 后必须是一个标识符（句柄名）
+        if (!nextTokenIs(TokenType::TOKEN_IDENTIFIER))
+        {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_IDENTIFIER);
+            return nullptr;
+        }
+        next();
+        const auto& nameToken = currentToken();
+        const auto name = std::make_shared<IdentifierNode>(nameToken);
+        skipNextNewLineToken();
+        if (!nextTokenIs(TokenType::TOKEN_LBRACE))
+        {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LBRACE);
+            return nullptr;
+        }
+        next();
+        const auto& bodyNode = buildRangerExpression();
+        if (!currentTokenIs(TokenType::TOKEN_RBRACE))
+        {
+            recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_RBRACE);
+            return nullptr;
+        }
+        const auto body = std::static_pointer_cast<BlockRangerNode>(bodyNode);
+        if (!body)
+        {
+            recordSyntaxError(scopeToken, nameToken, "scope requires a block body.");
+            return nullptr;
+        }
+        skipNextNewLineToken();
+        return std::make_shared<ScopeNode>(scopeToken, name, body);
+    }
+
+    // P14-4：`lock c as g { ... }` —— c 是 Locked 句柄表达式，g 是块内二等值 guard。
+    ExpressionNodePtr Parser::buildLockExpression()
+    {
+        const auto& lockToken = currentToken();
+        skipNextNewLineToken();
+        // lock 后是一个表达式 c（到 as 前停：TOKEN_AS 无中缀 builder）。
+        next();
+        if (currentTokenIs(TokenType::TOKEN_NEWLINE))
+        {
+            recordSyntaxError(lockToken, lockToken, "lock requires a Locked expression before 'as'.");
+            return nullptr;
+        }
+        const auto lockExpr = buildExpression(Precedence::LOWEST);
+        if (!lockExpr)
+            return nullptr;
+        skipNextNewLineToken();
+        // buildExpression 停在表达式最后一个 token 上，下一 token 才是 as。
+        if (!nextTokenIs(TokenType::TOKEN_AS))
+        {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_AS);
+            return nullptr;
+        }
+        next(); // 现在 current = as
+        skipNextNewLineToken();
+        // guard 标识符
+        if (!nextTokenIs(TokenType::TOKEN_IDENTIFIER))
+        {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_IDENTIFIER);
+            return nullptr;
+        }
+        next();
+        const auto guard = std::make_shared<IdentifierNode>(currentToken());
+        skipNextNewLineToken();
+        if (!nextTokenIs(TokenType::TOKEN_LBRACE))
+        {
+            recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LBRACE);
+            return nullptr;
+        }
+        next(); // current = {
+        const auto& bodyNode = buildRangerExpression();
+        if (!currentTokenIs(TokenType::TOKEN_RBRACE))
+        {
+            recordUnexpectedTokenTypeError(currentToken(), TokenType::TOKEN_RBRACE);
+            return nullptr;
+        }
+        const auto body = std::static_pointer_cast<BlockRangerNode>(bodyNode);
+        if (!body)
+        {
+            recordSyntaxError(lockToken, guard->getMainToken(), "lock requires a block body.");
+            return nullptr;
+        }
+        skipNextNewLineToken();
+        return std::make_shared<LockNode>(lockToken, lockExpr, guard, body);
+    }
+
     ExpressionNodePtr Parser::buildForExpression() {
         const auto& forToken = currentToken();
         if (!expectedNextTokenAndConsume(TokenType::TOKEN_LPAREN))

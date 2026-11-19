@@ -1,0 +1,13 @@
+// P14-3 负面：闭包写捕获的外部变量 = 跨任务数据竞争，必须编译期拒绝（§10.4）。
+class Player { var hp: int  ctor(h: int) { this.hp = h } }
+fun main(): void {
+    var pl = Pool.chunked(2)
+    var a: Player pl = pl.new[Player](10)
+    var b: Player pl = pl.new[Player](20)
+    var total = 0
+    pl.par_each((p: Ref[Player]) -> {
+        total = total + p.hp
+    })
+    sout(total)
+}
+main()

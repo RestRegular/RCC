@@ -36,6 +36,10 @@ namespace sema
         TK_MEMORY,    // P13-2/L3：内存模型特殊类型（Body/Content/Ref/Mut/Take）
         TK_POOL,      // P13-2/L3-A：Pool 类型（标准库普通类型，管理对象出生地）
         TK_LINK,      // P13-7：Link 成对引用类型（Link[T][peer][card]）
+        TK_I32,       // P14-4：32 位整数（原子 i32 宽度；Rio 的 int 是 64 位）
+        TK_LOCKED,    // P14-4：显式锁 Locked[T]（内部可变三类型之一）
+        TK_ATOMIC,    // P14-4：原子 Atomic[T]（内部可变三类型之一）
+        TK_CHAN,      // P14-5：通道 Chan[T]（内部可变三类型之一，承载 Content[T]）
         TK_NULLABLE,  // B：可空类型 `T?`（只有引用型可空）
         TK_UNKNOWN,   // 尚未推导出，用于报错前占位
     };
@@ -59,14 +63,19 @@ namespace sema
         [[nodiscard]] TypeKind getKind() const { return _kind; }
 
         [[nodiscard]] bool isVoid() const { return _kind == TypeKind::TK_VOID; }
-        [[nodiscard]] bool isInteger() const { return _kind == TypeKind::TK_INT; }
+        [[nodiscard]] bool isInteger() const
+        {
+            return _kind == TypeKind::TK_INT || _kind == TypeKind::TK_I32;
+        }
         [[nodiscard]] bool isFloat() const { return _kind == TypeKind::TK_FLOAT; }
         [[nodiscard]] bool isPointerLike() const
         {
             return _kind == TypeKind::TK_STR || _kind == TypeKind::TK_LIST ||
                    _kind == TypeKind::TK_DICT || _kind == TypeKind::TK_CLASS ||
                    _kind == TypeKind::TK_PTR || _kind == TypeKind::TK_MEMORY ||
-                   _kind == TypeKind::TK_POOL || _kind == TypeKind::TK_LINK;
+                   _kind == TypeKind::TK_POOL || _kind == TypeKind::TK_LINK ||
+                   _kind == TypeKind::TK_LOCKED || _kind == TypeKind::TK_ATOMIC ||
+                   _kind == TypeKind::TK_CHAN;
         }
         [[nodiscard]] bool isNumeric() const { return isInteger() || isFloat(); }
 
@@ -88,6 +97,7 @@ namespace sema
             case TypeKind::TK_VOID:  return 0;
             case TypeKind::TK_BOOL:  return 1;
             case TypeKind::TK_CHAR:  return 4;
+            case TypeKind::TK_I32:   return 4;   // P14-4：32 位整数
             default:              return 8;   // int/float/所有指针型
             }
         }
@@ -111,6 +121,10 @@ namespace sema
             case TypeKind::TK_MEMORY: return "memory";
             case TypeKind::TK_POOL:   return "Pool";
             case TypeKind::TK_LINK:   return "Link";
+            case TypeKind::TK_I32:    return "i32";
+            case TypeKind::TK_LOCKED: return "Locked";
+            case TypeKind::TK_ATOMIC: return "Atomic";
+            case TypeKind::TK_CHAN:   return "Chan";
             case TypeKind::TK_NULLABLE: return "nullable";
             default:              return "unknown";
             }
@@ -382,6 +396,63 @@ namespace sema
     {
         static auto t = std::make_shared<PoolType>();
         return t;
+    }
+
+    // ---------- P14-4：i32 / Locked[T] / Atomic[T] ----------
+    // i32 只在原子宽度与符号扩展上有别于 int（int 是 64 位），值类别同为整数。
+    class I32Type final : public Type
+    {
+    public:
+        I32Type() : Type(TypeKind::TK_I32) {}
+        [[nodiscard]] std::string toString() const override { return "i32"; }
+        [[nodiscard]] size_t getSize() const override { return 4; }
+        [[nodiscard]] bool equals(const TypePtr& other) const override
+        {
+            return other && other->getKind() == TypeKind::TK_I32;
+        }
+    };
+    inline TypePtr getI32Type()
+    {
+        static auto t = std::make_shared<I32Type>();
+        return t;
+    }
+
+    // Locked[T] / Atomic[T] 都是「包装一个 T」的指针族类型，值本身是指向
+    // { lockword; T value } 的堆对象句柄（Atomic 无 lockword，仅值槽）。
+    class SyncWrapperType final : public Type
+    {
+    public:
+        SyncWrapperType(TypeKind kind, TypePtr inner)
+            : Type(kind), _inner(std::move(inner)) {}
+        [[nodiscard]] const TypePtr& getInnerType() const { return _inner; }
+        [[nodiscard]] std::string toString() const override
+        {
+            const char* n = _kind == TypeKind::TK_LOCKED ? "Locked"
+                          : _kind == TypeKind::TK_CHAN   ? "Chan" : "Atomic";
+            return std::string(n) + "[" + (_inner ? _inner->toString() : "?") + "]";
+        }
+        [[nodiscard]] bool equals(const TypePtr& other) const override
+        {
+            if (!other || other->getKind() != _kind) return false;
+            const auto o = std::static_pointer_cast<SyncWrapperType>(other);
+            if (!_inner || !o->_inner) return !_inner && !o->_inner;
+            return _inner->equals(o->_inner);
+        }
+    private:
+        TypePtr _inner;
+    };
+    inline TypePtr getLockedType(const TypePtr& inner)
+    {
+        return std::make_shared<SyncWrapperType>(TypeKind::TK_LOCKED, inner);
+    }
+    inline TypePtr getAtomicType(const TypePtr& inner)
+    {
+        return std::make_shared<SyncWrapperType>(TypeKind::TK_ATOMIC, inner);
+    }
+    // P14-5：Chan[T] 与 Locked/Atomic 同构（包装一个元素体类型的指针族）。
+    inline TypePtr getChanType(const TypePtr& inner)
+    {
+        return std::make_shared<SyncWrapperType>(TypeKind::TK_CHAN, inner);
     }
 
     // ---------- P13-7：Link 成对引用类型 ----------

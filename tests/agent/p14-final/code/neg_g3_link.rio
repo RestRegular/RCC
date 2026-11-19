@@ -1,0 +1,10 @@
+// G3 负面：spawn 目标用 Link 遍历原语 -> 编译期拒绝
+fun sout(*args: any, end="\n"): void { encapsulated }
+class U { var peers: Link[U][peers][many]  ctor() {} }
+fun work(u: U): void { sout(u.peers.count()) }
+fun main(): void {
+    var pl = Pool.chunked(4)
+    var a: U pl = pl.new[U]()
+    scope s { s.spawn(work(a)) }
+}
+main()

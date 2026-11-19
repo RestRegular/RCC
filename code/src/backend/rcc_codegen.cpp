@@ -93,8 +93,10 @@ namespace backend
                 return sema::getBoolType();
             if (name == "char")
                 return sema::getCharType();
-            if (name == "int")
-                return sema::getIntType();
+            if (name == "int" || name == "i64")
+                return sema::getIntType();   // P14-4：i64 是 int（64 位）的别名（Q7=A）
+            if (name == "i32")
+                return sema::getI32Type();   // P14-4：32 位整数
             if (name == "float")
                 return sema::getFloatType();
             if (name == "str")
@@ -104,6 +106,10 @@ namespace backend
             // P13-2/L3-A（决议 §1.1）：Pool 是标准库普通类型，不做关键字。
             if (name == "Pool")
                 return sema::getPoolType();
+            // P14-5：裸 Chan（无类型实参）给一个 inner 未知的 Chan 占位；
+            // 正常用法都写 Chan[T]，由 typeFromLabelNode 的 [.] 路径解析。
+            if (name == "Chan")
+                return sema::getChanType(sema::getUnknownType());
             // P12/G13：`any` 作为显式标注。原仓库 builtInTypes 里有 any
             // （rcc_symbol.cpp:650），ds.rio:32 `fun copy(arg): any`、
             // math.rio:26 `fun pow(a, times: int): any` 都在用。
@@ -468,9 +474,12 @@ namespace backend
         // ============================================================
         sema::TypePtr coreReturnType(const std::string& name)
         {
-            // 指针族（ptr）：分配器入口
+            // 指针族（ptr）：分配器入口 + P14-1a 线程句柄
             if (name == "core_alloc" || name == "core_realloc" ||
-                name == "core_pool_new" || name == "core_pool_alloc")
+                name == "core_pool_new" || name == "core_pool_alloc" ||
+                name == "core_thread_create" ||
+                name == "core_pool_slot_at" ||  // P14-3：枚举原语返回槽地址
+                name == "core_chan_new" || name == "core_chan_recv")  // P14-5：Chan 对象 / recv 载荷
                 return sema::getPtrType();
             // 容器族：clone 出来的就是原容器
             if (name == "core_clone_str")
@@ -484,14 +493,19 @@ namespace backend
                 name == "core_dbg_allocations" || name == "core_dbg_frees" || name == "core_dbg_double_frees" ||
                 name == "core_dbg_poison_bytes" ||
                 // P13-7
-                name == "core_link_is_empty" || name == "core_link_count" || name == "core_link_has")
+                name == "core_link_is_empty" || name == "core_link_count" || name == "core_link_has" ||
+                name == "core_pool_count")     // P14-3：枚举原语返回槽数
                 return sema::getIntType();
             if (name == "core_mem_copy" || name == "core_mem_move" || name == "core_mem_set" || name == "core_free" ||
                 name == "core_list_append" || name == "core_io_flush" || name == "core_io_write_byte" ||
                 name == "core_proc_exit" || name == "core_proc_abort" || name == "core_panic_raise" ||
                 name == "core_stack_probe" || name == "core_eh_pop" || name == "core_eh_throw" ||
                 name == "core_dbg_reset" || name == "core_dbg_bump_alloc" || name == "core_dbg_bump_free" ||
-                name == "core_pool_release" || name == "core_sys_breakpoint" ||
+                name == "core_pool_release" || name == "core_sys_breakpoint" || name == "core_thread_join" ||
+                // P14-4：锁 acquire/release 与原子 store 都无返回值
+                name == "core_lock_acquire" || name == "core_lock_release" ||
+                name == "core_atomic_store_i64" || name == "core_atomic_store_i32" ||
+                name == "core_chan_send" || name == "core_chan_close" || name == "core_chan_drop" ||
                 // P13-7：Link 原语（void，除 is_empty）
                 name == "core_link_add" || name == "core_link_remove" || name == "core_link_clear" ||
                 name == "core_link_unlink_all")
@@ -1105,6 +1119,9 @@ namespace backend
         // 只把槽写 null（见 emitDropGlueBody 默认分支）。
         case sema::TypeKind::TK_MEMORY:
             return true;
+        // P14-5：Chan 对象（含环形缓冲）由 drop glue 调 core_chan_drop 释放。
+        case sema::TypeKind::TK_CHAN:
+            return true;
         // D14：范围外类型一律不释放。
         //   TK_CLASS   —— 引用语义，可能有别名
         //   TK_FUNC    —— 闭包对象，env 归属未定
@@ -1239,6 +1256,16 @@ namespace backend
             _asm.call("core_free");
             _asm.addRsp(32);
         }
+        else if (kind == sema::TypeKind::TK_CHAN)
+        {
+            // P14-5：Chan 对象（含环形缓冲）交给 core_chan_drop 释放。
+            // %rax 已是槽里的 Chan 指针（drop_null 分支已排除 null）。
+            _asm.mov("%rax", "%rcx");
+            _asm.subRsp(32);
+            _asm.call("core_chan_drop");
+            _asm.addRsp(32);
+            _asm.jmp(doneLabel);
+        }
         _asm.label(nullLabel);
         // 把槽位写成 null（D17：调试钩子据此检测重复释放）
         _asm.mov("-8(%rbp)", "%rcx");
@@ -1282,6 +1309,10 @@ namespace backend
         if (!mid || mid->getName() != "new")
             return std::string();
         const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+        // P14-4/P14-5：Locked/Atomic/Chan.new[T] 不是 pool.new，没有出生地。
+        if (recv && (recv->getName() == "Locked" || recv->getName() == "Atomic" ||
+                     recv->getName() == "Chan"))
+            return std::string();
         return recv ? recv->getName() : std::string();
     }
     std::string CodeGen::findBirthPlaceLabel(const std::vector<std::shared_ptr<ast::LabelNode>>& labels) const
@@ -1844,6 +1875,27 @@ namespace backend
             return std::string();
         if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node))
             return id->getName();
+        // P14 收尾：`FunctionCallNode` 继承 `InfixExpressionNode`，且方法调用的
+        // call 节点 opToken 就是 DOT。必须先于通用 DOT 链分支处理，否则
+        // `pl.ref()` 会在通用分支里把 right=ParenRanger 当字段名而提前返回空串，
+        // 导致 spawn 效果检查收不到 ref 路径（take-vs-ref 被放行）。
+        if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node))
+        {
+            const std::string taken = takeReceiverName(node);
+            if (!taken.empty())
+                return taken;
+            const std::string mutated = mutReceiverName(node);
+            if (!mutated.empty())
+                return mutated;
+            if (const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
+                member && member->getOpToken().getType() == core::TokenType::TOKEN_DOT)
+            {
+                const auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+                if (method && (method->getName() == "ref" || method->getName() == "mut"))
+                    return exprPathText(member->getLeftNode());
+            }
+            return std::string();
+        }
         if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
         {
             if (inf->getOpToken().getType() != core::TokenType::TOKEN_DOT)
@@ -1858,24 +1910,9 @@ namespace backend
         }
         if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))
             return exprPathText(paren->getRangerNode());
-        // P13-3/Q4：`&q` / `q.ref()` / `q.mut()` 的源路径就是 q——
-        // 不穿透的话 `pair(pl, &q)` 会把 &q 当无法解析，误判成与 pl 重叠。
+        // P13-3/Q4：`&q` 的源路径就是 q。
         if (const auto ref = std::dynamic_pointer_cast<ast::RefExpressionNode>(node))
             return exprPathText(ref->getOperand());
-        if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node))
-        {
-            const std::string taken = takeReceiverName(node);
-            if (!taken.empty())
-                return taken;
-            // q.ref() / q.mut()：方法调用，接收者是点表达式的左值。
-            if (const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
-                member && member->getOpToken().getType() == core::TokenType::TOKEN_DOT)
-            {
-                const auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
-                if (method && (method->getName() == "ref" || method->getName() == "mut"))
-                    return exprPathText(member->getLeftNode());
-            }
-        }
         return std::string();
     }
     bool CodeGen::pathIsPrefixOf(const std::string& p, const std::string& q)
@@ -3597,17 +3634,64 @@ namespace backend
                         if (const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode());
                             mid && mid->getName() == "new")
                         {
-                            if (const auto bracket =
-                                    std::dynamic_pointer_cast<ast::BracketExpressionNode>(idx->getIndexNode()))
+                            // P14-4/5：只处理 Pool.new[T]；Locked/Atomic/Chan.new[T] 由下面的
+                            // 同步类型分支处理（返回包装类型而非元素类型）。
+                            const auto ownerForNew = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                            const bool isSyncCtor = ownerForNew &&
+                                (ownerForNew->getName() == "Locked" || ownerForNew->getName() == "Atomic" ||
+                                 ownerForNew->getName() == "Chan");
+                            if (!isSyncCtor)
                             {
-                                std::vector<std::shared_ptr<ast::ExpressionNode>> argNodes;
-                                flattenTypeArgs(bracket->getBodyNode(), argNodes);
-                                if (!argNodes.empty())
-                                    return typeFromTypeArgNode(argNodes[0], _currentGenericParams);
+                                if (const auto bracket =
+                                        std::dynamic_pointer_cast<ast::BracketExpressionNode>(idx->getIndexNode()))
+                                {
+                                    std::vector<std::shared_ptr<ast::ExpressionNode>> argNodes;
+                                    flattenTypeArgs(bracket->getBodyNode(), argNodes);
+                                    if (!argNodes.empty())
+                                        return typeFromTypeArgNode(argNodes[0], _currentGenericParams);
+                                }
                             }
                         }
                     }
                     const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+                    // P14-4/5：`Locked.new` / `Atomic.new[T]` / `Chan.new[T]`（new[T] 时 mid 为空，须在 mid 判定之前处理）。
+                    if (const auto ownerId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                        ownerId && (ownerId->getName() == "Locked" || ownerId->getName() == "Atomic" ||
+                                    ownerId->getName() == "Chan"))
+                    {
+                        bool isNewCtor = mid && mid->getName() == "new";
+                        if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode()))
+                        {
+                            if (const auto fnId = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode()))
+                                isNewCtor = fnId->getName() == "new";
+                        }
+                        if (isNewCtor)
+                        {
+                            auto callArgsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode());
+                            std::vector<std::shared_ptr<ast::ExpressionNode>> cargs;
+                            if (callArgsNode) collectArgs(callArgsNode, cargs);
+                            sema::TypePtr inner = cargs.empty() ? sema::getIntType() : inferType(cargs[0]);
+                            if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode()))
+                            {
+                                if (const auto bracket = std::dynamic_pointer_cast<ast::BracketExpressionNode>(idx->getIndexNode()))
+                                {
+                                    std::vector<std::shared_ptr<ast::ExpressionNode>> targs;
+                                    flattenTypeArgs(bracket->getBodyNode(), targs);
+                                    if (!targs.empty())
+                                    {
+                                        const auto ti = typeFromTypeArgNode(targs[0], _currentGenericParams);
+                                        if (ti && ti->getKind() != sema::TypeKind::TK_UNKNOWN) inner = ti;
+                                    }
+                                }
+                            }
+                            if (ownerId->getName() == "Locked") return sema::getLockedType(inner);
+                            if (ownerId->getName() == "Chan") return sema::getChanType(inner);
+                            if (inner && (inner->getKind() == sema::TypeKind::TK_INT ||
+                                          inner->getKind() == sema::TypeKind::TK_I32))
+                                return sema::getAtomicType(inner);
+                            return sema::getUnknownType();
+                        }
+                    }
                     // P8：`mod.fn(...)` / `mod.Cls(...)` —— 模块在加载期内联，
                     // 类型按普通全局函数 / 类名解析，不能落到「未知函数按 int」。
                     if (mid)
@@ -3666,6 +3750,58 @@ namespace backend
                             (mid->getName() == "fixed" || mid->getName() == "boxed" || mid->getName() == "chunked"))
                         {
                             return sema::getPoolType();
+                        }
+                        // P14-3：pool.par_each(...) 返回 void（数据并行原语是语句）。
+                        if (mid && mid->getName() == "par_each")
+                            return sema::getVoidType();
+                        // P14 收尾：pool.at(id) 越界返回 0，旧版直接返回裸 ptr，
+                        // 调用方不作检查就解引用会崩溃。改为返回 `ptr?`，强制
+                        // 用 `if var p = pool.at(id) { ... }` 窄化后再用；
+                        // 窄化绑定是 ptr，可 `var c: Cell = p` 转成具体类。
+                        if (mid && mid->getName() == "at")
+                        {
+                            const auto rt = inferType(member->getLeftNode());
+                            if (rt && rt->getKind() == sema::TypeKind::TK_POOL)
+                                return std::make_shared<sema::NullableType>(sema::getPtrType());
+                        }
+                        // P14-4：Locked.share() -> Ref[Locked[T]]；
+                        // Atomic 原子方法 -> T（store 返回 void）。
+                        if (mid)
+                        {
+                            const auto rt = inferType(member->getLeftNode());
+                            sema::TypePtr coreType = rt;
+                            if (rt && rt->getKind() == sema::TypeKind::TK_MEMORY)
+                            {
+                                const auto mt = std::dynamic_pointer_cast<sema::MemoryType>(rt);
+                                if (mt->getRole() == sema::MemoryRole::REF || mt->getRole() == sema::MemoryRole::MUT)
+                                    coreType = mt->getInnerType();
+                            }
+                            if (coreType && coreType->getKind() == sema::TypeKind::TK_LOCKED &&
+                                mid->getName() == "share")
+                            {
+                                return std::make_shared<sema::MemoryType>(sema::MemoryRole::REF, coreType);
+                            }
+                            if (coreType && coreType->getKind() == sema::TypeKind::TK_ATOMIC)
+                            {
+                                if (mid->getName() == "store") return sema::getVoidType();
+                                const auto inner = std::static_pointer_cast<sema::SyncWrapperType>(coreType)->getInnerType();
+                                return inner ? inner : sema::getIntType();
+                            }
+                            // P14-5：Chan.share()->Ref[Chan[T]]；send/close->void；recv->Content[T]?。
+                            if (coreType && coreType->getKind() == sema::TypeKind::TK_CHAN)
+                            {
+                                if (mid->getName() == "share")
+                                    return std::make_shared<sema::MemoryType>(sema::MemoryRole::REF, coreType);
+                                if (mid->getName() == "send" || mid->getName() == "close")
+                                    return sema::getVoidType();
+                                if (mid->getName() == "recv")
+                                {
+                                    const auto inner = std::static_pointer_cast<sema::SyncWrapperType>(coreType)->getInnerType();
+                                    auto contentTy = std::shared_ptr<sema::Type>(
+                                        new sema::MemoryType(sema::MemoryRole::CONTENT, inner));
+                                    return std::make_shared<sema::NullableType>(contentTy);
+                                }
+                            }
                         }
                         if (const auto modId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
                             modId && isModuleName(modId->getName()))
@@ -4246,6 +4382,8 @@ namespace backend
             // 这一步必须在 emitStringLiterals 之前：匿名函数体里可能产生新的
             // 字符串/浮点字面量，那些池子还要在后面统一输出。
             emitPendingFunctions();
+            // P14-1b：spawn trampoline（线程入口）在顶层 .text 流发射。
+            emitPendingTrampolines();
             // P10：泛型实例体。实例是在发射函数体时按调用点发现的，
             // 所以必须排在这里（不能就地发射，会搅乱正在用的栈帧）。
             emitPendingInstances();
@@ -4451,6 +4589,24 @@ namespace backend
         // （f1 里调用文件后面才定义的 f2）拿不到候选签名，决议就成了猜。
         // 必须排在 registerClass 之后：形参类型 `x: Point` 要靠类登记表解析。
         registerOverloadSignatures(functionNodes);
+        // P14/Q13：建「裸函数名 -> 定义」表，供 emitScope 对 spawn 目标做
+        // 跨函数全局/extern 触碰分析。必须在发射任何函数体之前（前向调用）。
+        _allFunctionDefs.clear();
+        for (const auto& fn : functionNodes)
+        {
+            const auto sig = collectSignature(fn);
+            if (!sig.name.empty())
+                _allFunctionDefs[sig.name].push_back(fn);
+        }
+        // P14 收尾：跨函数 lock 重入静态检测（Q6=A：编译期拒绝）。
+        // 对每个具名函数作根，沿调用链传播「已持有的锁」集合。
+        for (const auto& entry : _allFunctionDefs)
+        {
+            std::set<std::string> lockVisited;
+            scanLockReentrancy(entry.first, {}, lockVisited);
+            if (hasFailed())
+                return;
+        }
         // P12/G1a：顶层 `var` 必须放进全局静态槽，否则它只是 __rio_main 的
         // 局部变量，函数体里根本看不到（`math.rio` 的 `var pi: float const`
         // 就是这种顶层 var）。
@@ -4717,6 +4873,16 @@ namespace backend
         // ---------- P7：异常 ----------
         // try/throw 是语句，但也是 ExpressionNode，所以必须在
         // 「表达式语句：求值后丢弃」之前拦下来。
+        if (std::dynamic_pointer_cast<ast::ScopeNode>(node))
+        {
+            emitScope(node);
+            return;
+        }
+        if (std::dynamic_pointer_cast<ast::LockNode>(node))
+        {
+            emitLock(node);
+            return;
+        }
         if (std::dynamic_pointer_cast<ast::TryNode>(node))
         {
             emitTry(node);
@@ -4948,6 +5114,16 @@ namespace backend
             return;
         }
         // ---------- P7：异常 ----------
+        if (std::dynamic_pointer_cast<ast::ScopeNode>(node))
+        {
+            emitScope(node);
+            return;
+        }
+        if (std::dynamic_pointer_cast<ast::LockNode>(node))
+        {
+            emitLock(node);
+            return;
+        }
         if (std::dynamic_pointer_cast<ast::TryNode>(node))
         {
             emitTry(node);
@@ -5881,6 +6057,12 @@ namespace backend
             return;
         }
         const auto [lhs, rhs] = assign->getAssignPair();
+        // P14-4：guard 二等值不能存入变量（子引用逃逸亦禁）。
+        // 注意：`g.hits = v` 的 g 在 LHS 基址位，是合法的块内写，不在此拦。
+        if (std::dynamic_pointer_cast<ast::IdentifierNode>(lhs))
+        {
+            if (rejectGuardEscape(rhs, "an assignment right-hand side")) return;
+        }
         // P6：`obj.field = v` —— 左值是成员访问，走专用路径。
         if (const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(lhs))
         {
@@ -6076,6 +6258,8 @@ namespace backend
             const std::string name = def->getNameNode()->getName();
             const bool hasInit = def->hasInitialValue() && def->getValueNode() != nullptr;
             const auto initType = hasInit ? inferType(def->getValueNode()) : sema::getUnknownType();
+            // P14-4：guard 二等值不能绑定到变量（含子引用 `var r = &g.x`）。
+            if (hasInit && rejectGuardEscape(def->getValueNode(), "a variable initializer")) return;
             // P13-3/Q4（§8.5 rule 2 · 不逃逸）：Take 是二等值，只能在实参位创建，
             // 不能绑定到变量。`var x = t`（t 是 Take 形参）推断出的 initType 是
             // Take[T]——显式标注 `var x: Take[T]` 由 validateL3TakeUsage 拦截，
@@ -6503,6 +6687,11 @@ namespace backend
         const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode());
         if (!mid || mid->getName() != "new")
             return nullptr;
+        // P14-4/P14-5：Locked/Atomic/Chan.new[T] 不是 pool.new，结果类型不是 T。
+        if (const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+            recv && (recv->getName() == "Locked" || recv->getName() == "Atomic" ||
+                     recv->getName() == "Chan"))
+            return nullptr;
         const auto bracket = std::dynamic_pointer_cast<ast::BracketExpressionNode>(idx->getIndexNode());
         if (!bracket)
             return nullptr;
@@ -6523,6 +6712,20 @@ namespace backend
             return std::string();
         const auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
         if (!method || method->getName() != "take")
+            return std::string();
+        const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+        return recv ? recv->getName() : std::string();
+    }
+    std::string CodeGen::mutReceiverName(const std::shared_ptr<ast::ExpressionNode>& node)
+    { // P14-6/G2(Q4)：识别 `X.mut()` —— 与 take 同形但方法是 mut。
+        const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node);
+        if (!call)
+            return std::string();
+        const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
+        if (!member || member->getOpToken().getType() != core::TokenType::TOKEN_DOT)
+            return std::string();
+        const auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+        if (!method || method->getName() != "mut")
             return std::string();
         const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
         return recv ? recv->getName() : std::string();
@@ -6725,6 +6928,7 @@ namespace backend
         }
         if (ret && ret->getReturnNode())
         {
+            if (rejectGuardEscape(ret->getReturnNode(), "a return value")) return;
             emitExpression(ret->getReturnNode());
             if (hasFailed())
                 return;
@@ -6752,6 +6956,30 @@ namespace backend
             // 决议 §6.2 明文列出的四种落定位置之一实际不可用。
             if (const std::string taken = takeReceiverName(ret->getReturnNode()); !taken.empty())
                 settlePendingTake(taken);
+        }
+        // P14-4：ret 逃出 lock 块前先解锁；core_lock_release 会冲掉 rax，
+        // 故先保存返回值（xmm0 不受影响）。
+        if (!_activeLocks.empty())
+        {
+            const auto effectiveRet = (_functionReturnAnnotated && _functionReturnType)
+                ? _functionReturnType
+                : (ret && ret->getReturnNode() ? inferType(ret->getReturnNode()) : nullptr);
+            std::string retTmp;
+            if (effectiveRet && effectiveRet->isFloat())
+            {
+                retTmp = allocateTemp(sema::getFloatType());
+                _asm.inst("movsd", "%xmm0", retTmp);
+            }
+            else
+            {
+                retTmp = allocateTemp(sema::getIntType());
+                _asm.mov("%rax", retTmp);
+            }
+            emitLockCleanupForExit();
+            if (effectiveRet && effectiveRet->isFloat())
+                _asm.inst("movsd", retTmp, "%xmm0");
+            else
+                _asm.mov(retTmp, "%rax");
         }
         // ret 跳出所有 try：把 handler 链全部摘干净再跳。
         // 不这么做，链上会留下指向本帧（马上被 ret 销毁）的节点，
@@ -7630,7 +7858,16 @@ namespace backend
         {
             _asm.movImm(0, "%rax");
         }
-        _asm.mov("%rax", "%rcx");
+        _asm.mov("%rax", "%rcx");           // rcx = 异常值（core_eh_throw 的第一个参数）
+        // P14-4：throw 逃出 lock 块前先解锁（Q6 unwind 自动解锁）。
+        // 先保存异常值到栈槽，解锁会冲掉 rcx/rax。
+        if (!_activeLocks.empty())
+        {
+            const std::string excSlot = allocateTemp(sema::getPtrType());
+            _asm.mov("%rcx", excSlot);
+            emitLockCleanupForExit();
+            _asm.mov(excSlot, "%rcx");
+        }
         _asm.subRsp(32);
         _asm.call("core_eh_throw");
         _asm.addRsp(32);
@@ -9460,6 +9697,487 @@ namespace backend
             return;
         }
     }
+
+    // ---- P14/Q13：跨函数「触碰全局 / 外部符号」汇总分析 ----
+    // Q13 裁决（p14_plan.md Q13=A）：任务含调用链不得访问可变全局、不得调
+    // extern；仅允许 Locked/Atomic 全局与白名单 I/O。Rio 里 extern 是
+    // core_* / rt_* 运行时原语（Q14 已证明跨线程安全），故外部符号白名单
+    // 放行全部 core_*/rt_*/sout；真正拒绝的是「可变顶层 var」。
+    void CodeGen::scanFunctionTouches(const std::shared_ptr<ast::FunctionDefinitionNode>& def,
+                                      std::set<std::string>& visited, FunctionTouches& touches,
+                                      std::set<std::string> locals)
+    {
+        if (!def || hasFailed())
+            return;
+        const auto sig = collectSignature(def);
+        if (sig.name.empty() || visited.count(sig.name))
+            return;
+        visited.insert(sig.name);
+        // 形参算局部，屏蔽同名全局。
+        locals.insert(sig.paramNames.begin(), sig.paramNames.end());
+
+        std::function<void(const std::shared_ptr<ast::ExpressionNode>&)> walk =
+            [&](const std::shared_ptr<ast::ExpressionNode>& n) {
+                if (!n || hasFailed())
+                    return;
+                // 调用：区分用户函数（递归进去）与外部符号（白名单判定）。
+                if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(n))
+                {
+                    const auto callee = call->getLeftNode();
+                    std::string calleeName;
+                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(callee))
+                        calleeName = id->getName();
+                    else if (const auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(callee);
+                             dot && dot->getOpToken().getType() == core::TokenType::TOKEN_DOT)
+                    {
+                        // 方法调用不递归进函数体（实例方法非具名顶层函数，Q3 也不许 spawn）；
+                        // 但接收者表达式仍要扫。
+                        walk(dot->getLeftNode());
+                    }
+                    if (!calleeName.empty())
+                    {
+                        auto it = _allFunctionDefs.find(calleeName);
+                        if (it != _allFunctionDefs.end())
+                        {
+                            for (const auto& cand : it->second)
+                                scanFunctionTouches(cand, visited, touches, {});
+                        }
+                        else if (!locals.count(calleeName) && calleeName != "sout" &&
+                                 calleeName.rfind("core_", 0) != 0 && calleeName.rfind("rt_", 0) != 0 &&
+                                 !findClass(calleeName) && !_declaredClassNames.count(calleeName))
+                        {
+                            // 类名构造（Msg(...)）与类型标注不是外部符号；
+                            // 只有「既非用户函数、又非类、又非白名单运行时」才算 extern。
+                            touches.externs.insert(calleeName);
+                        }
+                    }
+                    walk(call->getRightNode());
+                    return;
+                }
+                // 标识符：命中全局表且非局部 => 触碰。
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(n))
+                {
+                    const auto& name = id->getName();
+                    if (!name.empty() && !locals.count(name) && _globals.count(name))
+                        touches.readGlobals.insert(name);
+                    return;
+                }
+                // 赋值：lhs 是写目标，rhs 读。
+                if (const auto asn = std::dynamic_pointer_cast<ast::AssignmentNode>(n))
+                {
+                    const auto [lhs, rhs] = asn->getAssignPair();
+                    std::vector<std::string> lhsFree, boundDummy;
+                    collectFreeVariables(lhs, boundDummy, lhsFree);
+                    for (const auto& g : lhsFree)
+                        if (!locals.count(g) && _globals.count(g))
+                        {
+                            touches.writeGlobals.insert(g);
+                            touches.readGlobals.erase(g);
+                        }
+                    walk(lhs);
+                    walk(rhs);
+                    return;
+                }
+                // 局部变量定义：先扫初始值，再把名字加入 locals。
+                if (const auto vd = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(n))
+                {
+                    for (const auto& d : vd->getVarDefs())
+                    {
+                        if (d && d->hasInitialValue())
+                            walk(d->getValueNode());
+                        if (d && d->getNameNode())
+                            locals.insert(d->getNameNode()->getName());
+                    }
+                    return;
+                }
+                // 复合赋值：左值为写目标。
+                if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(n))
+                {
+                    const auto t = inf->getOpToken().getType();
+                    if (t == core::TokenType::TOKEN_PLUS_ASSIGN || t == core::TokenType::TOKEN_MINUS_ASSIGN ||
+                        t == core::TokenType::TOKEN_STAR_ASSIGN || t == core::TokenType::TOKEN_SLASH_ASSIGN ||
+                        t == core::TokenType::TOKEN_MODULO_ASSIGN)
+                    {
+                        std::vector<std::string> lhsFree, boundDummy;
+                        collectFreeVariables(inf->getLeftNode(), boundDummy, lhsFree);
+                        for (const auto& g : lhsFree)
+                            if (!locals.count(g) && _globals.count(g))
+                            {
+                                touches.writeGlobals.insert(g);
+                                touches.readGlobals.erase(g);
+                            }
+                    }
+                    walk(inf->getLeftNode());
+                    walk(inf->getRightNode());
+                    return;
+                }
+                if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(n))
+                { walk(paren->getRangerNode()); return; }
+                if (const auto ref = std::dynamic_pointer_cast<ast::RefExpressionNode>(n))
+                { walk(ref->getOperand()); return; }
+                if (const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(n))
+                { walk(ret->getReturnNode()); return; }
+                if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(n))
+                { walk(idx->getLeftNode()); walk(idx->getIndexNode()); return; }
+                if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(n))
+                { for (const auto& x : block->getBodyExpressions()) walk(x); return; }
+                if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(n))
+                { walk(loop->getConditionNode()); walk(loop->getBodyNode()); return; }
+                if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(n))
+                {
+                    for (const auto& b : cond->getBranchNodes())
+                        if (const auto br = std::dynamic_pointer_cast<ast::BranchNode>(b))
+                            walk(br->getConditionNode()), walk(br->getBodyNode());
+                    return;
+                }
+            };
+        walk(def->getBodyNode());
+    }
+
+    void CodeGen::checkSpawnQ13(const std::string& targetFn, const utils::Pos& pos)
+    {
+        if (targetFn.empty())
+            return;
+        auto it = _allFunctionDefs.find(targetFn);
+        if (it == _allFunctionDefs.end())
+            return; // 找不到定义（extern/内建）不在此分析范围
+        FunctionTouches touches;
+        std::set<std::string> visited;
+        for (const auto& def : it->second)
+            scanFunctionTouches(def, visited, touches, {});
+        if (hasFailed())
+            return;
+        // 可变全局：同步类型（Locked/Atomic）全局允许，其余一律拒绝。
+        for (const auto& g : touches.writeGlobals)
+        {
+            auto git = _globals.find(g);
+            const bool syncObj = git != _globals.end() && git->second.type &&
+                (git->second.type->getKind() == sema::TypeKind::TK_LOCKED ||
+                 git->second.type->getKind() == sema::TypeKind::TK_ATOMIC);
+            if (!syncObj)
+            {
+                failAt(pos, "task calls '" + targetFn + "' which writes global '" + g +
+                            "' — Q13: tasks must not access mutable globals (P14 / Q13)");
+                return;
+            }
+        }
+        for (const auto& g : touches.readGlobals)
+        {
+            auto git = _globals.find(g);
+            const bool syncObj = git != _globals.end() && git->second.type &&
+                (git->second.type->getKind() == sema::TypeKind::TK_LOCKED ||
+                 git->second.type->getKind() == sema::TypeKind::TK_ATOMIC ||
+                 (git->second.type->getKind() == sema::TypeKind::TK_MEMORY &&
+                  std::dynamic_pointer_cast<sema::MemoryType>(git->second.type)->getRole() == sema::MemoryRole::REF));
+            if (!syncObj)
+            {
+                failAt(pos, "task calls '" + targetFn + "' which reads global '" + g +
+                            "' — Q13: tasks must not access globals except Locked/Atomic (P14 / Q13)");
+                return;
+            }
+        }
+        for (const auto& e : touches.externs)
+        {
+            failAt(pos, "task calls '" + targetFn + "' which calls external symbol '" + e +
+                        "' — Q13: tasks must not call extern (P14 / Q13)");
+            return;
+        }
+    }
+
+    // ---- P14/G3：spawn 目标函数的 Link / 结构修改禁令 ----
+    void CodeGen::checkSpawnLinkPrimitives(const std::string& targetFn, const utils::Pos& pos,
+                                           std::set<std::string>& visited)
+    {
+        auto it = _allFunctionDefs.find(targetFn);
+        if (it == _allFunctionDefs.end() || visited.count(targetFn))
+            return;
+        visited.insert(targetFn);
+        for (const auto& def : it->second)
+        {
+            std::function<void(const std::shared_ptr<ast::ExpressionNode>&)> scan =
+                [&](const std::shared_ptr<ast::ExpressionNode>& n) {
+                    if (!n || hasFailed())
+                        return;
+                    if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(n))
+                    {
+                        // 具名顶层函数调用：递归检查其函数体（传递闭包）。
+                        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(call->getLeftNode()))
+                        {
+                            const auto& nm = id->getName();
+                            if (_allFunctionDefs.count(nm))
+                                checkSpawnLinkPrimitives(nm, pos, visited);
+                        }
+                        // 方法调用：检查方法名是否为 Link / 结构修改原语。
+                        if (const auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
+                            dot && dot->getOpToken().getType() == core::TokenType::TOKEN_DOT)
+                        {
+                            if (const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getRightNode()))
+                            {
+                                const auto& m = mid->getName();
+                                if (m == "unlink_all" || m == "is_empty" || m == "link_count" ||
+                                    m == "link_has" || m == "peers" || m == "count" || m == "has" || m == "set" ||
+                                    m == "add" || m == "release" ||
+                                    m == "clear" || m == "remove" || m == "listAppend" || m == "add_reusing")
+                                {
+                                    failAt(pos, "task calls '" + targetFn + "' which uses forbidden primitive '" + m +
+                                                "' — Link traversal / structure modification not allowed in tasks "
+                                                "(P14 / §10.4, Q18)");
+                                    return;
+                                }
+                            }
+                            scan(dot->getLeftNode());
+                        }
+                        scan(call->getRightNode());
+                        return;
+                    }
+                    if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(n))
+                    { for (const auto& x : block->getBodyExpressions()) scan(x); return; }
+                    if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(n))
+                    { scan(inf->getLeftNode()); scan(inf->getRightNode()); return; }
+                    if (const auto asn = std::dynamic_pointer_cast<ast::AssignmentNode>(n))
+                    { scan(asn->getAssignPair().first); scan(asn->getAssignPair().second); return; }
+                    if (const auto vd = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(n))
+                    { for (const auto& d : vd->getVarDefs()) if (d && d->hasInitialValue()) scan(d->getValueNode()); return; }
+                    if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(n))
+                    { scan(loop->getConditionNode()); scan(loop->getBodyNode()); return; }
+                    if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(n))
+                    { for (const auto& b : cond->getBranchNodes()) if (const auto br = std::dynamic_pointer_cast<ast::BranchNode>(b)) { scan(br->getConditionNode()); scan(br->getBodyNode()); } return; }
+                    if (const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(n))
+                    { scan(ret->getReturnNode()); return; }
+                    if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(n))
+                    { scan(paren->getRangerNode()); return; }
+                    if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(n))
+                    { scan(idx->getLeftNode()); scan(idx->getIndexNode()); return; }
+                };
+            scan(def->getBodyNode());
+            if (hasFailed())
+                return;
+        }
+    }
+
+    // ---- P14 收尾：跨函数 lock 重入静态检测 ----
+    void CodeGen::scanLockReentrancy(const std::string& fnName, std::vector<std::string> heldLocks,
+                                     std::set<std::string>& visited)
+    {
+        if (fnName.empty() || hasFailed())
+            return;
+        auto it = _allFunctionDefs.find(fnName);
+        if (it == _allFunctionDefs.end() || visited.count(fnName))
+            return;
+        visited.insert(fnName);
+        for (const auto& def : it->second)
+        {
+            std::function<void(const std::shared_ptr<ast::ExpressionNode>&,
+                               std::vector<std::string>&)> scan =
+                [&](const std::shared_ptr<ast::ExpressionNode>& n, std::vector<std::string>& held) {
+                    if (!n || hasFailed())
+                        return;
+                    // lock 块：检查接收者是否与已持有的锁同名，然后把这把锁加入 held。
+                    if (const auto lk = std::dynamic_pointer_cast<ast::LockNode>(n))
+                    {
+                        const std::string recv = exprPathText(lk->getLockExpr());
+                        if (!recv.empty())
+                        {
+                            for (const auto& h : held)
+                                if (h == recv)
+                                {
+                                    failAt(lk->getPos(), "reentrant lock on '" + recv +
+                                                             "' across function calls (P14 / Q6; "
+                                                             "reentrancy is a compile-time error)");
+                                    return;
+                                }
+                            held.push_back(recv);
+                        }
+                        if (lk->getBody())
+                            scan(lk->getBody(), held);
+                        if (!recv.empty())
+                            held.pop_back();
+                        return;
+                    }
+                    // 调用：把当前 held 传给被调函数的函数体。
+                    if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(n))
+                    {
+                        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(call->getLeftNode()))
+                        {
+                            const auto& callee = id->getName();
+                            if (_allFunctionDefs.count(callee))
+                                scanLockReentrancy(callee, held, visited);
+                        }
+                        scan(call->getRightNode(), held);
+                        return;
+                    }
+                    if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(n))
+                    { for (const auto& x : block->getBodyExpressions()) scan(x, held); return; }
+                    if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(n))
+                    { scan(inf->getLeftNode(), held); scan(inf->getRightNode(), held); return; }
+                    if (const auto asn = std::dynamic_pointer_cast<ast::AssignmentNode>(n))
+                    { scan(asn->getAssignPair().first, held); scan(asn->getAssignPair().second, held); return; }
+                    if (const auto vd = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(n))
+                    { for (const auto& d : vd->getVarDefs()) if (d && d->hasInitialValue()) scan(d->getValueNode(), held); return; }
+                    if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(n))
+                    { scan(loop->getConditionNode(), held); scan(loop->getBodyNode(), held); return; }
+                    if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(n))
+                    { for (const auto& b : cond->getBranchNodes()) if (const auto br = std::dynamic_pointer_cast<ast::BranchNode>(b)) { scan(br->getConditionNode(), held); scan(br->getBodyNode(), held); } return; }
+                    if (const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(n))
+                    { scan(ret->getReturnNode(), held); return; }
+                    if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(n))
+                    { scan(paren->getRangerNode(), held); return; }
+                };
+            std::vector<std::string> held = heldLocks;
+            scan(def->getBodyNode(), held);
+            if (hasFailed())
+                return;
+        }
+    }
+
+    // ---- P14/G4：出生地包住 scope 的静态检查 ----
+    int CodeGen::frameIndexOf(const std::string& name) const
+    {
+        if (name.empty())
+            return -2;
+        if (_globals.count(name))
+            return -1; // 全局活得比所有 scope 久
+        for (int i = static_cast<int>(_scopes.size()) - 1; i >= 0; --i)
+            if (_scopes[i].count(name))
+                return i;
+        return -2; // 查不到：声明在当前 scope 体内（尚未 push）或不存在
+    }
+
+    void CodeGen::checkBirthPlaceEnclosesScope(const std::shared_ptr<ast::ExpressionNode>& arg,
+                                               const std::shared_ptr<ast::ExpressionNode>& scopeBody,
+                                               const utils::Pos& pos)
+    {
+        if (!arg)
+            return;
+        // 取实参引用源的根变量名。
+        std::string root = exprPathText(arg);
+        if (root.empty())
+            return; // 无法解析的表达式交给其它检查，不在此误报
+        const auto cut = root.find_first_of(".[");
+        if (cut != std::string::npos)
+            root = root.substr(0, cut);
+        if (root.empty())
+            return;
+        // 出生地：优先查 _birthPlaces，没登记则源变量自己就是所有权根。
+        std::string owner = root;
+        auto bp = _birthPlaces.find(root);
+        if (bp != _birthPlaces.end() && !bp->second.empty())
+            owner = bp->second;
+        // 安全情形：全局 / 形参（frame -1）、外层局部（_scopes 中可见）。
+        const int ownerFrame = frameIndexOf(owner);
+        if (ownerFrame == -1 || (ownerFrame >= 0 && ownerFrame < static_cast<int>(_scopes.size())))
+            return;
+        // 同一 scope 体内声明的变量：scope 末 join 先于其 drop（Q17），安全。
+        // 用 collectFreeVariables 取 body 里所有「定义过的名字」，只认直接 var 定义。
+        std::set<std::string> inThisScope;
+        std::function<void(const std::shared_ptr<ast::ExpressionNode>&)> collectDecls =
+            [&](const std::shared_ptr<ast::ExpressionNode>& n) {
+                if (!n) return;
+                if (const auto vd = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(n))
+                {
+                    for (const auto& d : vd->getVarDefs())
+                        if (d && d->getNameNode())
+                            inThisScope.insert(d->getNameNode()->getName());
+                    return; // 不深入 var 定义内部（内层声明另算）
+                }
+                if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(n))
+                { for (const auto& x : block->getBodyExpressions()) collectDecls(x); return; }
+                if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(n))
+                { collectDecls(loop->getBodyNode()); return; }
+                if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(n))
+                {
+                    for (const auto& b : cond->getBranchNodes())
+                        if (const auto br = std::dynamic_pointer_cast<ast::BranchNode>(b))
+                            collectDecls(br->getBodyNode());
+                    return;
+                }
+            };
+        collectDecls(scopeBody);
+        if (inThisScope.count(owner))
+            return;
+        // 剩下：查不到 / 在内层已关闭的 scope 里出生 → 不包住。
+        failAt(pos, "argument '" + root + "' has birth place '" + owner +
+                        "' that does not enclose this scope — task would outlive its "
+                        "referent (P14 / §10.2, §10.9.4)");
+    }
+    // P14-3：匿名函数形参的完整类型解析。collectParamTypes 走的是裸
+    // parseTypeName，遇到 `p: Mut[Player]` 只认出 `Mut`、丢掉 `[Player]`
+    // 描述符，返回 UNKNOWN；这里按 label 的 labelDesNodes 完整解析，
+    // 与命名函数 `fun f(p: Mut[T])` 走同一条 typeFromLabelNodeNonNull 路径。
+    void CodeGen::anonParamTypes(const std::shared_ptr<ast::ExpressionNode>& paramNode,
+                                 std::vector<sema::TypePtr>& out) const
+    {
+        if (!paramNode)
+            return;
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(paramNode))
+        {
+            sema::TypePtr resolved = sema::getUnknownType();
+            for (const auto& label : id->getLabels())
+            {
+                if (!label)
+                    continue;
+                const auto t = typeFromLabelNodeNonNull(label, _currentGenericParams);
+                if (t && t->getKind() != sema::TypeKind::TK_UNKNOWN)
+                {
+                    resolved = t;
+                    break;
+                }
+            }
+            out.push_back(resolved);
+            return;
+        }
+        if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(paramNode))
+        {
+            const auto op = infix->getOpToken().getType();
+            if (op == core::TokenType::TOKEN_COMMA)
+            {
+                anonParamTypes(infix->getLeftNode(), out);
+                anonParamTypes(infix->getRightNode(), out);
+                return;
+            }
+            if (op == core::TokenType::TOKEN_COLON)
+            {
+                // 右值是类型节点（IdentifierNode 带 labelDesNodes）。
+                const auto right = infix->getRightNode();
+                if (const auto rid = std::dynamic_pointer_cast<ast::IdentifierNode>(right))
+                {
+                    sema::TypePtr resolved = sema::getUnknownType();
+                    for (const auto& label : rid->getLabels())
+                    {
+                        if (!label)
+                            continue;
+                        const auto t = typeFromLabelNodeNonNull(label, _currentGenericParams);
+                        if (t && t->getKind() != sema::TypeKind::TK_UNKNOWN)
+                        {
+                            resolved = t;
+                            break;
+                        }
+                    }
+                    // `Mut`/`Ref` 本身可能就是类型名（label 为空时按名字解析）。
+                    if (resolved->getKind() == sema::TypeKind::TK_UNKNOWN)
+                        resolved = typeFromTypeArgNode(right, _currentGenericParams);
+                    out.push_back(resolved);
+                    return;
+                }
+                out.push_back(typeFromTypeArgNode(right, _currentGenericParams));
+                return;
+            }
+            anonParamTypes(infix->getLeftNode(), out);
+            return;
+        }
+        if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(paramNode))
+        {
+            for (const auto& e : block->getBodyExpressions())
+                anonParamTypes(e, out);
+            return;
+        }
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(paramNode))
+        {
+            anonParamTypes(paren->getRangerNode(), out);
+            return;
+        }
+    }
+
     void CodeGen::emitAnonymousFunction(const std::shared_ptr<ast::ExpressionNode>& node)
     {
         const auto anon = std::dynamic_pointer_cast<ast::AnonFunctionDefinitionNode>(node);
@@ -9475,7 +10193,9 @@ namespace backend
         if (const auto paramNode = anon->getParamNode())
         {
             collectParamNames(paramNode, paramNames);
-            collectParamTypes(paramNode, paramTypes);
+            // P14-3：用完整 label 路径解析（支持 Mut[T]/Ref[T]），
+            // 原 collectParamTypes 只认裸名字，会把 Mut[Player] 退化成 int。
+            anonParamTypes(paramNode, paramTypes);
         }
         // 类型列表补齐到与名字列表等长。
         // 未标注的形参不能一律当 int：`(x) -> { ret x / 2.0 }` 里的 x
@@ -9593,6 +10313,859 @@ namespace backend
         }
         _pendingFunctions.clear();
     }
+
+    // P14-1b：发射所有 spawn trampoline。
+    // 入口 ABI：rcx = argblock 指针（连续 8 字节槽，每槽一个实参）。
+    // trampoline 从 argblock 取参到 Win64 参数寄存器，call 目标函数，返回。
+    // 任务无返回值（Q12），所以不处理 rax/xmm0。
+    void CodeGen::emitPendingTrampolines()
+    {
+        for (const auto& tr : _pendingTrampolines)
+        {
+            _asm.text();
+            _asm.global(tr.label);
+            _asm.label(tr.label);
+            // rcx = argblock；保存到 rax 便于逐槽取参（rcx 马上要放参数0）
+            _asm.mov("%rcx", "%rax");
+            if (tr.viaClosure)
+            {
+                // P14-3 par_each：argblock[0]=闭包对象指针，[1]=元素槽指针。
+                // 元素进 %rcx，闭包对象拆出 env(%r10)/fnptr(%r11) 后间接调用。
+                _asm.inst("movq", "8(%rax)", "%rcx");   // 元素槽指针 = 实参0
+                _asm.inst("movq", "0(%rax)", "%rdx");   // 闭包对象指针暂存
+                _asm.inst("movq", "8(%rdx)", "%r10");   // env
+                _asm.inst("movq", "0(%rdx)", "%r11");   // fnptr
+                _asm.subRsp(40);                        // shadow + 对齐
+                _asm.inst("call", "*%r11");
+                _asm.addRsp(40);
+            }
+            else
+            {
+                if (tr.argCount > 0) _asm.inst("movq", "0(%rax)", "%rcx");
+                if (tr.argCount > 1) _asm.inst("movq", "8(%rax)", "%rdx");
+                if (tr.argCount > 2) _asm.inst("movq", "16(%rax)", "%r8");
+                if (tr.argCount > 3) _asm.inst("movq", "24(%rax)", "%r9");
+                // 32 字节 shadow + 8 对齐：进入时 rsp≡8，sub $40 -> rsp≡0
+                _asm.subRsp(40);
+                _asm.call(tr.targetFn);
+                _asm.addRsp(40);
+            }
+            _asm.ret();
+        }
+        _pendingTrampolines.clear();
+    }
+
+    // P14-4：`lock c as g { ... }` —— 显式互斥锁 + 二等值 guard。
+    // 运行时对象布局：Locked[T] 句柄 = 指向 { +0: 4B lockword, +8: T value } 的指针。
+    // g 绑定值槽地址（obj+8），静态类型 Mut[T]；guard 是二等值，逃逸由
+    // validateGuardNoEscape（赋值/实参/ret 位置）检查。解锁在块末发射；
+    // unwind 路径由 _activeLocks 栈辅助（当前版本见 §6 风险 1 的说明）。
+    void CodeGen::emitLock(const std::shared_ptr<ast::ExpressionNode>& node)
+    {
+        const auto lockNode = std::dynamic_pointer_cast<ast::LockNode>(node);
+        if (!lockNode || !lockNode->getBody())
+        {
+            failAt(node->getPos(), "malformed lock statement");
+            return;
+        }
+        // 1) 接收者静态类型必须是 Locked[T] 或 Ref[Locked[T]]。
+        const auto recvType = inferType(lockNode->getLockExpr());
+        sema::TypePtr lockedType = recvType;
+        if (recvType && recvType->getKind() == sema::TypeKind::TK_MEMORY &&
+            std::dynamic_pointer_cast<sema::MemoryType>(recvType)->getRole() == sema::MemoryRole::REF)
+        {
+            // Ref[Locked[T]]：inner 就是 Locked[T]
+            lockedType = std::dynamic_pointer_cast<sema::MemoryType>(recvType)->getInnerType();
+        }
+        if (!lockedType || lockedType->getKind() != sema::TypeKind::TK_LOCKED)
+        {
+            failAt(lockNode->getLockExpr()->getPos(),
+                   "lock requires a Locked[T] or Ref[Locked[T]] receiver, got '" +
+                       (recvType ? recvType->toString() : std::string("?")) + "' (P14 / Q6)");
+            return;
+        }
+        const auto inner = std::static_pointer_cast<sema::SyncWrapperType>(lockedType)->getInnerType();
+        // 2) 求值 receiver —— Locked 句柄是指针（Ref[Locked] 求值也是同一指针）。
+        emitExpression(lockNode->getLockExpr());
+        if (hasFailed()) return;
+        const std::string objSlot = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", objSlot);
+        // lockword = obj + 0；value = obj + 8
+        const std::string lockwordSlot = allocateTemp(sema::getPtrType());
+        _asm.mov(objSlot, "%rax");
+        _asm.mov("%rax", lockwordSlot);
+        // 3) 加锁
+        _asm.mov(lockwordSlot, "%rcx");
+        _asm.subRsp(32);
+        _asm.call("core_lock_acquire");
+        _asm.addRsp(32);
+        // 4) 绑定 guard g：分配槽存值地址 obj+8，登记 Mut[T]
+        const std::string guardName = lockNode->getGuardName()->getName();
+        const long long gOff = allocateSlot(guardName,
+            std::make_shared<sema::MemoryType>(sema::MemoryRole::MUT, inner), 8);
+        _asm.mov(objSlot, "%rax");
+        _asm.add("$8", "%rax");
+        _asm.inst("movq", "%rax", std::to_string(gOff) + "(%rbp)");
+        // 同锁重入检测（Q6=A：编译期报错而非运行时死锁）
+        const std::string recvText = exprPathText(lockNode->getLockExpr());
+        for (const auto& a : _activeLocks)
+        {
+            if (!recvText.empty() && a.lockExprText == recvText)
+            {
+                failAt(lockNode->getLockExpr()->getPos(),
+                       "reentrant lock on the same Locked value '" + recvText +
+                           "' (P14 / Q6; reentrancy is a compile-time error)");
+                return;
+            }
+        }
+        // 登记活动锁（供 unwind / 逃逸检查）
+        _activeLocks.push_back({guardName, lockwordSlot, objSlot, recvText, inner});
+        _lockGuardNames.push_back(guardName);
+        // 5) 发射块体
+        pushScope();
+        for (const auto& expr : lockNode->getBody()->getBodyExpressions())
+        {
+            emitStatement(expr);
+            if (hasFailed()) return;
+        }
+        // 6) 解锁（正常出口）；在 popScope 前，与 Q17 的 join/drop 顺序一致
+        _asm.mov(lockwordSlot, "%rcx");
+        _asm.subRsp(32);
+        _asm.call("core_lock_release");
+        _asm.addRsp(32);
+        popScope();
+        _activeLocks.pop_back();
+        _lockGuardNames.pop_back();
+    }
+
+    // P14-4：逃出 lock 块前按内到外解锁（throw/ret/break/continue 出口）。
+    void CodeGen::emitLockCleanupForExit()
+    {
+        for (auto it = _activeLocks.rbegin(); it != _activeLocks.rend(); ++it)
+        {
+            _asm.mov(it->lockwordSlot, "%rcx");
+            _asm.subRsp(32);
+            _asm.call("core_lock_release");
+            _asm.addRsp(32);
+        }
+    }
+
+    // P14-4：guard 二等值逃逸检查（规范 §10.6）。
+    // 禁止的是「guard 本身」或「对 guard 的引用（&g / &g.x）」作为值逃出块；
+    // 通过 guard 读标量字段（如 g.hits）是块内合法访问，不在此拦。
+    bool CodeGen::rejectGuardEscape(const std::shared_ptr<ast::ExpressionNode>& node,
+                                    const std::string& context)
+    {
+        if (!node || _lockGuardNames.empty())
+            return false;
+        // 情形 1：表达式就是 guard 标识符本身（var x = g / use(g) / ret g）。
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node))
+        {
+            const std::string name = id->getName();
+            for (const auto& g : _lockGuardNames)
+            {
+                if (name == g)
+                {
+                    failAt(node->getPos(),
+                           "lock guard '" + g + "' is a two-value and cannot be used as " + context +
+                               " (P14 / Q6; store/return/argument of the guard is forbidden)");
+                    return true;
+                }
+            }
+        }
+        // 情形 2：对 guard 取引用（&g / &g.x）——子引用不能逃出块。
+        if (std::dynamic_pointer_cast<ast::RefExpressionNode>(node))
+        {
+            const std::string text = exprPathText(node);
+            std::string root = text;
+            const auto cut = root.find_first_of(".[");
+            if (cut != std::string::npos)
+                root = root.substr(0, cut);
+            for (const auto& g : _lockGuardNames)
+            {
+                if (root == g)
+                {
+                    failAt(node->getPos(),
+                           "lock guard '" + g + "' sub-reference cannot escape the lock block (" + context +
+                               "; P14 / Q6)");
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // P14-1b：`scope s { ... }`。
+    // 语义：块内每个 `s.spawn(f(args))` 创建一个 OS 线程；块末隐式 join 所有任务。
+    // 实现：每个 spawn 在栈上分配 argblock（连续 8 字节槽）+ handle 槽，
+    // 生成一个 trampoline（从 argblock 取参 call f），调 core_thread_create；
+    // 块末对每个 handle 调 core_thread_join（Q17：join 先于 popScope 的 drop）。
+    void CodeGen::emitScope(const std::shared_ptr<ast::ExpressionNode>& node)
+    {
+        const auto scopeNode = std::dynamic_pointer_cast<ast::ScopeNode>(node);
+        if (!scopeNode || !scopeNode->getBody())
+        {
+            fail("Not a scope node: " + (node ? node->toString() : std::string("null")));
+            return;
+        }
+        const auto& body = scopeNode->getBody();
+        const auto bodyExprs = body->getBodyExpressions();
+        // 每个 scope 一个唯一 tag，避免多个 scope 的 trampoline/槽名撞车
+        const size_t tag = ++_anonCounter;
+
+        // ---- 检查阶段（Q4=A/B3）：收集并检查所有 s.spawn(...) ----
+        // 一个 spawn 节点形如 FunctionCall(op=".", left=Infix(".", s, spawn), right=ParenRanger(args))
+        struct SpawnInfo
+        {
+            std::shared_ptr<ast::ExpressionNode> node;      // 完整 s.spawn(...) 调用节点
+            std::string targetFn;                            // 目标函数名
+            std::vector<std::shared_ptr<ast::ExpressionNode>> args; // 实参表达式
+        };
+        std::vector<SpawnInfo> spawns;
+        for (const auto& expr : bodyExprs)
+        {
+            auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(expr);
+            if (!call) continue;
+            auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
+            if (!member || member->getOpToken().getType() != core::TokenType::TOKEN_DOT) continue;
+            auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+            auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+            if (!method || method->getName() != "spawn" || !recv) continue;
+            if (recv->getName() != scopeNode->getName()->getName())
+            {
+                failAt(expr->getPos(), "spawn receiver '" + recv->getName() +
+                      "' is not the innermost scope handle '" + scopeNode->getName()->getName() + "'");
+                return;
+            }
+            // 实参：right 是 ParenRanger(body=实参表达式)
+            std::vector<std::shared_ptr<ast::ExpressionNode>> args;
+            if (auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(call->getRightNode()))
+            {
+                if (const auto inner = std::dynamic_pointer_cast<ast::ExpressionNode>(paren->getRangerNode()))
+                    collectArgs(inner, args);
+            }
+            if (args.empty() || args.size() > 4)
+            {
+                failAt(expr->getPos(), "spawn requires 1..4 arguments (first version limit)");
+                return;
+            }
+            // 第一个实参必须是具名顶层函数调用 f(...)（Q3：只 spawn 具名顶层函数）
+            auto target = std::dynamic_pointer_cast<ast::FunctionCallNode>(args[0]);
+            if (!target)
+            {
+                failAt(expr->getPos(), "spawn's first argument must be a named function call f(args) (Q3)");
+                return;
+            }
+            auto tid = std::dynamic_pointer_cast<ast::IdentifierNode>(target->getLeftNode());
+            if (!tid)
+            {
+                failAt(expr->getPos(), "spawn target must be a plain named function (not a member/closure)");
+                return;
+            }
+            // 取 f(...) 的实参列表
+            std::vector<std::shared_ptr<ast::ExpressionNode>> fargs;
+            if (auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(target->getRightNode()))
+            {
+                if (const auto inner = std::dynamic_pointer_cast<ast::ExpressionNode>(paren->getRangerNode()))
+                    collectArgs(inner, fargs);
+            }
+            if (fargs.size() > 4)
+            {
+                failAt(expr->getPos(), "spawn target function takes at most 4 arguments (first version)");
+                return;
+            }
+            spawns.push_back({expr, tid->getName(), fargs});
+        }
+        if (hasFailed())
+            return;
+
+        // ---- Q13：任务（含调用链）不得触碰可变全局 / extern ----
+        for (const auto& s : spawns)
+            checkSpawnQ13(s.targetFn, s.node->getPos());
+        if (hasFailed())
+            return;
+
+        // ---- G3：任务（含调用链）不得用 Link 原语 / 结构修改 ----
+        {
+            std::set<std::string> linkVisited;
+            for (const auto& s : spawns)
+                checkSpawnLinkPrimitives(s.targetFn, s.node->getPos(), linkVisited);
+            if (hasFailed())
+                return;
+        }
+
+        // ---- G4(§10.9.4)：实参引用来源的出生地必须包住本 scope ----
+        for (const auto& s : spawns)
+            for (const auto& a : s.args)
+                checkBirthPlaceEnclosesScope(a, scopeNode->getBody(), s.node->getPos());
+        if (hasFailed())
+            return;
+
+        // ---- Q4=A/B3 效果冲突检查（首版：spawn 之间按实参能力） ----
+        // 每个实参推导 (路径, isWrite)：.take()/.mut() 视为写，普通实参视为读。
+        // P14-6/G2：takeReceiverName 只识别 take；mut 是独立的写能力，必须
+        // 一并算作写，否则两个 spawn 都传 `pl.mut()` 会被当成读-读放行（真竞态）。
+        // 注意 mutReceiverName 与 takeReceiverName 分开，避免污染 take 的所有权语义。
+        struct Effect { std::string path; bool write; const SpawnInfo* owner; };
+        std::vector<Effect> effects;
+        for (const auto& s : spawns)
+        {
+            for (const auto& a : s.args)
+            {
+                const std::string taken = takeReceiverName(a);
+                const std::string mutated = taken.empty() ? mutReceiverName(a) : std::string();
+                const bool isWrite = !taken.empty() || !mutated.empty();
+                const std::string writePath = !taken.empty() ? taken : mutated;
+                const std::string path = isWrite ? writePath : exprPathText(a);
+                if (!path.empty())
+                    effects.push_back({path, isWrite, &s});
+            }
+        }
+        for (size_t i = 0; i < effects.size(); ++i)
+        {
+            for (size_t j = i + 1; j < effects.size(); ++j)
+            {
+                // 同一 spawn 内部的多个实参由现有 checkTakeArgOverlap 在调用处管，
+                // 这里只查跨任务（不同 SpawnInfo）的冲突。
+                if (effects[i].owner == effects[j].owner)
+                    continue;
+                if (!mayAlias(effects[i].path, effects[j].path))
+                    continue;
+                if (effects[i].write || effects[j].write)
+                {
+                    failAt(effects[j].owner->node->getPos(),
+                           "parallel conflict: task argument '" + effects[j].path + "' " +
+                           (effects[j].write ? "(write)" : "(read)") + " overlaps with '" +
+                           effects[i].path + "' " + (effects[i].write ? "(write)" : "(read)") +
+                           " of another spawn — data race rejected statically (P14 / Q4)");
+                    return;
+                }
+            }
+        }
+        // ---- Q4=A「父线程冻结」：父线程在 scope 内不得写被任务 take/mut 的 slot ----
+        // 收集被任一任务以写能力借走的路径。
+        std::vector<std::string> frozenByTask;
+        for (const auto& e : effects)
+            if (e.write) frozenByTask.push_back(e.path);
+        if (!frozenByTask.empty())
+        {
+            // 递归找语句里的赋值目标路径（赋值 = 父线程写）。
+            std::function<void(const std::shared_ptr<ast::ExpressionNode>&)> scanParentWrites =
+                [&](const std::shared_ptr<ast::ExpressionNode>& n) {
+                    if (!n || hasFailed()) return;
+                    if (auto asn = std::dynamic_pointer_cast<ast::AssignmentNode>(n))
+                    {
+                        const auto target = exprPathText(asn->getAssignPair().first);
+                        for (const auto& f : frozenByTask)
+                        {
+                            if (!f.empty() && mayAlias(target, f))
+                            {
+                                failAt(n->getPos(), "parent thread writes '" + target +
+                                       "' while a task holds write access to '" + f +
+                                       "' — borrowed value frozen for the scope (P14 / Q4)");
+                                return;
+                            }
+                        }
+                    }
+                    // 常见子容器：块 / 循环 / 条件 / 中缀（赋值可能嵌在这里）
+                    if (auto rng = std::dynamic_pointer_cast<ast::BlockRangerNode>(n))
+                    { for (const auto& x : rng->getBodyExpressions()) scanParentWrites(x); }
+                    else if (auto loop = std::dynamic_pointer_cast<ast::LoopNode>(n))
+                    { scanParentWrites(loop->getBodyNode()); }
+                    else if (auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(n))
+                    {
+                        for (const auto& b : cond->getBranchNodes())
+                            if (auto br = std::dynamic_pointer_cast<ast::BranchNode>(b))
+                                scanParentWrites(br->getBodyNode());
+                    }
+                    else if (auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(n))
+                    { scanParentWrites(inf->getLeftNode()); scanParentWrites(inf->getRightNode()); }
+                };
+            for (const auto& expr : bodyExprs)
+            {
+                // spawn 语句本身跳过（它的实参写入已由任务侧检查覆盖）
+                bool isSpawn = false;
+                for (const auto& s : spawns) if (s.node == expr) { isSpawn = true; break; }
+                if (!isSpawn) scanParentWrites(expr);
+            }
+        }
+        if (hasFailed())
+            return;
+
+        // ---- 发射阶段 ----
+        pushScope();
+        std::vector<std::string> handleSlots;
+        // 为 scope 句柄名分配一个真实栈槽（二等值，块内可引用但不作普通值用）。
+        // 分配真实槽避免 addrOf 拿到无偏移的野槽。
+        allocateSlot(scopeNode->getName()->getName(), sema::getPtrType(), 8);
+        size_t spawnIdx = 0;
+        for (const auto& expr : bodyExprs)
+        {
+            // 该语句是不是某个 spawn？
+            const SpawnInfo* info = nullptr;
+            for (const auto& s : spawns)
+                if (s.node == expr) { info = &s; break; }
+            if (info)
+            {
+                // 1) 分配 argblock（连续 argCount*8 字节）与 handle 槽
+                const std::string argName = "__p14_arg_" + std::to_string(tag) + "_" + std::to_string(spawnIdx);
+                const std::string hName = "__p14_handle_" + std::to_string(tag) + "_" + std::to_string(spawnIdx);
+                const long long argOff = allocateSlot(argName, sema::getPtrType(), info->args.size() * 8);
+                const long long hOff = allocateSlot(hName, sema::getPtrType(), 8);
+                // 2) 求值每个实参，写入 argblock[i]
+                for (size_t i = 0; i < info->args.size(); ++i)
+                {
+                    emitExpression(info->args[i]);
+                    if (hasFailed()) return;
+                    _asm.inst("movq", "%rax", std::to_string(argOff + static_cast<long long>(i) * 8) + "(%rbp)");
+                }
+                // 3) 生成 trampoline（延迟发射），拿到闭包对象标签供 core_thread_create 解包
+                const std::string trampLabel = "spawn_tramp_" + std::to_string(tag) + "_" + std::to_string(spawnIdx);
+                _pendingTrampolines.push_back({trampLabel, info->targetFn, info->args.size()});
+                const std::string cloLabel = ".Lfnclosure_" + trampLabel;
+                _closureObjects.push_back({cloLabel, trampLabel});
+                // 4) core_thread_create(closure, argblock) -> handle
+                _asm.lea(cloLabel + "(%rip)", "%rcx");
+                _asm.lea(std::to_string(argOff) + "(%rbp)", "%rdx");
+                _asm.subRsp(32);
+                _asm.call("core_thread_create");
+                _asm.addRsp(32);
+                _asm.inst("movq", "%rax", std::to_string(hOff) + "(%rbp)");
+                handleSlots.push_back(std::to_string(hOff) + "(%rbp)");
+                ++spawnIdx;
+                continue;
+            }
+            // 普通语句：按块内语句发射
+            emitStatement(expr);
+            if (hasFailed()) return;
+        }
+
+        // ---- P14-5：scope 退出前自动关闭 scope 内创建的 Chan（Q8 / 裁决 4-D）----
+        // 必须在 join 之前：否则任务阻塞在空 recv 上时 join 永不返回（死锁）。
+        // 只关闭本 scope 帧里以 TK_CHAN 类型登记的拥有者变量；share() 出来的
+        // Ref[Chan] 是 TK_MEMORY，不在此列（遵循「谁创建谁关闭」）。
+        {
+            if (!_scopeDrops.empty())
+            {
+                const auto& frame = _scopeDrops.back();
+                for (const auto& d : frame)
+                {
+                    if (d.moved || !d.type || d.type->getKind() != sema::TypeKind::TK_CHAN)
+                        continue;
+                    _asm.mov(d.addr, "%rcx");   // 槽内存的是 Chan 对象指针
+                    _asm.subRsp(32);
+                    _asm.call("core_chan_close");
+                    _asm.addRsp(32);
+                }
+            }
+        }
+        // ---- 隐式 join（Q17）：在 popScope 前 join 所有任务 ----
+        for (const auto& h : handleSlots)
+        {
+            _asm.inst("movq", h, "%rcx");
+            _asm.subRsp(32);
+            _asm.call("core_thread_join");
+            _asm.addRsp(32);
+        }
+        // join 后任务触及的 slot 事实回到 '?'（Q10.2）—— 首版检查器保守，
+        // 这里无额外事实表操作（Q4=A 未跨函数推断，无需刷新实例级事实）。
+        popScope();
+    }
+
+    // ============================================================
+    // P14-3：`pool.par_each((p: Mut[T]) -> { ... })` 数据并行原语。
+    //
+    // 首版执行策略：**串行**枚举每个池槽、对每个槽间接调用闭包。
+    // 规范 §10.4 的静态检查保证「每槽恰好一次、元素互不相交、闭包不改结构」，
+    // 因此串行与并行在可观察语义上等价；Q1 裁决允许「池可后加不改语义」，
+    // p14_plan §7.3 亦允许先串行验证检查器。worker 池/1:1 线程留后续层。
+    //
+    // 调用约定复用闭包间接调用（emitIndirectCall）：闭包对象 { fnptr, env }，
+    // env 走 %r10、目标走 %r11，实参槽指针进 %rcx，调用前预留 32B shadow。
+    // ============================================================
+    void CodeGen::emitParEach(const std::shared_ptr<ast::InfixExpressionNode>& member,
+                              const std::shared_ptr<ast::ExpressionNode>& callNode,
+                              const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)
+    {
+        (void)callNode;
+        if (args.size() != 1)
+        {
+            failAt(member->getPos(),
+                   "par_each expects exactly one closure argument: (p: Mut[T]) -> { ... }");
+            return;
+        }
+        const auto anon = std::dynamic_pointer_cast<ast::AnonFunctionDefinitionNode>(args[0]);
+        if (!anon)
+        {
+            failAt(args[0]->getPos(),
+                   "par_each requires an inline closure '(p: Mut[T]) -> { ... }' as its argument");
+            return;
+        }
+        // 闭包必须恰好一个形参（元素）。
+        std::vector<std::string> paramNames;
+        collectParamNames(anon->getParamNode(), paramNames);
+        if (paramNames.size() != 1)
+        {
+            failAt(anon->getPos(), "par_each closure must take exactly one element parameter");
+            return;
+        }
+        // ---- 3-3 静态检查：元素能力必须是 Ref / Mut，Take 拒绝 ----
+        std::vector<sema::TypePtr> paramTypes;
+        anonParamTypes(anon->getParamNode(), paramTypes);
+        if (!paramTypes.empty() && paramTypes[0])
+        {
+            const auto& pt = paramTypes[0];
+            if (pt->getKind() == sema::TypeKind::TK_MEMORY)
+            {
+                const auto role = std::static_pointer_cast<sema::MemoryType>(pt)->getRole();
+                if (role == sema::MemoryRole::TAKE)
+                {
+                    failAt(anon->getPos(),
+                           "par_each element cannot be Take — use Mut[T] (write) or Ref[T] (read); "
+                           "taking an element out of a pool is not allowed (P14 / §10.4)");
+                    return;
+                }
+            }
+        }
+        // ---- 3-3 静态检查：闭包体不得调 Link 原语 / 改 pool 结构 / take 他人 ----
+        // 规范 §10.4：闭包体只访问 p 及子路径、显式捕获的只读 Ref；
+        // 不对其他 slot 用 take、不调 Link 原语、不改 pool 结构。
+        // 首版做法：扫描闭包体里所有方法调用名，出现结构修改 / Link 原语
+        // 或 take() 就拒绝，给出明确诊断（Q4 严格度：判断不了就拒绝）。
+        {
+            const std::string elemName = paramNames[0];
+            // 闭包捕获的外部变量集合（自由变量 - 形参）。写这些变量 = 跨任务竞争。
+            std::set<std::string> capturedSet;
+            {
+                std::vector<std::string> bound = paramNames, free;
+                collectFreeVariables(anon->getBodyNode(), bound, free);
+                for (const auto& f : free)
+                    if (lookupVar(f))
+                        capturedSet.insert(f);
+            }
+            // P14-6(Q-A)：经 `captured.at(...)` 取出的局部是另一槽位的别名，
+            // 写它的字段等价于写捕获 Pool 的元素 —— §10.4 禁止。
+            // 先收集这类局部名，再在赋值检查里拒绝写它们。
+            std::set<std::string> capturedAtAliases;
+            std::function<bool(const std::shared_ptr<ast::ExpressionNode>&)> isCapturedAtCall =
+                [&](const std::shared_ptr<ast::ExpressionNode>& e) -> bool {
+                    if (!e)
+                        return false;
+                    // 剥掉括号。
+                    std::shared_ptr<ast::ExpressionNode> x = e;
+                    while (const auto p = std::dynamic_pointer_cast<ast::ParenRangerNode>(x))
+                        x = p->getRangerNode();
+                    const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(x);
+                    if (!call)
+                        return false;
+                    // 兼容两种形状：callee 是 Infix(DOT, recv, at) 或 call 本身带 DOT op。
+                    std::shared_ptr<ast::ExpressionNode> dotNode = call->getLeftNode();
+                    auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(dotNode);
+                    if (!dot || dot->getOpToken().getType() != core::TokenType::TOKEN_DOT)
+                    {
+                        dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(x);
+                        dotNode = x;
+                    }
+                    if (!dot || dot->getOpToken().getType() != core::TokenType::TOKEN_DOT)
+                        return false;
+                    const auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getRightNode());
+                    if (!method || method->getName() != "at")
+                        return false;
+                    const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getLeftNode());
+                    return recv && capturedSet.count(recv->getName()) > 0;
+                };
+            std::function<void(const std::shared_ptr<ast::ExpressionNode>&)> collectAtAliases =
+                [&](const std::shared_ptr<ast::ExpressionNode>& n) {
+                    if (!n)
+                        return;
+                    if (const auto vd = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(n))
+                    {
+                        for (const auto& def : vd->getVarDefs())
+                        {
+                            if (!def || !def->hasInitialValue() || !def->getNameNode())
+                                continue;
+                            // 直接来自 captured.at(...) 的别名。
+                            if (isCapturedAtCall(def->getValueNode()))
+                                capturedAtAliases.insert(def->getNameNode()->getName());
+                            // P14 收尾：来自另一个别名的传递（if var sp=...; var s=sp）。
+                            if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(def->getValueNode());
+                                id && capturedAtAliases.count(id->getName()))
+                                capturedAtAliases.insert(def->getNameNode()->getName());
+                        }
+                        return;
+                    }
+                    if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(n))
+                    { for (const auto& x : block->getBodyExpressions()) collectAtAliases(x); }
+                    else if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(n))
+                    { collectAtAliases(inf->getLeftNode()); collectAtAliases(inf->getRightNode()); }
+                    else if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(n))
+                    { collectAtAliases(loop->getBodyNode()); }
+                    else if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(n))
+                    {
+                        for (const auto& b : cond->getBranchNodes())
+                        {
+                            if (auto br = std::dynamic_pointer_cast<ast::BranchNode>(b))
+                            {
+                                // P14 收尾：`if var sp = captured.at(...)` 的绑定也是别名。
+                                if (!br->getBindingName().empty() &&
+                                    isCapturedAtCall(br->getConditionNode()))
+                                    capturedAtAliases.insert(br->getBindingName());
+                                collectAtAliases(br->getBodyNode());
+                            }
+                        }
+                    }
+                };
+            collectAtAliases(anon->getBodyNode());
+
+            std::function<void(const std::shared_ptr<ast::ExpressionNode>&)> scanBody =
+                [&](const std::shared_ptr<ast::ExpressionNode>& n) {
+                    if (!n || hasFailed())
+                        return;
+                    // 方法调用：Infix(DOT, recv, Identifier(method)) 作为 call 的 callee。
+                    if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(n))
+                    {
+                        const auto callee = call->getLeftNode();
+                        if (const auto dot = std::dynamic_pointer_cast<ast::InfixExpressionNode>(callee);
+                            dot && dot->getOpToken().getType() == core::TokenType::TOKEN_DOT)
+                        {
+                            if (const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getRightNode()))
+                            {
+                                const auto& m = mid->getName();
+                                // 结构修改：池的 add/release/new 与 List 的 append 等。
+                                if (m == "add" || m == "release" || m == "new" || m == "clear" ||
+                                    m == "remove" || m == "listAppend" || m == "add_reusing")
+                                {
+                                    failAt(n->getPos(),
+                                           "par_each closure cannot modify pool/container structure ('" + m +
+                                               "') — element closures must not change structure (P14 / §10.4)");
+                                    return;
+                                }
+                                // Link 原语：add/remove/clear/unlink_all/is_empty/count/has
+                                // 中 add/remove/clear 已在上面拦；这里补 Link 查询族，
+                                // 它们也要求「禁 Link 遍历」（Q18）。
+                                if (m == "unlink_all" || m == "is_empty" || m == "link_count" ||
+                                    m == "link_has" || m == "peers")
+                                {
+                                    failAt(n->getPos(),
+                                           "par_each closure cannot use Link primitives ('" + m +
+                                               "') — no Link traversal in par_each (P14 / Q18)");
+                                    return;
+                                }
+                                // take()：只允许对元素本身（首参）调用，其它接收者拒绝。
+                                if (m == "take")
+                                {
+                                    const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(dot->getLeftNode());
+                                    if (!recv || recv->getName() != elemName)
+                                    {
+                                        failAt(n->getPos(),
+                                               "par_each closure cannot take() a value other than its element — "
+                                               "only the element parameter may be used (P14 / §10.4)");
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(n))
+                    { for (const auto& x : block->getBodyExpressions()) scanBody(x); }
+                    else if (const auto inf = std::dynamic_pointer_cast<ast::InfixExpressionNode>(n))
+                    { scanBody(inf->getLeftNode()); scanBody(inf->getRightNode()); }
+                    else if (const auto asn = std::dynamic_pointer_cast<ast::AssignmentNode>(n))
+                    {
+                        // §10.4：闭包体只能写元素参数 p 及其子路径，以及块内自建的局部变量；
+                        // 不能写捕获来的外部变量（那是跨任务共享的可变状态 = 数据竞争）。
+                        const std::string target = exprPathText(asn->getAssignPair().first);
+                        if (!target.empty())
+                        {
+                            const std::string root = target.substr(0, target.find('.'));
+                            if (root != elemName && capturedSet.count(root) > 0)
+                            {
+                                failAt(n->getPos(),
+                                       "par_each closure cannot write captured variable '" + root +
+                                           "' — captured values are read-only across tasks (P14 / §10.4)");
+                                return;
+                            }
+                            // P14-6(Q-A)：`var f = otherPool.at(id)` 得到的 f 是捕获
+                            // Pool 元素的别名，写 f 的字段等于写其它槽位，§10.4 禁止。
+                            if (capturedAtAliases.count(root) > 0)
+                            {
+                                failAt(n->getPos(),
+                                       "par_each closure cannot write element '" + root +
+                                           "' obtained from a captured pool via at() — only the element "
+                                           "parameter may be written (P14 / §10.4)");
+                                return;
+                            }
+                        }
+                        scanBody(asn->getAssignPair().first);
+                        scanBody(asn->getAssignPair().second);
+                    }
+                    else if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(n))
+                    { scanBody(paren->getRangerNode()); }
+                    else if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(n))
+                    { scanBody(loop->getConditionNode()); scanBody(loop->getBodyNode()); }
+                    else if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(n))
+                    {
+                        for (const auto& b : cond->getBranchNodes())
+                            if (auto br = std::dynamic_pointer_cast<ast::BranchNode>(b))
+                                scanBody(br->getBodyNode());
+                    }
+                    else if (const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(n))
+                    { scanBody(ret->getReturnNode()); }
+                };
+            scanBody(anon->getBodyNode());
+        }
+        if (hasFailed())
+            return;
+
+        // 接收者（Pool 变量）槽。
+        const auto recvId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+        const auto poolSlot = lookupVar(recvId->getName());
+        // P14-6：若接收者 Pool 被更早的闭包按引用捕获而 boxed，槽里存的是
+        // 盒地址而非 pool 指针；须先解一层到专属栈槽，否则 core_pool_count /
+        // core_pool_slot_at 把盒后垃圾当池头而崩溃（与 at() 同类踩坑）。
+        std::string poolAddr = addrOf(*poolSlot);
+        if (poolSlot->boxed)
+        {
+            const std::string poolPtrSlot = allocateTemp(sema::getPtrType());
+            _asm.mov(poolAddr, "%rax");
+            _asm.inst("movq", "(%rax)", "%rax");
+            _asm.mov("%rax", poolPtrSlot);
+            poolAddr = poolPtrSlot;
+        }
+
+        // 1) 发射闭包一次 -> %rax = 闭包对象指针，存槽。
+        emitExpression(args[0]);
+        if (hasFailed())
+            return;
+        const std::string cloSlot = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", cloSlot);
+
+        // 2) 计数 n = core_pool_count(pool)
+        const std::string countSlot = allocateTemp(sema::getIntType());
+        _asm.mov(poolAddr, "%rcx");
+        _asm.subRsp(32);
+        _asm.call("core_pool_count");
+        _asm.addRsp(32);
+        _asm.mov("%rax", countSlot);
+
+        // 为 par_each 生成一个闭包调用 trampoline（延迟发射）：
+        //   argblock[0] = 闭包对象指针，argblock[1] = 元素槽指针。
+        // trampoline 从闭包拆 env(%r10)/fnptr(%r11) 后间接调用。
+        const size_t tag = ++_anonCounter;
+        const std::string trampLabel = "pareach_tramp_" + std::to_string(tag);
+        _pendingTrampolines.push_back({trampLabel, "", 2, true});
+        const std::string cloLabel = ".Lfnclosure_" + trampLabel;
+        _closureObjects.push_back({cloLabel, trampLabel});
+
+        // 3) 在堆上分配 argblock 数组（每元素 16B：闭包指针 + 槽指针）
+        //    与 handle 数组（每元素 8B）。元素个数运行时可知，故用堆。
+        const std::string argArrSlot = allocateTemp(sema::getPtrType());
+        const std::string hArrSlot = allocateTemp(sema::getPtrType());
+        _asm.mov(countSlot, "%rax");
+        _asm.inst("imulq", "$16", "%rax");
+        _asm.mov("%rax", "%rcx");
+        _asm.movImm(8, "%rdx");
+        _asm.subRsp(32);
+        _asm.call("core_alloc");
+        _asm.addRsp(32);
+        _asm.mov("%rax", argArrSlot);
+        _asm.mov(countSlot, "%rax");
+        _asm.inst("imulq", "$8", "%rax");
+        _asm.mov("%rax", "%rcx");
+        _asm.movImm(8, "%rdx");
+        _asm.subRsp(32);
+        _asm.call("core_alloc");
+        _asm.addRsp(32);
+        _asm.mov("%rax", hArrSlot);
+
+        // 4) 循环 i：填 argblock[i] = {closure, slot(i)}，create 线程存 handle[i]
+        const std::string iSlot = allocateTemp(sema::getIntType());
+        _asm.movImm(0, iSlot);
+        const std::string spawnLbl = _asm.newLabel("pareach_spawn_loop");
+        const std::string spawnDone = _asm.newLabel("pareach_spawn_done");
+        _asm.label(spawnLbl);
+        _asm.mov(iSlot, "%rax");
+        _asm.mov(countSlot, "%rcx");
+        _asm.inst("cmpq", "%rcx", "%rax");
+        _asm.inst("jge", spawnDone);
+
+        // 写 argblock[i*16+0] = closure
+        _asm.mov(argArrSlot, "%rcx");
+        _asm.mov(iSlot, "%rax");
+        _asm.inst("imulq", "$16", "%rax");
+        _asm.add("%rax", "%rcx");
+        _asm.mov(cloSlot, "%rax");
+        _asm.inst("movq", "%rax", "(%rcx)");
+        // slot(i) -> 专属槽（核心：core_pool_slot_at 结果不能被索引计算覆盖）
+        const std::string slotValSlot = allocateTemp(sema::getPtrType());
+        _asm.mov(poolAddr, "%rcx");
+        _asm.mov(iSlot, "%rdx");
+        _asm.subRsp(32);
+        _asm.call("core_pool_slot_at");
+        _asm.addRsp(32);
+        _asm.mov("%rax", slotValSlot);
+        _asm.mov(argArrSlot, "%rcx");
+        _asm.mov(iSlot, "%rax");
+        _asm.inst("imulq", "$16", "%rax");
+        _asm.add("%rax", "%rcx");
+        _asm.mov(slotValSlot, "%rax");
+        _asm.inst("movq", "%rax", "8(%rcx)");
+
+        // core_thread_create(trampoline_closure, &argblock[i])
+        _asm.lea(cloLabel + "(%rip)", "%rcx");
+        _asm.mov(argArrSlot, "%rdx");
+        _asm.mov(iSlot, "%rax");
+        _asm.inst("imulq", "$16", "%rax");
+        _asm.add("%rax", "%rdx");
+        _asm.subRsp(32);
+        _asm.call("core_thread_create");
+        _asm.addRsp(32);
+        // handle[i*8] = 返回的 HANDLE（先存槽，避免被索引计算覆盖）
+        const std::string handleValSlot = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", handleValSlot);
+        _asm.mov(hArrSlot, "%rcx");
+        _asm.mov(iSlot, "%rax");
+        _asm.inst("imulq", "$8", "%rax");
+        _asm.add("%rax", "%rcx");
+        _asm.mov(handleValSlot, "%rax");
+        _asm.inst("movq", "%rax", "(%rcx)");
+
+        _asm.inst("incq", iSlot);
+        _asm.jmp(spawnLbl);
+        _asm.label(spawnDone);
+
+        // 5) 隐式 join（Q18=A：par_each 自带 join，阻塞返回）
+        _asm.movImm(0, iSlot);
+        const std::string joinLbl = _asm.newLabel("pareach_join_loop");
+        const std::string joinDone = _asm.newLabel("pareach_join_done");
+        _asm.label(joinLbl);
+        _asm.mov(iSlot, "%rax");
+        _asm.mov(countSlot, "%rcx");
+        _asm.inst("cmpq", "%rcx", "%rax");
+        _asm.inst("jge", joinDone);
+        _asm.mov(hArrSlot, "%rax");
+        _asm.mov(iSlot, "%rcx");
+        _asm.inst("imulq", "$8", "%rcx");
+        _asm.add("%rcx", "%rax");
+        _asm.inst("movq", "(%rax)", "%rcx");
+        _asm.subRsp(32);
+        _asm.call("core_thread_join");
+        _asm.addRsp(32);
+        _asm.inst("incq", iSlot);
+        _asm.jmp(joinLbl);
+        _asm.label(joinDone);
+
+        // 6) 释放两块临时数组（Q17：join 之后）
+        _asm.mov(argArrSlot, "%rcx");
+        _asm.subRsp(32);
+        _asm.call("core_free");
+        _asm.addRsp(32);
+        _asm.mov(hArrSlot, "%rcx");
+        _asm.subRsp(32);
+        _asm.call("core_free");
+        _asm.addRsp(32);
+    }
+
     void CodeGen::emitClosureObjects()
     {
         if (_closureObjects.empty())
@@ -9724,6 +11297,9 @@ namespace backend
         {
             collectArgs(argsNode, args);
         }
+        // P14-4：guard 二等值不能作为函数实参逃出 lock 块。
+        for (const auto& a : args)
+            if (rejectGuardEscape(a, "a function argument")) return;
         // P13-2/L3-D（决议 §4.2）：先按「被调者名字」做一次增长冲突检查。
         // 裸名 listAppend(xs, v) / 模块名 ds.listAppend(xs, v) / 泛型实例
         // 三条路径都从这里过，且都在求值实参之前 —— 冲突时不必生成代码。
@@ -9803,6 +11379,141 @@ namespace backend
                         }
                     }
                 }
+                // P14-5：`Chan.new[T](capacity)` / `Chan.new[T]()` —— 有界通道构造。
+                // 与 Locked/Atomic 不同：Chan 构造只要容量（字面量常量），没有 init 值。
+                if (const auto ownerId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                    ownerId && ownerId->getName() == "Chan")
+                {
+                    const std::string methodName =
+                        [&]() -> std::string {
+                            if (const auto fnId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode()))
+                                return fnId->getName();
+                            if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode()))
+                                if (const auto fnId = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode()))
+                                    return fnId->getName();
+                            return "";
+                        }();
+                    if (methodName == "new")
+                    {
+                        // 容量：0 或 1 个实参；0 参用默认 16；必须是整数字面量常量。
+                        long long cap = 16;
+                        if (!args.empty())
+                        {
+                            const auto lit = std::dynamic_pointer_cast<ast::LiteralNode>(args[0]);
+                            if (!lit || lit->getMainToken().getType() != core::TokenType::TOKEN_INTEGER)
+                            {
+                                failAt(node->getPos(),
+                                       "Chan.new[T](capacity) requires an integer literal capacity "
+                                       "(P14-5 / 裁决 4-A)");
+                                return;
+                            }
+                            cap = std::stoll(lit->getMainToken().getValue());
+                            if (cap <= 0)
+                            {
+                                failAt(node->getPos(), "Chan capacity must be positive");
+                                return;
+                            }
+                        }
+                        _asm.movImm(cap, "%rcx");
+                        _asm.subRsp(32);
+                        _asm.call("core_chan_new");
+                        _asm.addRsp(32);
+                        return;  // %rax = 通道对象指针（标注类型由 inferType 给 Chan[T]）
+                    }
+                }
+                // P14-4：`Locked.new(init)` / `Atomic.new[T](init)` —— 同步原语构造。
+                if (const auto ownerId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                    ownerId && (ownerId->getName() == "Locked" || ownerId->getName() == "Atomic"))
+                {
+                    const std::string methodName =
+                        [&]() -> std::string {
+                            if (const auto fnId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode()))
+                                return fnId->getName();
+                            if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode()))
+                                if (const auto fnId = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode()))
+                                    return fnId->getName();
+                            return "";
+                        }();
+                    if (methodName == "new")
+                    {
+                        const bool isLocked = ownerId->getName() == "Locked";
+                        // 元素类型从 T 注解或 init 推断。Locked.new 无显式 T 时按 init 推断。
+                        sema::TypePtr inner = sema::getIntType();
+                        if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(member->getRightNode()))
+                        {
+                            if (const auto bracket = std::dynamic_pointer_cast<ast::BracketExpressionNode>(idx->getIndexNode()))
+                            {
+                                std::vector<std::shared_ptr<ast::ExpressionNode>> targs;
+                                flattenTypeArgs(bracket->getBodyNode(), targs);
+                                if (!targs.empty()) inner = typeFromTypeArgNode(targs[0], _currentGenericParams);
+                            }
+                        }
+                        // 求值 init（必须且只有一个实参）
+                        if (args.empty())
+                        {
+                            failAt(node->getPos(), (isLocked ? "Locked.new" : "Atomic.new") + std::string(" requires an initial value"));
+                            return;
+                        }
+                        emitExpression(args[0]);
+                        if (hasFailed()) return;
+                        const std::string valSlot = allocateTemp(inner);
+                        _asm.mov("%rax", valSlot);
+                        if (!isLocked && inner && inner->getKind() != sema::TypeKind::TK_INT &&
+                            inner->getKind() != sema::TypeKind::TK_I32)
+                        {
+                            failAt(node->getPos(), "Atomic[T] requires T to be i32 or i64");
+                            return;
+                        }
+                        // 分配对象：Locked = 8B 头 + 值槽（struct 按字段大小内联），Atomic = 8B。
+                        // 值表示约定：struct 的 %rax 是**指向值的指针**，标量则是值本身；
+                        // guard g 绑定 obj+8 作为 Mut[T]，T 是 struct 时必须内联字节。
+                        // 用 init 表达式的实际类型判 struct（显式标注里的裸名可能被
+                        // 解析成 ClassType，init 侧才是最可靠的来源）。
+                        const auto initType = inferType(args[0]);
+                        const bool isStruct = (inner && inner->getKind() == sema::TypeKind::TK_STRUCT) ||
+                                              (initType && initType->getKind() == sema::TypeKind::TK_STRUCT);
+                        const auto structTy = (inner && inner->getKind() == sema::TypeKind::TK_STRUCT) ? inner : initType;
+                        const size_t valSize = isStruct && structTy ? static_cast<size_t>(structTy->getSize()) : 8;
+                        const size_t objSize = isLocked ? 8 + ((valSize + 7) & ~static_cast<size_t>(7)) : 8;
+                        _asm.movImm(static_cast<long long>(objSize), "%rcx");
+                        _asm.movImm(8, "%rdx");
+                        _asm.subRsp(32);
+                        _asm.call("core_alloc");
+                        _asm.addRsp(32);
+                        const std::string objSlot = allocateTemp(sema::getPtrType());
+                        _asm.mov("%rax", objSlot);
+                        if (isLocked)
+                        {
+                            _asm.mov(objSlot, "%rcx");
+                            _asm.movImm(0, "%rdx");
+                            _asm.inst("movq", "%rdx", "(%rcx)");   // lockword = 0（+4 pad 由 alloc 零填充? 不依赖）
+                            if (isStruct)
+                            {
+                                // 内联逐 8 字节拷贝：不能在 call 后再搬（源是临时槽）
+                                const std::string dstSlot = allocateTemp(sema::getPtrType());
+                                _asm.mov(objSlot, "%rax");
+                                _asm.add("$8", "%rax");
+                                _asm.mov("%rax", dstSlot);
+                                emitStructCopy(dstSlot, valSlot, static_cast<long long>(valSize));
+                            }
+                            else
+                            {
+                                _asm.mov(objSlot, "%rcx");
+                                _asm.add("$8", "%rcx");
+                                _asm.mov(valSlot, "%rax");
+                                _asm.inst("movq", "%rax", "(%rcx)");   // value at +8
+                            }
+                        }
+                        else
+                        {
+                            _asm.mov(objSlot, "%rcx");
+                            _asm.mov(valSlot, "%rax");
+                            _asm.inst("movq", "%rax", "(%rcx)");
+                        }
+                        _asm.mov(objSlot, "%rax");
+                        return;
+                    }
+                }
                 // P13-2/L3-B（决议 §1.4）：`pool.new[T](args)` —— 方法名带类型实参。
                 // AST: Infix(DOT, pool, IndexExpression(new, [T]))。
                 // B 阶段先复用 T 的构造器（pool 句柄暂不参与分配），
@@ -9848,6 +11559,55 @@ namespace backend
                             }
                         }
                     }
+                }
+                // P14-3：`pool.par_each((p: Mut[T]) -> { ... })` 数据并行原语。
+                // 排在 pool.new[T] 之后、兜底 emitMethodCall 之前；只认 DOT 且
+                // 方法名为 par_each、接收者是 Pool 类型的情况。
+                if (const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+                    mid && mid->getName() == "par_each")
+                {
+                    const auto recvSlot = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                    const auto recvVar = recvSlot ? lookupVar(recvSlot->getName()) : nullptr;
+                    if (!recvVar || !recvVar->type || recvVar->type->getKind() != sema::TypeKind::TK_POOL)
+                    {
+                        failAt(node->getPos(),
+                               "par_each requires a Pool variable receiver");
+                        return;
+                    }
+                    emitParEach(member, node, args);
+                    return;
+                }
+                // P14-3 / §4-B：`pool.at(id)` -> 槽地址（Ref[T]?，越界返回 0/null）。
+                // id 是池分配序号（槽地址稳定，故 id 稳定）。映射到底层
+                // core_pool_slot_at(pool, id)。
+                if (const auto mid = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+                    mid && mid->getName() == "at")
+                {
+                    const auto recvSlot = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                    const auto recvVar = recvSlot ? lookupVar(recvSlot->getName()) : nullptr;
+                    if (!recvVar || !recvVar->type || recvVar->type->getKind() != sema::TypeKind::TK_POOL)
+                    {
+                        failAt(node->getPos(), "pool.at(id) requires a Pool variable receiver");
+                        return;
+                    }
+                    if (args.size() != 1)
+                    {
+                        failAt(node->getPos(), "pool.at(id) expects exactly one id argument");
+                        return;
+                    }
+                    _asm.mov(addrOf(*recvVar), "%rcx");   // rcx = 槽内容
+                    // P14-6：被闭包按引用捕获的 Pool 会被 boxed，栈槽里存的是
+                    // 盒地址而非 pool 指针，须再解一层；否则 core_pool_slot_at
+                    // 把盒后垃圾当 current_chunk，沿 prev 链无限遍历而挂死。
+                    // 非 boxed 接收者不 emit 这条指令，机器码与修复前逐字节一致。
+                    if (recvVar->boxed)
+                        _asm.inst("movq", "(%rcx)", "%rcx"); // rcx = pool 指针
+                    emitExpression(args[0]);              // rax = id
+                    _asm.mov("%rax", "%rdx");
+                    _asm.subRsp(32);
+                    _asm.call("core_pool_slot_at");
+                    _asm.addRsp(32);
+                    return;
                 }
                 emitMethodCall(member, node, args);
                 return;
@@ -10973,6 +12733,26 @@ namespace backend
                 const auto inner = args.empty() ? sema::getUnknownType() : args[0];
                 return std::make_shared<sema::MemoryType>(role, inner);
             }
+            // P14-4/P14-5：Locked[T] / Atomic[T] / Chan[T] —— 内部可变三类型。
+            if (base == "Locked" || base == "Atomic" || base == "Chan")
+            {
+                const auto inner = args.empty() ? sema::getUnknownType() : args[0];
+                if (base == "Locked")
+                    return sema::getLockedType(inner);
+                // P14-5：Chan[T] 承载 Content[T]，类型参数是元素体类型。
+                if (base == "Chan")
+                    return sema::getChanType(inner);
+                // Atomic 元素只接受宽度类型 i32 / i64(int)；其它类型明确诊断。
+                if (inner && (inner->getKind() == sema::TypeKind::TK_INT ||
+                              inner->getKind() == sema::TypeKind::TK_I32))
+                    return sema::getAtomicType(inner);
+                const_cast<CodeGen*>(this)->failAt(
+                    node->getPos(),
+                    "Atomic[T] requires T to be i32 or i64 (got '" +
+                        (inner ? inner->toString() : std::string("?")) + "') — first version supports "
+                        "sequentially-consistent 32/64-bit atomics only (P14 / Q7)");
+                return sema::getUnknownType();
+            }
             if (base == "list" || base == "series" || base == "array")
             {
                 // 关键：`list[float]` 的元素类型必须真的来自标注。
@@ -11221,6 +13001,24 @@ namespace backend
                 role = sema::MemoryRole::TAKE;
             const auto inner = args.empty() ? sema::getUnknownType() : args[0];
             return std::make_shared<sema::MemoryType>(role, inner);
+        }
+        // P14-4/P14-5：Locked[T] / Atomic[T] / Chan[T]（label 路径，供 var/形参/返回标注）。
+        if (base == "Locked" || base == "Atomic" || base == "Chan")
+        {
+            const auto inner = args.empty() ? sema::getUnknownType() : args[0];
+            if (base == "Locked")
+                return sema::getLockedType(inner);
+            if (base == "Chan")
+                return sema::getChanType(inner);
+            if (inner && (inner->getKind() == sema::TypeKind::TK_INT ||
+                          inner->getKind() == sema::TypeKind::TK_I32))
+                return sema::getAtomicType(inner);
+            const_cast<CodeGen*>(this)->failAt(
+                label->getPos(),
+                "Atomic[T] requires T to be i32 or i64 (got '" +
+                    (inner ? inner->toString() : std::string("?")) + "') — sequentially-consistent "
+                    "32/64-bit atomics only (P14 / Q7)");
+            return sema::getUnknownType();
         }
         if (base == "list" || base == "series" || base == "array")
         {
@@ -13524,6 +15322,218 @@ namespace backend
         _asm.call(className + ".__init__");
         _asm.addRsp(ctorArea);
     }
+    // P14-4：Locked.share() 与 Atomic 原子方法。返回 true 表示已处理。
+    // 接收者静态类型：Locked[T] / Ref[Locked[T]] -> share()；
+    // Atomic[T] / Ref[Atomic[T]] -> load/store/fetch_*/swap/cas。
+    bool CodeGen::emitSyncMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
+                                     const std::shared_ptr<ast::ExpressionNode>& callNode,
+                                     const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)
+    {
+        const auto methodId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+        if (!methodId) return false;
+        const std::string& m = methodId->getName();
+        const auto recvType = inferType(member->getLeftNode());
+        if (!recvType) return false;
+        // 剥掉 Ref/Mut 包装拿到核心类型
+        sema::TypePtr coreType = recvType;
+        if (recvType->getKind() == sema::TypeKind::TK_MEMORY)
+        {
+            const auto mt = std::dynamic_pointer_cast<sema::MemoryType>(recvType);
+            if (mt->getRole() == sema::MemoryRole::REF || mt->getRole() == sema::MemoryRole::MUT)
+                coreType = mt->getInnerType();
+        }
+        const bool isLocked = coreType && coreType->getKind() == sema::TypeKind::TK_LOCKED;
+        const bool isAtomic = coreType && coreType->getKind() == sema::TypeKind::TK_ATOMIC;
+        const bool isChan = coreType && coreType->getKind() == sema::TypeKind::TK_CHAN;
+        if (!isLocked && !isAtomic && !isChan) return false;
+        // ---- P14-5：Chan 方法（share / send / recv / close） ----
+        if (isChan)
+        {
+            const auto chanInner = std::static_pointer_cast<sema::SyncWrapperType>(coreType)->getInnerType();
+            if (m == "share")
+            {
+                if (!args.empty()) { failAt(member->getPos(), "share() takes no arguments"); return true; }
+                emitExpression(member->getLeftNode());   // 句柄即指针，原样返回（类型层标 Ref[Chan[T]]）
+                return true;
+            }
+            if (m == "close")
+            {
+                if (!args.empty()) { failAt(member->getPos(), "close() takes no arguments"); return true; }
+                emitExpression(member->getLeftNode());
+                if (hasFailed()) return true;
+                const std::string chSlot = allocateTemp(sema::getPtrType());
+                _asm.mov("%rax", chSlot);
+                _asm.mov(chSlot, "%rcx");
+                _asm.subRsp(32);
+                _asm.call("core_chan_close");
+                _asm.addRsp(32);
+                return true;   // void
+            }
+            if (m == "send")
+            {
+                if (args.size() != 1) { failAt(member->getPos(), "send(c: Content[T]) takes exactly one argument"); return true; }
+                // 静态检查：实参必须是 Content[chanInner]（调用方先 x.take()）。
+                const auto argTy = inferType(args[0]);
+                bool okPayload = argTy && argTy->getKind() == sema::TypeKind::TK_MEMORY &&
+                    std::static_pointer_cast<sema::MemoryType>(argTy)->getRole() == sema::MemoryRole::CONTENT;
+                if (okPayload)
+                {
+                    const auto inner = std::static_pointer_cast<sema::MemoryType>(argTy)->getInnerType();
+                    if (chanInner && inner && !chanInner->equals(inner)) okPayload = false;
+                }
+                if (!okPayload)
+                {
+                    failAt(args[0]->getPos(),
+                           "Chan.send requires a Content[" + (chanInner ? chanInner->toString() : std::string("T")) +
+                           "] argument (call x.take() first); got '" +
+                           (argTy ? argTy->toString() : std::string("?")) + "' (P14-5 / 裁决 4-B)");
+                    return true;
+                }
+                // 先求值通道句柄存槽（core_chan_send 会改 caller-saved），再求值 Content 值。
+                emitExpression(member->getLeftNode());
+                if (hasFailed()) return true;
+                const std::string chSlot = allocateTemp(sema::getPtrType());
+                _asm.mov("%rax", chSlot);
+                emitExpression(args[0]);   // Content 运行时的值就是载荷指针（%rax）
+                if (hasFailed()) return true;
+                const std::string valSlot = allocateTemp(sema::getPtrType());
+                _asm.mov("%rax", valSlot);
+                _asm.mov(chSlot, "%rcx");
+                _asm.mov(valSlot, "%rdx");
+                _asm.subRsp(32);
+                _asm.call("core_chan_send");
+                _asm.addRsp(32);
+                // send 消耗 Content：调用方槽变 X（移动语义）。
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(args[0]))
+                    setBodyState(id->getName(), BodyState::MOVED, args[0]->getPos(), "chan.send");
+                return true;   // void
+            }
+            if (m == "recv")
+            {
+                if (!args.empty()) { failAt(member->getPos(), "recv() takes no arguments"); return true; }
+                emitExpression(member->getLeftNode());
+                if (hasFailed()) return true;
+                const std::string chSlot = allocateTemp(sema::getPtrType());
+                _asm.mov("%rax", chSlot);
+                _asm.mov(chSlot, "%rcx");
+                _asm.subRsp(32);
+                _asm.call("core_chan_recv");
+                _asm.addRsp(32);
+                return true;   // 值在 %rax；类型层标 Content[T]?（见 inferType）
+            }
+            failAt(member->getPos(), "Chan[T] has no method '" + m + "' (share/send/recv/close)");
+            return true;
+        }
+        if (isLocked)
+        {
+            if (m != "share")
+            {
+                failAt(member->getPos(), "Locked[T] only supports share() in the first version (got '" + m + "')");
+                return true;
+            }
+            if (!args.empty())
+            {
+                failAt(member->getPos(), "share() takes no arguments");
+                return true;
+            }
+            // 句柄就是对象指针，求值后原样返回（类型层标记为 Ref[Locked[T]]）。
+            emitExpression(member->getLeftNode());
+            return true;
+        }
+        // ---- Atomic 方法 ----
+        const auto inner = std::static_pointer_cast<sema::SyncWrapperType>(coreType)->getInnerType();
+        const bool is32 = inner && inner->getKind() == sema::TypeKind::TK_I32;
+        const std::string suffix = is32 ? "_i32" : "_i64";
+        const int opCode = m == "fetch_and" ? 0 : m == "fetch_or" ? 1 : m == "fetch_xor" ? 2 : -1;
+        const bool isFetchOp = opCode >= 0;
+        const bool isFetchAdd = m == "fetch_add";
+        const bool isFetchSub = m == "fetch_sub";
+        const bool isSwap = m == "swap";
+        const bool isCas = m == "cas";
+        const bool isLoad = m == "load";
+        const bool isStore = m == "store";
+        if (!isLoad && !isStore && !isFetchAdd && !isFetchSub && !isSwap && !isCas && !isFetchOp)
+        {
+            failAt(member->getPos(), "Atomic[T] has no method '" + m +
+                   "' (load/store/fetch_add/fetch_sub/fetch_and/fetch_or/fetch_xor/swap/cas)");
+            return true;
+        }
+        // fetch_sub：取负后走 fetch_add（顺序一致，语义等价）
+        // 1) 求值接收者 -> 原子对象地址，存栈槽
+        emitExpression(member->getLeftNode());
+        if (hasFailed()) return true;
+        const std::string addrSlot = allocateTemp(sema::getPtrType());
+        _asm.mov("%rax", addrSlot);
+        // 2) 按方法求值实参到栈槽（全部按 int/64 位处理）
+        std::vector<std::string> argSlots;
+        for (const auto& a : args)
+        {
+            emitExpression(a);
+            if (hasFailed()) return true;
+            std::string s = allocateTemp(sema::getIntType());
+            _asm.mov("%rax", s);
+            argSlots.push_back(s);
+        }
+        // 3) 参数装载并调用 core 原语
+        if (isLoad)
+        {
+            _asm.mov(addrSlot, "%rcx");
+            _asm.subRsp(32);
+            _asm.call("core_atomic_load" + suffix);
+            _asm.addRsp(32);
+            if (is32) _asm.inst("movslq", "%eax", "%rax");   // i32 符号扩展
+        }
+        else if (isStore)
+        {
+            _asm.mov(addrSlot, "%rcx");
+            _asm.mov(argSlots[0], "%rdx");
+            _asm.subRsp(32);
+            _asm.call("core_atomic_store" + suffix);
+            _asm.addRsp(32);
+        }
+        else if (isFetchAdd || isFetchSub)
+        {
+            _asm.mov(addrSlot, "%rcx");
+            _asm.mov(argSlots[0], "%rax");
+            if (isFetchSub) _asm.inst("neg", "%rax");        // 取负
+            _asm.mov("%rax", "%rdx");
+            _asm.subRsp(32);
+            _asm.call("core_atomic_fetch_add" + suffix);
+            _asm.addRsp(32);
+            if (is32) _asm.inst("movslq", "%eax", "%rax");
+        }
+        else if (isSwap)
+        {
+            _asm.mov(addrSlot, "%rcx");
+            _asm.mov(argSlots[0], "%rdx");
+            _asm.subRsp(32);
+            _asm.call("core_atomic_swap" + suffix);
+            _asm.addRsp(32);
+            if (is32) _asm.inst("movslq", "%eax", "%rax");
+        }
+        else if (isCas)
+        {
+            _asm.mov(addrSlot, "%rcx");
+            _asm.mov(argSlots[0], "%rdx");   // expected
+            _asm.mov(argSlots[1], "%r8");    // new
+            _asm.subRsp(32);
+            _asm.call("core_atomic_cas" + suffix);
+            _asm.addRsp(32);
+            if (is32) _asm.inst("movslq", "%eax", "%rax");
+        }
+        else if (isFetchOp)
+        {
+            _asm.mov(addrSlot, "%rcx");
+            _asm.mov(argSlots[0], "%rdx");   // value
+            _asm.movImm(opCode, "%r8");      // op
+            _asm.subRsp(32);
+            _asm.call("core_atomic_fetch_op" + suffix);
+            _asm.addRsp(32);
+            if (is32) _asm.inst("movslq", "%eax", "%rax");
+        }
+        return true;
+    }
+
     void CodeGen::emitMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
                                  const std::shared_ptr<ast::ExpressionNode>& callNode,
                                  const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)
@@ -13535,6 +15545,19 @@ namespace backend
             fail("Method name must be an identifier: " + member->toString());
             return;
         }
+        // P14-1b：合法的 s.spawn(...) 全部由 emitScope 在受控上下文里处理，
+        // 任何落到普通方法分派这里的 spawn 都是非法的（循环内 / 条件内 /
+        // 嵌套 / scope 外）。首版只支持 spawn 作为 scope body 的直接语句。
+        if (methodId->getName() == "spawn")
+        {
+            failAt(callNode ? callNode->getPos() : member->getPos(),
+                   "spawn must be a direct statement of a scope body (loop/conditional/nested spawn "
+                   "is not supported in the first version; P14 / Q4)");
+            return;
+        }
+        // P14-4：Locked.share() / Atomic 原子方法（按接收者静态类型特化）。
+        if (emitSyncMethodCall(member, callNode, args))
+            return;
         // 裁决 B（2026-11-18 用户裁决 A）：可空接收者必须先窄化。
         // 修前 `var o: Object? = null; o.toStr()` 编译通过，运行时是否崩溃
         // 取决于方法体碰不碰 this（碰则访问违例，不碰则静默成功）。

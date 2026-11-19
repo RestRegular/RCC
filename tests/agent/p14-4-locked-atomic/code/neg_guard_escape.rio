@@ -1,0 +1,10 @@
+// 拒绝：guard 二等值作函数实参逃出块
+struct Stats { var hits: int }
+fun use(s: Mut[Stats]): void { }
+fun main(): void {
+    var counter: Locked[Stats] = Locked.new(Stats(0))
+    lock counter as g {
+        use(g)
+    }
+}
+main()

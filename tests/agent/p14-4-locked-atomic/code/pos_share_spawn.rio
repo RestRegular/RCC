@@ -1,0 +1,25 @@
+// 正向：share() 跨 spawn 任务，4 任务各加 100 次无丢失（互斥）
+struct Stats { var hits: int }
+fun bump(c: Ref[Locked[Stats]]): void {
+    var i = 0
+    while i < 100 {
+        lock c as g {
+            g.hits = g.hits + 1
+        }
+        i = i + 1
+    }
+}
+fun main(): void {
+    var counter: Locked[Stats] = Locked.new(Stats(0))
+    var shared = counter.share()
+    scope s {
+        s.spawn(bump(shared))
+        s.spawn(bump(shared))
+        s.spawn(bump(shared))
+        s.spawn(bump(shared))
+    }
+    lock counter as g {
+        sout(g.hits)
+    }
+}
+main()

@@ -1,0 +1,17 @@
+// 正向：Atomic i64 全套方法，cas/fetch_* 返回旧值
+fun main(): void {
+    var n: Atomic[i64] = Atomic.new(10)
+    sout(n.load())
+    n.store(20)
+    sout(n.fetch_add(5))
+    sout(n.fetch_sub(3))
+    sout(n.swap(100))
+    sout(n.cas(100, 7))
+    sout(n.cas(999, 8))
+    sout(n.load())
+    sout(n.fetch_and(7))
+    sout(n.fetch_or(8))
+    sout(n.fetch_xor(3))
+    sout(n.load())
+}
+main()

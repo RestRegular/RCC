@@ -1,0 +1,8 @@
+// 拒绝：Chan 没有未知方法
+class Msg { var id: int  ctor(n: int) { this.id = n } }
+
+fun main(): void {
+    var ch: Chan[Msg] = Chan.new[Msg](4)
+    ch.bogus()
+}
+main()

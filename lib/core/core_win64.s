@@ -138,49 +138,34 @@ core_mem_eq:
  * ============================================================ */
     .globl  core_alloc
 core_alloc:
-    subq    $40, %rsp            /* 32 shadow + 8 对齐 */
-    movq    %rsi, 32(%rsp)       /* P13-1 修正（ABI 合规）：%rsi 是 callee-saved，
-                                  * 下面清 ring 的循环拿它当临时寄存器，必须还回去 */
-    movq    %rcx, %r8            /* r8 = size（HeapAlloc 第 3 参） */
-    movq    %rdx, %r9            /* 保存 align（本实现忽略，堆已 16 字节对齐） */
+    pushq   %rbx                 /* callee-saved；进入时 rsp≡8，push 后 ≡0 */
+    subq    $48, %rsp            /* 32 shadow + 16，保持 rsp≡0 */
+    movq    %rcx, %rbx           /* rbx = size */
+    movq    %rdx, 32(%rsp)       /* 保存 align */
     call    GetProcessHeap
     testq   %rax, %rax
     je      .Lalloc_fail
     movq    %rax, %rcx           /* rcx = hHeap */
     xorl    %edx, %edx           /* rdx = flags = 0 */
-    movq    %r8, %r8             /* r8 = dwBytes */
+    movq    %rbx, %r8            /* r8 = dwBytes = size */
     call    HeapAlloc
-    /* P13-1 调试钩子（D17）：成功分配才计数。发布构建里这个函数永远不被
-     * 调用（codegen 只在 -debug-alloc 时引用），计数恒为 0 也无害。 */
+    movq    %rax, 32(%rsp)       /* 保存分配指针（helper 会破坏 rax） */
     testq   %rax, %rax
     je      .Lalloc_nobump
-    addq    $1, core_dbg_alloc_count(%rip)
-    /* 这个地址已经重新分配 -> 从「已释放」ring 里清掉，否则下一轮正常
-     * 释放会被误判成重复释放（见 core_free 里的说明）。 */
-    pushq   %rax
-    movq    %rax, %r8
-    leaq    core_dbg_recent(%rip), %rdx
-    movl    $16, %ecx
-.Lalloc_clear_ring:
-    movq    (%rdx), %rsi
-    cmpq    %r8, %rsi
-    jne     .Lalloc_clear_next
-    movq    $0, (%rdx)
-.Lalloc_clear_next:
-    addq    $8, %rdx
-    decl    %ecx
-    jne     .Lalloc_clear_ring
-    popq    %rax
+    lock addq $1, core_dbg_alloc_count(%rip)
+    /* 这个地址已重新分配 -> 从「已释放」ring 清掉（P14-1a：加锁 helper）。 */
+    movq    %rax, %rcx
+    call    core_dbg_ring_clear
 .Lalloc_nobump:
-    movq    32(%rsp), %rsi
-    addq    $40, %rsp
+    movq    32(%rsp), %rax       /* 返回值 = 分配指针（null 时也是它） */
+    addq    $48, %rsp
+    popq    %rbx
     ret
 .Lalloc_fail:
     xorl    %eax, %eax
-    movq    32(%rsp), %rsi
-    addq    $40, %rsp
+    addq    $48, %rsp
+    popq    %rbx
     ret
-
 /* ============================================================
  * void* core_realloc(void* p, size_t old_size, size_t size, size_t align)
  *   rcx = p, rdx = old_size, r8 = size, r9 = align
@@ -257,98 +242,62 @@ core_realloc:
 core_free:
     testq   %rcx, %rcx
     je      .Lfree_ret
-    /* cap == 0 -> 静态只读头，不可释放 */
-    cmpq    $0, 8(%rcx)
+    cmpq    $0, 8(%rcx)              /* cap==0 -> 静态只读头，不可释放 */
     je      .Lfree_ret
-    /* P13-1 修正（ABI 合规）：下面用 %rsi 当扫描临时寄存器，
-     * 而 %rsi/%rdi 在 MS x64 上是 callee-saved —— 必须保存恢复，
-     * 否则调用者放在里面的数据会被悄悄改掉（core_list_append 就因此
-     * 丢过 value）。 */
-    pushq   %rsi
+    pushq   %rsi                     /* callee-saved（下方 core_mem_set 等用） */
     pushq   %rdi
-    subq    $56, %rsp
-    movq    %rcx, 32(%rsp)       /* 暂存 p */
+    subq    $56, %rsp                /* 32 shadow + 24；rsp≡0 */
+    movq    %rcx, 32(%rsp)           /* 暂存 p */
 
-    /* ---- P13-1 调试钩子（D17）：重复释放检测 ----
-     * 在**最近释放过的指针**环形缓冲里找 p。命中说明同一块被释放了两次，
-     * 那是必然的堆损坏（HeapFree 对已释放块是未定义行为，实测进程直接
-     * 以 0xC0000374 退出、没有任何可读线索）。
-     *
-     * 命中后**不再真的调用 HeapFree**，只计数然后返回：把「崩溃」变成
-     * 「可观测的数字」。这样负向用例能给出确定结论，而不是在堆里撞运气。
-     *
-     * **关键前提：core_alloc 成功时必须把这个指针从 ring 里清掉。**
-     * 否则「一块被释放 -> 地址被下一轮复用 -> 再被正常释放」会被误判成
-     * 重复释放（实测 3 轮循环各释放一次，却报出 1 次重复）。清掉之后，
-     * ring 里只保留「释放过且尚未被重新分配」的地址，语义才是对的。 */
-    movq    32(%rsp), %rax
-    leaq    core_dbg_recent(%rip), %rdx
-    movl    $0, %ecx
-.Lfree_dup_scan:
-    cmpl    $16, %ecx
-    jae     .Lfree_dup_scan_done
-    movq    (%rdx,%rcx,8), %rsi
-    cmpq    %rax, %rsi
-    je      .Lfree_dup_hit
-    incl    %ecx
-    jmp     .Lfree_dup_scan
-.Lfree_dup_scan_done:
-    jmp     .Lfree_do_it
-.Lfree_dup_hit:
-    /* 命中重复释放：计数，不真的释放，直接结束 */
-    addq    $1, core_dbg_double_free_count(%rip)
-    addq    $56, %rsp
-    popq    %rdi
-    popq    %rsi
-    ret
+    /* ---- P14-1a：重复释放检测（加锁 helper 保护 ring 复合操作） ---- */
+    movq    32(%rsp), %rcx
+    call    core_dbg_dup_check
+    testq   %rax, %rax
+    jne     .Lfree_dup_hit           /* 命中 -> 只计数，不真的释放 */
 
 .Lfree_do_it:
     call    GetProcessHeap
-    movq    %rax, 40(%rsp)       /* hHeap */
-
-    /* ---- D17：释放前把整块填 0xDD ----
-     * 需要真实的块大小，而我们的容器头只记 len/cap（那是逻辑长度，不是
-     * 堆块大小）。用 HeapSize 问 Windows 自己，避免猜。
-     * 填在 HeapFree **之前**：之后那块就不属于我们了。 */
+    movq    %rax, 40(%rsp)           /* hHeap */
+    /* 释放前整块填 0xDD（块大小用 HeapSize 问系统） */
     movq    40(%rsp), %rcx
     xorl    %edx, %edx
     movq    32(%rsp), %r8
     call    HeapSize
-    cmpq    $-1, %rax            /* HeapSize 失败返回 (SIZE_T)-1 */
+    cmpq    $-1, %rax
     je      .Lfree_after_poison
-    movq    %rax, 48(%rsp)       /* size */
+    movq    %rax, 48(%rsp)           /* size */
     testq   %rax, %rax
     je      .Lfree_after_poison
-    movq    32(%rsp), %rcx       /* dst = p */
-    movl    $0xDD, %edx          /* byte = 0xDD */
-    movq    48(%rsp), %r8        /* n = size */
+    movq    32(%rsp), %rcx
+    movl    $0xDD, %edx
+    movq    48(%rsp), %r8
     call    core_mem_set
     movq    48(%rsp), %rax
-    addq    %rax, core_dbg_poison_bytes_total(%rip)
+    lock addq %rax, core_dbg_poison_bytes_total(%rip)
 
 .Lfree_after_poison:
     movq    40(%rsp), %rcx
     xorl    %edx, %edx
     movq    32(%rsp), %r8
     call    HeapFree
-    /* P13-1 调试钩子（D17）：只有真正落到 HeapFree 才计数 ——
-     * null / cap==0 的静默返回不算「释放」，否则计数器证明不了任何事。 */
-    addq    $1, core_dbg_free_count(%rip)
-    /* 记进 recently-freed ring（FIFO，覆盖最旧的一项） */
-    leaq    core_dbg_recent(%rip), %rdx
-    movq    core_dbg_recent_idx(%rip), %rcx
-    movq    32(%rsp), %rax
-    movq    %rax, (%rdx,%rcx,8)
-    incq    %rcx
-    andq    $15, %rcx
-    movq    %rcx, core_dbg_recent_idx(%rip)
+    lock addq $1, core_dbg_free_count(%rip)
+    /* 记进 recently-freed ring（加锁 helper） */
+    movq    32(%rsp), %rcx
+    call    core_dbg_ring_add
     addq    $56, %rsp
     popq    %rdi
     popq    %rsi
-.Lfree_done:
-.Lfree_ret:
     ret
 
+.Lfree_dup_hit:
+    lock addq $1, core_dbg_double_free_count(%rip)
+    addq    $56, %rsp
+    popq    %rdi
+    popq    %rsi
+    ret
+
+.Lfree_ret:
+    ret
 /* ============================================================
  * ptr core_list_append(ptr list, ptr value)
  *   rcx = list header, rdx = value（8 字节元素，直接按位复制）
@@ -610,14 +559,163 @@ core_dbg_double_free_count:
     .zero   8
 core_dbg_poison_bytes_total:
     .zero   8
-/* 最近释放过的 16 个指针（环形，FIFO 覆盖）。用来抓「同一块释放两次」。 */
-core_dbg_recent:
-    .zero   128
-core_dbg_recent_idx:
-    .zero   8
+/* P14-1a：recent ring 改为 TLS（每线程 136 字节：16 指针 + idx）。
+ * 原全局地址 ring 在多线程地址复用下会误判重复释放（实测 11/402000），
+ * 加锁无法解决该 ABA 时序问题；按 Q14=C「线程状态归线程」改为 TLS 后，
+ * 每个线程只看自己释放过的地址，跨线程地址复用不再互相污染。 */
+    .align  8
+core_dbg_tls_index:      /* DWORD，0=未初始化；TlsAlloc 惰性分配 */
+    .zero   4
+core_dbg_tls_inited:     /* DWORD，1=索引已分配 */
+    .zero   4
+core_dbg_spin:           /* 保护 TLS 索引惰性初始化的一次性自旋锁 */
+    .zero   4
+    .zero   4
 
     .text
-/* void core_dbg_reset(void) */
+/* ============================================================
+ * P14-1a：调试状态自旋锁的内部 helper（不导出，仅 core 内部用）
+ *   core_dbg_lock_local / core_dbg_unlock_local：xchg 隐含 lock 语义
+ *   core_dbg_dup_check / ring_add / ring_clear：把 ring 的复合操作包进临界区
+ * 这些 helper 只破坏 caller-saved 寄存器（rax/rcx/rdx/r8），不碰
+ * rbx/rbp/rdi/rsi/r12-r15，符合 MS x64 ABI。
+ * ============================================================ */
+/* ------------------------------------------------------------
+ * P14-1a helper：recent ring 改 TLS（每线程独立），消除并发地址复用误判。
+ * core_dbg_get_ring() -> rax = 本线程 ring 地址（136 字节）。
+ * 惰性初始化 TlsAlloc + HeapAlloc；破坏 rax/rcx/rdx/r8/r9；不碰 callee-saved。
+ * 栈：进入 rsp≡8；push rbx -> 0；sub $40 -> 0；内部 call 时 rsp≡0 ✓。
+ * ------------------------------------------------------------ */
+core_dbg_get_ring:
+    pushq   %rbx
+    subq    $40, %rsp
+    /* TLS 索引一次性初始化（自旋锁 + 双重检查） */
+    cmpl    $0, core_dbg_tls_inited(%rip)
+    jne     .Lgr_have_index
+    movl    $1, %eax
+.Lgr_spin:
+    xchgl   %eax, core_dbg_spin(%rip)
+    testl   %eax, %eax
+    jz      .Lgr_spin_got
+    pause
+    jmp     .Lgr_spin
+.Lgr_spin_got:
+    cmpl    $0, core_dbg_tls_inited(%rip)
+    jne     .Lgr_init_done
+    call    TlsAlloc
+    movl    %eax, core_dbg_tls_index(%rip)
+    movl    $1, core_dbg_tls_inited(%rip)
+.Lgr_init_done:
+    xorl    %eax, %eax
+    xchgl   %eax, core_dbg_spin(%rip)
+.Lgr_have_index:
+    movl    core_dbg_tls_index(%rip), %ecx
+    call    TlsGetValue
+    testq   %rax, %rax
+    jnz     .Lgr_ret
+    /* 本线程 ring 未分配：GetProcessHeap -> HeapAlloc(136) -> TlsSetValue */
+    call    GetProcessHeap
+    movq    %rax, %rbx                   /* rbx = hHeap */
+    xorl    %edx, %edx                  /* flags = 0 */
+    movq    $136, %r8                   /* size */
+    movq    %rbx, %rcx                  /* hHeap */
+    call    HeapAlloc
+    movq    %rax, %rbx                  /* rbx = ring */
+    testq   %rbx, %rbx
+    je      .Lgr_ret                    /* 分配失败：rax=null，dup 检测退化 */
+    /* 清零 136 字节（idx@128 必须是 0，否则 ring_add 越界） */
+    movq    %rbx, %rcx
+    xorl    %edx, %edx
+    movq    $136, %r8
+    call    core_mem_set
+    movl    core_dbg_tls_index(%rip), %ecx
+    movq    %rbx, %rdx
+    call    TlsSetValue
+    movq    %rbx, %rax
+.Lgr_ret:
+    addq    $40, %rsp
+    popq    %rbx
+    ret
+
+/* int core_dbg_dup_check(void* p) — rcx=p；rax=1 命中/0 未命中
+ * 栈：进入 rsp≡8；push rbx/rdi -> rsp≡0；sub $40 -> 0。 */
+core_dbg_dup_check:
+    pushq   %rbx
+    pushq   %rdi
+    subq    $40, %rsp
+    movq    %rcx, %rbx                  /* rbx = p */
+    call    core_dbg_get_ring
+    testq   %rax, %rax
+    je      .Ldc_miss
+    movq    %rax, %rdi                  /* rdi = ring */
+    xorl    %ecx, %ecx
+.Ldc_loop:
+    cmpl    $16, %ecx
+    jae     .Ldc_miss
+    movq    (%rdi,%rcx,8), %rax
+    cmpq    %rbx, %rax
+    je      .Ldc_hit
+    incl    %ecx
+    jmp     .Ldc_loop
+.Ldc_hit:
+    movl    $1, %eax
+    jmp     .Ldc_done
+.Ldc_miss:
+    xorl    %eax, %eax
+.Ldc_done:
+    addq    $40, %rsp
+    popq    %rdi
+    popq    %rbx
+    ret
+
+/* void core_dbg_ring_add(void* p) — rcx=p；FIFO 覆盖 */
+core_dbg_ring_add:
+    pushq   %rbx
+    pushq   %rdi
+    subq    $40, %rsp
+    movq    %rcx, %rbx
+    call    core_dbg_get_ring
+    testq   %rax, %rax
+    je      .Lra_done
+    movq    %rax, %rdi
+    movq    128(%rdi), %rax             /* idx */
+    movq    %rbx, (%rdi,%rax,8)
+    incq    %rax
+    andq    $15, %rax
+    movq    %rax, 128(%rdi)
+.Lra_done:
+    addq    $40, %rsp
+    popq    %rdi
+    popq    %rbx
+    ret
+
+/* void core_dbg_ring_clear(void* p) — rcx=p */
+core_dbg_ring_clear:
+    pushq   %rbx
+    pushq   %rdi
+    subq    $40, %rsp
+    movq    %rcx, %rbx
+    call    core_dbg_get_ring
+    testq   %rax, %rax
+    je      .Lrc_done
+    movq    %rax, %rdi
+    xorl    %ecx, %ecx
+.Lrc_loop:
+    movq    (%rdi,%rcx,8), %rax
+    cmpq    %rbx, %rax
+    jne     .Lrc_next
+    movq    $0, (%rdi,%rcx,8)
+.Lrc_next:
+    incl    %ecx
+    cmpl    $16, %ecx
+    jne     .Lrc_loop
+.Lrc_done:
+    addq    $40, %rsp
+    popq    %rdi
+    popq    %rbx
+    ret
+
+/* void core_dbg_reset(void) —— 只清全局计数；TLS ring 随线程退出自然回收 */
     .globl  core_dbg_reset
 core_dbg_reset:
     xorq    %rax, %rax
@@ -626,16 +724,7 @@ core_dbg_reset:
     movq    %rax, core_dbg_live_bytes(%rip)
     movq    %rax, core_dbg_double_free_count(%rip)
     movq    %rax, core_dbg_poison_bytes_total(%rip)
-    movq    %rax, core_dbg_recent_idx(%rip)
-    leaq    core_dbg_recent(%rip), %rdx
-    movl    $16, %ecx
-.Ldbg_reset_ring:
-    movq    %rax, (%rdx)
-    addq    $8, %rdx
-    decl    %ecx
-    jne     .Ldbg_reset_ring
     ret
-
 /* int core_dbg_allocations(void) */
     .globl  core_dbg_allocations
 core_dbg_allocations:
@@ -663,13 +752,13 @@ core_dbg_poison_bytes:
 /* void core_dbg_bump_alloc(int n) —— 由 core_alloc 调用 */
     .globl  core_dbg_bump_alloc
 core_dbg_bump_alloc:
-    addq    %rcx, core_dbg_alloc_count(%rip)
+    lock addq %rcx, core_dbg_alloc_count(%rip)
     ret
 
 /* void core_dbg_bump_free(int n) —— 由 core_free 调用 */
     .globl  core_dbg_bump_free
 core_dbg_bump_free:
-    addq    %rcx, core_dbg_free_count(%rip)
+    lock addq %rcx, core_dbg_free_count(%rip)
     ret
 
 /* ============================================================
@@ -678,6 +767,12 @@ core_dbg_bump_free:
  * 用 WriteFile 写到对应句柄。fd 0/1/2 映射到标准句柄。
  * 返回写入字节数，失败返回 -1。
  * ============================================================ */
+/* P14-1a：stdout/stderr 全局输出锁（自旋锁，写一次持锁一次，Q14=C）。 */
+    .data
+    .align  4
+core_io_spin:
+    .zero   4
+    .text
     .globl  core_io_write
 core_io_write:
     /* 帧布局（rsp 相对）：
@@ -690,6 +785,16 @@ core_io_write:
      * subq $88 后，88+8(返回地址)=96，满足 16 字节对齐
      */
     subq    $88, %rsp
+    /* P14-1a：加全局输出锁（xchg 只改 eax，ecx=fd 保持） */
+    movl    $1, %eax
+.Lio_w_spin:
+    xchgl   %eax, core_io_spin(%rip)
+    testl   %eax, %eax
+    jz      .Lio_w_locked
+    pause
+    movl    $1, %eax
+    jmp     .Lio_w_spin
+.Lio_w_locked:
 
     movq    %rdx, 40(%rsp)       /* buf */
     movq    %r8,  48(%rsp)       /* n */
@@ -726,10 +831,14 @@ core_io_write:
     testl   %eax, %eax
     je      .Lio_w_fail
     movq    64(%rsp), %rax       /* 返回实际写入字节数 */
+    xorl    %edx, %edx
+    xchgl   %edx, core_io_spin(%rip)   /* 解锁（edx 已不用） */
     addq    $88, %rsp
     ret
 .Lio_w_fail:
     movq    $-1, %rax
+    xorl    %edx, %edx
+    xchgl   %edx, core_io_spin(%rip)
     addq    $88, %rsp
     ret
 
@@ -755,6 +864,16 @@ core_io_write:
     .globl  core_io_write_byte
 core_io_write_byte:
     subq    $88, %rsp
+    /* P14-1a：加全局输出锁（xchg 只改 eax；dl=ch、ecx=fd 保持） */
+    movl    $1, %eax
+.Lio_wb_spin:
+    xchgl   %eax, core_io_spin(%rip)
+    testl   %eax, %eax
+    jz      .Lio_wb_locked
+    pause
+    movl    $1, %eax
+    jmp     .Lio_wb_spin
+.Lio_wb_locked:
 
     movb    %dl, 56(%rsp)        /* 把字符存到栈缓冲 */
 
@@ -781,10 +900,14 @@ core_io_write_byte:
     testl   %eax, %eax
     je      .Lio_wb_fail
     movq    $1, %rax
+    xorl    %edx, %edx
+    xchgl   %edx, core_io_spin(%rip)
     addq    $88, %rsp
     ret
 .Lio_wb_fail:
     movq    $-1, %rax
+    xorl    %edx, %edx
+    xchgl   %edx, core_io_spin(%rip)
     addq    $88, %rsp
     ret
 
@@ -933,23 +1056,99 @@ core_stack_probe:
  * code/src/backend/rcc_codegen.cpp 里的 emitTry。
  * ============================================================ */
     .data
-    .align 8
-core_eh_top:
-    .quad   0                    /* 当前栈顶帧 */
+    .align  8
+core_eh_tls_index:               /* DWORD：TLS 槽索引（存每线程 eh 链头指针） */
+    .zero   4
+core_eh_tls_inited:
+    .zero   4
+core_eh_tls_spin:                /* 一次性初始化自旋锁 */
+    .zero   4
+    .zero   4
 
     .text
-    .globl  core_eh_push
-core_eh_push:
-    movq    core_eh_top(%rip), %rax
-    movq    %rax, (%rcx)         /* frame->prev = 旧栈顶 */
-    movq    %rcx, core_eh_top(%rip)
-    movq    %rcx, %rax           /* 返回新栈顶 */
+/* ------------------------------------------------------------
+ * P14-1a：core_eh_get_slot() -> rax = 本线程 eh 链头槽地址（8 字节）。
+ * 惰性 TlsAlloc + HeapAlloc(8) + TlsSetValue，分配后清零。
+ * 破坏 rax/rcx/rdx/r8；不碰 callee-saved。进入 rsp≡8，
+ * push rbx -> 0；sub $40 -> 0；内部 call 时 rsp≡0 ✓。
+ * ------------------------------------------------------------ */
+core_eh_get_slot:
+    pushq   %rbx
+    subq    $40, %rsp
+    cmpl    $0, core_eh_tls_inited(%rip)
+    jne     .Lesh_have
+    movl    $1, %eax
+.Lesh_spin:
+    xchgl   %eax, core_eh_tls_spin(%rip)
+    testl   %eax, %eax
+    jz      .Lesh_spin_got
+    pause
+    jmp     .Lesh_spin
+.Lesh_spin_got:
+    cmpl    $0, core_eh_tls_inited(%rip)
+    jne     .Lesh_init_done
+    call    TlsAlloc
+    movl    %eax, core_eh_tls_index(%rip)
+    movl    $1, core_eh_tls_inited(%rip)
+.Lesh_init_done:
+    xorl    %eax, %eax
+    xchgl   %eax, core_eh_tls_spin(%rip)
+.Lesh_have:
+    movl    core_eh_tls_index(%rip), %ecx
+    call    TlsGetValue
+    testq   %rax, %rax
+    jnz     .Lesh_ret
+    call    GetProcessHeap
+    movq    %rax, %rbx
+    xorl    %edx, %edx
+    movq    $8, %r8
+    movq    %rbx, %rcx
+    call    HeapAlloc
+    movq    %rax, %rbx
+    testq   %rbx, %rbx
+    je      .Lesh_ret
+    movq    $0, (%rbx)                   /* slot = null（无 handler） */
+    movl    core_eh_tls_index(%rip), %ecx
+    movq    %rbx, %rdx
+    call    TlsSetValue
+    movq    %rbx, %rax
+.Lesh_ret:
+    addq    $40, %rsp
+    popq    %rbx
     ret
 
+/* void* core_eh_push(void* frame) — rcx=frame；rax=frame */
+    .globl  core_eh_push
+core_eh_push:
+    pushq   %rbx
+    pushq   %rdi
+    subq    $40, %rsp
+    movq    %rcx, %rbx                  /* rbx = frame */
+    call    core_eh_get_slot
+    movq    %rax, %rdi                  /* rdi = slot */
+    movq    (%rdi), %rax                /* rax = 旧栈顶 */
+    movq    %rax, (%rbx)                /* frame->prev = 旧栈顶 */
+    movq    %rbx, (%rdi)                /* slot = frame */
+    movq    %rbx, %rax                  /* 返回 frame */
+    addq    $40, %rsp
+    popq    %rdi
+    popq    %rbx
+    ret
+
+/* void core_eh_pop(void* frame) — rcx=frame */
     .globl  core_eh_pop
 core_eh_pop:
-    movq    (%rcx), %rax         /* frame->prev */
-    movq    %rax, core_eh_top(%rip)
+    pushq   %rbx
+    pushq   %rdi
+    subq    $40, %rsp
+    movq    %rcx, %rbx
+    call    core_eh_get_slot
+    movq    %rax, %rdi
+    movq    (%rbx), %rax                /* frame->prev */
+    movq    %rax, (%rdi)                /* slot = prev */
+    addq    $40, %rsp
+    popq    %rdi
+    popq    %rbx
     ret
 
 /* ============================================================
@@ -969,15 +1168,27 @@ core_eh_pop:
  * ============================================================ */
     .globl  core_eh_throw
 core_eh_throw:
-    movq    core_eh_top(%rip), %rax
+    /* 保存 exc（rcx）到 rbx（get_slot 会破坏 rcx） */
+    pushq   %rbx
+    subq    $40, %rsp
+    movq    %rcx, %rbx                  /* rbx = exc */
+    call    core_eh_get_slot
+    movq    (%rax), %rax                /* rax = 本线程链头 */
     testq   %rax, %rax
-    je      .Leh_uncaught        /* 链空 -> 未捕获 */
-    movq    %rcx, 32(%rax)       /* frame->exc = exc（先存，后面要毁掉 rcx） */
-    movq    8(%rax), %rbp        /* 恢复 %rbp */
-    movq    16(%rax), %rcx       /* 取 saved rsp */
-    movq    24(%rax), %rdx       /* 取 resume 地址 */
-    movq    %rcx, %rsp           /* 恢复 %rsp（必须在读完帧字段之后） */
+    je      .Lthrow_uncaught            /* 链空 -> 未捕获 */
+    /* 先在栈未恢复时把 exc 写进帧（此时 rbx 仍是 exc） */
+    movq    %rbx, 32(%rax)              /* frame->exc = exc */
+    movq    8(%rax), %rbp               /* 恢复 %rbp */
+    movq    16(%rax), %rcx              /* 取 saved rsp */
+    movq    24(%rax), %rdx              /* 取 resume 地址 */
+    addq    $40, %rsp
+    popq    %rbx
+    movq    %rcx, %rsp                  /* 恢复 %rsp（帧字段已读完） */
     jmp     *%rdx
+.Lthrow_uncaught:
+    addq    $40, %rsp
+    popq    %rbx
+    jmp     .Leh_uncaught
 
 .Leh_uncaught:
     /* 未捕获：退化为 abort（退出码 3），与 P0 骨架的既有约定一致。
@@ -1140,6 +1351,73 @@ core_pool_release:
     popq    %rdi
     popq    %rsi
     popq    %rbx
+    ret
+
+/* ============================================================
+ * P14-3：Pool 枚举原语（par_each / pool.at）
+ *
+ * 池头沿用 P13-6 布局：+16 elem_size、+24 used_in_chunk、
+ * +32 current_chunk、+40 total。块布局 [prev_ptr][slots...]，
+ * 每块 slots_per_chunk 个槽（fixed/chunked=cap，boxed=1）；
+ * 除当前块外所有块都是满的。槽地址 = chunk + 8 + local*elem_size。
+ * 注意：这些原语按「分配序号 0..total-1」枚举，若中间 release 过槽，
+ * total 会减小但数组仍可能有空洞 —— par_each 首版假定迭代期间不改结构、
+ * 且池未发生 release（成员集合快照语义，见 p14_3 方案）。
+ * ============================================================ */
+
+/* int core_pool_count(pool) — rcx=pool -> rax=total（已分配槽数） */
+    .globl  core_pool_count
+core_pool_count:
+    testq   %rcx, %rcx
+    je      .Lpc_null
+    movq    40(%rcx), %rax
+    ret
+.Lpc_null:
+    xorl    %eax, %eax
+    ret
+
+/* void* core_pool_slot_at(pool, index) — rcx=pool, rdx=index -> rax=槽地址
+ * index 越界（>= total）返回 0。沿 current_chunk->prev 链定位所在块。 */
+    .globl  core_pool_slot_at
+core_pool_slot_at:
+    movq    %rcx, %r8          /* r8 = pool */
+    testq   %r8, %r8
+    je      .Lpsa_fail
+    movq    40(%r8), %rax      /* rax = total */
+    cmpq    %rax, %rdx
+    jae     .Lpsa_fail         /* index >= total -> 0 */
+    movq    24(%r8), %r9       /* 当前块已用槽数 u */
+    movq    32(%r8), %r10      /* r10 = current_chunk */
+    movq    %rax, %r11
+    subq    %r9, %r11          /* r11 = 当前块首槽的全局序号 = total - u */
+    /* slots_per_chunk：boxed=1，其余=cap */
+    movq    0(%r8), %rax       /* mode */
+    cmpq    $2, %rax
+    je      .Lpsa_boxed
+    movq    8(%r8), %rax       /* cap */
+    jmp     .Lpsa_cap_ready
+.Lpsa_boxed:
+    movq    $1, %rax
+.Lpsa_cap_ready:
+    movq    %rax, %r9          /* r9 = slots_per_chunk */
+.Lpsa_loop:
+    cmpq    %r11, %rdx
+    jae     .Lpsa_found        /* index >= 块首序号 -> 落在本块 */
+    movq    (%r10), %r10       /* 沿 prev 往前一块 */
+    testq   %r10, %r10
+    je      .Lpsa_fail         /* 链意外断裂 */
+    subq    %r9, %r11          /* 块首序号 -= 每块槽数 */
+    jmp     .Lpsa_loop
+.Lpsa_found:
+    movq    %rdx, %rax
+    subq    %r11, %rax         /* rax = 块内局部序号 */
+    movq    16(%r8), %rcx      /* rcx = elem_size */
+    imulq   %rcx, %rax
+    addq    %r10, %rax
+    addq    $8, %rax           /* 跳过 prev 指针 */
+    ret
+.Lpsa_fail:
+    xorl    %eax, %eax
     ret
 
 /* ============================================================
@@ -1603,6 +1881,386 @@ core_link_is_empty:
     ret
 .Llkie_nonempty:
     xorl    %eax, %eax
+    ret
+
+/* ============================================================
+ * P14-1a：结构化并发运行时地基（线程原语，1:1 OS 线程，Q1=A）
+ *
+ * void* core_thread_create(void* fn, void* arg)
+ *   rcx = fn（线程入口，MS x64 ABI：arg 在 %rcx 传入）
+ *   rdx = arg
+ *   返回 HANDLE（ptr），失败返回 null。
+ *
+ * void core_thread_join(void* handle)
+ *   rcx = HANDLE；等待线程结束并 CloseHandle；null 直接返回。
+ *
+ * Win32 x64 栈对齐约定：调用者进函数时 %rsp≡8 (mod 16)；进入本函数后
+ * 第一个 push 使 %rsp≡0。CreateThread 有 6 个参数，需 32 字节 shadow +
+ * 2 个栈参数（lpThreadId、预留），共 48 字节，必须保持 %rsp≡0 (mod 16)
+ * 再 call（call 压返回地址后被调方看到 ≡8，符合 ABI）。
+ * ============================================================ */
+    .globl  core_thread_create
+core_thread_create:
+    pushq   %rbx                 /* %rsp: 8 -> 0 (mod 16)，rbx callee-saved */
+    pushq   %r12                 /* %rsp: 0 -> 8；再 push 到 0 需偶数个 push */
+    pushq   %r13                 /* %rsp: 8 -> 0 */
+    subq    $48, %rsp            /* 32 shadow + 2 栈参(16) = 48，保持 ≡0 */
+    movq    %rcx, %r12           /* r12 = fn（Rio 函数值 = 闭包对象） */
+    /* P14-1a：Rio 的具名函数值 emit 成闭包对象 .Lfnclosure_f: .quad f，
+     * 首字是真实入口地址。解包一次；首版只支持无捕获函数（Q3 裁决：
+     * 只 spawn 具名顶层函数）。带捕获闭包需不同约定，不在本阶段范围。 */
+    movq    (%r12), %r12         /* r12 = 真实函数入口 */
+    movq    %rdx, %r13           /* r13 = arg */
+    xorl    %ecx, %ecx           /* lpThreadAttributes = NULL */
+    xorl    %edx, %edx           /* dwStackSize = 0（默认） */
+    movq    %r12, %r8            /* lpStartAddress = fn */
+    movq    %r13, %r9            /* lpParameter = arg */
+    xorl    %eax, %eax           /* rax = 0 */
+    movq    %rax, 32(%rsp)       /* 参数5 dwCreationFlags = 0，立即运行 */
+    movq    %rax, 40(%rsp)       /* 参数6 lpThreadId = NULL（不需要 id） */
+    call    CreateThread
+    addq    $48, %rsp
+    popq    %r13
+    popq    %r12
+    popq    %rbx
+    ret                          /* rax = HANDLE 或 null */
+
+    .globl  core_thread_join
+core_thread_join:
+    testq   %rcx, %rcx
+    je      .Lthread_join_ret    /* null -> 直接返回 */
+    pushq   %rbx                 /* %rsp: 8 -> 0 (mod 16) */
+    subq    $32, %rsp            /* 32 shadow，保持 ≡0 */
+    movq    %rcx, %rbx           /* rbx = handle */
+    movq    %rbx, %rcx           /* hHandle */
+    movl    $-1, %edx            /* INFINITE */
+    call    WaitForSingleObject
+    movq    %rbx, %rcx           /* hObject = handle */
+    call    CloseHandle
+    addq    $32, %rsp
+    popq    %rbx
+.Lthread_join_ret:
+    ret
+
+/* ============================================================
+ * P14-4：显式同步运行时原语（Q6 / Q7）
+ *   - 自旋锁：core_lock_acquire / core_lock_release
+ *     锁字 4 字节：0=未锁，1=已锁。xchg 隐含 lock 语义（全屏障）。
+ *   - 原子：i64 走 q 后缀，i32 走 l 后缀，全部顺序一致。
+ *     load 用对齐 mov（x86-64 上 load 天然顺序一致）；store 用 xchg；
+ *     fetch_add 用 lock xadd；swap 用 xchg；cas 用 lock cmpxchg；
+ *     fetch_and/or/xor 用 lock cmpxchg 循环。
+ *     所有原语只改 caller-saved 寄存器（rax/rcx/rdx/r8/r9/r10/r11）。
+ * 参数与返回值遵循 Win64 ABI：rcx/rdx/r8/r9 传参，rax 返回；
+ * 调用方已预留 32 字节 shadow space，本文件例程不自行调整 rsp。
+ * ============================================================ */
+
+/* void core_lock_acquire(ptr lockword) — rcx = 锁字地址 */
+    .globl  core_lock_acquire
+core_lock_acquire:
+    movl    $1, %eax
+.Lcla_spin:
+    xchgl   %eax, (%rcx)        /* 交换：old -> eax，写入 1 */
+    testl   %eax, %eax
+    jz      .Lcla_got
+    pause
+    movl    $1, %eax            /* xchg 把 eax 改成 old，重入前重置为 1 */
+    jmp     .Lcla_spin
+.Lcla_got:
+    ret
+
+/* void core_lock_release(ptr lockword) — rcx = 锁字地址 */
+    .globl  core_lock_release
+core_lock_release:
+    xorl    %eax, %eax
+    xchgl   %eax, (%rcx)        /* 写 0，old 进 eax（忽略） */
+    ret
+
+/* ---- i64 原子（返回值走 rax，调用方按 int 使用） ---- */
+/* long core_atomic_load_i64(ptr) */
+    .globl  core_atomic_load_i64
+core_atomic_load_i64:
+    movq    (%rcx), %rax
+    ret
+
+/* void core_atomic_store_i64(ptr, long) */
+    .globl  core_atomic_store_i64
+core_atomic_store_i64:
+    xchgq   %rdx, (%rcx)
+    ret
+
+/* long core_atomic_fetch_add_i64(ptr, long) */
+    .globl  core_atomic_fetch_add_i64
+core_atomic_fetch_add_i64:
+    movq    %rdx, %rax
+    lock xaddq %rax, (%rcx)
+    ret
+
+/* long core_atomic_swap_i64(ptr, long) */
+    .globl  core_atomic_swap_i64
+core_atomic_swap_i64:
+    movq    %rdx, %rax
+    xchgq   %rax, (%rcx)
+    ret
+
+/* long core_atomic_cas_i64(ptr, long expected, long new) — 返回读到的旧值 */
+    .globl  core_atomic_cas_i64
+core_atomic_cas_i64:
+    movq    %rdx, %rax          /* expected -> rax，cmpxchg 的比较基准 */
+    lock cmpxchgq %r8, (%rcx)
+    ret                         /* rax = 实际旧值（成功时 == expected） */
+
+/* long core_atomic_fetch_op_i64(ptr, long val, int op) — op: 0=and,1=or,2=xor */
+    .globl  core_atomic_fetch_op_i64
+core_atomic_fetch_op_i64:
+    movq    %rdx, %r10          /* r10 = val */
+    movl    %r8d, %r11d         /* r11 = op */
+.Lcfo64_retry:
+    movq    (%rcx), %rax        /* rax = old */
+    movq    %rax, %rdx          /* rdx = new 计算区 */
+    cmpl    $0, %r11d
+    je      .Lcfo64_and
+    cmpl    $1, %r11d
+    je      .Lcfo64_or
+    xorq    %r10, %rdx
+    jmp     .Lcfo64_cmp
+.Lcfo64_and:
+    andq    %r10, %rdx
+    jmp     .Lcfo64_cmp
+.Lcfo64_or:
+    orq     %r10, %rdx
+.Lcfo64_cmp:
+    lock cmpxchgq %rdx, (%rcx)
+    jne     .Lcfo64_retry
+    ret                         /* rax = 旧值 */
+
+/* ---- i32 原子（返回值低 32 位在 eax，调用方 movslq 符号扩展） ---- */
+/* int core_atomic_load_i32(ptr) */
+    .globl  core_atomic_load_i32
+core_atomic_load_i32:
+    movl    (%rcx), %eax
+    ret
+
+/* void core_atomic_store_i32(ptr, int) */
+    .globl  core_atomic_store_i32
+core_atomic_store_i32:
+    xchgl   %edx, (%rcx)
+    ret
+
+/* int core_atomic_fetch_add_i32(ptr, int) */
+    .globl  core_atomic_fetch_add_i32
+core_atomic_fetch_add_i32:
+    movl    %edx, %eax
+    lock xaddl %eax, (%rcx)
+    ret
+
+/* int core_atomic_swap_i32(ptr, int) */
+    .globl  core_atomic_swap_i32
+core_atomic_swap_i32:
+    movl    %edx, %eax
+    xchgl   %eax, (%rcx)
+    ret
+
+/* int core_atomic_cas_i32(ptr, int expected, int new) — 返回读到的旧值 */
+    .globl  core_atomic_cas_i32
+core_atomic_cas_i32:
+    movl    %edx, %eax
+    lock cmpxchgl %r8d, (%rcx)
+    ret
+
+/* int core_atomic_fetch_op_i32(ptr, int val, int op) — op: 0=and,1=or,2=xor */
+    .globl  core_atomic_fetch_op_i32
+core_atomic_fetch_op_i32:
+    movl    %edx, %r10d
+    movl    %r8d, %r11d
+.Lcfo32_retry:
+    movl    (%rcx), %eax
+    movl    %eax, %edx
+    cmpl    $0, %r11d
+    je      .Lcfo32_and
+    cmpl    $1, %r11d
+    je      .Lcfo32_or
+    xorl    %r10d, %edx
+    jmp     .Lcfo32_cmp
+.Lcfo32_and:
+    andl    %r10d, %edx
+    jmp     .Lcfo32_cmp
+.Lcfo32_or:
+    orl     %r10d, %edx
+.Lcfo32_cmp:
+    lock cmpxchgl %edx, (%rcx)
+    jne     .Lcfo32_retry
+    ret
+
+/* ============================================================
+ * P14-5：Chan 有界通道运行时原语（Q8 / 裁决 4-A~4-E）
+ *
+ *   对象布局（core_alloc 一块，8 字节对齐）：
+ *     +0  lockword（4B，0=未锁/1=已锁）
+ *     +8  capacity（非 0：core_free 用 cap==0 判静态头，这里必须非 0）
+ *     +16 head（读游标）
+ *     +24 tail（写游标）
+ *     +32 count（当前元素数）
+ *     +40 closed（0=开 / 1=关）
+ *     +48 slots[capacity]（每槽 8 字节，载荷是不透明 8B 值）
+ *
+ *   并发：一把自旋锁保护所有字段；满/空时用 SwitchToThread() 让出时间片
+ *   后重试（解锁后让出，绝不持锁等待）。close 幂等，唤醒阻塞的 recv。
+ *   所有原语只改 caller-saved 寄存器（callee-saved 用 rbx/r12 均保存恢复）。
+ * ============================================================ */
+
+/* void* core_chan_new(int capacity) — rcx=capacity，返回对象指针 */
+    .globl  core_chan_new
+core_chan_new:
+    pushq   %rbx                    /* rsp: 8 -> 0 */
+    pushq   %r12                   /* rsp: 0 -> 8 */
+    subq    $40, %rsp              /* 40 ≡ 8 (mod16)：rsp -> ≡0，全程保持该帧 */
+    movq    %rcx, %rbx             /* rbx = capacity */
+    testq   %rbx, %rbx
+    jg      .Lchan5_new_cap_ok
+    movq    $16, %rbx              /* capacity<=0 -> 默认 16（防御） */
+.Lchan5_new_cap_ok:
+    leaq    (,%rbx,8), %rax        /* rax = cap*8 */
+    addq    $48, %rax              /* 对象大小 = 48 + cap*8 */
+    movq    %rax, %rcx             /* size */
+    movq    $8, %rdx               /* align */
+    call    core_alloc             /* rsp≡0，32B shadow 在帧内 */
+    testq   %rax, %rax
+    je      .Lchan5_new_oom
+    movq    %rax, %r12             /* r12 = obj（callee-saved，不覆盖 rbx=cap） */
+    movq    %r12, %rcx             /* dst = obj */
+    xorl    %edx, %edx             /* byte = 0 */
+    movq    $48, %r8               /* n = 48 */
+    call    core_mem_set           /* 清零头部 48B；帧仍在，rsp≡0 */
+    movq    %r12, %rax
+    movq    %rbx, 8(%rax)          /* cap（非 0 保证 core_free 真释放；rbx 仍是 capacity） */
+    addq    $40, %rsp
+    popq    %r12
+    popq    %rbx
+    ret
+.Lchan5_new_oom:
+    call    core_proc_abort        /* 帧仍在，rsp≡0 */
+    hlt
+
+/* void core_chan_send(ptr ch, ptr value) — rcx=ch, rdx=value
+ * 满则解锁让出重试；已关闭则 abort（Q8=裁决 4-D）。
+ * %rbx=ch, %r12=value, %r13=槽内偏移(callee-saved，跨 core_* 调用不丢)。 */
+    .globl  core_chan_send
+core_chan_send:
+    pushq   %rbx
+    pushq   %r12
+    pushq   %r13                   /* rsp: 8 -> 0 (mod 16) */
+    subq    $32, %rsp
+    movq    %rcx, %rbx             /* rbx = ch */
+    movq    %rdx, %r12             /* r12 = value */
+.Lchan5_send_retry:
+    movq    %rbx, %rcx
+    call    core_lock_acquire
+    cmpq    $0, 40(%rbx)           /* closed? */
+    je      .Lchan5_send_open
+    movq    %rbx, %rcx             /* closed -> 解锁后 abort */
+    call    core_lock_release
+    call    core_proc_abort        /* rsp≡0，shadow 已在栈上 */
+    hlt
+.Lchan5_send_open:
+    movq    32(%rbx), %rax         /* count */
+    cmpq    8(%rbx), %rax          /* count vs cap */
+    jl      .Lchan5_send_room
+    movq    %rbx, %rcx             /* 满：解锁 -> 让出 -> 重试 */
+    call    core_lock_release
+    call    SwitchToThread
+    jmp     .Lchan5_send_retry
+.Lchan5_send_room:
+    movq    24(%rbx), %r13         /* r13 = tail */
+    shlq    $3, %r13
+    addq    $48, %r13
+    addq    %rbx, %r13             /* &slots[tail]（callee-saved，不会跨调用被改） */
+    movq    %r12, (%r13)           /* slots[tail] = value */
+    movq    24(%rbx), %rax
+    addq    $1, %rax
+    cmpq    8(%rbx), %rax          /* tail+1 >= cap ? */
+    jl      .Lchan5_send_tail_ok
+    xorl    %eax, %eax             /* 回绕到 0 */
+.Lchan5_send_tail_ok:
+    movq    %rax, 24(%rbx)         /* tail 更新 */
+    addq    $1, 32(%rbx)           /* count++ */
+    movq    %rbx, %rcx
+    call    core_lock_release
+    addq    $32, %rsp
+    popq    %r13
+    popq    %r12
+    popq    %rbx
+    ret
+
+/* ptr core_chan_recv(ptr ch) — rcx=ch，返回值或 null(0)
+ * 空且开：解锁让出重试；空且关：返回 null。
+ * %rbx=ch, %r12=取出的 value（callee-saved，跨 core_* 调用不丢）。 */
+    .globl  core_chan_recv
+core_chan_recv:
+    pushq   %rbx
+    pushq   %r12                   /* rsp: 8 -> 0 (mod 16) */
+    subq    $40, %rsp              /* 40 ≡ 8 (mod 16)，保持调用前 rsp≡0 */
+    movq    %rcx, %rbx
+.Lchan5_recv_retry:
+    movq    %rbx, %rcx
+    call    core_lock_acquire
+    cmpq    $0, 32(%rbx)           /* count > 0 ? */
+    jg      .Lchan5_recv_item
+    cmpq    $0, 40(%rbx)           /* 空：closed ? */
+    je      .Lchan5_recv_wait
+    movq    %rbx, %rcx             /* closed+空 -> 解锁返回 null */
+    call    core_lock_release
+    xorl    %eax, %eax
+    jmp     .Lchan5_recv_done
+.Lchan5_recv_wait:
+    movq    %rbx, %rcx             /* 空：解锁 -> 让出 -> 重试 */
+    call    core_lock_release
+    call    SwitchToThread
+    jmp     .Lchan5_recv_retry
+.Lchan5_recv_item:
+    movq    16(%rbx), %rax         /* head */
+    shlq    $3, %rax
+    addq    $48, %rax
+    addq    %rbx, %rax             /* &slots[head] */
+    movq    (%rax), %r12           /* value（callee-saved，不被 release 调用冲掉） */
+    movq    16(%rbx), %rax
+    addq    $1, %rax
+    cmpq    8(%rbx), %rax          /* head+1 >= cap ? */
+    jl      .Lchan5_recv_head_ok
+    xorl    %eax, %eax
+.Lchan5_recv_head_ok:
+    movq    %rax, 16(%rbx)         /* head 更新 */
+    subq    $1, 32(%rbx)           /* count-- */
+    movq    %rbx, %rcx
+    call    core_lock_release
+    movq    %r12, %rax             /* 返回值 = value */
+.Lchan5_recv_done:
+    addq    $40, %rsp
+    popq    %r12
+    popq    %rbx
+    ret
+
+/* void core_chan_close(ptr ch) — rcx=ch，幂等 */
+    .globl  core_chan_close
+core_chan_close:
+    pushq   %rbx                   /* rsp: 8 -> 0 */
+    movq    %rcx, %rbx
+    subq    $32, %rsp              /* rsp≡0 */
+    movq    %rbx, %rcx
+    call    core_lock_acquire
+    movq    $1, 40(%rbx)           /* closed = 1 */
+    movq    %rbx, %rcx
+    call    core_lock_release
+    addq    $32, %rsp
+    popq    %rbx
+    ret
+
+/* void core_chan_drop(ptr ch) — rcx=ch，释放通道对象（不递归释放载荷） */
+    .globl  core_chan_drop
+core_chan_drop:
+    subq    $40, %rsp              /* rsp: 8 -> 0，shadow for core_free */
+    call    core_free
+    addq    $40, %rsp
     ret
 
 /* ============================================================

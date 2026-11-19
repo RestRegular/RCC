@@ -1,0 +1,20 @@
+// P14-1a：端到端基本用例——主线程 alloc -> 子线程写+free -> join
+fun sout(*args: any, end="\n"): void { encapsulated }
+
+fun child(p: ptr): void {
+    core_mem_set(p, 7, 8)
+    core_free(p)
+}
+
+fun main(): void {
+    core_dbg_reset()
+    var p: ptr = core_alloc(16, 8)
+    core_mem_set(p, 1, 8)
+    sout("before join")
+    var h: ptr = core_thread_create(child, p)
+    core_thread_join(h)
+    sout("after join")
+    sout(core_dbg_allocations())
+    sout(core_dbg_frees())
+}
+main()

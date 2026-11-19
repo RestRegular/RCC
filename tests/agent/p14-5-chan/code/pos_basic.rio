@@ -1,0 +1,15 @@
+// 正向：单线程 send/recv FIFO + close 后 recv 返回 null
+class Msg { var id: int  ctor(n: int) { this.id = n } }
+
+fun main(): void {
+    var ch: Chan[Msg] = Chan.new[Msg](4)
+    var a = Msg(11)
+    var b = Msg(22)
+    ch.send(a.take())
+    ch.send(b.take())
+    if var x = ch.recv() { sout(x.id) }
+    if var y = ch.recv() { sout(y.id) }
+    ch.close()
+    if var z = ch.recv() { sout("bad") } else { sout("closed") }
+}
+main()

@@ -1,0 +1,15 @@
+// P14-3 正向：Ref[T] 只读元素——闭包只读元素字段，无捕获写。
+class Player { var hp: int  ctor(h: int) { this.hp = h } }
+fun main(): void {
+    var pl = Pool.chunked(2)
+    var a: Player pl = pl.new[Player](7)
+    var b: Player pl = pl.new[Player](9)
+    pl.par_each((p: Ref[Player]) -> {
+        var local = p.hp
+        local = local + 0
+    })
+    // 只读不改：元素值保持原样
+    sout(a.hp)
+    sout(b.hp)
+}
+main()

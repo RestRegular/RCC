@@ -722,6 +722,38 @@ namespace ast {
 
         [[nodiscard]] std::shared_ptr<ExpressionNode> getThrowExpression() const;
     };
+
+    // P14-1b：`scope s { ... }` 结构化并发作用域。
+    // _name 是本 scope 句柄变量名（二等值），_body 是块体。
+    class ScopeNode final : public ExpressionNode
+    {
+        std::shared_ptr<IdentifierNode> _name;
+        std::shared_ptr<BlockRangerNode> _body;
+    public:
+        explicit ScopeNode(const Token &mainToken,
+            const std::shared_ptr<IdentifierNode> &name,
+            const std::shared_ptr<BlockRangerNode> &body);
+        [[nodiscard]] NodeType getRealType() const override;
+        [[nodiscard]] std::shared_ptr<IdentifierNode> getName() const;
+        [[nodiscard]] std::shared_ptr<BlockRangerNode> getBody() const;
+    };
+
+    // P14-4：`lock c as g { ... }` —— c 是 Locked 句柄，g 是块内二等值 guard。
+    class LockNode final : public ExpressionNode
+    {
+        std::shared_ptr<ExpressionNode> _lockExpr;   // c
+        std::shared_ptr<IdentifierNode> _guardName;  // g
+        std::shared_ptr<BlockRangerNode> _body;
+    public:
+        explicit LockNode(const Token &mainToken,
+            const std::shared_ptr<ExpressionNode> &lockExpr,
+            const std::shared_ptr<IdentifierNode> &guardName,
+            const std::shared_ptr<BlockRangerNode> &body);
+        [[nodiscard]] NodeType getRealType() const override;
+        [[nodiscard]] std::shared_ptr<ExpressionNode> getLockExpr() const;
+        [[nodiscard]] std::shared_ptr<IdentifierNode> getGuardName() const;
+        [[nodiscard]] std::shared_ptr<BlockRangerNode> getBody() const;
+    };
 }
 
 

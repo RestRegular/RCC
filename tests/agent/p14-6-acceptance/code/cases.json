@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "id": "pos_particle_two_phase",
+      "file": "code/pos_particle_two_phase.rio",
+      "expect": "1\n11\n21\n31"
+    },
+    {
+      "id": "pos_two_phase_in_closure",
+      "file": "code/pos_two_phase_in_closure.rio",
+      "expect": "100\n100\n100"
+    },
+    {
+      "id": "neg_write_captured_pool_elem",
+      "file": "code/neg_write_captured_pool_elem.rio",
+      "expectFailure": true,
+      "mustMatch": "cannot write element"
+    },
+    {
+      "id": "neg_mut_conflict",
+      "file": "code/neg_mut_conflict.rio",
+      "expectFailure": true,
+      "mustMatch": "parallel conflict"
+    }
+  ]
+}

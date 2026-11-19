@@ -1,0 +1,11 @@
+// 拒绝：同锁重入
+struct Stats { var hits: int }
+fun main(): void {
+    var counter: Locked[Stats] = Locked.new(Stats(0))
+    lock counter as g {
+        lock counter as g2 {
+            g.hits = 1
+        }
+    }
+}
+main()

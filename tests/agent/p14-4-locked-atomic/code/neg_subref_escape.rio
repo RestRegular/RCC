@@ -1,0 +1,10 @@
+// 拒绝：guard 子引用 (&g.hits) 绑定到变量逃出块
+struct Stats { var hits: int }
+fun main(): void {
+    var counter: Locked[Stats] = Locked.new(Stats(0))
+    lock counter as g {
+        var r = &g.hits
+        sout(r)
+    }
+}
+main()

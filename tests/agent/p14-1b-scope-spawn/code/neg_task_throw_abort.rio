@@ -1,0 +1,13 @@
+// 负面：任务内 throw -> TLS EH 无 handler -> core_proc_abort（退出码 3）
+fun sout(*args: any, end="\n"): void { encapsulated }
+fun boom(p: ptr): void {
+    throw "from task"
+}
+fun main(): void {
+    var a: ptr = core_alloc(16, 8)
+    scope s {
+        s.spawn(boom(a))
+    }
+    sout("should not reach")
+}
+main()

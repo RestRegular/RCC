@@ -1,0 +1,16 @@
+{
+    "name":  "p14-5-chan",
+    "version":  "1.0",
+    "createdAt":  "2026-11-20T02:15:00Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "P14-5 Chan 通道：有界构造/send 消耗 Content/recv 返回 Content?/close 幂等/scope auto-close 跨任务传递 + 拒绝用例（6 条）",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  6,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

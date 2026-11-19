@@ -150,6 +150,10 @@ namespace core {
         TOKEN_CATCH,
         TOKEN_FINALLY,
         TOKEN_THROW,
+        TOKEN_SCOPE,   // P14-1b：`scope s { ... }`
+        TOKEN_SPAWN,   // P14-1b：`s.spawn(f(args))`
+        TOKEN_LOCK,    // P14-4：`lock c as g { ... }`
+        TOKEN_AS,      // P14-4：`lock c as g` 的 as
     };
     enum class StatementType {
         VAR_DEF, // Complete

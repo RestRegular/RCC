@@ -1,0 +1,25 @@
+// P14-3 正向：多块（chunked，跨块链枚举）+ 多元素并行写，验证槽枚举与并行正确。
+// 元素互不相交（每任务只写自己的 p），sum 必为 200。
+class Cell { var v: int  ctor() { this.v = 0 } }
+fun main(): void {
+    var pl = Pool.chunked(64)
+    var i = 0
+    while (i < 200) {
+        var c: Cell pl = pl.new[Cell]()
+        i = i + 1
+    }
+    pl.par_each((p: Mut[Cell]) -> {
+        p.v = p.v + 1
+    })
+    var sum = 0
+    var j = 0
+    while (j < 200) {
+        if var xp = pl.at(j) {
+            var x: Cell = xp
+            sum = sum + x.v
+        }
+        j = j + 1
+    }
+    sout(sum)
+}
+main()

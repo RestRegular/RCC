@@ -1,0 +1,12 @@
+// 负面：任务 take 走 pl，父线程在 scope 内写 pl -> 冻结，应编译期拒绝
+class Player { var hp: int }
+fun sout(*args: any, end="\n"): void { encapsulated }
+fun work(p: Player): void { }
+fun main(): void {
+    var pl = Player(10)
+    scope s {
+        s.spawn(work(pl.take()))
+        pl.hp = 99
+    }
+}
+main()

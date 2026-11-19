@@ -136,6 +136,25 @@ namespace backend
                               bool retTypeAnnotated = false);
         // 把所有排队的匿名函数体发射出来（发射过程中可能继续入队，循环到队空）。
         void emitPendingFunctions();
+        void emitPendingTrampolines(); // P14-1b
+        void emitScope(const std::shared_ptr<ast::ExpressionNode>& node); // P14-1b
+        void emitLock(const std::shared_ptr<ast::ExpressionNode>& node);  // P14-4
+        // P14-4：在 throw/ret/break/continue 等逃出 lock 块的出口前，
+        // 按活动锁栈从内到外发出解锁（Q6「unwind 自动解锁，不 poison」）。
+        void emitLockCleanupForExit();
+        // P14-4：二等值 guard 不能作为赋值右值 / 函数实参 / 返回值的根逃出 lock 块。
+        bool rejectGuardEscape(const std::shared_ptr<ast::ExpressionNode>& node,
+                               const std::string& context);
+        // P14-4：Locked.share() 与 Atomic 原子方法（按接收者静态类型特化）。
+        bool emitSyncMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
+                                const std::shared_ptr<ast::ExpressionNode>& callNode,
+                                const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // P14-3：pool.par_each((p: Mut[T]) -> {...}) 数据并行原语。
+        // member 是 DOT 节点（left=pool 变量, right=IdentifierNode("par_each")），
+        // callNode 是整个调用节点，args[0] 是闭包表达式。
+        void emitParEach(const std::shared_ptr<ast::InfixExpressionNode>& member,
+                         const std::shared_ptr<ast::ExpressionNode>& callNode,
+                         const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
         // 发射闭包对象（无捕获时是静态的 { fnptr, env } 常量）。
         void emitClosureObjects();
         // 具名函数被当作函数值使用时的闭包对象标签（按函数名去重）。
@@ -560,6 +579,31 @@ namespace backend
         void inferWriteEffectsFromBody(const std::shared_ptr<ast::ExpressionNode>& bodyNode,
                                        const std::vector<std::string>& paramNames,
                                        std::vector<WriteEffect>& out) const;
+        // P14/Q13：函数触碰集合（读/写全局、外部符号）。
+        struct FunctionTouches {
+            std::set<std::string> readGlobals;
+            std::set<std::string> writeGlobals;
+            std::set<std::string> externs;
+        };
+        // P14/Q13：递归扫描单个函数体，收集其触碰的全局/extern 到 touches（visited 防环）。
+        void scanFunctionTouches(const std::shared_ptr<ast::FunctionDefinitionNode>& def,
+                                 std::set<std::string>& visited, FunctionTouches& touches,
+                                 std::set<std::string> locals = {});
+        // P14/Q13：检查 spawn 目标函数的全局/extern 触碰，命中则 failAt。
+        void checkSpawnQ13(const std::string& targetFn, const utils::Pos& pos);
+        // P14/G3：扫描 spawn 目标函数体，禁止 Link 原语与结构修改（§10.4/Q18）。
+        void checkSpawnLinkPrimitives(const std::string& targetFn, const utils::Pos& pos,
+                                      std::set<std::string>& visited);
+        // P14 收尾：跨函数 lock 重入静态检测——收集函数体持有的锁表达式，
+        // 传入被调函数，若同一把锁在调用链上重复加锁则编译期拒绝（Q6）。
+        void scanLockReentrancy(const std::string& fnName, std::vector<std::string> heldLocks,
+                                std::set<std::string>& visited);
+        // P14/G4：变量声明所在帧号（-1=全局/形参，>=0=_scopes 下标；-2=查不到）。
+        [[nodiscard]] int frameIndexOf(const std::string& name) const;
+        // P14/G4：检查 spawn 实参引用来源的出生地是否包住即将进入的 scope。
+        void checkBirthPlaceEnclosesScope(const std::shared_ptr<ast::ExpressionNode>& arg,
+                                          const std::shared_ptr<ast::ExpressionNode>& scopeBody,
+                                          const utils::Pos& pos);
         // 把形参名 + 路径后缀解析成调用点的实际路径（"p.name" / "a" / ""=无法解析）。
         [[nodiscard]] std::string resolveEffectPath(const std::string& root,
                                                     const std::string& suffix,
@@ -736,6 +780,10 @@ namespace backend
         // P13-2/L2(Q-C)：取块/分支最后一条语句的推断类型（末值语义）。
         // P13-2/L3(决议 §6)：识别 `X.take()` 形态，返回接收者变量名（空=不是）。
         [[nodiscard]] static std::string takeReceiverName(const std::shared_ptr<ast::ExpressionNode>& node);
+        // P14-6/G2(Q4)：识别 `X.mut()` 形态，返回接收者变量名（空=不是）。
+        // 与 takeReceiverName 分开：take 涉及所有权转移，mut 只是写能力，
+        // 混入 takeReceiverName 会破坏其它 7 处调用点的所有权语义。
+        [[nodiscard]] static std::string mutReceiverName(const std::shared_ptr<ast::ExpressionNode>& node);
         // P13-7：识别 `a.L.add(b)` / `a.unlink_all()` 这类 Link 原语调用。
         // 返回 true 时 out 填好 receiver 变量名、Link 字段名、方法名。
         bool parseLinkMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
@@ -870,6 +918,11 @@ namespace backend
         // 光看名字不够：函数体里的同名局部 `var x` 必须仍然分配栈槽并
         // 遮蔽全局，所以还要配合 _inTopLevelStatements 判断。
         std::set<std::string> _topLevelVarNames;
+        // P14/Q13：裸函数名 -> 函数定义 AST（含重载候选的 vector），供 emitScope
+        // 对 spawn 目标做跨函数「触碰全局 / 外部符号」汇总分析。
+        // 必须在发射任何函数体之前建好（前向调用），模式同 registerOverloadSignatures。
+        std::map<std::string, std::vector<std::shared_ptr<ast::FunctionDefinitionNode>>> _allFunctionDefs;
+        // P14/Q13：每个具名顶层函数预计算的触碰集合（读全局 / 写全局 / 外部符号）。
         // 正在发射 __rio_main 的顶层语句（而不是任何函数体）。
         bool _inTopLevelStatements = false;
         // 当前函数的返回标签
@@ -1020,6 +1073,34 @@ namespace backend
             std::vector<sema::TypePtr> capturedTypes;
         };
         std::vector<PendingFunction> _pendingFunctions;
+        // P14-1b：spawn 任务 trampoline（编译器生成的线程入口）。
+        // 每个 trampoline 从 argblock（rcx 传入）取参数，再 call 目标函数。
+        struct PendingTrampoline
+        {
+            std::string label;          // trampoline 符号
+            std::string targetFn;       // 目标具名函数符号
+            size_t argCount;            // 实参个数（首版 <=4）
+            // P14-3：par_each 的闭包调用 trampoline。
+            // true 时 argblock[0]=闭包对象指针、argblock[1]=元素槽指针，
+            // trampoline 从闭包里取 fnptr(→%r11)/env(→%r10) 后间接调用；
+            // false 为 P14-1b 的 spawn 形态（直接 call targetFn）。
+            bool viaClosure = false;
+        };
+        std::vector<PendingTrampoline> _pendingTrampolines;
+        // P14-4：`lock c as g {}` 的状态。
+        // 每个活动 lock 块一项：guard 名、锁字槽（栈槽文本）、Locked 对象槽、
+        // 以及 guard 绑定类型的文本（用于诊断）。guard 是二等值，逃逸静态检查
+        // 据此判定；unwind 时按栈从内到外解锁。
+        struct ActiveLock {
+            std::string guardName;
+            std::string lockwordSlot;   // 例 "-16(%rbp)"，存锁字地址
+            std::string objectSlot;     // Locked 对象指针槽
+            std::string lockExprText;   // 接收者表达式文本（重入检测）
+            sema::TypePtr valueType;    // guard 的 Mut[T] 中 T
+        };
+        std::vector<ActiveLock> _activeLocks;
+        // 当前 lock 块内的 guard 名集合（含外层，供逃逸检查查表）。
+        std::vector<std::string> _lockGuardNames;
         // 静态闭包对象：{ fnptr, env=0 }，放在 .data 里，值就是它的地址。
         struct ClosureObject
         {
@@ -1403,6 +1484,11 @@ namespace backend
         // 形参/返回类型的收集变体：能把类名解析成 ClassType。
         void collectParamNamesT(const std::shared_ptr<ast::ExpressionNode>& node,
                                 std::vector<std::string>& out) const;
+        // P14-3：从匿名函数形参节点解析类型标注，走完整的 label 路径
+        // （支持 Mut[T]/Ref[T] 等带方括号描述符的能力类型），
+        // 与 collectParamTypes 的「裸 parseTypeName」不同。
+        void anonParamTypes(const std::shared_ptr<ast::ExpressionNode>& paramNode,
+                            std::vector<sema::TypePtr>& out) const;
         void collectParamTypesT(const std::shared_ptr<ast::ExpressionNode>& node,
                                 std::vector<sema::TypePtr>& out) const;
         // P9：收集每个形参的「原始标注文本」，未标注的项为空串。

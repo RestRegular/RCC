@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "id": "pos_spawn_two",
+      "file": "code/pos_spawn_two.rio",
+      "expect": "in scope\nafter join\n2\n2"
+    },
+    {
+      "id": "pos_spawn_one",
+      "file": "code/pos_spawn_one.rio",
+      "expect": "1\n1"
+    },
+    {
+      "id": "neg_take_conflict",
+      "file": "code/neg_take_conflict.rio",
+      "expectFailure": true,
+      "mustMatch": "parallel conflict"
+    },
+    {
+      "id": "neg_cross_scope",
+      "file": "code/neg_cross_scope.rio",
+      "expectFailure": true,
+      "mustMatch": "innermost scope handle"
+    },
+    {
+      "id": "neg_task_throw_abort",
+      "file": "code/neg_task_throw_abort.rio",
+      "expect": "",
+      "exitCode": 3
+    },
+    {
+      "id": "neg_loop_spawn",
+      "file": "code/neg_loop_spawn.rio",
+      "expectFailure": true,
+      "mustMatch": "direct statement of a scope body"
+    },
+    {
+      "id": "neg_parent_freeze",
+      "file": "code/neg_parent_freeze.rio",
+      "expectFailure": true,
+      "mustMatch": "borrowed value frozen"
+    },
+    {
+      "id": "neg_mut_conflict",
+      "file": "code/neg_mut_conflict.rio",
+      "expectFailure": true,
+      "mustMatch": "parallel conflict"
+    },
+    {
+      "id": "neg_mut_vs_bare",
+      "file": "code/neg_mut_vs_bare.rio",
+      "expectFailure": true,
+      "mustMatch": "parallel conflict"
+    }
+  ]
+}

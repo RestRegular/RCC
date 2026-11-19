@@ -114,6 +114,8 @@ namespace ast
             if (std::dynamic_pointer_cast<EncapsulatedExpressionNode>(node)) return name("EncapsulatedExpressionNode");
             if (std::dynamic_pointer_cast<TryNode>(node)) return name("TryNode");
             if (std::dynamic_pointer_cast<ThrowNode>(node)) return name("ThrowNode");
+            if (std::dynamic_pointer_cast<ScopeNode>(node)) return name("ScopeNode");
+            if (std::dynamic_pointer_cast<LockNode>(node)) return name("LockNode");
             if (std::dynamic_pointer_cast<PostfixExpressionNode>(node)) return name("PostfixExpressionNode");
             if (std::dynamic_pointer_cast<UnaryExpressionNode>(node)) return name("UnaryExpressionNode");
             if (std::dynamic_pointer_cast<PrefixExpressionNode>(node)) return name("PrefixExpressionNode");
@@ -374,6 +376,21 @@ namespace ast
             if (const auto throwNode = std::dynamic_pointer_cast<ThrowNode>(node))
             {
                 dumpChild("value", throwNode->getThrowExpression(), level + 1, oss);
+                return;
+            }
+            if (const auto scopeNode = std::dynamic_pointer_cast<ScopeNode>(node))
+            {
+                oss << indentOf(level + 1)
+                    << "scope(" << (scopeNode->getName() ? scopeNode->getName()->getName() : std::string("?")) << "):\n";
+                dumpChild("body", scopeNode->getBody(), level + 2, oss);
+                return;
+            }
+            if (const auto lockNode = std::dynamic_pointer_cast<LockNode>(node))
+            {
+                oss << indentOf(level + 1)
+                    << "lock as " << (lockNode->getGuardName() ? lockNode->getGuardName()->getName() : std::string("?")) << ":\n";
+                dumpChild("lockExpr", lockNode->getLockExpr(), level + 2, oss);
+                dumpChild("body", lockNode->getBody(), level + 2, oss);
                 return;
             }
 

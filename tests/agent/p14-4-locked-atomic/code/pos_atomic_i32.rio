@@ -1,0 +1,10 @@
+// 正向：Atomic i32（符号扩展、负数、显式 i32 构造）
+fun main(): void {
+    var m: Atomic[i32] = Atomic.new[i32](-5)
+    sout(m.load())
+    sout(m.fetch_add(2))
+    sout(m.swap(-9))
+    sout(m.cas(-9, 42))
+    sout(m.load())
+}
+main()

@@ -1,0 +1,53 @@
+{
+  "cases": [
+    {
+      "id": "pos_lock_counter",
+      "file": "code/pos_lock_counter.rio",
+      "expect": "12"
+    },
+    {
+      "id": "pos_share_spawn",
+      "file": "code/pos_share_spawn.rio",
+      "expect": "400"
+    },
+    {
+      "id": "pos_atomic_i64",
+      "file": "code/pos_atomic_i64.rio",
+      "expect": "10\n20\n25\n22\n100\n7\n7\n7\n7\n15\n12"
+    },
+    {
+      "id": "pos_atomic_i32",
+      "file": "code/pos_atomic_i32.rio",
+      "expect": "-5\n-5\n-3\n-9\n42"
+    },
+    {
+      "id": "pos_lock_unwind",
+      "file": "code/pos_lock_unwind.rio",
+      "expect": "boom\n2"
+    },
+    {
+      "id": "neg_reentrant",
+      "file": "code/neg_reentrant.rio",
+      "expectFailure": true,
+      "mustMatch": "reentrant lock"
+    },
+    {
+      "id": "neg_guard_escape",
+      "file": "code/neg_guard_escape.rio",
+      "expectFailure": true,
+      "mustMatch": "two-value"
+    },
+    {
+      "id": "neg_subref_escape",
+      "file": "code/neg_subref_escape.rio",
+      "expectFailure": true,
+      "mustMatch": "sub-reference cannot escape"
+    },
+    {
+      "id": "neg_wrong_receiver",
+      "file": "code/neg_wrong_receiver.rio",
+      "expectFailure": true,
+      "mustMatch": "lock requires a Locked"
+    }
+  ]
+}

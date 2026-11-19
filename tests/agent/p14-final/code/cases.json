@@ -1,0 +1,50 @@
+{
+  "cases": [
+    {
+      "id": "pos_q13_sout_in_task",
+      "file": "code/pos_q13_sout_in_task.rio",
+      "expect": "task-ok"
+    },
+    {
+      "id": "pos_at_narrow_safe",
+      "file": "code/pos_at_narrow_safe.rio",
+      "expect": "42\ndone"
+    },
+    {
+      "id": "neg_q13_global",
+      "file": "code/neg_q13_global.rio",
+      "expectFailure": true,
+      "mustMatch": "Q13"
+    },
+    {
+      "id": "neg_q13_transitive",
+      "file": "code/neg_q13_transitive.rio",
+      "expectFailure": true,
+      "mustMatch": "Q13"
+    },
+    {
+      "id": "neg_g3_link",
+      "file": "code/neg_g3_link.rio",
+      "expectFailure": true,
+      "mustMatch": "Link traversal"
+    },
+    {
+      "id": "neg_g4_birth_scope",
+      "file": "code/neg_g4_birth_scope.rio",
+      "expectFailure": true,
+      "mustMatch": "birth place"
+    },
+    {
+      "id": "neg_ref_conflict",
+      "file": "code/neg_ref_conflict.rio",
+      "expectFailure": true,
+      "mustMatch": "parallel conflict"
+    },
+    {
+      "id": "neg_lock_reentrant_cross",
+      "file": "code/neg_lock_reentrant_cross.rio",
+      "expectFailure": true,
+      "mustMatch": "reentrant lock"
+    }
+  ]
+}

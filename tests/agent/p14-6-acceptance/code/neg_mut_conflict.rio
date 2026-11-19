@@ -1,0 +1,11 @@
+// P14-6 负面（G2）：两个 spawn 都以 Mut 写同一对象 -> 写-写冲突
+class Player { var hp: int }
+fun work(p: Player): void { }
+fun main(): void {
+    var pl = Player(10)
+    scope s {
+        s.spawn(work(pl.mut()))
+        s.spawn(work(pl.mut()))
+    }
+}
+main()

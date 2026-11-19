@@ -1,0 +1,17 @@
+// 正向：lock 互斥更新 struct 字段，顺序一致
+struct Stats { var hits: int }
+fun main(): void {
+    var counter: Locked[Stats] = Locked.new(Stats(0))
+    lock counter as g {
+        g.hits = g.hits + 5
+    }
+    lock counter as g {
+        g.hits = g.hits + 7
+    }
+    var total = 0
+    lock counter as g {
+        total = g.hits
+    }
+    sout(total)
+}
+main()

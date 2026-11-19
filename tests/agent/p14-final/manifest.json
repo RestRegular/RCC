@@ -1,0 +1,16 @@
+{
+    "name":  "p14-final",
+    "version":  "1.0",
+    "createdAt":  "2026-11-20T04:00:00Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "P14 最终收尾：Q13 全局/extern 分析、G3 Link 禁令、G4 出生地检查、.ref 路径、at() 窄化、跨函数锁重入（8 条）",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  8,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

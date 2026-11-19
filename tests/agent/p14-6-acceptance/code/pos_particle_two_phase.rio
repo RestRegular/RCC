@@ -1,0 +1,44 @@
+// P14-6：§10.8 粒子系统两阶段示例（Rio 落地）
+// par_zip 按 Q5=C 未纳入 -> 用 par_each + 捕获只读另一类型 Pool + 槽位 id 查找。
+// 按 Q19 签名 fn step(pool: Mut[Pool[Particle]], cfg: Ref<Config>) 的精神：
+// 阶段1 遍历 forces（写），只读捕获 particles；阶段2 遍历 particles（写），
+// 只读捕获 forces。两阶段各由 par_each 自带 join 分隔，顺序确定。
+// 形状不变式：forces 与 particles 按同序同量创建，id 与槽位一一对应
+// （即 Q5=C 推迟的 par_zip 形状不变式，示例靠约定成立）。
+// 固定容量 8 只是测试规模，非设计。
+// pool.at(id) 越界返回 null，必须 `if var` 窄化（P14 收尾安全修复）。
+class Particle { var id: int  var vel: int  ctor(i: int) { this.id = i  this.vel = 0 } }
+class Force { var id: int  var value: int  ctor(i: int) { this.id = i  this.value = 0 } }
+fun main(): void {
+    var particles = Pool.chunked(8)
+    var forces = Pool.chunked(8)
+    var i = 0
+    while (i < 4) {
+        var p: Particle particles = particles.new[Particle](i)
+        var f: Force forces = forces.new[Force](i)
+        i = i + 1
+    }
+    // 阶段 1：并行读 particles -> 并行写 forces
+    forces.par_each((f: Mut[Force]) -> {
+        if var pp = particles.at(f.id) {
+            var p: Particle = pp
+            f.value = p.id * 10 + 1
+        }
+    })
+    // 阶段 2：并行读 forces -> 并行写 particles
+    particles.par_each((p: Mut[Particle]) -> {
+        if var fp = forces.at(p.id) {
+            var f: Force = fp
+            p.vel = p.vel + f.value
+        }
+    })
+    var k = 0
+    while (k < 4) {
+        if var pp = particles.at(k) {
+            var p: Particle = pp
+            sout(p.vel)
+        }
+        k = k + 1
+    }
+}
+main()

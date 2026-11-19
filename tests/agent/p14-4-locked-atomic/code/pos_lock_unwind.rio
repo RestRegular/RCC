@@ -1,0 +1,20 @@
+// 正向：lock 块内 throw 被外层 catch 后，同一锁可再次 acquire（unwind 自动解锁）
+struct Stats { var hits: int }
+fun main(): void {
+    var counter: Locked[Stats] = Locked.new(Stats(0))
+    try {
+        lock counter as g {
+            g.hits = 1
+            throw "boom"
+        }
+    } catch (e: str) {
+        sout(e)
+    }
+    lock counter as g {
+        g.hits = g.hits + 1
+    }
+    lock counter as g {
+        sout(g.hits)
+    }
+}
+main()

@@ -1,0 +1,8 @@
+// 拒绝：lock 接收者非 Locked
+fun main(): void {
+    var x = 5
+    lock x as g {
+        g = 1
+    }
+}
+main()

@@ -1,0 +1,16 @@
+{
+    "name":  "p14-6-acceptance",
+    "version":  "1.0",
+    "createdAt":  "2026-11-20T03:00:00Z",
+    "author":  "agent",
+    "type":  "regression",
+    "description":  "P14-6 验收：§10.8 粒子系统两阶段示例 + 捕获 Pool 只读约束 + Mut 并发冲突 + boxed 接收者回归（4 条）",
+    "entry":  "execute.ps1",
+    "timeoutSec":  600,
+    "caseCount":  4,
+    "expected":  {
+                     "exitCode":  0,
+                     "outputFile":  "expected/output.txt",
+                     "matchMode":  "contains"
+                 }
+}

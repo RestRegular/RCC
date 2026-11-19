@@ -1,0 +1,23 @@
+// P14-1a：1000 次线程创建/join 压力——验证跨线程 free 与计数平衡稳定
+fun sout(*args: any, end="\n"): void { encapsulated }
+
+fun child(p: ptr): void {
+    core_mem_set(p, 7, 8)
+    core_free(p)
+}
+
+fun main(): void {
+    core_dbg_reset()
+    var i: int = 0
+    while (i < 1000) {
+        var p: ptr = core_alloc(16, 8)
+        core_mem_set(p, 1, 8)
+        var h: ptr = core_thread_create(child, p)
+        core_thread_join(h)
+        i = i + 1
+    }
+    sout(core_dbg_allocations())
+    sout(core_dbg_frees())
+    sout(core_dbg_double_frees())
+}
+main()

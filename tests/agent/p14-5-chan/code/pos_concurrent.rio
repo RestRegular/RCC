@@ -1,0 +1,29 @@
+// 正向：scope 内创建的 Chan 跨 spawn 传递 Content；scope 末 auto-close 后 join 不死锁
+class Msg { var id: int  ctor(n: int) { this.id = n } }
+
+fun producer(ch: Ref[Chan[Msg]]): void {
+    var i = 0
+    while i < 10 {
+        var m = Msg(i)
+        ch.send(m.take())
+        i = i + 1
+    }
+}
+fun consumer(ch: Ref[Chan[Msg]]): void {
+    var i = 0
+    while i < 10 {
+        if var m = ch.recv() {
+            sout(m.id)
+        }
+        i = i + 1
+    }
+}
+fun main(): void {
+    scope s {
+        var ch: Chan[Msg] = Chan.new[Msg](4)
+        var shared = ch.share()
+        s.spawn(producer(shared))
+        s.spawn(consumer(shared))
+    }
+}
+main()
