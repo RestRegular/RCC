@@ -172,6 +172,7 @@
 - 跨池 Link 开禁（§12 未决 8）、三方关系一般化（§12 未决 9）、trust 块用户语法治理（§12 未决 10）。
 - `sout(Ref[T])` 输出引用指向值的新 API（Q12 引出，须单独提案）。
 - 成员集合完整化（Q2 的 B 范围）与 `dict.clone()`/递归释放（P13-6 Q4）仍挂账。
+- ~~`set` 旧对端自动移除（§7.2/§7.4）~~ ✅ 已完成（2026-11-20）：新增运行时原语 `core_link_set`（先删所有以 (a,aField) 为任一端——正向或反向——的旧边，再 tail-call `core_link_add`）；codegen 把 `set` 从「简化成 add」改为派发 `core_link_set`；三点登记（core_win64.s / core.rio / coreReturnType）。用例 `pos_set_old_peer`（1/0/1/1）。
 
 ---
 

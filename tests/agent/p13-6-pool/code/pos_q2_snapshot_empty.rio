@@ -1,0 +1,14 @@
+// P13-6 完整化（§6.3 snapshot()）：空容器快照不带成员，a 不在任何容器时
+// release 应正常通过（确认 snapshot 登记不误伤）。
+import(ds="ds")
+class Player { var name: str  ctor(n: str) { this.name = n } }
+fun main(): void {
+    var pl = Pool.fixed(4)
+    var a: Player pl = Player("bob")
+    var team: list[Player] = []
+    var team2 = team.clone()
+    a.clear()
+    pl.release(a)
+    sout("OK")
+}
+main()

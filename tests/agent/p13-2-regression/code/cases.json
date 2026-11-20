@@ -1,4 +1,4 @@
-﻿{
+{
     "cases":  [
                   {
                       "id":  "L0-1",
@@ -1049,6 +1049,11 @@
                       "id":  "L3-container-scalar-elem",
                       "file":  "code/L3-container-scalar-elem.rio",
                       "expect":  "1\na\n9\n1.5"
+                  },
+                  {
+                      "id":  "L3-dict-clone",
+                      "file":  "code/L3-dict-clone.rio",
+                      "expect":  "1\n99\n2"
                   }
               ]
 }

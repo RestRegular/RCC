@@ -141,7 +141,12 @@ P13-4/Q4 已把这两项归到 P13-6，它们同样依赖成员集合信息。
 - Link 相关的 release 条款（"x 不在任何 Link 中"）——依赖 P13-7。
 - 规范 §11.1 示例的 release 通路（Q3 裁决引出，涉及状态语义变更，单独提案）。
 - 三档 Pool 的并发 `chunked(concurrent:true)`（规范 §10.5）——依赖 P13-8。
-- 成员集合完整化（Q2 的 B 范围：*@L / 循环动态加入 / 嵌套展平 / 闭包捕获 / 函数边界推断）与 dict 深拷贝、容器递归释放（Q4）。
+- ~~snapshot() 成员登记~~ ✅ 已完成（2026-11-20，见 §6）。
+- ~~成员集合活跃性（§6.3 死变量不计入）~~ ✅ 已完成（2026-11-20）：`MemberSetEntry` 加 `scopeDepth`，容器出作用域后集合不再计入 release 判据；用例 `pos_q2_dead_scope`。
+- ~~循环动态加入（§6.3 循环中加入 → many/*@L）~~ ✅ 已完成（2026-11-20）：`memberAdd` 内 `_loopStack` 非空时按 MANY 饱和（单遍 codegen 只扫到一次 push，但每轮都执行）；用例 `neg_q2_loop_many`（诊断 mult=many）。
+- ~~嵌套展平（§6.3 容器的容器 = 内层集合的并）~~ ✅ 已完成（2026-11-20）：`memberBlocksRelease` 改为沿「成员→持有它的容器→更外层容器」做传递闭包（`memberReachesLive` + visited 防环），内层容器出作用域后仍可经活跃外层容器传递持有；用例 `neg_q2_nested_flatten`（诊断指 groups）。
+- ~~`dict.clone()`（P13-6 Q4）~~ ✅ 已完成（2026-11-20）：新增 `core_clone_dict`（复制 keys/vals 两个 8 字节槽数组 + 新 header，D14 浅拷贝口径，与 core_clone_list 对称），codegen 方法/自由函数两形态 + coreReturnType 三点登记；用例 `L3-dict-clone`（改克隆体不影响源：1/99/2）。
+- 成员集合剩余完整化（Q2 的 B 范围：*@L 精确槽位 / 闭包捕获 / 函数边界推断）与容器元素递归释放（Q4 剩余，涉及所有权语义，与浅拷贝冲突需另裁）。
 
 ---
 
@@ -160,9 +165,12 @@ P13-4/Q4 已把这两项归到 P13-6，它们同样依赖成员集合信息。
   `_memberSets` 表；在 `checkGrowthEffects` 登记 `listAppend`/`listInsert`/`listPush`
   （+1 饱和）、`listRemove`（归零）、`listClear`（清空）；`release` 加第 10 步查
   "成员重数=0"，诊断带容器名与重数（符合 §11.4）。
-  - **与方案的偏差**：`snapshot()` 效果（clone）**未登记**——单遍 codegen 在方法调用点
-    拿不到目标变量名（绑定还没发生），强行登记会产生错误归属。按 Q2=A "宁可漏报不可误报"
-    的口径放弃该项，登记为后续项（需绑定点回填，类似 `bindLastActiveRef`）。
+  - **`snapshot()` 效果（clone）已登记（2026-11-20 完整化）**：在 `emitVariableDefinition`
+    的绑定点（`isBorrowInit` 判定之后）回填——识别 `x.clone()` / `clone(x)` / 同类型容器
+    赋值三种形态，调 `memberSnapshot(src, dst)` 把源集合拷到新变量。此前"调用点拿不到目标
+    变量名"的障碍按 `bindLastActiveRef` 同样的绑定点回填思路解决。验证：源容器 clear 后
+    快照仍拦 release（报 `container 'team2'`）、空容器快照不误伤；用例
+    `neg_q2_snapshot_release` / `pos_q2_snapshot_empty`，套件 9/9。
   - `remove_all` 精确语义用 `listRemove` 近似归零（当前 std 无 `remove_all` API）。
 
 **验收**：

@@ -1,0 +1,21 @@
+// P13-7 完整化（§7.2/§7.4）：set 到新对端时自动从旧对端移除。
+// n.parent.set(p1) 后 p1.children=1；再 set(p2) 后 p1.children=0、p2.children=1。
+class Node {
+    var v: int
+    var parent: Link[Node][children][opt]
+    var children: Link[Node][parent][many]
+    ctor(x: int) { this.v = x }
+}
+fun main(): void {
+    var pl = Pool.chunked(8)
+    var n: Node pl = pl.new[Node](1)
+    var p1: Node pl = pl.new[Node](2)
+    var p2: Node pl = pl.new[Node](3)
+    n.parent.set(p1)
+    sout(p1.children.count())
+    n.parent.set(p2)
+    sout(p1.children.count())
+    sout(p2.children.count())
+    sout(n.parent.count())
+}
+main()

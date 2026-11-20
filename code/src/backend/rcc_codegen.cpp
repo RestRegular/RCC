@@ -486,6 +486,8 @@ namespace backend
                 return sema::getStrType();
             if (name == "core_clone_list")
                 return std::make_shared<sema::ListType>(nullptr);
+            if (name == "core_clone_dict")
+                return std::make_shared<sema::DictType>(nullptr, nullptr);
             // 标量 / void
             if (name == "core_mem_eq")
                 return sema::getBoolType();
@@ -507,8 +509,8 @@ namespace backend
                 name == "core_atomic_store_i64" || name == "core_atomic_store_i32" ||
                 name == "core_chan_send" || name == "core_chan_close" || name == "core_chan_drop" ||
                 // P13-7：Link 原语（void，除 is_empty）
-                name == "core_link_add" || name == "core_link_remove" || name == "core_link_clear" ||
-                name == "core_link_unlink_all")
+                name == "core_link_add" || name == "core_link_set" || name == "core_link_remove" ||
+                name == "core_link_clear" || name == "core_link_unlink_all")
                 return sema::getVoidType();
             return nullptr; // 不在表里：交给调用点原来的 int 兜底
         }
@@ -2009,21 +2011,42 @@ namespace backend
             return a;
         return MemberMult::MANY; // ONE+ONE / ONE+MANY / MANY+MANY
     }
+    // P13-6 完整化（§6.3 活跃性）：取容器变量当前所在的作用域深度。
+    // 全局槽返回 -1（永远活跃）；局部变量返回它所在的 _scopes 层下标。
+    int CodeGen::memberScopeDepth(const std::string& container) const
+    {
+        if (container.empty())
+            return -1;
+        const auto root = container.substr(0, container.find_first_of(".["));
+        if (_globals.find(root) != _globals.end())
+            return -1;
+        // 从最内层向外查，命中即其声明层；查不到返回 -2（表示已出作用域）。
+        for (int i = static_cast<int>(_scopes.size()) - 1; i >= 0; --i)
+            if (_scopes[i].find(root) != _scopes[i].end())
+                return i;
+        return -2;
+    }
     void CodeGen::memberAdd(const std::string& container, const std::string& member, const utils::Pos& pos)
     {
         if (container.empty() || member.empty())
             return;
+        const int depth = memberScopeDepth(container);
+        // P13-6 完整化（§6.3 循环中动态加入）：循环体里的一条 push 语句
+        // 每轮都可能执行一次，单遍 codegen 只扫到一次，故按 many 饱和登记，
+        // 而不是 ONE —— 否则循环内重复加入后 release 会看到错误的多重数 1。
+        const MemberMult add = _loopStack.empty() ? MemberMult::ONE : MemberMult::MANY;
         for (auto& e : _memberSets)
         {
             if (e.container == container && e.member == member)
             {
-                e.mult = memberSaturateAdd(e.mult, MemberMult::ONE);
+                e.mult = memberSaturateAdd(e.mult, add);
                 e.live = true;
                 e.at = pos;
+                e.scopeDepth = depth;
                 return;
             }
         }
-        _memberSets.push_back({container, member, MemberMult::ONE, true, pos});
+        _memberSets.push_back({container, member, add, true, pos, depth});
     }
     void CodeGen::memberRemoveAll(const std::string& container, const std::string& member)
     {
@@ -2044,10 +2067,11 @@ namespace backend
     {
         if (srcContainer.empty() || dstContainer.empty())
             return;
+        const int dstDepth = memberScopeDepth(dstContainer);
         std::vector<MemberSetEntry> adds;
         for (const auto& e : _memberSets)
             if (e.container == srcContainer && e.mult != MemberMult::ZERO)
-                adds.push_back({dstContainer, e.member, e.mult, e.live, e.at});
+                adds.push_back({dstContainer, e.member, e.mult, e.live, e.at, dstDepth});
         for (const auto& a : adds)
         {
             bool found = false;
@@ -2056,6 +2080,7 @@ namespace backend
                 {
                     e.mult = memberSaturateAdd(e.mult, a.mult);
                     e.live = e.live || a.live;
+                    e.scopeDepth = a.scopeDepth;
                     found = true;
                     break;
                 }
@@ -2063,18 +2088,45 @@ namespace backend
                 _memberSets.push_back(a);
         }
     }
+    bool CodeGen::memberEntryLive(const MemberSetEntry& e) const
+    {
+        if (!e.live || e.mult == MemberMult::ZERO)
+            return false;
+        // 全局容器 (scopeDepth==-1) 恒活跃；-2（查不到槽）保守算活跃避免误放行；
+        // >=0 时若声明层已弹出则死。
+        if (e.scopeDepth >= 0 && e.scopeDepth >= static_cast<int>(_scopes.size()))
+            return false;
+        return true;
+    }
+    bool CodeGen::memberReachesLive(const std::string& member,
+                                    std::set<std::string>& visited,
+                                    std::string& outContainer, MemberMult& outMult) const
+    {
+        if (!visited.insert(member).second)
+            return false; // 已访问（防环）
+        for (const auto& e : _memberSets)
+        {
+            if (e.member != member || e.mult == MemberMult::ZERO || !e.live)
+                continue;
+            // 该集合项本身属于活跃容器 -> 拦。
+            if (memberEntryLive(e))
+            {
+                outContainer = e.container;
+                outMult = e.mult;
+                return true;
+            }
+            // 容器本身已死：继续向上找「谁持有这个容器」——嵌套展平（§6.3）。
+            // e.container 此时是一个 Body 变量名，它可能又是更外层容器的成员。
+            if (memberReachesLive(e.container, visited, outContainer, outMult))
+                return true;
+        }
+        return false;
+    }
     bool CodeGen::memberBlocksRelease(const std::string& member, std::string& outContainer,
                                       MemberMult& outMult) const
     {
-        for (const auto& e : _memberSets)
-        {
-            if (!e.live || e.member != member || e.mult == MemberMult::ZERO)
-                continue;
-            outContainer = e.container;
-            outMult = e.mult;
-            return true; // 只要有任一活跃容器重数非 0 就拦（§6.4）
-        }
-        return false;
+        std::set<std::string> visited;
+        return memberReachesLive(member, visited, outContainer, outMult);
     }
     std::string CodeGen::resolveEffectPath(const std::string& root, const std::string& suffix,
                                            const std::vector<std::string>& paramNames,
@@ -6553,6 +6605,22 @@ namespace backend
                 }
                 return false;
             }();
+            // P13-6 完整化（规范 §6.3）：拷贝容器等价于 snapshot()。
+            // `var ys = xs.clone()` / `var ys = clone(xs)` / 同类型容器赋值
+            // `var ys = xs`（值语义容器各自独立）都把源容器的成员集合拷到新变量，
+            // 于是从 ys 里 release 出的成员同样会被 release 判据拦住。
+            // 只登记可追踪的标识符源；字面量 / 表达式容器集合为空无需登记。
+            if (hasInit && type &&
+                (type->getKind() == sema::TypeKind::TK_LIST || type->getKind() == sema::TypeKind::TK_DICT))
+            {
+                std::string srcContainer;
+                if (const auto fromClone = cloneSourceName(def->getValueNode()); !fromClone.empty())
+                    srcContainer = fromClone;
+                else if (const auto initId = std::dynamic_pointer_cast<ast::IdentifierNode>(def->getValueNode()))
+                    srcContainer = initId->getName();
+                if (!srcContainer.empty() && srcContainer != name)
+                    memberSnapshot(srcContainer, name);
+            }
             const bool isGlobalSlot = _inTopLevelStatements && _topLevelVarNames.count(name) != 0;
             if (!isGlobalSlot)
             {
@@ -6729,6 +6797,36 @@ namespace backend
             return std::string();
         const auto recv = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
         return recv ? recv->getName() : std::string();
+    }
+    // P13-6 完整化（规范 §6.3 snapshot()）：识别容器 clone 的源变量名。
+    // 两种形态：`x.clone()`（方法）与 `clone(x)`（自由函数）。
+    // 返回源容器路径（可含 `.` 链）；不是 clone 或源不可追踪时返回空串。
+    std::string CodeGen::cloneSourceName(const std::shared_ptr<ast::ExpressionNode>& node) const
+    {
+        if (!node)
+            return std::string();
+        const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node);
+        if (!call)
+            return std::string();
+        // 方法形态 x.clone()
+        if (const auto member = std::dynamic_pointer_cast<ast::InfixExpressionNode>(call->getLeftNode());
+            member && member->getOpToken().getType() == core::TokenType::TOKEN_DOT)
+        {
+            const auto method = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+            if (method && method->getName() == "clone")
+                return exprPathText(member->getLeftNode());
+        }
+        // 自由函数形态 clone(x)
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(call->getLeftNode());
+            id && id->getName() == "clone")
+        {
+            std::vector<std::shared_ptr<ast::ExpressionNode>> cargs;
+            if (const auto argsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))
+                collectArgs(argsNode, cargs);
+            if (cargs.size() == 1)
+                return exprPathText(cargs[0]);
+        }
+        return std::string();
     }
     // P13-7：识别 Link 原语调用的两种形状：
     //   (1) `a.L.add(b)` —— member.left = Infix(DOT, a, L)，member.right = add
@@ -11698,6 +11796,9 @@ namespace backend
                     case sema::TypeKind::TK_LIST:
                         cloneFn = "core_clone_list";
                         break;
+                    case sema::TypeKind::TK_DICT:
+                        cloneFn = "core_clone_dict";
+                        break;
                     case sema::TypeKind::TK_INT:
                     case sema::TypeKind::TK_FLOAT:
                     case sema::TypeKind::TK_BOOL:
@@ -15573,7 +15674,7 @@ namespace backend
         // 派发规则（按接收者**静态类型**，单遍 codegen 无运行期标签）：
         //   str  -> core_clone_str(s)   深拷贝内容
         //   list -> core_clone_list(xs) 容器自身独立，元素槽浅拷贝（D14）
-        //   dict -> 暂不支持（P13-4 之前没有 dict 的 clone 原语）
+        //   dict -> core_clone_dict(d)  keys/vals 槽浅拷贝（D14，P13-6 完整化）
         //   int/float/bool/char -> 值语义，原样返回
         if (methodId->getName() == "clone" && args.empty())
         {
@@ -15587,9 +15688,11 @@ namespace backend
             {
             case sema::TypeKind::TK_STR:
             case sema::TypeKind::TK_LIST:
+            case sema::TypeKind::TK_DICT:
                 {
-                    const char* cloneFn =
-                        recvType->getKind() == sema::TypeKind::TK_STR ? "core_clone_str" : "core_clone_list";
+                    const char* cloneFn = recvType->getKind() == sema::TypeKind::TK_STR ? "core_clone_str" :
+                                          recvType->getKind() == sema::TypeKind::TK_LIST ? "core_clone_list" :
+                                          "core_clone_dict";
                     emitExpression(member->getLeftNode());
                     if (hasFailed())
                         return;
@@ -15988,7 +16091,7 @@ namespace backend
                 if (lkMethod == "add")       coreFn = "core_link_add";
                 else if (lkMethod == "remove") coreFn = "core_link_remove";
                 else if (lkMethod == "clear")  coreFn = "core_link_clear";
-                else if (lkMethod == "set")    coreFn = "core_link_add"; // set 简化为 add（见方案偏差）
+                else if (lkMethod == "set")    coreFn = "core_link_set"; // P13-7 完整化：先清旧对端再加新边（§7.4/§7.7）
                 else if (lkMethod == "unlink_all") coreFn = "core_link_unlink_all";
 
                 // 5th 参数（bField）通过栈传递：32 shadow + 8 栈参 + 8 对齐 = 48。

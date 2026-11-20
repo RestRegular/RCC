@@ -540,18 +540,31 @@ namespace backend
             std::string container;   // 容器路径（局部变量名，如 "team"）
             std::string member;      // 成员 Body 变量名（如 "a"）
             MemberMult mult = MemberMult::ZERO;
-            bool live = true;        // 容器是否仍活跃（未被 clear / 未被证明死亡）
+            bool live = true;        // 容器是否仍活跃（未被 clear / 未被证明死亡 / 未出作用域）
             utils::Pos at;           // 最近一次加入点（诊断用）
+            // P13-6 完整化（§6.3 活跃性）：容器声明所在的作用域深度。
+            // 容器出作用域后其集合不再计入 release 判据（死变量集合不计入）。
+            // -1 = 全局容器（永远活跃），>=0 = 对应的 _scopes 栈深度。
+            int scopeDepth = -1;
         };
         std::vector<MemberSetEntry> _memberSets;
         // 成员集合操作（Q2 四原语效果 + release 判据）。
         static MemberMult memberSaturateAdd(MemberMult a, MemberMult b);
+        // P13-6 完整化（§6.3 活跃性）：容器变量当前作用域深度（-1 全局 / >=0 局部 / -2 未找到）。
+        [[nodiscard]] int memberScopeDepth(const std::string& container) const;
         void memberAdd(const std::string& container, const std::string& member, const utils::Pos& pos);
         void memberRemoveAll(const std::string& container, const std::string& member);
         void memberClearContainer(const std::string& container);
         void memberSnapshot(const std::string& srcContainer, const std::string& dstContainer);
         [[nodiscard]] bool memberBlocksRelease(const std::string& member, std::string& outContainer,
                                                MemberMult& outMult) const;
+        // P13-6 完整化（§6.3 嵌套展平）：某条成员集合项是否属于仍活跃的容器。
+        [[nodiscard]] bool memberEntryLive(const struct MemberSetEntry& e) const;
+        // 沿「member 被哪些容器直接持有 → 那些容器又被哪些容器持有」向上做传递闭包，
+        // 只要触达任一活跃容器即拦（死的内层容器仍可经活跃外层容器传递持有）。
+        [[nodiscard]] bool memberReachesLive(const std::string& member,
+                                             std::set<std::string>& visited,
+                                             std::string& outContainer, MemberMult& outMult) const;
         // P13-2/L3-F（决议 §4.2 / §9.3）：函数写效果表。
         // 决议要求「调用时按 writes / from 更新活跃集合」—— 修前 writes 只在
         // 泛型定义处做形态校验，调用点从不读它，于是下面这些全部静默通过：
@@ -784,6 +797,8 @@ namespace backend
         // 与 takeReceiverName 分开：take 涉及所有权转移，mut 只是写能力，
         // 混入 takeReceiverName 会破坏其它 7 处调用点的所有权语义。
         [[nodiscard]] static std::string mutReceiverName(const std::shared_ptr<ast::ExpressionNode>& node);
+        // P13-6 完整化（§6.3 snapshot()）：识别 `x.clone()` / `clone(x)` 的源容器路径。
+        [[nodiscard]] std::string cloneSourceName(const std::shared_ptr<ast::ExpressionNode>& node) const;
         // P13-7：识别 `a.L.add(b)` / `a.unlink_all()` 这类 Link 原语调用。
         // 返回 true 时 out 填好 receiver 变量名、Link 字段名、方法名。
         bool parseLinkMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,

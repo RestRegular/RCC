@@ -4,6 +4,7 @@
     { "id": "pos_remove_clear", "file": "code/pos_remove_clear.rio", "expect": "2\n1\n0\n1\n0\n0" },
     { "id": "pos_card_opt_many", "file": "code/pos_card_opt_many.rio", "expect": "1\n1\n1" },
     { "id": "pos_unlink_all", "file": "code/pos_unlink_all.rio", "expect": "2\n0\n0\n0" },
+    { "id": "pos_set_old_peer", "file": "code/pos_set_old_peer.rio", "expect": "1\n0\n1\n1" },
     { "id": "pos_cycle_graph", "file": "code/pos_cycle_graph.rio", "expect": "2\n2\n2\n0" },
     { "id": "pos_self_loop", "file": "code/pos_self_loop.rio", "expect": "1\n1" },
     { "id": "neg_peer_missing", "file": "code/neg_peer_missing.rio", "expectFailure": true, "mustMatch": "peer field" },

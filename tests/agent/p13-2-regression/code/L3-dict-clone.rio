@@ -1,0 +1,10 @@
+// P13-6 完整化：dict.clone() 复制 keys/vals 槽，新容器与源独立（D14 浅拷贝口径）
+fun main(): void {
+    var d: dict[str, int] = {"a": 1, "b": 2}
+    var e = d.clone()
+    e["a"] = 99
+    sout(d["a"])
+    sout(e["a"])
+    sout(e["b"])
+}
+main()

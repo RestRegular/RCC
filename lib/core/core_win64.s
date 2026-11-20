@@ -531,6 +531,102 @@ core_clone_list:
     ret
 
 /* ============================================================
+ * ptr core_clone_dict(ptr src)
+ *   rcx = src dict header（len@0, cap@8, keys@16, vals@24）
+ *
+ * 与 core_clone_list 同口径（D14）：浅拷贝 keys/vals 两个 8 字节槽数组，
+ * 元素指向的堆对象仍共享；新 header 与源完全独立。静态无类型标签，
+ * 不做逐元素深拷贝。
+ * ============================================================ */
+    .globl  core_clone_dict
+core_clone_dict:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    pushq   %r12
+    subq    $48, %rsp
+
+    movq    %rcx, %rbx           /* rbx = src */
+    testq   %rbx, %rbx
+    je      .Lcd_null
+    movq    (%rbx), %rsi         /* len */
+    movq    16(%rbx), %rdi       /* keys */
+    movq    24(%rbx), %r12       /* vals */
+
+    /* 新 header（32 字节） */
+    movl    $32, %ecx
+    movq    $8, %rdx
+    call    core_alloc
+    testq   %rax, %rax
+    je      .Lcd_null
+    movq    %rax, 32(%rsp)       /* newheader */
+    movq    %rsi, (%rax)         /* len */
+    movq    %rsi, 8(%rax)        /* cap */
+
+    testq   %rsi, %rsi
+    je      .Lcd_no_data
+    /* 新 keys 块 */
+    movq    %rsi, %rcx
+    shlq    $3, %rcx
+    movq    $8, %rdx
+    call    core_alloc
+    testq   %rax, %rax
+    je      .Lcd_fail
+    movq    %rax, 16(%rsp)       /* newkeys */
+    movq    32(%rsp), %rcx
+    movq    %rax, 16(%rcx)       /* header->keys */
+    /* 复制 keys */
+    movq    %rax, %rcx
+    movq    %rdi, %rdx
+    movq    %rsi, %r8
+    shlq    $3, %r8
+    call    core_mem_copy
+    /* 新 vals 块 */
+    movq    %rsi, %rcx
+    shlq    $3, %rcx
+    movq    $8, %rdx
+    call    core_alloc
+    testq   %rax, %rax
+    je      .Lcd_fail
+    movq    %rax, 8(%rsp)        /* newvals */
+    movq    32(%rsp), %rcx
+    movq    %rax, 24(%rcx)       /* header->vals */
+    /* 复制 vals */
+    movq    %rax, %rcx
+    movq    %r12, %rdx
+    movq    %rsi, %r8
+    shlq    $3, %r8
+    call    core_mem_copy
+    jmp     .Lcd_done
+.Lcd_no_data:
+    movq    32(%rsp), %rcx
+    movq    $0, 16(%rcx)
+    movq    $0, 24(%rcx)
+.Lcd_done:
+    movq    32(%rsp), %rax
+    jmp     .Lcd_out
+.Lcd_fail:
+    /* 新 keys 可能已分配，释放之；再释放 header */
+    movq    16(%rsp), %rcx
+    testq   %rcx, %rcx
+    je      .Lcd_fail2
+    call    core_free
+.Lcd_fail2:
+    movq    32(%rsp), %rcx
+    call    core_free
+    xorl    %eax, %eax
+    jmp     .Lcd_out
+.Lcd_null:
+    xorl    %eax, %eax
+.Lcd_out:
+    addq    $48, %rsp
+    popq    %r12
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
+    ret
+
+/* ============================================================
  * ============ P13-1 调试钩子（D17）============
  *
  * 只在**调试构建**里被 codegen 引用（`-debug-alloc` 开关），发布构建
@@ -1615,6 +1711,73 @@ core_link_remove_at:
     movq    %r8, 24(%rdx)
 .Llkra_done:
     decq    core_link_edge_count(%rip)
+    ret
+
+/* void core_link_set(pool, aSlot, aField, bSlot, bField)
+ * P13-7 完整化（§7.4/§7.7）：set 到新对端前，先删除所有以 (aSlot,aField)
+ * 为**任一端**的旧边（对称边只存一条，正向/反向都要匹配），再建立新边。
+ * 这样旧对端的对偶字段同步清空，不会残留「a 同时连两人」。 */
+    .globl  core_link_set
+core_link_set:
+    pushq   %rbx
+    pushq   %rsi
+    pushq   %rdi
+    pushq   %r12
+    pushq   %r13
+    subq    $64, %rsp
+    movq    %rdx, %rsi             /* rsi = aSlot */
+    movq    %r8, %rdi              /* rdi = aField */
+    movq    %r9, %r12              /* r12 = bSlot */
+    movq    144(%rsp), %r10        /* 5th 栈参 bField（5 push + 64 = 104） */
+    movq    %rcx, %r13             /* r13 = pool */
+.Llks_restart:
+    movq    core_link_edge_count(%rip), %rax
+    testq   %rax, %rax
+    je      .Llks_addnew
+    leaq    core_link_edges(%rip), %r11
+    xorl    %ebx, %ebx             /* i */
+.Llks_loop:
+    /* 正向：edge.a==aSlot && edge.aField==aField */
+    movq    0(%r11), %rax
+    cmpq    %rsi, %rax
+    jne     .Llks_reverse
+    movq    8(%r11), %rax
+    cmpq    %rdi, %rax
+    je      .Llks_found
+.Llks_reverse:
+    /* 反向：edge.b==aSlot && edge.bField==aField（a 曾作对端） */
+    movq    16(%r11), %rax
+    cmpq    %rsi, %rax
+    jne     .Llks_next
+    movq    24(%r11), %rax
+    cmpq    %rdi, %rax
+    je      .Llks_found
+.Llks_next:
+    addq    $32, %r11
+    incq    %rbx
+    movq    core_link_edge_count(%rip), %rax
+    cmpq    %rbx, %rax
+    ja      .Llks_loop
+    jmp     .Llks_addnew
+.Llks_found:
+    movq    %rbx, %rcx
+    call    core_link_remove_at
+    jmp     .Llks_restart           /* swap-remove 后重扫 */
+.Llks_addnew:
+    /* 恢复寄存器，尾调用 core_link_add(pool,a,aF,b,bF) */
+    movq    %r13, %rcx
+    movq    %rsi, %rdx
+    movq    %rdi, %r8
+    movq    %r12, %r9
+    /* bField 仍在 %r10，写到新调用的 5th 栈参位置（rsp+32） */
+    movq    %r10, 32(%rsp)
+    call    core_link_add
+    addq    $64, %rsp
+    popq    %r13
+    popq    %r12
+    popq    %rdi
+    popq    %rsi
+    popq    %rbx
     ret
 
 /* void core_link_remove(pool, aSlot, aField, bSlot, bField)

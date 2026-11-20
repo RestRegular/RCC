@@ -39,6 +39,34 @@
       "file": "code/pos_q2_no_member.rio",
       "compileOnly": true,
       "expect": ""
+    },
+    {
+      "id": "neg_q2_snapshot_release",
+      "file": "code/neg_q2_snapshot_release.rio",
+      "expectFailure": true,
+      "mustMatch": "still a member of live container 'team2'"
+    },
+    {
+      "id": "pos_q2_snapshot_empty",
+      "file": "code/pos_q2_snapshot_empty.rio",
+      "expect": "OK"
+    },
+    {
+      "id": "pos_q2_dead_scope",
+      "file": "code/pos_q2_dead_scope.rio",
+      "expect": "OK"
+    },
+    {
+      "id": "neg_q2_loop_many",
+      "file": "code/neg_q2_loop_many.rio",
+      "expectFailure": true,
+      "mustMatch": "mult=many"
+    },
+    {
+      "id": "neg_q2_nested_flatten",
+      "file": "code/neg_q2_nested_flatten.rio",
+      "expectFailure": true,
+      "mustMatch": "still a member of live container 'groups'"
     }
   ]
 }

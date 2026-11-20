@@ -70,6 +70,7 @@ extern fun core_list_append(xs: list, value: ptr): void
 // clone 是让 std 能合法「把借用转成自己拥有的新值」的手段 —— 不需要放宽
 // 任何规则，也不需要造近似。
 extern fun core_clone_list(xs: list): list
+extern fun core_clone_dict(d: dict): dict
 extern fun core_clone_str(s: str): str
 
 // ============================ IO ==================================
@@ -183,6 +184,7 @@ extern fun core_chan_drop(ch: ptr): void
 // 全局边表维护成对关系（a.L 含 b ⟺ b.L' 含 a）。field 参数是编译期分配的
 // Link 字段索引。所有原语两端同步，用户代码拿不到单边接口。
 extern fun core_link_add(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void
+extern fun core_link_set(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void
 extern fun core_link_remove(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void
 extern fun core_link_clear(pool: ptr, a: ptr, aField: int, bField: int): void
 extern fun core_link_unlink_all(pool: ptr, a: ptr): void
