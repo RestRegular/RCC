@@ -98,4 +98,123 @@ fun abs[T](arg: T): T {
     ret arg
 }
 
-export(pi, e, pow, max, min, opp, abs)
+// ============================ 2026-11-20 扩充：常用数值工具 ============================
+//
+// 全部为纯 Rio 实现，不引入任何新的内建/原语。风格与既有函数一致：
+// 泛型 [T] 在调用点单态化，int / float 各自生成正确的运算代码。
+
+/**
+ * 平方。@example square(5) == 25，square(1.5) == 2.25
+ */
+fun square[T](x: T): T {
+    ret x * x
+}
+
+/**
+ * 立方。@example cube(3) == 27
+ */
+fun cube[T](x: T): T {
+    ret x * x * x
+}
+
+/**
+ * 把 v 夹在 [lo, hi] 内。lo > hi 时约定返回 lo。
+ * @example clamp(5, 0, 3) == 3，clamp(-1, 0, 3) == 0
+ */
+fun clamp[T](v: T, lo: T, hi: T): T {
+    if lo > hi {
+        ret lo
+    }
+    if v < lo {
+        ret lo
+    }
+    if v > hi {
+        ret hi
+    }
+    ret v
+}
+
+/**
+ * 符号：正数 1、负数 -1、零 0。返回 int（与输入数值类型无关）。
+ * @example sign(-2.5) == -1，sign(0) == 0
+ */
+fun sign[T](x: T): int {
+    if x > 0 {
+        ret 1
+    }
+    if x < 0 {
+        ret -1
+    }
+    ret 0
+}
+
+/**
+ * 线性插值：a + (b - a) * t。t 通常在 [0,1]。
+ * @example lerp(0.0, 10.0, 0.25) == 2.5
+ */
+fun lerp(a: float, b: float, t: float): float {
+    ret a + (b - a) * t
+}
+
+// 角度 <-> 弧度。用 pi 常量（裸名，模块内联，见文件头）。
+/** 角度转弧度。@example deg2rad(180.0) ≈ pi */
+fun deg2rad(deg: float): float {
+    ret deg * pi / 180.0
+}
+
+/** 弧度转角度。@example rad2deg(pi) ≈ 180.0 */
+fun rad2deg(rad: float): float {
+    ret rad * 180.0 / pi
+}
+
+/**
+ * 平方根（仅 float）。牛顿迭代：x_{n+1} = (x + a/x) / 2。
+ * 负数无实数解，约定返回 0（不抛错，保持本模块一贯的“不引入新错误语义”口径）。
+ * @example sqrt(9.0) == 3.0，sqrt(2.0) ≈ 1.414214
+ */
+fun sqrt(a: float): float {
+    if a <= 0.0 {
+        ret 0.0
+    }
+    var x: float = a
+    if x < 1.0 {
+        x = 1.0
+    }
+    var i: int = 0
+    while i < 32 {
+        var next: float = (x + a / x) / 2.0
+        if next == x {
+            break
+        }
+        x = next
+        i += 1
+    }
+    ret x
+}
+
+/**
+ * 欧氏距离 hypot(x, y) = sqrt(x² + y²)。
+ * @example hypot(3.0, 4.0) == 5.0
+ */
+fun hypot(x: float, y: float): float {
+    ret sqrt(x * x + y * y)
+}
+
+/**
+ * 近似相等：|a - b| <= epsilon，返回 bool。浮点比较常用。
+ * epsilon 必须显式传入（默认参数在符号表里会变成浮点近似字面量，不利于 API 基线稳定）。
+ * @example isClose(1.0, 1.0001, 0.001) == true
+ */
+fun isClose(a: float, b: float, epsilon: float): bool {
+    var d: float = a - b
+    if d < 0.0 {
+        d = 0.0 - d
+    }
+    if d <= epsilon {
+        ret true
+    }
+    ret false
+}
+
+export(pi, e, pow, max, min, opp, abs, square, cube, clamp, sign, lerp,
+    deg2rad, rad2deg, sqrt, hypot, isClose)

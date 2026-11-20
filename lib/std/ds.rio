@@ -45,8 +45,7 @@
 // 用户只 `import ds` 时 `toStr` 不可见 —— `join` 会编译失败（P12-3-D 实测：
 // `Assignment to 'r': cannot assign a value of type int to a target of type str`）。
 // 用户同时 import ds 和 str 时符号重复内联是允许的（同名同签名合并），不会冲突。
-import(sm="str")
-
+import "str"
 // ============================ 内部工具 ============================
 //
 // 模块私有辅助函数一律带 `_ds` 前缀：模块是编译期内联的，被 import 的
@@ -825,6 +824,185 @@ fun forInRange(start: int, end: int, h: func[int][void], sep: int = 1): void {
     }
 }
 
+// ============================ 2026-11-20 扩充：查询 / 构造 / 折叠 ============================
+//
+// 这一批均为纯函数：返回新列表，不修改入参。这样既避开原地移动元素时对
+// 借用/所有权的顾虑，也与 map/filter/sort 等既有“返回新列表”的函数风格一致。
+
+/**
+ * 首元素。空列表返回元素类型零值（与 top 的空值口径一致）。
+ * @example first([1,2,3]) == 1
+ */
+fun first[T](xs: list[T]): T {
+    if _dsLen(xs) == 0 {
+        var zero: T
+        ret zero
+    }
+    ret xs[0]
+}
+
+/**
+ * 末元素（top 的别名，便于与 first 配对记忆）。
+ * @example last([1,2,3]) == 3
+ */
+fun last[T](xs: list[T]): T {
+    ret top(xs)
+}
+
+/**
+ * 统计 t 在 xs 中出现的次数。
+ * @example count([1,2,1,3,1], 1) == 3
+ */
+fun count[T](xs: list[T], t: T): int {
+    var n: int = 0
+    var i: int = 0
+    while i < _dsLen(xs) {
+        if xs[i] == t {
+            n += 1
+        }
+        i += 1
+    }
+    ret n
+}
+
+/**
+ * 在下标 idx 前插入 item，返回新列表。idx 越界时夹到两端。
+ * @example insert([1,3], 1, 2) 得到 [1,2,3]
+ */
+fun insert[T](xs: list[T], idx: int, item: T): list[T] {
+    var r: list[T] = []
+    var n: int = _dsLen(xs)
+    var at: int = idx
+    if at < 0 {
+        at = 0
+    }
+    if at > n {
+        at = n
+    }
+    var i: int = 0
+    while i < at {
+        r += [xs[i]]
+        i += 1
+    }
+    r += [item]
+    while i < n {
+        r += [xs[i]]
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 去掉下标 idx 的元素，返回新列表（入参不变）。idx 越界时原样 clone 返回。
+ * @example pop([1,2,3], 1) 得到 [1,3]
+ */
+fun pop[T](xs: list[T], idx: int): list[T] {
+    var n: int = _dsLen(xs)
+    if idx < 0 || idx >= n {
+        ret core_clone_list(xs)
+    }
+    var r: list[T] = []
+    var i: int = 0
+    while i < n {
+        if i != idx {
+            r += [xs[i]]
+        }
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 拼接多个元素到列表尾部，返回新列表（concat 的“追加一段”别名）。
+ * @example extend([1,2], [3,4]) 得到 [1,2,3,4]
+ */
+fun extend[T](xs: list[T], more: list[T]): list[T] {
+    ret concat(xs, more)
+}
+
+/**
+ * 去重（保留首次出现的顺序），返回新列表。相等用 == 判断。
+ * @example unique([1,2,1,3,2]) 得到 [1,2,3]
+ */
+fun unique[T](xs: list[T]): list[T] {
+    var r: list[T] = []
+    var i: int = 0
+    while i < _dsLen(xs) {
+        if !contains(r, xs[i]) {
+            r += [xs[i]]
+        }
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 是否存在元素使谓词为真。空列表返回 false。
+ * 名字用 anyMatch 而非 any —— any 是 Rio 保留的类型标注关键字，不能作函数名。
+ * @example anyMatch([1,2,3], (v: int) -> { ret v > 2 }) == true
+ */
+fun anyMatch[T](xs: list[T], h: func[T][bool]): bool {
+    var i: int = 0
+    var found: bool = false
+    while i < _dsLen(xs) {
+        if h(xs[i]) {
+            found = true
+        }
+        i += 1
+    }
+    ret found
+}
+
+/**
+ * 是否所有元素都使谓词为真。空列表返回 true（空集全称真）。
+ * @example all([2,4], (v: int) -> { ret v % 2 == 0 }) == true
+ */
+fun all[T](xs: list[T], h: func[T][bool]): bool {
+    var i: int = 0
+    var ok: bool = true
+    while i < _dsLen(xs) {
+        if !h(xs[i]) {
+            ok = false
+        }
+        i += 1
+    }
+    ret ok
+}
+
+/**
+ * 折叠：从 init 出发，依次 r = f(r, xs[i])，返回最终 r。
+ * @example reduce([1,2,3,4], 0, add) == 10（add 为 (a,b)->a+b）
+ */
+fun reduce[T](xs: list[T], init: T, f: func[T,T][T]): T {
+    var r: T = init
+    var i: int = 0
+    while i < _dsLen(xs) {
+        r = f(r, xs[i])
+        i += 1
+    }
+    ret r
+}
+
+/**
+ * 展平一层：list[list[T]] -> list[T]。
+ * @example flatten([[1,2],[3],[4,5]]) 得到 [1,2,3,4,5]
+ */
+fun flatten[T](xs: list[list[T]]): list[T] {
+    var r: list[T] = []
+    var i: int = 0
+    while i < _dsLen(xs) {
+        var inner: list[T] = xs[i]
+        var j: int = 0
+        while j < _dsLen(inner) {
+            r += [inner[j]]
+            j += 1
+        }
+        i += 1
+    }
+    ret r
+}
+
 export(isEmpty, top, copy, repStr, repList, listAppend, listRemove,
     dictRemove, dictKeys, dictValues, dumpToStr, toFloat, contains, indexOf, map, filter,
-    reverse, slice, concat, sum, sort, join, repeat, forInRange)
+    reverse, slice, concat, sum, sort, join, repeat, forInRange,
+    first, last, count, insert, pop, extend, unique, anyMatch, all, reduce, flatten)

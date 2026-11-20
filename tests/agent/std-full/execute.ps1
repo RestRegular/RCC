@@ -57,11 +57,16 @@ $expectedFns = [ordered]@{
     ds   = @('concat', 'contains', 'copy', 'dictKeys', 'dictRemove', 'dictValues',
              'dumpToStr', 'filter', 'forInRange', 'indexOf', 'isEmpty', 'join',
              'listAppend', 'listRemove', 'map', 'repList', 'repStr', 'repeat',
-             'reverse', 'slice', 'sort', 'sum', 'toFloat', 'top')
+             'reverse', 'slice', 'sort', 'sum', 'toFloat', 'top',
+             'first', 'last', 'count', 'insert', 'pop', 'extend', 'unique',
+             'anyMatch', 'all', 'reduce', 'flatten')
     str  = @('charToInt', 'chunk', 'find', 'floatToStr', 'intToChar', 'intToStr',
              'replace', 'size', 'split', 'subStr', 'toChar', 'toLowerCase',
-             'toStr', 'toUpperCase', 'trim')
-    math = @('abs', 'max', 'min', 'opp', 'pow', 'e', 'pi')
+             'toStr', 'toUpperCase', 'trim',
+             'startsWith', 'endsWith', 'contains', 'count', 'reverse',
+             'padLeft', 'padRight', 'toInt', 'isDigit', 'isAlpha', 'isAlnum', 'isSpace')
+    math = @('abs', 'max', 'min', 'opp', 'pow', 'e', 'pi', 'square', 'cube',
+             'clamp', 'sign', 'lerp', 'deg2rad', 'rad2deg', 'sqrt', 'hypot', 'isClose')
     ops  = @('orLazy', 'orVal', 'ternary', 'ternaryLazy')
     io   = @('input', 'sin')
     prog = @('breakpoint', 'entry', 'args')
@@ -100,6 +105,21 @@ $expectedSigs = @{
         'toFloat(arg: bool): float'
         'toFloat(arg: int): float'
         'top[T](xs: list): T'
+        'all[T](xs: list, h: func): bool'
+        'anyMatch[T](xs: list, h: func): bool'
+        'count[T](xs: list, t: T): int'
+        'extend[T](xs: list, more: list): list'
+        'first[T](xs: list): T'
+        'flatten[T](xs: list): list'
+        'insert[T](xs: list, idx: int, item: T): list'
+        'last[T](xs: list): T'
+        'pop[T](xs: list, idx: int): list'
+        'reduce[T](xs: list, init: T, f: func): T'
+        'unique[T](xs: list): list'
+        # ds import str 后，str 的这三个新增导出符号被平铺进本模块命名空间
+        'contains(content: str, part: str): bool'
+        'count(content: str, part: str): int'
+        'reverse(content: str): str'
     )
     str  = @(
         'charToInt(c: int): int'
@@ -126,6 +146,18 @@ $expectedSigs = @{
         'toStr[T](arg: list): str'
         'toUpperCase(data: str): str'
         'trim(content: str, extraChars: str = " ", onLeft: bool = true, onRight: bool = true): str'
+        'contains(content: str, part: str): bool'
+        'count(content: str, part: str): int'
+        'endsWith(content: str, suffix: str): bool'
+        'isAlnum(b: int): bool'
+        'isAlpha(b: int): bool'
+        'isDigit(b: int): bool'
+        'isSpace(b: int): bool'
+        'padLeft(content: str, width: int, pad: str): str'
+        'padRight(content: str, width: int, pad: str): str'
+        'reverse(content: str): str'
+        'startsWith(content: str, prefix: str): bool'
+        'toInt(content: str): int'
     )
     math = @(
         'abs[T](arg: T): T'
@@ -135,6 +167,16 @@ $expectedSigs = @{
         'pow[T](a: T, times: int): T'
         'e: float'
         'pi: float'
+        'square[T](x: T): T'
+        'cube[T](x: T): T'
+        'clamp[T](v: T, lo: T, hi: T): T'
+        'sign[T](x: T): int'
+        'lerp(a: float, b: float, t: float): float'
+        'deg2rad(deg: float): float'
+        'rad2deg(rad: float): float'
+        'sqrt(a: float): float'
+        'hypot(x: float, y: float): float'
+        'isClose(a: float, b: float, epsilon: float): bool'
     )
     ops  = @(
         'orLazy[T](front: T, back: func): T'
@@ -408,6 +450,26 @@ sout(dumpToStr(typedDict))
 sout(dumpToStr({"k": 1.5}))
 sout(toFloat(true))
 sout(toFloat(3))
+// 2026-11-20 扩充
+sout(first(l))
+sout(last(l))
+sout(count(l, 2))
+var ins: list[int] = insert(l, 1, 9)
+sout(core_str_len(ins))
+var pp: list[int] = pop(l, 1)
+sout(core_str_len(pp))
+var ex: list[int] = extend(l, l)
+sout(core_str_len(ex))
+var uq: list[int] = unique([1, 2, 1])
+sout(core_str_len(uq))
+fun gtTwo(v: int): bool { ret v > 2 }
+fun isEven(v: int): bool { ret v % 2 == 0 }
+sout(anyMatch(l, gtTwo))
+sout(all(l, isEven))
+fun add2(a: int, b: int): int { ret a + b }
+sout(reduce(l, 0, add2))
+var fl2: list[int] = flatten([[1], [2, 3]])
+sout(core_str_len(fl2))
 '@
     str  = @'
 import "str"
@@ -446,6 +508,19 @@ sout("[" + trim("xxaxx", "x") + "]")
 sout("[" + trim("  a  ", " ", true, false) + "]")
 sout("[" + trim("  a  ", " ", false, true) + "]")
 sout(size("abc"))
+// 2026-11-20 扩充
+sout(startsWith("hello", "he"))
+sout(endsWith("hello", "lo"))
+sout(contains("hello", "ell"))
+sout(count("abab", "ab"))
+sout("[" + reverse("abc") + "]")
+sout("[" + padLeft("7", 3, "0") + "]")
+sout("[" + padRight("7", 3, "0") + "]")
+sout(toInt("-42"))
+sout(isDigit(53))
+sout(isAlpha(65))
+sout(isAlnum(122))
+sout(isSpace(32))
 '@
     math = @'
 import "math"
@@ -468,6 +543,18 @@ sout(g + h)
 sout(i + j)
 sout(k)
 sout(l)
+// 2026-11-20 扩充
+sout(square(5))
+sout(square(1.5))
+sout(cube(3))
+sout(clamp(5, 0, 3))
+sout(sign(-2))
+sout(lerp(0.0, 10.0, 0.25))
+sout(deg2rad(180.0))
+sout(rad2deg(pi))
+sout(sqrt(9.0))
+sout(hypot(3.0, 4.0))
+sout(isClose(1.0, 1.0001, 0.001))
 '@
     ops  = @'
 import "ops"
@@ -1155,6 +1242,86 @@ sout(contains(parts, "b"))
 sout(pow(sum(xs), 2))
 breakpoint()
 '@) "1-2-3`nYES`n2`na+b+c`ntrue`n36" @('ds.sort', 'ds.join', 'str.size', 'str.split', 'str.toUpperCase', 'str.intToStr', 'math.max', 'math.pow', 'ds.sum', 'ds.contains', 'ops.ternary', 'prog.breakpoint')
+
+    # ---------------- 2026-11-20 扩充：ds ----------------
+    Invoke-RioCase 'behavior' 'ds' 'b_ds_new_queries' ($dsImp + @'
+sout(first([1,2,3]))
+sout(last([1,2,3]))
+sout(count([1,2,1,3,1], 1))
+'@) "1`n3`n3" @('ds.first', 'ds.last', 'ds.count')
+
+    Invoke-RioCase 'behavior' 'ds' 'b_ds_new_constructors' ($dsImp + @'
+sout(toStr(insert([1,3], 1, 2)))
+sout(toStr(pop([1,2,3], 1)))
+sout(toStr(extend([1,2], [3,4])))
+sout(toStr(unique([1,2,1,3,2])))
+sout(toStr(flatten([[1,2],[3],[4,5]])))
+'@) "[1, 2, 3]`n[1, 3]`n[1, 2, 3, 4]`n[1, 2, 3]`n[1, 2, 3, 4, 5]" @('ds.insert', 'ds.pop', 'ds.extend', 'ds.unique', 'ds.flatten')
+
+    Invoke-RioCase 'behavior' 'ds' 'b_ds_new_fold' ($dsImp + @'
+fun gt2(v: int): bool { ret v > 2 }
+fun even(v: int): bool { ret v % 2 == 0 }
+fun add2(a: int, b: int): int { ret a + b }
+sout(anyMatch([1,2,3], gt2))
+sout(anyMatch([1,2], gt2))
+sout(all([2,4], even))
+sout(all([2,3], even))
+sout(reduce([1,2,3,4], 0, add2))
+'@) "true`nfalse`ntrue`nfalse`n10" @('ds.anyMatch', 'ds.all', 'ds.reduce')
+
+    # ---------------- 2026-11-20 扩充：str ----------------
+    Invoke-RioCase 'behavior' 'str' 'b_str_new_query' ($stImp + @'
+sout(startsWith("hello", "he"))
+sout(startsWith("hello", "lo"))
+sout(endsWith("hello", "lo"))
+sout(endsWith("hello", "he"))
+sout(contains("hello", "ell"))
+sout(contains("hello", "xyz"))
+sout(count("abababa", "aba"))
+'@) "true`nfalse`ntrue`nfalse`ntrue`nfalse`n2" @('str.startsWith', 'str.endsWith', 'str.contains', 'str.count')
+
+    Invoke-RioCase 'behavior' 'str' 'b_str_new_transform' ($stImp + @'
+sout(reverse("abc"))
+sout(padLeft("7", 3, "0"))
+sout(padRight("7", 3, "0"))
+sout(toInt("123"))
+sout(toInt("-42"))
+sout(toInt("12x"))
+'@) "cba`n007`n700`n123`n-42`n12" @('str.reverse', 'str.padLeft', 'str.padRight', 'str.toInt')
+
+    Invoke-RioCase 'behavior' 'str' 'b_str_new_pred' ($stImp + @'
+sout(isDigit(53))
+sout(isAlpha(65))
+sout(isAlnum(122))
+sout(isSpace(32))
+'@) "true`ntrue`ntrue`ntrue" @('str.isDigit', 'str.isAlpha', 'str.isAlnum', 'str.isSpace')
+
+    # ---------------- 2026-11-20 扩充：math ----------------
+    Invoke-RioCase 'behavior' 'math' 'b_math_new_basic' (@'
+import "math"
+sout(square(5))
+sout(square(1.5))
+sout(cube(3))
+sout(clamp(5, 0, 3))
+sout(clamp(-1, 0, 3))
+sout(sign(-2))
+sout(sign(0))
+'@) "25`n2.25`n27`n3`n0`n-1`n0" @('math.square', 'math.cube', 'math.clamp', 'math.sign')
+
+    Invoke-RioCase 'behavior' 'math' 'b_math_new_float' (@'
+import "math"
+sout(lerp(0.0, 10.0, 0.25))
+sout(sqrt(9.0))
+sout(hypot(3.0, 4.0))
+sout(isClose(1.0, 1.0001, 0.001))
+sout(isClose(1.0, 1.5, 0.001))
+'@) "2.5`n3.0`n5.0`ntrue`nfalse" @('math.lerp', 'math.sqrt', 'math.hypot', 'math.isClose')
+
+    Invoke-RioCase 'behavior' 'math' 'b_math_new_angle' (@'
+import "math"
+sout(deg2rad(180.0))
+sout(rad2deg(pi))
+'@) "3.141593`n180.0" @('math.deg2rad', 'math.rad2deg')
 
     # ---------------- 覆盖率自检 ----------------
     Write-Host ''

@@ -519,5 +519,167 @@ fun trim(content: str, extraChars: str = " ", onLeft: bool = true, onRight: bool
     ret _strSlice(content, startIndex, endIndex - startIndex + 1)
 }
 
+// ============================ 2026-11-20 扩充：查询 / 判定 / 变换 ============================
+//
+// 全部纯 Rio，复用本模块的 _strNew / _strSlice / find / size。字符按字节处理，
+// 与 toLowerCase 等既有函数一致（UTF-8 多字节原样保留，不会切坏）。
+
+/** 是否以 prefix 开头。@example startsWith("hello", "he") == true */
+fun startsWith(content: str, prefix: str): bool {
+    var n: int = core_str_len(prefix)
+    if n > core_str_len(content) {
+        ret false
+    }
+    return find(content, prefix) == 0
+}
+
+/** 是否以 suffix 结尾。@example endsWith("hello", "lo") == true */
+fun endsWith(content: str, suffix: str): bool {
+    var n: int = core_str_len(suffix)
+    var m: int = core_str_len(content)
+    if n > m {
+        return false
+    }
+    var i: int = 0
+    while i < n {
+        if content[m - n + i] != suffix[i] {
+            return false
+        }
+        i += 1
+    }
+    ret true
+}
+
+/** 是否包含子串。@example contains("hello", "ell") == true */
+fun contains(content: str, part: str): bool {
+    ret find(content, part) >= 0
+}
+
+/**
+ * 统计 part 在 content 中非重叠出现的次数。
+ * @example count("abababa", "aba") == 2
+ */
+fun count(content: str, part: str): int {
+    var pn: int = core_str_len(part)
+    if pn == 0 {
+        ret 0
+    }
+    var total: int = 0
+    var pos: int = 0
+    var idx: int = find(content, part, pos)
+    while idx >= 0 {
+        total += 1
+        pos = idx + pn
+        idx = find(content, part, pos)
+    }
+    ret total
+}
+
+/** 逐字节反转，返回新 str。@example reverse("abc") == "cba" */
+fun reverse(content: str): str {
+    var n: int = core_str_len(content)
+    var p: str = _strNew(n)
+    var i: int = 0
+    while i < n {
+        core_mem_set(p + 16 + i, content[n - 1 - i], 1)
+        i += 1
+    }
+    ret p
+}
+
+/**
+ * 左补齐到 width 长度（不足时在前面补 pad 的首字节）。
+ * 已是 width 或更长时原样 clone 返回。@example padLeft("7", 3, "0") == "007"
+ */
+fun padLeft(content: str, width: int, pad: str): str {
+    var n: int = core_str_len(content)
+    if n >= width || core_str_len(pad) == 0 {
+        ret core_clone_str(content)
+    }
+    var p: str = _strNew(width)
+    var ch: int = pad[0]
+    var i: int = 0
+    while i < width - n {
+        core_mem_set(p + 16 + i, ch, 1)
+        i += 1
+    }
+    core_mem_copy(p + 16 + (width - n), content + 16, n)
+    ret p
+}
+
+/**
+ * 右补齐到 width 长度（不足时在后面补 pad 的首字节）。
+ * @example padRight("7", 3, "0") == "700"
+ */
+fun padRight(content: str, width: int, pad: str): str {
+    var n: int = core_str_len(content)
+    if n >= width || core_str_len(pad) == 0 {
+        return core_clone_str(content)
+    }
+    var p: str = _strNew(width)
+    core_mem_copy(p + 16, content + 16, n)
+    var ch: int = pad[0]
+    var i: int = n
+    while i < width {
+        core_mem_set(p + 16 + i, ch, 1)
+        i += 1
+    }
+    ret p
+}
+
+/**
+ * 字符串转整数。只解析十进制整数（可选前导 '-'），遇到非数字停止。
+ * 空串或无有效数字返回 0。@example toInt("123") == 123，toInt("-42") == -42
+ */
+fun toInt(content: str): int {
+    var n: int = core_str_len(content)
+    var i: int = 0
+    var neg: bool = false
+    if n > 0 && content[0] == 45 {
+        neg = true
+        i = 1
+    }
+    var value: int = 0
+    var anyDigit: bool = false
+    while i < n {
+        var b: int = content[i]
+        if b < 48 || b > 57 {
+            break
+        }
+        value = value * 10 + (b - 48)
+        anyDigit = true
+        i += 1
+    }
+    if !anyDigit {
+        return 0
+    }
+    if neg {
+        return 0 - value
+    }
+    ret value
+}
+
+/** 字节是否为数字 '0'-'9'。@example isDigit(53) == true */
+fun isDigit(b: int): bool {
+    ret b >= 48 && b <= 57
+}
+
+/** 字节是否为字母 A-Z / a-z。@example isAlpha(65) == true */
+fun isAlpha(b: int): bool {
+    ret (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
+}
+
+/** 字节是否为字母或数字。 */
+fun isAlnum(b: int): bool {
+    ret isDigit(b) || isAlpha(b)
+}
+
+/** 字节是否为空白（空格 / 制表 / 换行 / 回车）。 */
+fun isSpace(b: int): bool {
+    ret b == 32 || b == 9 || b == 10 || b == 13
+}
+
 export(size, toStr, toChar, charToInt, intToChar, intToStr, floatToStr,
-    subStr, find, toLowerCase, toUpperCase, replace, split, chunk, trim)
+    subStr, find, toLowerCase, toUpperCase, replace, split, chunk, trim,
+    startsWith, endsWith, contains, count, reverse, padLeft, padRight,
+    toInt, isDigit, isAlpha, isAlnum, isSpace)
