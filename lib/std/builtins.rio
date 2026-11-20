@@ -87,10 +87,22 @@ fun core_io_write(fd: int, buf: ptr, n: int): int extern
 fun core_io_write_byte(fd: int, ch: int): int extern
 fun core_io_read(fd: int, buf: ptr, n: int): int extern
 fun core_io_flush(fd: int): void extern
+// 文件 I/O（不透明句柄，用户显式 core_file_close）
+// mode: 0=read, 1=write(截断), 2=append；open 失败返回 0
+fun core_file_open(path: ptr, len: int, mode: int): ptr extern
+fun core_file_close(h: ptr): void extern
+fun core_file_size(h: ptr): int extern
+fun core_file_read(h: ptr, buf: ptr, n: int): int extern
+fun core_file_write(h: ptr, buf: ptr, n: int): int extern
+fun core_file_seek(h: ptr, offset: int): void extern
 fun core_proc_exit(code: int): void extern
 fun core_proc_abort(): void extern
 fun core_panic_raise(msg: ptr, len: int): void extern
 fun core_time_ns(): int extern
+fun core_time_unix_ms(): int extern
+fun core_rand(): int extern
+fun core_srand(seed: int): void extern
+fun core_rand_float(): float extern
 fun core_sys_breakpoint(): void extern
 fun core_stack_probe(size: int): void extern
 

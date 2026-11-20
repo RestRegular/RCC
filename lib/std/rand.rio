@@ -1,0 +1,36 @@
+/*
+ * rand.rio —— 伪随机数接口（2026-11-20 系统能力扩充）
+ *
+ * 底层是 core_win64.s 里的 xorshift64*（纯寄存器运算，无系统调用）。
+ * 首次调用自动用单调时钟播种；需要可复现序列时显式调用 seed()。
+ *
+ * 注意：这是**伪随机数**，可用于模拟/测试/游戏，不可用于密码学。
+ */
+
+/** 用给定种子重置全局随机序列；seed=0 会退化为固定常数种子。 */
+fun seed(s: int): void {
+    core_srand(s)
+}
+
+/** 下一个非负伪随机整数，范围 [0, 2^63)。 */
+fun next(): int {
+    ret core_rand()
+}
+
+/** [0, 1) 区间均匀分布的浮点数。 */
+fun nextFloat(): float {
+    ret core_rand_float()
+}
+
+/**
+ * [lo, hi) 区间的整数。lo >= hi 时返回 lo。
+ * 用取模实现，区间很大时分布略有偏差，日常够用。
+ */
+fun range(lo: int, hi: int): int {
+    if lo >= hi {
+        ret lo
+    }
+    ret lo + core_rand() % (hi - lo)
+}
+
+export(seed, next, nextFloat, range)

@@ -480,8 +480,12 @@ namespace backend
                 name == "core_pool_new" || name == "core_pool_alloc" ||
                 name == "core_thread_create" ||
                 name == "core_pool_slot_at" ||  // P14-3：枚举原语返回槽地址
-                name == "core_chan_new" || name == "core_chan_recv")  // P14-5：Chan 对象 / recv 载荷
+                name == "core_chan_new" || name == "core_chan_recv" ||  // P14-5：Chan 对象 / recv 载荷
+                name == "core_file_open")  // 系统能力：文件句柄是不透明 ptr
                 return sema::getPtrType();
+            // 系统能力：随机数浮点入口返回 float（结果在 %xmm0）
+            if (name == "core_rand_float")
+                return sema::getFloatType();
             // G1b：argv 运行时读取原语
             if (name == "core_load_ptr")
                 return sema::getPtrType();
@@ -496,6 +500,9 @@ namespace backend
             if (name == "core_mem_eq")
                 return sema::getBoolType();
             if (name == "core_str_len" || name == "core_io_read" || name == "core_io_write" || name == "core_time_ns" ||
+                // 系统能力：时间 / 随机整数 / 文件字节数与实际读写字节数
+                name == "core_time_unix_ms" || name == "core_rand" ||
+                name == "core_file_size" || name == "core_file_read" || name == "core_file_write" ||
                 name == "core_dbg_allocations" || name == "core_dbg_frees" || name == "core_dbg_double_frees" ||
                 name == "core_dbg_poison_bytes" ||
                 // P13-7
@@ -514,6 +521,8 @@ namespace backend
                 name == "core_atomic_store_i64" || name == "core_atomic_store_i32" ||
                 name == "core_chan_send" || name == "core_chan_close" || name == "core_chan_drop" ||
                 name == "core_store_ptr" ||   // G1b：argv 构造器
+                // 系统能力：播种 / 关文件 / 定位均为无返回值
+                name == "core_srand" || name == "core_file_close" || name == "core_file_seek" ||
                 // P13-7：Link 原语（void，除 is_empty）
                 name == "core_link_add" || name == "core_link_set" || name == "core_link_remove" ||
                 name == "core_link_clear" || name == "core_link_unlink_all")

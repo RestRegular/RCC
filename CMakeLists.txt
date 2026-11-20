@@ -78,22 +78,48 @@ endif()
 # getRCCDir() + "./lib/core/core_win64.o" 定位。
 if(WIN32)
     set(RCC_CORE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/lib/core/core_win64.s")
+    set(RCC_CORE_C_SRC "${CMAKE_CURRENT_SOURCE_DIR}/lib/core/core_sys_win.c")
     set(RCC_CORE_OUT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib/core/core_win64.o")
+    set(RCC_CORE_ASM_OBJ "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib/core/core_win64_asm.o")
+    set(RCC_CORE_C_OBJ "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib/core/core_sys_win.o")
 
     if(EXISTS "${RCC_CORE_SRC}")
         # 找汇编器：优先用与编译器同目录的 as（MinGW 工具链自带）
         find_program(RCC_AS_EXECUTABLE as
                 HINTS "${CMAKE_CXX_COMPILER}" ENV PATH
                 DOC "GNU assembler used to build the core layer")
+        find_program(RCC_LD_EXECUTABLE ld
+                HINTS "${CMAKE_CXX_COMPILER}" ENV PATH
+                DOC "GNU linker used to merge core objects (ld -r)")
+        # 本工程只启用 CXX，CMAKE_C_COMPILER 为空；从 c++ 同目录取 gcc。
+        get_filename_component(RCC_CXX_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        find_program(RCC_CC_EXECUTABLE gcc
+                HINTS "${RCC_CXX_DIR}" ENV PATH
+                DOC "GNU C compiler used to build core_sys_win.c")
 
         if(RCC_AS_EXECUTABLE)
-            add_custom_command(
-                    OUTPUT "${RCC_CORE_OUT}"
-                    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib/core"
-                    COMMAND "${RCC_AS_EXECUTABLE}" -o "${RCC_CORE_OUT}" "${RCC_CORE_SRC}"
-                    DEPENDS "${RCC_CORE_SRC}"
-                    COMMENT "Assembling core layer: core_win64.s -> core_win64.o"
-                    VERBATIM)
+            if(EXISTS "${RCC_CORE_C_SRC}" AND RCC_LD_EXECUTABLE AND RCC_CC_EXECUTABLE)
+                # 系统能力原语（文件 I/O / 时间）用 C 实现，避免手写汇编排
+                # CreateFileA 等 5+ 参 Win32 调用时栈参数易错的问题；
+                # 编译后用 ld -r 合并进单个 core_win64.o，RCC 链接器接口不变。
+                add_custom_command(
+                        OUTPUT "${RCC_CORE_OUT}"
+                        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib/core"
+                        COMMAND "${RCC_AS_EXECUTABLE}" -o "${RCC_CORE_ASM_OBJ}" "${RCC_CORE_SRC}"
+                        COMMAND "${RCC_CC_EXECUTABLE}" -O2 -c -o "${RCC_CORE_C_OBJ}" "${RCC_CORE_C_SRC}"
+                        COMMAND "${RCC_LD_EXECUTABLE}" -r -o "${RCC_CORE_OUT}" "${RCC_CORE_ASM_OBJ}" "${RCC_CORE_C_OBJ}"
+                        DEPENDS "${RCC_CORE_SRC}" "${RCC_CORE_C_SRC}"
+                        COMMENT "Building core layer (asm + C, ld -r merge) -> core_win64.o"
+                        VERBATIM)
+            else()
+                add_custom_command(
+                        OUTPUT "${RCC_CORE_OUT}"
+                        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib/core"
+                        COMMAND "${RCC_AS_EXECUTABLE}" -o "${RCC_CORE_OUT}" "${RCC_CORE_SRC}"
+                        DEPENDS "${RCC_CORE_SRC}"
+                        COMMENT "Assembling core layer: core_win64.s -> core_win64.o"
+                        VERBATIM)
+            endif()
 
             add_custom_target(rcc_core ALL DEPENDS "${RCC_CORE_OUT}")
             add_dependencies(RCC rcc_core)

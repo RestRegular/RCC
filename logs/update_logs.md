@@ -64,12 +64,27 @@
 | **`v1.24.0`** | 2026-11-20 | 内存模型规范补强收尾：snapshot 成员登记、成员集合活跃性、循环重数、嵌套展平、dict.clone、set 旧对端自动移除 | **[Feature] [Docs] [Test]** | RestRegular |
 | **`v1.25.0`** | 2026-11-20 | 内建严格化与符号可见性：G1b argv、serr/soutv、import/export/hidden 符号隔离、静态方法与 builtin 容器方法声明 | **[Feature] [Docs] [Test]** | RestRegular |
 | **`v1.26.0`** | 2026-11-20 | 标准库扩充 33 个纯 Rio 函数（math/str/ds），并修复嵌套具名函数定义导致运行期段错误的 codegen 缺陷 | **[Feature] [BugFix] [Docs] [Test]** | RestRegular |
+| **`v1.27.0`** | 2026-11-20 | 系统能力入库：随机数（rand）、时间（time）、文件整体读写（io.readFile/writeFile/appendFile/exists），新增 8 个 core 原语与 C 合并构建 | **[Feature] [Docs] [Test]** | RestRegular |
 <!-- Add Version Overview -->
 
 ---
 ## 详细日志
 
 <!-- Add Version Details -->
+
+---
+### 版本号 `v1.27.0` (2026-11-20)
+- **类型**：**[Feature] [Docs] [Test]**
+- **作者**：RestRegular
+- **更新时间**：2026/11/20
+- **更新内容**：
+  - **[Feature]** 系统能力扩充（按已批准方向落地 `docs/stdlib_system_proposal.md` 的方案 B/C，环境变量未纳入）：
+    - **`rand` 模块（4 函数）**：`seed` / `next` / `nextFloat` / `range`。底层 xorshift64*（`core_rand` / `core_srand` / `core_rand_float`，纯汇编、无系统调用，首次调用自动播种）；伪随机，不可用于密码学。
+    - **`time` 模块（3 函数）**：`now`（Unix 毫秒时间戳）/ `monotonic`（单调时钟纳秒）/ `elapsed`（耗时毫秒）。底层新增 `core_time_unix_ms`（Win32 `GetSystemTimeAsFileTime`）。
+    - **`io` 模块扩充（4 函数）**：`readFile` / `writeFile` / `appendFile` / `exists`，整体读写、不暴露文件句柄；底层新增 `core_file_open/close/size/read/write/seek`（Win32 `CreateFileA` 等）。失败约定：读失败返回空串，写失败返回 `false`，不引入新错误类型。
+  - **[Refactor]** core 层构建：系统能力原语（文件 I/O、时间）改用 C 实现 `lib/core/core_sys_win.c`（手写汇编排 5+ 参 Win32 调用的栈参数易错），CMake 先汇编 `.s`、再编译 `.c`，用 `ld -r` 合并为单个 `core_win64.o`，RCC 链接器接口不变。`rcc_codegen.cpp` 的 `coreReturnType` 表补齐新原语的静态类型（`core_file_open`→ptr、`core_rand_float`→float、时间/随机整数/文件字节数→int、播种/关闭/定位→void）。
+  - **[Docs]** `docs/rio_doc.md` 新增 `time` / `rand` 章节，扩充 `io` 文件 API，更新模块计数与底层原语说明；`builtins.rio` 补齐 8 个 core 声明。
+  - **[Test]** std-full 基线从 298 项扩到 342 项（新增 io 文件往返/缺失、time、rand 可复现性与边界用例）；**全量 45 套件全绿、0 失败**。
 
 ---
 ### 版本号 `v1.26.0` (2026-11-20)

@@ -1,0 +1,37 @@
+/*
+ * time.rio —— 时间接口（2026-11-20 系统能力扩充）
+ *
+ * 两个时钟，用途不同，不要混用：
+ *   * now()      —— Unix 毫秒时间戳（UTC，wall clock），可能受系统时间调整影响；
+ *                  适合打日志、算日期。
+ *   * monotonic()—— 单调时钟（core_time_ns），不受系统时间调整影响；
+ *                  适合测耗时。
+ *
+ * 全部零分配、零新语法，底层是 core_time_unix_ms / core_time_ns 两个原语。
+ */
+
+/**
+ * 当前 Unix 时间戳（UTC，毫秒）。
+ * 例如 2026-11-20 约 1795188000000。
+ */
+fun now(): int {
+    ret core_time_unix_ms()
+}
+
+/**
+ * 单调时钟（纳秒）。只保证「后一次 >= 前一次」，绝对值无意义。
+ * 计算耗时：var t0 = monotonic(); ...; ret (monotonic() - t0) / 1000000。
+ */
+fun monotonic(): int {
+    ret core_time_ns()
+}
+
+/**
+ * 经过的毫秒数，等价于 (monotonic() - start) / 1000000。
+ * 传 monotonic() 的返回值即可，避免调用方记单位。
+ */
+fun elapsed(start: int): int {
+    ret (core_time_ns() - start) / 1000000
+}
+
+export(now, monotonic, elapsed)

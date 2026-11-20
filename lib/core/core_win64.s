@@ -2489,4 +2489,93 @@ core_sys_breakpoint:
     int3
     ret
 
+/* ============================================================
+ * 系统能力原语（2026-11-20，docs/stdlib_system_proposal.md 落地）
+ *
+ * 随机数 / 时间 / 文件三组，Win64 ABI。所有 Win32 调用只依赖 kernel32
+ * （MinGW 默认链接），不引入新的第三方库。所有公开原语都遵守：
+ *   - 必须预留 32 字节 shadow space 且 16 字节栈对齐；
+ *   - callee-saved 寄存器（rbx/rbp/rsi/rdi/r12-r15）用完即恢复；
+ *   - rep movsb / rep stosb 尤其要保存 rdi/rsi（见项目踩坑记忆）。
+ * ============================================================ */
 
+/* ---------- 随机数：xorshift64*（纯汇编，无系统调用） ----------
+ * .data 里的种子在首次调用时用 QueryPerformanceCounter 初始化；
+ * 之后每次调用推进 xorshift64* 状态并返回 63 位非负整数。
+ *
+ * long long core_rand(void) —— 返回 [0, 2^63) 的伪随机整数
+ * void     core_srand(long long seed)
+ * double   core_rand_float(void) —— 返回 [0,1) 的浮点数
+ */
+    .data
+    .align  8
+core_rand_state:
+    .quad   0
+
+    .text
+/* void core_srand(long long seed) — rcx = seed */
+    .globl  core_srand
+core_srand:
+    testq   %rcx, %rcx
+    jnz     .Lsrand_store
+    movq    $0x9E3779B97F4A7C15, %rcx   /* seed=0 用黄金比例常数兜底 */
+.Lsrand_store:
+    movq    %rcx, core_rand_state(%rip)
+    ret
+
+/* 内部：若 state==0 则用 QPC 播种，然后推进一次 xorshift64*，结果在 rax */
+core_rand_next:
+    movq    core_rand_state(%rip), %rax
+    testq   %rax, %rax
+    jnz     .Lrand_advance
+    subq    $40, %rsp
+    leaq    32(%rsp), %rcx
+    call    QueryPerformanceCounter
+    movq    32(%rsp), %rax
+    addq    $40, %rsp
+    testq   %rax, %rax
+    jnz     .Lrand_seeded
+    movq    $0x9E3779B97F4A7C15, %rax
+.Lrand_seeded:
+    movq    %rax, core_rand_state(%rip)
+.Lrand_advance:
+    movq    %rax, %rcx
+    shrq    $12, %rcx
+    xorq    %rcx, %rax
+    movq    %rax, %rcx
+    shlq    $25, %rcx
+    xorq    %rcx, %rax
+    movq    %rax, %rcx
+    shrq    $27, %rcx
+    xorq    %rcx, %rax
+    movq    %rax, core_rand_state(%rip)
+    movq    $0x2545F4914F6CDD1D, %rcx    /* xorshift64* 乘子 */
+    imulq   %rcx, %rax
+    shrq    $1, %rax                      /* 掩码到 63 位，保证非负 */
+    ret
+
+/* long long core_rand(void) */
+    .globl  core_rand
+core_rand:
+    call    core_rand_next
+    ret
+
+/* double core_rand_float(void) — (core_rand >> 11) * 2^-52 ∈ [0,1)
+ * 52 个随机位直接拼进 IEEE-754 尾数得到 [1,2)，再减 1.0。
+ * 这样避开 int→double 转换指令的操作数限制，且分布均匀。 */
+    .data
+    .align  8
+core_rand_one:
+    .quad   0x3FF0000000000000           /* 1.0 */
+    .text
+    .globl  core_rand_float
+core_rand_float:
+    call    core_rand_next
+    shrq    $11, %rax
+    movq    $0x3FF0000000000000, %rcx    /* 1.0 的位模式 */
+    orq     %rax, %rcx                   /* [1,2) 的 IEEE-754 位模式 */
+    movq    %rcx, %xmm0
+    subsd   core_rand_one(%rip), %xmm0   /* → [0,1) */
+    ret
+
+/* core_time_unix_ms 由 core_sys_win.c 提供（Win32 FILETIME → Unix ms） */

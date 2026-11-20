@@ -742,8 +742,7 @@ try {
 
 ## 七、标准库
 
-标准库是 `lib/std/*.rio` 七个模块（六个功能模块 + 一个内建声明前导），**全部是 Rio
-源码**，没有隐藏的内置实现。
+标准库是 `lib/std/*.rio` 九个模块（八个功能模块 + 一个内建声明前导），**全部是 Rio 源码**，没有隐藏的内置实现。功能模块：`ds` / `str` / `math` / `ops` / `io` / `prog` / `time` / `rand`。系统能力的底层原语由 `lib/core/core_win64.s`（随机数）与 `lib/core/core_sys_win.c`（文件、时间）提供，后者在构建时由 CMake 用 `ld -r` 合并进单个 `core_win64.o`。
 
 ### 7.0 内建声明前导（2026-11-20 改造）
 
@@ -911,7 +910,7 @@ sout(orVal(5, 10))                  // 5
 sout(orLazy(null, () -> { ret 7 })) // 7
 ```
 
-### 7.5 `io` —— 输入（2 个）
+### 7.5 `io` —— 输入与文件（6 个）
 
 ```rio
 import "io"
@@ -921,6 +920,10 @@ import "io"
 |---|---|---|
 | `input` | `(prompt: str = ""): str` | 读一行输入 |
 | `sin` | `(): str` | 读一行输入（无提示） |
+| `readFile` | `(path: str): str` | 一次性读入整个文件；不存在/失败返回空串 |
+| `writeFile` | `(path: str, content: str): bool` | 一次性写入（截断）；成功 true |
+| `appendFile` | `(path: str, content: str): bool` | 追加写入；成功 true |
+| `exists` | `(path: str): bool` | 文件是否存在 |
 
 > `sout` / `serr` **不属于** `io` 模块 —— 它们是编译器特化的输出原语，无需 import
 > 即可用（`sout` → stdout，`serr` → stderr）。`io` 模块只提供 `input` / `sin`。
@@ -940,6 +943,35 @@ import "prog"
 > 见 4.3）——而是 **argv 没有来源**：原仓库只实现了「判断当前文件是不是入口
 > 文件」，argv → `*args` / `**kwargs` 的映射规则（G1b 的 Q1–Q8）尚未裁决。
 > 写死一个空列表冒充 argv 会误导调用方，所以保持空实现。**不要用它接收命令行参数**。
+
+### 7.6b `time` —— 时间（3 个，2026-11-20 新增）
+
+```rio
+import "time"
+```
+
+| 函数 | 签名 | 说明 |
+|---|---|---|
+| `now` | `(): int` | Unix 毫秒时间戳（UTC，wall clock） |
+| `monotonic` | `(): int` | 单调时钟纳秒（只保证递增，绝对值无意义） |
+| `elapsed` | `(start: int): int` | 距 `start` 经过的毫秒（`start` 取自 `monotonic()`） |
+
+两个时钟用途不同：打日志/算日期用 `now()`，测耗时用 `monotonic()` / `elapsed()`。
+
+### 7.6c `rand` —— 伪随机（4 个，2026-11-20 新增）
+
+```rio
+import "rand"
+```
+
+| 函数 | 签名 | 说明 |
+|---|---|---|
+| `seed` | `(s: int): void` | 重置全局随机序列（固定种子可复现） |
+| `next` | `(): int` | `[0, 2^63)` 的随机整数 |
+| `nextFloat` | `(): float` | `[0, 1)` 的随机浮点 |
+| `range` | `(lo: int, hi: int): int` | `[lo, hi)` 的随机整数 |
+
+底层是 xorshift64*（纯寄存器运算，首次调用自动用单调时钟播种）。**伪随机数，不可用于密码学**。
 
 ### 7.7 底层原语
 

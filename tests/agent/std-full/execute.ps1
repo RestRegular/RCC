@@ -43,7 +43,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 if (-not (Test-Path $rcc)) { throw "RCC.exe not found: $rcc (build first: mingw32-make -C build -j 10)" }
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
-$modules = @('ds', 'str', 'math', 'ops', 'io', 'prog')
+$modules = @('ds', 'str', 'math', 'ops', 'io', 'prog', 'time', 'rand')
 
 # ============================================================================
 #  基线表：每个模块的公开函数名（用于覆盖率校验）与导出签名（用于 API diff）
@@ -68,8 +68,10 @@ $expectedFns = [ordered]@{
     math = @('abs', 'max', 'min', 'opp', 'pow', 'e', 'pi', 'square', 'cube',
              'clamp', 'sign', 'lerp', 'deg2rad', 'rad2deg', 'sqrt', 'hypot', 'isClose')
     ops  = @('orLazy', 'orVal', 'ternary', 'ternaryLazy')
-    io   = @('input', 'sin')
+    io   = @('input', 'sin', 'readFile', 'writeFile', 'appendFile', 'exists')
     prog = @('breakpoint', 'entry', 'args')
+    time = @('now', 'monotonic', 'elapsed')
+    rand = @('seed', 'next', 'nextFloat', 'range')
 }
 
 $expectedSigs = @{
@@ -187,11 +189,26 @@ $expectedSigs = @{
     io   = @(
         'input(prompt: str = ""): str'
         'sin(): str'
+        'readFile(path: str): str'
+        'writeFile(path: str, content: str): bool'
+        'appendFile(path: str, content: str): bool'
+        'exists(path: str): bool'
     )
     prog = @(
         'breakpoint(): void'
         'entry(arg: any, *args: any): void'
         'args(): list'
+    )
+    time = @(
+        'now(): int'
+        'monotonic(): int'
+        'elapsed(start: int): int'
+    )
+    rand = @(
+        'seed(s: int): void'
+        'next(): int'
+        'nextFloat(): float'
+        'range(lo: int, hi: int): int'
     )
 }
 
@@ -577,6 +594,11 @@ var c: str = input("prompt: ")
 sout(core_str_len(a) >= 0)
 sout(core_str_len(b) >= 0)
 sout(core_str_len(c) >= 0)
+var p: str = "build/std_check/api_io.txt"
+sout(writeFile(p, "x"))
+sout(exists(p))
+sout(core_str_len(readFile(p)) >= 1)
+sout(appendFile(p, "y"))
 '@
     prog = @'
 import "prog"
@@ -584,6 +606,21 @@ breakpoint()
 entry(0)
 var _argv: list = prog.args()
 sout("ok")
+'@
+    time = @'
+import "time"
+sout(time.now() > 0)
+var t0: int = time.monotonic()
+sout(time.elapsed(t0) >= 0)
+'@
+    rand = @'
+import "rand"
+rand.seed(7)
+sout(rand.next() >= 0)
+var f: float = rand.nextFloat()
+sout(f >= 0.0 && f < 1.0)
+var r: int = rand.range(5, 10)
+sout(r >= 5 && r < 10)
 '@
 }
 
@@ -696,7 +733,7 @@ function Invoke-BehaviorLayer {
 
     $dsImp = "import `"ds`"`n"
     $stImp = "import `"str`"`n"
-    $allImp = "import(`"ds`", `"str`", `"math`", `"ops`", `"io`", `"prog`")`n"
+    $allImp = "import(`"ds`", `"str`", `"math`", `"ops`", `"io`", `"prog`", `"time`", `"rand`")`n"
 
     # ---------------- ds：正常 ----------------
     Invoke-RioCase 'behavior' 'ds' 'b_ds_isEmpty' ($dsImp + @'
@@ -1322,6 +1359,77 @@ import "math"
 sout(deg2rad(180.0))
 sout(rad2deg(pi))
 '@) "3.141593`n180.0" @('math.deg2rad', 'math.rad2deg')
+
+    # ---------------- 2026-11-20 系统能力：io 文件读写 ----------------
+    # 用 build/std_check 下的固定文件名做往返；测试自己清理，避免污染仓库。
+    $fp = Join-Path $work 'b_io_file.txt'
+    if (Test-Path $fp) { Remove-Item $fp -Force }
+    $fpRio = $fp -replace '\\', '/'
+    $ioFileSrc = "import `"io`"`n" + @'
+var p: str = "PLACEHOLDER"
+sout(exists(p))
+sout(writeFile(p, "hello file"))
+sout(exists(p))
+sout("[" + readFile(p) + "]")
+sout(appendFile(p, "!"))
+sout("[" + readFile(p) + "]")
+'@ -replace 'PLACEHOLDER', $fpRio
+    Invoke-RioCase 'behavior' 'io' 'b_io_file_roundtrip' $ioFileSrc `
+        "false`ntrue`ntrue`n[hello file]`ntrue`n[hello file!]" `
+        @('io.exists', 'io.writeFile', 'io.readFile', 'io.appendFile')
+    if (Test-Path $fp) { Remove-Item $fp -Force }
+
+    # 不存在的文件：readFile 返回空串，exists 为 false，不抛错。
+    $missing = (Join-Path $work 'b_io_missing.txt') -replace '\\', '/'
+    $ioMissingSrc = "import `"io`"`n" + @'
+var p: str = "PLACEHOLDER"
+sout("[" + readFile(p) + "]")
+sout(exists(p))
+'@ -replace 'PLACEHOLDER', $missing
+    Invoke-RioCase 'behavior' 'io' 'b_io_file_missing' $ioMissingSrc `
+        "[]`nfalse" @('io.readFile', 'io.exists')
+
+    # ---------------- 2026-11-20 系统能力：time ----------------
+    Invoke-RioCase 'behavior' 'time' 'b_time_now' (@'
+import "time"
+var t: int = time.now()
+sout(t > 1600000000000)
+sout(t < 3000000000000)
+'@) "true`ntrue" @('time.now')
+
+    Invoke-RioCase 'behavior' 'time' 'b_time_monotonic_elapsed' (@'
+import "time"
+var t0: int = time.monotonic()
+var t1: int = time.monotonic()
+sout(t1 >= t0)
+sout(time.elapsed(t0) >= 0)
+'@) "true`ntrue" @('time.monotonic', 'time.elapsed')
+
+    # ---------------- 2026-11-20 系统能力：rand ----------------
+    # 固定种子 → 固定序列，保证可复现；同时验证 nextFloat/range 的边界。
+    Invoke-RioCase 'behavior' 'rand' 'b_rand_reproducible' (@'
+import "rand"
+rand.seed(42)
+sout(rand.next())
+rand.seed(42)
+sout(rand.next())
+'@) "3127509542104846800`n3127509542104846800" @('rand.seed', 'rand.next')
+
+    Invoke-RioCase 'behavior' 'rand' 'b_rand_bounds' (@'
+import "rand"
+rand.seed(1)
+var f: float = rand.nextFloat()
+sout(f >= 0.0 && f < 1.0)
+var allInRange: bool = true
+var i: int = 0
+while i < 100 {
+    var r: int = rand.range(3, 8)
+    if r < 3 || r > 7 { allInRange = false }
+    i += 1
+}
+sout(allInRange)
+sout(rand.range(5, 5))
+'@) "true`ntrue`n5" @('rand.nextFloat', 'rand.range')
 
     # ---------------- 覆盖率自检 ----------------
     Write-Host ''

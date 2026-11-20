@@ -104,4 +104,88 @@ fun input(prompt: str = ""): str {
     ret sin()
 }
 
-export(sin, input)
+// ============================ 文件 I/O（2026-11-20 系统能力扩充） ============================
+//
+// 设计取舍（见 docs/stdlib_system_proposal.md §2.1 方案 B/C）：
+//   * 首版只给「整体读写」readFile / writeFile，不暴露句柄类型给 Rio 用户 ——
+//     避免把「文件句柄」这一新资源纳入内存模型的 Body/Content 讨论。
+//   * 句柄式 open/close/seek 原语已在 core 层备好（core_file_*），但暂不进 std
+//     公开 API 面；需要流式处理的场景后续单独立提案。
+//   * 路径直接传 str 的字节内容（Rio str = {len, cap, data}，数据在 +16），
+//     用 core_cstr_len 口径的 ANSI 字节；失败统一返回约定值，不引入错误类型。
+
+/** 模式常量：写文件（截断已有内容或新建）。 */
+var FILE_WRITE: int const = 1
+
+/**
+ * 一次性读入整个文件，返回 str。
+ * 文件不存在 / 打不开 / 读取失败时返回空串（与老式「无错误类型」口径一致）。
+ * 空文件同样返回空串。
+ */
+fun readFile(path: str): str {
+    var h: ptr = core_file_open(path + 16, core_str_len(path), 0)
+    if h == null {
+        ret ""
+    }
+    var n: int = core_file_size(h)
+    if n <= 0 {
+        core_file_close(h)
+        ret ""
+    }
+    // ABI v2：str 头 {len@0, cap@8, data@16}；cap 写 n 表示堆分配可释放。
+    var buf: str = core_alloc(n + 32, 8)
+    _ioSetLen(buf, n)
+    _ioSetCap(buf, n)
+    core_mem_set(buf + 16 + n, 0, 1)
+    var got: int = core_file_read(h, buf + 16, n)
+    core_file_close(h)
+    if got < 0 {
+        ret ""
+    }
+    if got < n {
+        _ioSetLen(buf, got)
+        _ioSetCap(buf, got)
+    }
+    ret buf
+}
+
+/**
+ * 一次性写入整个文件（截断模式）。成功返回 true，失败返回 false。
+ * 不自动创建父目录，路径必须是已存在目录下的可写位置。
+ */
+fun writeFile(path: str, content: str): bool {
+    var h: ptr = core_file_open(path + 16, core_str_len(path), FILE_WRITE)
+    if h == null {
+        ret false
+    }
+    var n: int = core_file_write(h, content + 16, core_str_len(content))
+    core_file_close(h)
+    ret n >= 0
+}
+
+/**
+ * 追加写入文件（不存在则新建）。成功返回 true，失败返回 false。
+ */
+fun appendFile(path: str, content: str): bool {
+    var h: ptr = core_file_open(path + 16, core_str_len(path), 2)
+    if h == null {
+        ret false
+    }
+    var n: int = core_file_write(h, content + 16, core_str_len(content))
+    core_file_close(h)
+    ret n >= 0
+}
+
+/**
+ * 文件是否存在（以能否按只读打开为准）。
+ */
+fun exists(path: str): bool {
+    var h: ptr = core_file_open(path + 16, core_str_len(path), 0)
+    if h == null {
+        ret false
+    }
+    core_file_close(h)
+    ret true
+}
+
+export(sin, input, readFile, writeFile, appendFile, exists)
