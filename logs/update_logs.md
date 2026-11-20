@@ -63,12 +63,29 @@
 | **`v1.23.0`** | 2026-11-20 | 完整实现结构化并发：scope/spawn、效果集并行检查、par_each、Locked/Atomic、Chan 与竞争排除静态检查 | **[Feature] [Docs] [Test]** | RestRegular |
 | **`v1.24.0`** | 2026-11-20 | 内存模型规范补强收尾：snapshot 成员登记、成员集合活跃性、循环重数、嵌套展平、dict.clone、set 旧对端自动移除 | **[Feature] [Docs] [Test]** | RestRegular |
 | **`v1.25.0`** | 2026-11-20 | 内建严格化与符号可见性：G1b argv、serr/soutv、import/export/hidden 符号隔离、静态方法与 builtin 容器方法声明 | **[Feature] [Docs] [Test]** | RestRegular |
+| **`v1.26.0`** | 2026-11-20 | 标准库扩充 33 个纯 Rio 函数（math/str/ds），并修复嵌套具名函数定义导致运行期段错误的 codegen 缺陷 | **[Feature] [BugFix] [Docs] [Test]** | RestRegular |
 <!-- Add Version Overview -->
 
 ---
 ## 详细日志
 
 <!-- Add Version Details -->
+
+---
+### 版本号 `v1.26.0` (2026-11-20)
+- **类型**：**[Feature] [BugFix] [Docs] [Test]**
+- **作者**：RestRegular
+- **更新时间**：2026/11/20
+- **更新内容**：
+  - **[Feature]** 标准库纯 Rio 扩充 33 个函数（提交 `2609064`，零新原语）：
+    - **math（10）**：`square` / `cube` / `clamp` / `sign` / `lerp` / `deg2rad` / `rad2deg` / `sqrt`（牛顿迭代）/ `hypot` / `isClose`。
+    - **str（13）**：`startsWith` / `endsWith` / `contains` / `count` / `reverse` / `padLeft` / `padRight` / `toInt` / `isDigit` / `isAlpha` / `isAlnum` / `isSpace`。
+    - **ds（11）**：`first` / `last` / `count` / `insert` / `pop` / `extend` / `unique` / `anyMatch` / `all` / `reduce` / `flatten`。
+    - `any` 是保留的类型标注关键字，故谓词函数命名 `anyMatch`。系统能力（文件 I/O / 时间 / 环境变量）另立提案 `docs/stdlib_system_proposal.md`，待用户逐条裁决后才实施。
+  - **[BugFix]** 嵌套具名函数定义导致运行期段错误（提交 `686d8ff`）：原先函数体内的 `fun` 定义就地发射，函数体被插进外层 prologue 与 `call` 之间，执行流顺序落入内层并从内层 `ret` 提前返回，栈失衡触发 0xC0000005。改为递归提取嵌套函数到顶层、走标准签名登记 + 独立发射路径。多层嵌套/带参均验证通过；具名函数不捕获外层局部变量（明确编译报错，要捕获请用匿名闭包）。
+  - **[Docs]** `tests/agent/std-full` 三层验收基线同步（expectedFns / expectedSigs / apiSources / behavior）；系统能力提案文档新增。
+  - **[Test]** std-full 298 项全绿（原 223）；全量 47 套件（45 agent + 2 cases）0 失败；`tests/cases/test-common` 段错误复现用例转为通过。
+  - **[Pitfall]** Rio 函数体内 `while` 循环中的提前 `ret` 在 codegen 控制流状态下可能不生效，标准库新函数一律用累加变量在循环外统一 `ret`。
 
 ---
 ### 版本号 `v1.25.0` (2026-11-20)
