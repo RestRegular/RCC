@@ -4725,6 +4725,23 @@ namespace backend
             }
             topLevelStatements.push_back(expr);
         }
+        // 嵌套具名函数提升（2026-11-20 bug 修复）：
+        // 递归扫出所有顶层函数体里的 `fun f() {...}` 定义，提到 functionNodes
+        // 一起走「签名登记 + 顶层独立发射」路径。原先它们由 emitStatementInner
+        // 就地发射，函数体被插进外层 prologue 与 call 之间，外层执行流顺序落入
+        // 内层 prologue 并从内层 ret 提前返回，栈失衡 → 运行期 0xC0000005。
+        // 用指针集合记录被提升的节点，emitStatementInner 据此跳过就地发射。
+        {
+            const size_t before = functionNodes.size();
+            for (size_t i = 0; i < before; ++i)
+            {
+                if (!functionNodes[i])
+                    continue;
+                collectNestedFunctions(functionNodes[i]->getBodyNode(), functionNodes);
+            }
+            for (size_t i = before; i < functionNodes.size(); ++i)
+                _promotedNestedFunctions.insert(functionNodes[i].get());
+        }
         // P13-2/L0：类声明层面的"去伪"校验（重名 / 保留名），必须在
         // registerClass 之前做，否则重复类会被静默覆盖、类名冲突静默生效。
         if (validateL0ClassDeclarations(classNodes))
@@ -5052,6 +5069,10 @@ namespace backend
         // 函数定义（嵌套）
         if (const auto fn = std::dynamic_pointer_cast<ast::FunctionDefinitionNode>(node))
         {
+            // 被提到顶层发射的嵌套函数：这里跳过，避免函数体就地插进外层
+            // 函数体中间导致栈失衡崩溃（见 emitProgram 的提升逻辑）。
+            if (_promotedNestedFunctions.count(fn.get()))
+                return;
             emitFunctionDefinition(fn);
             return;
         }
@@ -9958,6 +9979,142 @@ namespace backend
         {
             collectFreeVariables(loop->getConditionNode(), bound, free);
             collectFreeVariables(loop->getBodyNode(), bound, free);
+            return;
+        }
+    }
+
+    // 递归收集函数体内嵌的具名函数定义。
+    // 嵌套函数体若就地发射会插进外层函数的 prologue 与 call 之间，外层执行流
+    // 顺序落入内层 prologue 并从内层 ret 提前返回 → 栈严重不平衡 → 段错误。
+    // 修法：把这些定义提到顶层 functionNodes，走与顶层函数完全相同的
+    // 签名登记 + 独立发射路径；原地的定义语句跳过发射（见 emitStatementInner）。
+    // 遍历结构照搬 collectFreeVariables，但目标是 FunctionDefinitionNode。
+    void CodeGen::collectNestedFunctions(const std::shared_ptr<ast::ExpressionNode>& node,
+                                         std::vector<std::shared_ptr<ast::FunctionDefinitionNode>>& out)
+    {
+        if (!node)
+            return;
+        // 具名函数定义：收下，并继续深入它的 body（支持 fun 里再嵌 fun）。
+        if (const auto fn = std::dynamic_pointer_cast<ast::FunctionDefinitionNode>(node))
+        {
+            out.push_back(fn);
+            collectNestedFunctions(fn->getBodyNode(), out);
+            return;
+        }
+        // 匿名函数体不产生具名定义，但它是独立函数，内部仍可能嵌具名函数 ——
+        // 匿名函数体也会被 emitPendingFunctions 发射，其中若有嵌套具名函数
+        // 同样要提升。这里深入它的 body。
+        if (const auto anon = std::dynamic_pointer_cast<ast::AnonFunctionDefinitionNode>(node))
+        {
+            collectNestedFunctions(anon->getBodyNode(), out);
+            return;
+        }
+        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(node)) { return; }
+        if (const auto varDef = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(node))
+        {
+            for (const auto& def : varDef->getVarDefs())
+                if (def->hasInitialValue())
+                    collectNestedFunctions(def->getValueNode(), out);
+            return;
+        }
+        if (const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(node))
+        {
+            const auto [lhs, rhs] = assign->getAssignPair();
+            collectNestedFunctions(lhs, out);
+            collectNestedFunctions(rhs, out);
+            return;
+        }
+        if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node))
+        {
+            collectNestedFunctions(call->getLeftNode(), out);
+            collectNestedFunctions(call->getRightNode(), out);
+            return;
+        }
+        if (const auto index = std::dynamic_pointer_cast<ast::IndexExpressionNode>(node))
+        {
+            collectNestedFunctions(index->getLeftNode(), out);
+            collectNestedFunctions(index->getIndexNode(), out);
+            return;
+        }
+        if (const auto dict = std::dynamic_pointer_cast<ast::DictionaryExpressionNode>(node))
+        {
+            collectNestedFunctions(dict->getBodyNode(), out);
+            return;
+        }
+        if (const auto list = std::dynamic_pointer_cast<ast::ListExpressionNode>(node))
+        {
+            collectNestedFunctions(list->getBodyNode(), out);
+            return;
+        }
+        if (const auto bracket = std::dynamic_pointer_cast<ast::BracketExpressionNode>(node))
+        {
+            collectNestedFunctions(bracket->getBodyNode(), out);
+            return;
+        }
+        if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
+        {
+            collectNestedFunctions(infix->getLeftNode(), out);
+            collectNestedFunctions(infix->getRightNode(), out);
+            return;
+        }
+        if (const auto prefix = std::dynamic_pointer_cast<ast::PrefixExpressionNode>(node))
+        {
+            collectNestedFunctions(prefix->getNode(), out);
+            return;
+        }
+        if (const auto unary = std::dynamic_pointer_cast<ast::UnaryExpressionNode>(node))
+        {
+            collectNestedFunctions(unary->getRightNode(), out);
+            return;
+        }
+        if (const auto postfix = std::dynamic_pointer_cast<ast::PostfixExpressionNode>(node))
+        {
+            collectNestedFunctions(postfix->getNode(), out);
+            return;
+        }
+        if (const auto ret = std::dynamic_pointer_cast<ast::ReturnExpressionNode>(node))
+        {
+            collectNestedFunctions(ret->getReturnNode(), out);
+            return;
+        }
+        if (const auto stmt = std::dynamic_pointer_cast<ast::ExpressionStatementNode>(node))
+        {
+            collectNestedFunctions(stmt->getExpression(), out);
+            return;
+        }
+        if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))
+        {
+            collectNestedFunctions(paren->getRangerNode(), out);
+            return;
+        }
+        if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(node))
+        {
+            for (const auto& e : block->getBodyExpressions())
+                collectNestedFunctions(e, out);
+            return;
+        }
+        if (const auto cond = std::dynamic_pointer_cast<ast::ConditionNode>(node))
+        {
+            for (const auto& b : cond->getBranchNodes())
+                if (const auto branch = std::dynamic_pointer_cast<ast::BranchNode>(b))
+                {
+                    collectNestedFunctions(branch->getConditionNode(), out);
+                    collectNestedFunctions(branch->getBodyNode(), out);
+                }
+            return;
+        }
+        if (const auto forLoop = std::dynamic_pointer_cast<ast::ForLoopNode>(node))
+        {
+            collectNestedFunctions(forLoop->getInitNode(), out);
+            collectNestedFunctions(forLoop->getConditionNode(), out);
+            collectNestedFunctions(forLoop->getUpdateNode(), out);
+            collectNestedFunctions(forLoop->getBodyNode(), out);
+            return;
+        }
+        if (const auto loop = std::dynamic_pointer_cast<ast::LoopNode>(node))
+        {
+            collectNestedFunctions(loop->getConditionNode(), out);
+            collectNestedFunctions(loop->getBodyNode(), out);
             return;
         }
     }

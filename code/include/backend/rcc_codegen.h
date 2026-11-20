@@ -125,6 +125,11 @@ namespace backend
         void emitAssignment(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitVariableDefinition(const std::shared_ptr<ast::ExpressionNode>& node);
         void emitFunctionDefinition(const std::shared_ptr<ast::FunctionDefinitionNode>& node);
+        // 递归收集一个函数体内的嵌套具名函数定义（`fun` 里再写 `fun`）。
+        // 嵌套函数体必须提到顶层发射，否则会内联进外层函数体中间，
+        // 外层执行流顺序落入内层 prologue 并从内层 ret 提前返回 → 栈失衡崩溃。
+        void collectNestedFunctions(const std::shared_ptr<ast::ExpressionNode>& node,
+                                    std::vector<std::shared_ptr<ast::FunctionDefinitionNode>>& out);
         void emitFunctionCall(const std::shared_ptr<ast::ExpressionNode>& node);
         // P8：`mod.fn(args)` —— 模块已在加载期内联，直接按全局函数 fn 调用。
         void emitModuleFunctionCall(const std::string& fname,
@@ -987,6 +992,10 @@ namespace backend
         // P14/Q13：每个具名顶层函数预计算的触碰集合（读全局 / 写全局 / 外部符号）。
         // 正在发射 __rio_main 的顶层语句（而不是任何函数体）。
         bool _inTopLevelStatements = false;
+        // 已被提到顶层发射的嵌套具名函数定义（指针集合）。
+        // emitStatementInner 遇到函数定义节点时，若它在此集合中就跳过就地发射
+        // ——它的函数体已在 emitProgram 的顶层函数队列里独立发射。
+        std::set<const ast::FunctionDefinitionNode*> _promotedNestedFunctions;
         // 当前函数的返回标签
         std::string _returnLabel;
         // P9：当前函数的返回类型 + 是否来自显式标注。
