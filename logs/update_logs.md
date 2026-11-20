@@ -62,12 +62,28 @@
 | **`v1.22.0`** | 2026-11-17 | 删除旧 RA 后端路径，标准库整体重写为 `lib/std/*.rio`，补齐 11 项语言能力缺口 | **[Feature] [Refactor] [Breaking]** | RestRegular |
 | **`v1.23.0`** | 2026-11-20 | 完整实现结构化并发：scope/spawn、效果集并行检查、par_each、Locked/Atomic、Chan 与竞争排除静态检查 | **[Feature] [Docs] [Test]** | RestRegular |
 | **`v1.24.0`** | 2026-11-20 | 内存模型规范补强收尾：snapshot 成员登记、成员集合活跃性、循环重数、嵌套展平、dict.clone、set 旧对端自动移除 | **[Feature] [Docs] [Test]** | RestRegular |
+| **`v1.25.0`** | 2026-11-20 | 内建严格化与符号可见性：G1b argv、serr/soutv、import/export/hidden 符号隔离、静态方法与 builtin 容器方法声明 | **[Feature] [Docs] [Test]** | RestRegular |
 <!-- Add Version Overview -->
 
 ---
 ## 详细日志
 
 <!-- Add Version Details -->
+
+---
+### 版本号 `v1.25.0` (2026-11-20)
+- **类型**：**[Feature] [Docs] [Test]**
+- **作者**：RestRegular
+- **更新时间**：2026/11/20
+- **更新内容**：
+  - **[Feature]** 内建严格化与符号可见性改造（提交 `9b1ce99`、`f9711e9`）：
+    - **G1b argv**：入口文件守卫（编译期路径比较，被 import 模块 no-op）+ `prog.args(): list[str]`，argv 由 rt 构造器在 main 入口从 `argc/argv` 转换，出生地 `in global` 进程级、常驻不释放；只提供 `prog.args()` 一个 API。
+    - **内建声明严格化**：sout / clone / size / 容器方法等 codegen 特化内建补齐标准库正式声明供查阅（`-s` 导出），未声明的可调用符号一律编译报错，用户不得定义与内建同签名函数；闭合 P12 遗留项「调用未定义函数不报错」。
+    - **serr / soutv**：新增标准错误输出内建 `serr`；新增 `soutv(Ref[T])` 输出引用所指的值（`sout(Ref[T])` 仍输出底层地址）。
+    - **import/export/hidden 符号可见性**：新语法 `import "str"` / `import "./path"` / `import lib = "lib"`（等号，不用 as）/ 多库混合 `import("str", tlib="./path")`；`export(...)` 从 no-op 变为对外可见白名单；新增 `hidden` 标签隐藏单个符号，hidden ∩ export 编译报错；别名导入全程隔离（只能 `alias.foo`）。实现走 token 流改名的模块内联，内部引用天然同步。
+    - **静态方法与访问级别**：`static` 修饰函数，`B.f()` 静态分派（无隐式 this）；`private`/`protected`/`public` 成员访问级别与跨模块判定；`lib/std/builtins.rio` 新增 builtin 容器类声明（Str/List/Dict 的 clone/get/get_mut/split_at/split_from），仅供查阅/符号导出，调用仍走 codegen 特化。
+  - **[Docs]** `docs/rio_doc.md` 全量迁移 import 新语法并补 serr/soutv；`docs/p12_plan.md` §4.2.4 补 G1b 全部裁决表、`pending_designs.md` 移除 P13-3 待设计项；规范 §12 / p14_plan / p14_design_audit 同步。
+  - **[Test]** 全测试迁移 import 新语法；新增 4 套 `g1b-argv`(3) / `serr-builtin`(4) / `soutv-builtin`(4) / `module-visibility`(5)、`static-method`(3)，builtin-declarations 补 3 例；全量 45 套件 1067 用例全绿。
 
 ---
 ### 版本号 `v1.24.0` (2026-11-20)
