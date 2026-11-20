@@ -481,6 +481,9 @@ namespace backend
                 name == "core_pool_slot_at" ||  // P14-3：枚举原语返回槽地址
                 name == "core_chan_new" || name == "core_chan_recv")  // P14-5：Chan 对象 / recv 载荷
                 return sema::getPtrType();
+            // G1b：argv 运行时读取原语
+            if (name == "core_load_ptr")
+                return sema::getPtrType();
             // 容器族：clone 出来的就是原容器
             if (name == "core_clone_str")
                 return sema::getStrType();
@@ -496,7 +499,8 @@ namespace backend
                 name == "core_dbg_poison_bytes" ||
                 // P13-7
                 name == "core_link_is_empty" || name == "core_link_count" || name == "core_link_has" ||
-                name == "core_pool_count")     // P14-3：枚举原语返回槽数
+                name == "core_pool_count" ||     // P14-3：枚举原语返回槽数
+                name == "core_cstr_len")         // G1b：C 字符串长度
                 return sema::getIntType();
             if (name == "core_mem_copy" || name == "core_mem_move" || name == "core_mem_set" || name == "core_free" ||
                 name == "core_list_append" || name == "core_io_flush" || name == "core_io_write_byte" ||
@@ -508,6 +512,7 @@ namespace backend
                 name == "core_lock_acquire" || name == "core_lock_release" ||
                 name == "core_atomic_store_i64" || name == "core_atomic_store_i32" ||
                 name == "core_chan_send" || name == "core_chan_close" || name == "core_chan_drop" ||
+                name == "core_store_ptr" ||   // G1b：argv 构造器
                 // P13-7：Link 原语（void，除 is_empty）
                 name == "core_link_add" || name == "core_link_set" || name == "core_link_remove" ||
                 name == "core_link_clear" || name == "core_link_unlink_all")
@@ -2986,8 +2991,9 @@ namespace backend
                 continue;
             // 编译器特化的名字不参与重载：
             //   main  -> 固定发射成 __rio_user_main
-            //   sout / super -> 调用点直接特化，根本不看签名
-            if (sig.name == "main" || sig.name == "sout" || sig.name == "super")
+            //   sout / serr / super -> 调用点直接特化，根本不看签名
+            if (sig.name == "main" || sig.name == "sout" || sig.name == "serr" ||
+                sig.name == "soutv" || sig.name == "entry" || sig.name == "args" || sig.name == "super")
                 continue;
             ++defCount[sig.name];
             all.push_back(std::move(sig));
@@ -3858,6 +3864,9 @@ namespace backend
                         if (const auto modId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
                             modId && isModuleName(modId->getName()))
                         {
+                            // G1b：prog.args() 返回 list[str]（in global argv 槽）
+                            if (modId->getName() == "prog" && mid->getName() == "args")
+                                return std::make_shared<sema::ListType>(sema::getStrType());
                             if (findClass(mid->getName()))
                                 return std::make_shared<sema::ClassType>(mid->getName());
                             // P12/G14：`mod.gen(...)` 的返回类型必须按泛型决议算，
@@ -4451,6 +4460,16 @@ namespace backend
             }
             emitClosureObjects();
             _asm.emitStringLiterals();
+            // G1b：进程级 argv 槽，永久存活（不释放）。.bss 天然零初始化。
+            // 库模式没有 main wrapper（也就没人填它），不发出。
+            if (!_libraryMode)
+            {
+                _asm.bss();
+                _asm.align(8);
+                _asm.global("__rio_argv_list");
+                _asm.label("__rio_argv_list");
+                _asm.inst(".zero", "8");
+            }
             // P12/G1a：顶层 var 的全局槽。.bss 天然零初始化，
             // 真正的初值由 __rio_main 按源码顺序写入。
             if (!_globalDecls.empty())
@@ -4779,6 +4798,19 @@ namespace backend
         _asm.push("%rbp");
         _asm.mov("%rsp", "%rbp");
         _asm.subRsp(32);
+        // G1b：main 入口的 %rcx=argc、%rdx=argv。
+        // 调用 rt_argv_init(argc, argv) 把 OS 的 char** 转成 Rio list[str]，
+        // 结果存进进程级 .bss 全局槽 __rio_argv_list（in global，不释放）。
+        // 此刻还没建立 __rio_main 的栈帧，直接用 main wrapper 自己的帧：
+        // argc/argv 落 -8/-16(%rbp)，返回值落 -24(%rbp) 跨 call 保活。
+        _asm.mov("%rcx", "-8(%rbp)");
+        _asm.mov("%rdx", "-16(%rbp)");
+        _asm.mov("-8(%rbp)", "%rcx");
+        _asm.mov("-16(%rbp)", "%rdx");
+        _asm.call("rt_argv_init");
+        _asm.mov("%rax", "-24(%rbp)");
+        _asm.mov("-24(%rbp)", "%rax");
+        _asm.mov("%rax", "__rio_argv_list(%rip)");
         // shadow space
         // 用户自己写了 fun main() 时，它只是一个普通函数，
         // 需要显式 `main()` 才会执行（legacy test_10_main 就是这样写的）。
@@ -9840,7 +9872,7 @@ namespace backend
                             for (const auto& cand : it->second)
                                 scanFunctionTouches(cand, visited, touches, {});
                         }
-                        else if (!locals.count(calleeName) && calleeName != "sout" &&
+                        else if (!locals.count(calleeName) && calleeName != "sout" && calleeName != "serr" &&
                                  calleeName.rfind("core_", 0) != 0 && calleeName.rfind("rt_", 0) != 0 &&
                                  !findClass(calleeName) && !_declaredClassNames.count(calleeName))
                         {
@@ -11437,6 +11469,18 @@ namespace backend
                 {
                     if (const auto fnId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode()))
                     {
+                        // G1b：prog.entry / prog.args 是编译器特化的内建，
+                        // 必须在「模块函数退化成直接调用」之前拦截。
+                        if (modId->getName() == "prog" && fnId->getName() == "entry")
+                        {
+                            emitProgEntryCall(node, args);
+                            return;
+                        }
+                        if (modId->getName() == "prog" && fnId->getName() == "args")
+                        {
+                            emitProgArgsCall(node);
+                            return;
+                        }
                         emitModuleFunctionCall(fnId->getName(), node, args);
                         return;
                     }
@@ -11714,12 +11758,32 @@ namespace backend
         if (const auto calleeId = std::dynamic_pointer_cast<ast::IdentifierNode>(callee))
         {
             const std::string n = calleeId->getName();
-            // sout 特化
+            // sout / serr 特化：serr 是 standard error output，与 sout 完全同构，
+            // 仅目标 fd 不同（stdout=1 / stderr=2）。
             if (n == "sout")
             {
-                emitSoutCall(node);
+                emitSoutCall(node, false);
                 return;
             }
+            if (n == "serr")
+            {
+                emitSoutCall(node, true);
+                return;
+            }
+            // G1b：裸名 entry(...) / args(...) —— 与 prog.entry/prog.args 等价
+            // （io/prog 模块内联后调用点常写成裸名，如 std-full 的 entry(0)）。
+            if (n == "entry")
+            {
+                emitProgEntryCall(node, args);
+                return;
+            }
+            if (n == "soutv")
+            {
+                emitSoutvCall(node);
+                return;
+            }
+            // 注意：裸名 args(...) 不特化——args 常用作变长形参局部变量名。
+            // prog.args() 必须写限定名。
             // P6：`super(...)` —— 用当前 this 调基类构造器
             if (n == "super")
             {
@@ -11834,6 +11898,17 @@ namespace backend
                         return;
                     }
                     emitResolvedCall(symbol, n, args);
+                    return;
+                }
+                // 内建严格化（2026-11-20 裁决）：未声明的函数不可「凭空调用」。
+                // 上面所有特化/重载/泛型/构造/间接路径都已 return；到这里仍是
+                // 裸名直接调用，必须是已登记符号，否则编译期报错（不再拖到链接期）。
+                if (!isKnownCallable(n))
+                {
+                    failAt(node->getPos(),
+                           "call to undeclared function '" + n +
+                               "' — declare it (fun " + n + " ...) before use; "
+                               "builtin/runtime names are reserved");
                     return;
                 }
                 fname = n;
@@ -11970,6 +12045,81 @@ namespace backend
         _asm.call(emitName);
         _asm.addRsp(callArea);
         finishStructRetCall(structRetBuf);
+    }
+    void CodeGen::emitProgEntryCall(const std::shared_ptr<ast::ExpressionNode>& node,
+                                    const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)
+    {
+        // G1b（2026-11-20 裁决）：入口文件守卫。
+        // 判据：调用点 AST 节点的源文件路径 == 入口文件（规范化后比较）。
+        // 被 import 的模块内联后节点仍保留原文件路径，因此能区分。
+        const std::string callFile = (node && !node->getPos().getFilepath().empty())
+                                         ? node->getPos().getFilepath()
+                                         : std::string();
+        const bool fromEntry = !callFile.empty() && !_entryFilePath.empty() &&
+                               utils::checkPathEqual(callFile, _entryFilePath);
+        if (!fromEntry)
+        {
+            // 被 import 的模块里调用 prog.entry —— no-op（等价 Python
+            // `if __name__ == "__main__"`）。实参也不求值，保证零副作用。
+            return;
+        }
+        // 入口文件：第一个实参是回调，其余转发给它。
+        if (args.empty())
+        {
+            failAt(node->getPos(), "prog.entry requires a callback argument");
+            return;
+        }
+        const auto callback = args[0];
+        const std::vector<std::shared_ptr<ast::ExpressionNode>> forward(args.begin() + 1, args.end());
+        // 回调必须是函数值（具名函数 / 匿名函数），其静态类型是 TK_FUNC。
+        // 非函数实参（如 legacy smoke 里的 entry(0)）按「无有效回调」处理为
+        // no-op：既不发射间接调用（会对 0 解引用崩溃），也不报错——保持旧版
+        // prog.entry 空实现对这类调用的宽容，避免打破既有用例。
+        const auto cbType = inferType(callback);
+        if (!cbType || cbType->getKind() != sema::TypeKind::TK_FUNC)
+            return;
+        // 回调既可能是具名函数（函数值闭包），也可能是匿名函数表达式——
+        // emitIndirectCall 统一按「闭包指针」处理，二者表示一致。
+        std::vector<sema::TypePtr> paramTypes =
+            std::static_pointer_cast<sema::FunctionType>(cbType)->getParams();
+        emitIndirectCall(callback, forward, paramTypes);
+    }
+    void CodeGen::emitProgArgsCall(const std::shared_ptr<ast::ExpressionNode>& node)
+    {
+        // argv list[str] 是 rt 构造器在 main 入口建好、存进 __rio_argv_list
+        // 全局槽的（in global 进程级出生地，永久存活不释放）。这里读回地址。
+        // 库模式（编译 rt/std 自身）没有 main wrapper，也就没有这个槽。
+        if (_libraryMode)
+        {
+            failAt(node->getPos(), "prog.args is unavailable in library mode");
+            return;
+        }
+        _asm.mov("__rio_argv_list(%rip)", "%rax");
+    }
+    bool CodeGen::isKnownCallable(const std::string& name) const
+    {
+        // 内建严格化（2026-11-20 裁决）：未声明的函数不可「凭空调用」。
+        // 下面任何一张表命中、或属于白名单形态，都视为已声明。
+        // 用户函数（含前向调用：registerOverloadSignatures 在发射函数体前预登记）
+        if (_functionParams.count(name) || _functionReturns.count(name) ||
+            _allFunctionDefs.count(name) || _encapsulatedFunctions.count(name))
+            return true;
+        // 重载 / 泛型
+        if (_overloadedNames.count(name) || _overloads.count(name) || _genericFunctions.count(name))
+            return true;
+        // 类 / struct 构造
+        if (findClass(name) || findStruct(name) || _declaredClassNames.count(name))
+            return true;
+        // core_* / rt_* 运行时原语（extern fun，由 coreReturnType 静态表或
+        // rt.o 提供实现；新后端不进类型表，但调用合法）
+        if (name.rfind("core_", 0) == 0 || name.rfind("rt_", 0) == 0)
+            return true;
+        // codegen 字符串特化内建（无普通函数表条目）
+        if (name == "sout" || name == "serr" || name == "soutv" || name == "super" ||
+            name == "clone" || name == "release" ||
+            name == "entry" || name == "args")
+            return true;
+        return false;
     }
     bool CodeGen::isModuleName(const std::string& name) const
     {
@@ -12523,14 +12673,15 @@ namespace backend
         _asm.call(fnName);
         _asm.addRsp(32);
     }
-    void CodeGen::emitSoutArg(const std::shared_ptr<ast::ExpressionNode>& arg)
+    void CodeGen::emitSoutArg(const std::shared_ptr<ast::ExpressionNode>& arg, bool err)
     {
         if (!arg)
             return;
+        const int fd = err ? 2 : 1;
         // null 字面量单独处理：没有类型信息可用
         if (std::dynamic_pointer_cast<ast::NullLiteralNode>(arg))
         {
-            _asm.call("rt_print_null");
+            _asm.call(err ? "rt_eprint_null" : "rt_print_null");
             return;
         }
         const auto type = inferType(arg);
@@ -12540,7 +12691,7 @@ namespace backend
         {
             const std::string text = lit->unescapedString();
             const auto [label, len] = _asm.internStrValue(text);
-            _asm.movImm(1, "%rcx");
+            _asm.movImm(fd, "%rcx");
             _asm.lea(label + "+16(%rip)", "%rdx");
             _asm.movImm(static_cast<long long>(len), "%r8");
             _asm.subRsp(32);
@@ -12570,37 +12721,37 @@ namespace backend
         }
         if (type->isFloat())
         {
-            emitRtPrintCall("rt_print_float", true);
+            emitRtPrintCall(err ? "rt_eprint_float" : "rt_print_float", true);
             return;
         }
         if (type->isInteger())
         {
-            emitRtPrintCall("rt_print_int", false);
+            emitRtPrintCall(err ? "rt_eprint_int" : "rt_print_int", false);
             return;
         }
         if (type->getKind() == sema::TypeKind::TK_BOOL)
         {
-            emitRtPrintCall("rt_print_bool", false);
+            emitRtPrintCall(err ? "rt_eprint_bool" : "rt_print_bool", false);
             return;
         }
         if (type->getKind() == sema::TypeKind::TK_CHAR)
         {
-            emitRtPrintCall("rt_print_char", false);
+            emitRtPrintCall(err ? "rt_eprint_char" : "rt_print_char", false);
             return;
         }
         if (type->getKind() == sema::TypeKind::TK_STR)
         {
-            emitRtPrintCall("rt_print_str", false);
+            emitRtPrintCall(err ? "rt_eprint_str" : "rt_print_str", false);
             return;
         }
         if (type->isPointerLike())
         {
-            emitRtPrintCall("rt_print_ptr", false);
+            emitRtPrintCall(err ? "rt_eprint_ptr" : "rt_print_ptr", false);
             return;
         }
-        fail("sout cannot print a value of type " + type->toString());
+        fail(std::string(err ? "serr" : "sout") + " cannot print a value of type " + type->toString());
     }
-    void CodeGen::emitSoutCall(const std::shared_ptr<ast::ExpressionNode>& node)
+    void CodeGen::emitSoutCall(const std::shared_ptr<ast::ExpressionNode>& node, bool err)
     {
         const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node);
         if (!call)
@@ -12641,14 +12792,15 @@ namespace backend
             }
             positional.push_back(a);
         }
+        const int fd = err ? 2 : 1;
         if (positional.empty())
         {
-            fail("sout requires at least one argument");
+            fail(std::string(err ? "serr" : "sout") + " requires at least one argument");
             return;
         }
         for (const auto& arg : positional)
         {
-            emitSoutArg(arg);
+            emitSoutArg(arg, err);
         }
         // 结尾符：默认换行
         if (endArg)
@@ -12659,7 +12811,7 @@ namespace backend
                 if (!text.empty())
                 {
                     const auto [label, len] = _asm.internString(text);
-                    _asm.movImm(1, "%rcx");
+                    _asm.movImm(fd, "%rcx");
                     _asm.lea(label + "(%rip)", "%rdx");
                     _asm.movImm(static_cast<long long>(len), "%r8");
                     _asm.subRsp(32);
@@ -12669,20 +12821,90 @@ namespace backend
             }
             else
             {
-                fail("sout's 'end' argument must be a string literal");
+                fail(std::string(err ? "serr" : "sout") + "'s 'end' argument must be a string literal");
             }
         }
         else
         {
             // 默认 end="\n"
             const auto [label, len] = _asm.internString("\n");
-            _asm.movImm(1, "%rcx");
+            _asm.movImm(fd, "%rcx");
             _asm.lea(label + "(%rip)", "%rdx");
             _asm.movImm(static_cast<long long>(len), "%r8");
             _asm.subRsp(32);
             _asm.call("core_io_write");
             _asm.addRsp(32);
         }
+    }
+    void CodeGen::emitSoutvCall(const std::shared_ptr<ast::ExpressionNode>& node)
+    {
+        const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(node);
+        if (!call)
+            return;
+        std::vector<std::shared_ptr<ast::ExpressionNode>> args;
+        if (const auto argsNode = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))
+            collectArgs(argsNode, args);
+        if (args.empty())
+        {
+            failAt(node->getPos(), "soutv requires a reference argument");
+            return;
+        }
+        const auto arg = args[0];
+        const auto argType = inferType(arg);
+        // soutv 只接受引用能力 Ref[T]/Mut[T]/Take[T]：argType 必须是 TK_MEMORY。
+        if (!argType || argType->getKind() != sema::TypeKind::TK_MEMORY)
+        {
+            failAt(node->getPos(), "soutv requires a Ref/Mut/Take argument (a reference value)");
+            return;
+        }
+        sema::TypePtr inner = std::dynamic_pointer_cast<sema::MemoryType>(argType)->getInnerType();
+        if (!inner || inner->getKind() == sema::TypeKind::TK_MEMORY)
+        {
+            failAt(node->getPos(), "soutv requires a Ref/Mut/Take argument (a reference value)");
+            return;
+        }
+        // 求值实参：Rio 的 Ref[T]/Mut[T] 是编译期能力，运行时值就是所指对象
+        // 本身（标量就是值，class 就是对象指针，见 &x 的发射——它是 mov 槽值
+        // 而非 lea）。因此这里不再解引用，直接用已求出的值按 inner 类型打印。
+        emitExpression(arg);
+        if (hasFailed())
+            return;
+        const bool isFloat = inner->isFloat();
+        // 引用槽的类型是 TK_MEMORY，emitIdentifier 按整数加载（值位模式在 %rax），
+        // 不会进 %xmm0。float 必须把位模式显式搬到 %xmm0 再走 rt_print_float。
+        if (isFloat)
+        {
+            _asm.inst("movq", "%rax", "%xmm0");
+            emitRtPrintCall("rt_print_float", true);
+        }
+        else if (inner->getKind() == sema::TypeKind::TK_BOOL)
+        {
+            emitRtPrintCall("rt_print_bool", false);
+        }
+        else if (inner->getKind() == sema::TypeKind::TK_CHAR)
+        {
+            emitRtPrintCall("rt_print_char", false);
+        }
+        else if (inner->getKind() == sema::TypeKind::TK_STR)
+        {
+            emitRtPrintCall("rt_print_str", false);
+        }
+        else if (inner->isPointerLike())
+        {
+            emitRtPrintCall("rt_print_ptr", false);
+        }
+        else
+        {
+            emitRtPrintCall("rt_print_int", false);
+        }
+        // 默认换行
+        const auto [label, len] = _asm.internString("\n");
+        _asm.movImm(1, "%rcx");
+        _asm.lea(label + "(%rip)", "%rdx");
+        _asm.movImm(static_cast<long long>(len), "%r8");
+        _asm.subRsp(32);
+        _asm.call("core_io_write");
+        _asm.addRsp(32);
     }
     // ============================================================
     // P6：类
@@ -17475,6 +17697,22 @@ namespace backend
         else if (std::dynamic_pointer_cast<ast::EncapsulatedExpressionNode>(node->getBodyNode()))
         {
             _encapsulatedFunctions[fname] = true;
+            return;
+        }
+        // 内建严格化（2026-11-20 裁决）：保留名冲突——用户不得给 codegen
+        // 特化内建写真实函数体（那样会被特化分发静默忽略，产生「定义了却不生效」
+        // 的假象）。上面的 encapsulated 桩是合法的「声明」，到这里仍留着的就是
+        // 有实体的定义，一律拒绝。core_*/rt_* 运行时符号同理。
+        // 注意 release 不在本表：按 P13-2/L3 裁决，用户自定义 `fun release(x: int)`
+        // 是合法的（裸名调用只在「没定义过」时才拦），不能被保留名误伤。
+        if (!_libraryMode &&  // rt.rio 自身（emit-lib 构建）合法定义 rt_* 实体
+            (fname == "sout" || fname == "serr" || fname == "soutv" || fname == "super" ||
+             fname == "clone" ||
+             fname.rfind("core_", 0) == 0 || fname.rfind("rt_", 0) == 0))
+        {
+            failAt(node->getPos(),
+                   "function '" + fname + "' has a body but is a reserved builtin/runtime name; "
+                   "declare it with an 'encapsulated' body, or use a different name");
             return;
         }
         // P11：重载名的发射符号在预登记表里已经定好了（形参类型要参与修饰，

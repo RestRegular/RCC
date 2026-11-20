@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "id": "pos_empty_argv",
+      "file": "code/pos_empty_argv.rio",
+      "expect": "empty=[]"
+    },
+    {
+      "id": "pos_entry_forward",
+      "file": "code/pos_entry_forward.rio",
+      "expect": "cb 42 hello\ndone"
+    },
+    {
+      "id": "pos_entry_guard",
+      "main": "code/pos_entry_guard.rio",
+      "files": ["code/pos_entry_guard.rio", "code/entry_guard_mod.rio"],
+      "expect": "guard-ok"
+    }
+  ]
+}

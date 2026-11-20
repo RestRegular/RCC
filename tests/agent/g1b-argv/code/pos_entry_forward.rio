@@ -1,0 +1,9 @@
+import(prog="prog")
+fun cb(x: int, s: str) {
+    sout("cb ", x, " ", s)
+}
+fun main(): void {
+    prog.entry(cb, 42, "hello")
+    sout("done")
+}
+main()

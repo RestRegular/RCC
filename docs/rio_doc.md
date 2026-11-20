@@ -117,7 +117,17 @@ Hello, Rio!
 - **顶层语句会按顺序执行**，不需要包在 `main` 里。写了 `fun main()` 也不会被
   自动调用 —— 想执行就显式写 `main()`。
 - `sout` 是编译器特化的输出原语（不是 `io` 模块的函数），可接受多个参数，
-  自动转成字符串并拼接。
+  自动转成字符串并拼接，写到 **stdout**。
+- `serr`（**standard error output**）是 `sout` 的孪生内建，形态完全一致（多实参、
+  自动转字符串、`end="\n"` 关键字、支持 int/float/bool/char/str/ptr/null），唯一
+  区别是写到 **stderr**：
+  ```rio
+  sout("正常输出")            // → stdout
+  serr("错误信息: ", 42)       // → stderr
+  serr("无换行", end="!")      // stderr，end 必须是字符串字面量
+  ```
+  `sout` / `serr` 都是编译器特化（分别按静态类型选 `rt_print_*` / `rt_eprint_*`），
+  均属保留名，用户不得重定义同签名函数。
 - `import(io="io")` 把 `io` 模块内联进来。模块是**编译期内联**的，不是运行期加载。
 
 ---
@@ -850,7 +860,8 @@ import(io="io")
 | `input` | `(prompt: str = ""): str` | 读一行输入 |
 | `sin` | `(): str` | 读一行输入（无提示） |
 
-> `sout` **不属于** `io` 模块 —— 它是编译器特化的输出原语，无需 import 即可用。
+> `sout` / `serr` **不属于** `io` 模块 —— 它们是编译器特化的输出原语，无需 import
+> 即可用（`sout` → stdout，`serr` → stderr）。`io` 模块只提供 `input` / `sin`。
 
 ### 7.6 `prog` —— 程序控制（2 个）
 

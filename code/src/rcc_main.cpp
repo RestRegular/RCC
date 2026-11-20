@@ -399,6 +399,9 @@ void handleBuildFlag()
                                         scanCondDestroyDirective(sourcePath));
     // 模块名 + 别名都要交给 codegen：isModuleName 用它识别 `mod.fn` / `u.fn`。
     codeGen.setModuleNames(merged.moduleNames, merged.moduleAliases);
+    // G1b：入口文件路径（绝对形式）交给后端，供 prog.entry 编译期守卫
+    // 判断调用点是否来自入口文件（被 import 的模块内联后仍保留原路径）。
+    codeGen.setEntryFilePath(sourcePath);
     std::string codegenError;
     const std::string assembly = codeGen.generate(merged.program, codegenError);
     if (assembly.empty())

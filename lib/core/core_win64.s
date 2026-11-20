@@ -1028,6 +1028,61 @@ core_str_len:
     ret
 
 /* ============================================================
+ * int core_cstr_len(const char* p)
+ *   rcx = p（NUL 结尾的裸 C 字符串，不是 Rio str 头）
+ *
+ * 返回 NUL 之前的字节数（不含结尾的 0）；p 为 null 返回 0。
+ *
+ * G1b 的 rt_argv_init 用它量 argv[i]：Rio 侧 ptr 无法解引用，
+ * core_str_len 读的是 str 头（+0 的 8 字节长度），不适用于 OS 给的
+ * char*。这里逐字节扫描，只用 caller-saved 寄存器，不碰 rdi/rsi，
+ * 也不需要 shadow space（不调用别的函数）。
+ * ============================================================ */
+    .globl  core_cstr_len
+core_cstr_len:
+    xorl    %eax, %eax          /* len = 0 */
+    testq   %rcx, %rcx
+    je      .Lcstr_len_done
+    /* rcx 已经是 p，直接 past-the-end 扫描：cmpb $0,(rcx+rax) */
+.Lcstr_len_loop:
+    cmpb    $0, (%rcx,%rax)
+    je      .Lcstr_len_done
+    incq    %rax
+    jmp     .Lcstr_len_loop
+.Lcstr_len_done:
+    ret
+
+/* ============================================================
+ * ptr core_load_ptr(const void* p)
+ *   rcx = p
+ * 返回 *(u64*)p（指针/整数通用，8 字节按位原样返回）。p 为 null 返回 0。
+ *
+ * void core_store_ptr(void* p, ptr v)
+ *   rcx = p, rdx = v
+ * 把 v 的 64 位按原样写进 *(u64*)p。p 为 null 时静默返回。
+ *
+ * 引导期 rt.rio 没有解引用运算符，构造 argc→list[str] 时需要读写
+ * argv 指针数组和 list 头的 data 字段，这两个原语是最小必要能力。
+ * 只用 caller-saved 寄存器，不碰 rdi/rsi，无需 shadow space。
+ * ============================================================ */
+    .globl  core_load_ptr
+core_load_ptr:
+    xorl    %eax, %eax
+    testq   %rcx, %rcx
+    je      .Lload_ptr_done
+    movq    (%rcx), %rax
+.Lload_ptr_done:
+    ret
+
+    .globl  core_store_ptr
+core_store_ptr:
+    testq   %rcx, %rcx
+    je      .Lstore_ptr_done
+    movq    %rdx, (%rcx)
+.Lstore_ptr_done:
+    ret
+
+/* ============================================================
  * int core_io_read(int fd, void* buf, size_t n)
  *   rcx = fd, rdx = buf, r8 = n
  * ============================================================ */

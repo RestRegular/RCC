@@ -1,0 +1,5 @@
+fun main(): void {
+    var x = noSuchFunction(1)
+    sout(x)
+}
+main()

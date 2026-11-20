@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "id": "pos_str",
+      "file": "code/pos_str.rio",
+      "expect": "",
+      "stderrContains": "hello serr"
+    },
+    {
+      "id": "pos_types",
+      "file": "code/pos_types.rio",
+      "expect": "",
+      "stderrContains": "int=42 bool=true float=1.5 char=A"
+    },
+    {
+      "id": "pos_end",
+      "file": "code/pos_end.rio",
+      "expect": "",
+      "stderrContains": "no-newline!next"
+    },
+    {
+      "id": "pos_mixed",
+      "file": "code/pos_mixed.rio",
+      "expect": "",
+      "stderrContains": "to-stderr"
+    }
+  ]
+}

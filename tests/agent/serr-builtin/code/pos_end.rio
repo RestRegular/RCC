@@ -1,0 +1,7 @@
+fun sout(*args: any, end="\n"): void { encapsulated }
+
+fun main(): void {
+    serr("no-newline", end="!")
+    serr("next")
+}
+main()

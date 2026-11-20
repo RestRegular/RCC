@@ -1,0 +1,4 @@
+fun main(): void {
+    soutv(42)
+}
+main()

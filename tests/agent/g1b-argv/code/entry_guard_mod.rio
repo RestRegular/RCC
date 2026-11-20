@@ -1,0 +1,4 @@
+import(prog="prog")
+fun moduleSide() {
+    prog.entry(() -> { sout("SHOULD-NOT-RUN") })
+}

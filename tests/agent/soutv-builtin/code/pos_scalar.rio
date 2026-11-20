@@ -1,0 +1,6 @@
+fun main(): void {
+    var x: int = 42
+    var r: Ref[int] = &x
+    soutv(r)
+}
+main()

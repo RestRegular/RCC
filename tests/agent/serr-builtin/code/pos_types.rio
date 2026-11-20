@@ -1,0 +1,7 @@
+fun sout(*args: any, end="\n"): void { encapsulated }
+
+fun main(): void {
+    serr("int=", 42, " bool=", true, " float=", 1.5, " char=", 'A')
+    serr(99)
+}
+main()

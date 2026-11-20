@@ -1,0 +1,7 @@
+fun sout(x: int): void {
+    core_mem_set(0, x, 1)
+}
+fun main(): void {
+    sout(1)
+}
+main()

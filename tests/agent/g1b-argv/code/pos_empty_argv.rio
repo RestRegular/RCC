@@ -1,0 +1,7 @@
+import(prog="prog")
+fun main(): void {
+    var a: list[str] = prog.args()
+    var d: str = a[0]
+    sout("empty=[", d, "]")
+}
+main()

@@ -6,13 +6,13 @@
  *
  * 与 core 的关系：
  *   - core 的符号在汇编里带 core_ 前缀（core_io_write 等），直接可调用
- *   - rt 的符号不带前缀（rt_print_int 等），由编译器在 sout 里按类型分派
+ *   - rt 的符号不带前缀（rt_print_int 等），由编译器在 sout / serr 里按类型分派
  *
  * 引导期约束（P1）：
  *   当前后端还不支持 list/dict 构造、字符串拼接、import、取地址。
  *   因此 rt 只用「标量 + 循环 + 递归 + 直接调用 core_*」这几种能力实现。
  *   等 P5/P8 落地后，这里的实现可以换成更自然的写法，
- *   但导出的符号契约（rt_print_*）保持不变。
+ *   但导出的符号契约（rt_print_* / rt_eprint_*）保持不变。
  *
  * 构建方式（由 CMake 在构建 RCC 时自动执行）：
  *   RCC.exe --build --emit-lib --path lib/rt/rt.rio --output release/lib/rt/rt.o
@@ -20,69 +20,94 @@
 
 // ============================ 内部工具 ============================
 
-// 写一个字节到 stdout。
+// 写一个字节到指定 fd。
 // 为什么不直接用 core_io_write(fd, buf, n)：它需要一个内存地址，
 // 而 P1 还没有取地址运算符，无法把局部变量当缓冲区。
 // core_io_write_byte 就是为这个场景在 core 里加的单字节入口。
+fun rt_write_byte_fd(fd: int, ch: int): void {
+    core_io_write_byte(fd, ch)
+}
+
+// 兼容旧符号：sout 的既有调用点仍引用 rt_write_byte（stdout）。
 fun rt_write_byte(ch: int): void {
-    core_io_write_byte(1, ch)
+    rt_write_byte_fd(1, ch)
 }
 
-// 写一段字节。调用方保证 (s, n) 有效，s 指向**裸字节**（没有长度头）。
+// 写一段裸字节到指定 fd。调用方保证 (s, n) 有效，s 指向**裸字节**（没有长度头）。
+fun rt_write_bytes_fd(fd: int, s: ptr, n: int): void {
+    core_io_write(fd, s, n)
+}
+
 fun rt_write_bytes(s: ptr, n: int): void {
-    core_io_write(1, s, n)
+    rt_write_bytes_fd(1, s, n)
 }
 
-// 写一个 str 值。str 的表示是「指向长度头的指针」。
+// 写一个 str 值到指定 fd。str 的表示是「指向长度头的指针」。
 //
 // ABI v2（P13-1）布局：{ i64 len@0, i64 cap@8, u8 data@16 }
 // 旧布局是 { len@0, data@8 }，P13-1 给头补了 cap 字段（D11 要求
 // 「cap==0 即不可释放」，用来识别静态只读的字面量头），所以字节从 +16 起。
+fun rt_write_str_fd(fd: int, s: ptr, n: int): void {
+    core_io_write(fd, s + 16, n)
+}
+
 fun rt_write_str(s: ptr, n: int): void {
-    core_io_write(1, s + 16, n)
+    rt_write_str_fd(1, s, n)
 }
 
 // ============================ 整数 ============================
 
-// 递归打印非负整数的十进制。回溯时输出最低位，天然得到正确顺序。
+// 递归打印非负整数的十进制到指定 fd。回溯时输出最低位，天然得到正确顺序。
 // 用递归而不是数组，是因为 P1 还没有 list。
-fun rt_print_uint(v: int): void {
+fun rt_print_uint_fd(fd: int, v: int): void {
     if v >= 10 {
-        rt_print_uint(v / 10)
+        rt_print_uint_fd(fd, v / 10)
     }
-    rt_write_byte(48 + v % 10)
+    rt_write_byte_fd(fd, 48 + v % 10)
 }
 
-fun rt_print_int(v: int): void {
+fun rt_print_int_fd(fd: int, v: int): void {
     if v < 0 {
-        rt_write_byte(45)                     // '-'
+        rt_write_byte_fd(fd, 45)                  // '-'
         // i64 最小值特判：0 - v 在这里会溢出（结果是它自己），
         // rt_print_uint 会拿到负数并打出垃圾（实测 "("）。
         // P12 任务 2 之后字面量已是 i64，这个常量终于能写出来了。
         if v == -9223372036854775808 {
-            rt_write_str("9223372036854775808", 19)
+            rt_write_str_fd(fd, "9223372036854775808", 19)
         } else {
-            rt_print_uint(0 - v)
+            rt_print_uint_fd(fd, 0 - v)
         }
     } else {
-        rt_print_uint(v)
+        rt_print_uint_fd(fd, v)
     }
+}
+
+fun rt_print_int(v: int): void {
+    rt_print_int_fd(1, v)
 }
 
 // ============================ 布尔 ============================
 
-fun rt_print_bool(v: int): void {
+fun rt_print_bool_fd(fd: int, v: int): void {
     if v == 0 {
-        rt_write_str("false", 5)
+        rt_write_str_fd(fd, "false", 5)
     } else {
-        rt_write_str("true", 4)
+        rt_write_str_fd(fd, "true", 4)
     }
+}
+
+fun rt_print_bool(v: int): void {
+    rt_print_bool_fd(1, v)
 }
 
 // ============================ null ============================
 
+fun rt_print_null_fd(fd: int): void {
+    rt_write_str_fd(fd, "null", 4)
+}
+
 fun rt_print_null(): void {
-    rt_write_str("null", 4)
+    rt_print_null_fd(1)
 }
 
 // ============================ 字符串 ============================
@@ -96,25 +121,29 @@ fun rt_print_null(): void {
 //
 // P1 还没有指针解引用运算符（`*p`），所以这里调用 core 提供的
 // 读取原语。等 P2 支持解引用后，这段可以改成纯 Rio 的指针访问。
-fun rt_print_str(s: ptr): void {
+fun rt_print_str_fd(fd: int, s: ptr): void {
     var n = core_str_len(s)
-    core_io_write(1, s + 16, n)
+    core_io_write(fd, s + 16, n)
+}
+
+fun rt_print_str(s: ptr): void {
+    rt_print_str_fd(1, s)
 }
 
 // ============================ 浮点 ============================
 
 // P1 支持「符号 + 整数部分 + 最多 6 位小数」，够 test_3 的 3.14 用。
 // 完整的 %g 风格最短表示留到 P5（需要动态缓冲才能正确舍入）。
-fun rt_print_float(v: float): void {
+fun rt_print_float_fd(fd: int, v: float): void {
     var x = v
     if x < 0.0 {
-        rt_write_byte(45)                     // '-'
+        rt_write_byte_fd(fd, 45)                  // '-'
         x = 0.0 - x
     }
 
     var ip: int = 0
-    ip = x                                     // 截断取整数部分（float->int）
-    rt_print_int(ip)
+    ip = x                                        // 截断取整数部分（float->int）
+    rt_print_int_fd(fd, ip)
 
     var frac = x - ip
     if frac > 0.0 {
@@ -146,12 +175,12 @@ fun rt_print_float(v: float): void {
             }
         }
         if n > 0 {
-            rt_write_byte(46)                  // '.'
+            rt_write_byte_fd(fd, 46)              // '.'
             // 从最高位开始逐位输出
             var p = rt_pow10(n - 1)
             var k = 0
             while k < n {
-                rt_write_byte(48 + (digits / p) % 10)
+                rt_write_byte_fd(fd, 48 + (digits / p) % 10)
                 p = p / 10
                 k = k + 1
             }
@@ -161,9 +190,13 @@ fun rt_print_float(v: float): void {
         // 否则 sout(1.0) 和 sout(1) 输出一模一样，浮点类型信息就丢了。
         // 注意这里必须挂在 `if frac > 0.0` 的 else 上——挂在 `if n > 0` 的
         // else 上没有用，因为 x 是整数时整个小数块都被跳过。
-        rt_write_byte(46)                      // '.'
-        rt_write_byte(48)                      // '0'
+        rt_write_byte_fd(fd, 46)                  // '.'
+        rt_write_byte_fd(fd, 48)                  // '0'
     }
+}
+
+fun rt_print_float(v: float): void {
+    rt_print_float_fd(1, v)
 }
 
 fun rt_pow10(n: int): int {
@@ -189,22 +222,148 @@ fun rt_pow16(n: int): int {
 }
 
 // 十六进制打印地址，调试用。
-fun rt_print_ptr(v: int): void {
-    rt_write_str("0x", 2)
+fun rt_print_ptr_fd(fd: int, v: int): void {
+    rt_write_str_fd(fd, "0x", 2)
     var i = 15
     while i >= 0 {
         var nib = (v / rt_pow16(i)) % 16
         if nib < 10 {
-            rt_write_byte(48 + nib)
+            rt_write_byte_fd(fd, 48 + nib)
         } else {
-            rt_write_byte(87 + nib)           // 'a'..'f'
+            rt_write_byte_fd(fd, 87 + nib)        // 'a'..'f'
         }
         i = i - 1
     }
 }
 
+fun rt_print_ptr(v: int): void {
+    rt_print_ptr_fd(1, v)
+}
+
 // ============================ 字符 ============================
 
+fun rt_print_char_fd(fd: int, v: int): void {
+    rt_write_byte_fd(fd, v)
+}
+
 fun rt_print_char(v: int): void {
-    rt_write_byte(v)
+    rt_print_char_fd(1, v)
+}
+
+// ============================================================
+// serr（stderr）入口：全部委托上面的 *_fd(2, ...) 版本。
+// 与 rt_print_* 逐一同名同签名，只是 fd 固定为 2。
+// codegen 的 emitSerrArg 按类型分派到这批符号。
+// ============================================================
+
+fun rt_eprint_int(v: int): void {
+    rt_print_int_fd(2, v)
+}
+
+fun rt_eprint_bool(v: int): void {
+    rt_print_bool_fd(2, v)
+}
+
+fun rt_eprint_null(): void {
+    rt_print_null_fd(2)
+}
+
+fun rt_eprint_str(s: ptr): void {
+    rt_print_str_fd(2, s)
+}
+
+fun rt_eprint_float(v: float): void {
+    rt_print_float_fd(2, v)
+}
+
+fun rt_eprint_ptr(v: int): void {
+    rt_print_ptr_fd(2, v)
+}
+
+fun rt_eprint_char(v: int): void {
+    rt_print_char_fd(2, v)
+}
+
+// ============================ G1b：进程 argv 构造器 ============================
+//
+// 在 main 入口由 codegen 调用：rt_argv_init(argc, argv) 把 OS 给的
+// `char** argv`（%rdx）转成 Rio list[str]，返回**裸指针**给 codegen
+// 存进 .bss 全局槽（__rio_argv_list），供 prog.args() 读取。
+//
+// 设计口径（G1b Q1/Q9 裁决）：
+//   - 结果不含程序名：只取 argv[1..argc-1]；无参时返回空 list。
+//   - 出生地 in global：整块只在进程启动时构造一次，永久存活不释放。
+//     因此这里返回一个 ptr 而不是 str/list —— 避免编译器的所有权/
+//     drop-glu 把「临时局部变量」在返回前释放掉（D14：裸指针不携带所有权）。
+//
+// ABI v2 布局（见 docs/p13_plan.md D11/D12，与 codegen 的 kHeader* 一致）：
+//   StrHeader  { i64 len@0, i64 cap@8, u8 data@16 }
+//   ListHeader { i64 len@0, i64 cap@8, i64 elem_size@16, ptr data@24 }
+//   list 的数据块是独立的 8 字节槽数组，每个槽装一个 str 指针。
+//
+// 引导期约束：只能用标量 + 循环 + 直接调 core_*。没有解引用运算符，
+// 所以写头字段一律用 core_mem_set 逐字节写小端（同 io.rio 的 _ioSetLen）。
+
+// 把 n 的 8 字节小端表示写到 p 开始的连续 8 字节（逐字节写，n>255 不截断）。
+fun _rtArgvSetI64(p: ptr, n: int): void {
+    var i: int = 0
+    while i < 8 {
+        core_mem_set(p + i, (n / _rtArgvPow256(i)) % 256, 1)
+        i += 1
+    }
+}
+
+fun _rtArgvPow256(k: int): int {
+    var r: int = 1
+    var i: int = 0
+    while i < k {
+        r = r * 256
+        i += 1
+    }
+    ret r
+}
+
+// 把一条 C 字符串（p 指向的 NUL 结尾裸字节）转成一条新分配的 Rio str。
+// 返回 str 头指针；整块用 core_alloc 分配，cap = len（非 0 = 可释放），
+// 末尾额外写一个 NUL（C 兼容，调试友好），所以分配 len + 16 + 1 字节。
+fun _rtArgvToStr(p: ptr): ptr {
+    var n: int = core_cstr_len(p)
+    var s: ptr = core_alloc(n + 17, 8)
+    _rtArgvSetI64(s, n)          // len@0
+    _rtArgvSetI64(s + 8, n)      // cap@8（堆分配，可释放）
+    if n > 0 {
+        core_mem_copy(s + 16, p, n)
+    }
+    core_mem_set(s + 16 + n, 0, 1)
+    ret s
+}
+
+// argc 含程序名；argv[0] 是程序名，跳过。
+fun rt_argv_init(argc: int, argv: ptr): ptr {
+    var count: int = argc - 1
+    if count < 0 {
+        count = 0
+    }
+    // 数据槽：每元素 8 字节；count=0 时 core_alloc(0) 可能返回 null，
+    // 没关系——空 list 的 data 指针允许是 null（len=0，不会被读）。
+    var data: ptr = core_alloc(count * 8, 8)
+    // 先逐条构造 str 并写入数据槽；返回值跨 core_* 调用保存在栈变量里
+    // （Rio 的 var 就是栈槽，MS ABI 下 core_* 破坏 caller-saved 寄存器，
+    //   但不会动我们的栈帧）。
+    var i: int = 0
+    while i < count {
+        // argv + (i+1)*8：argv 是指针数组，元素宽 8 字节；+1 跳过 argv[0]
+        var item: ptr = core_load_ptr(argv + (i + 1) * 8)
+        var s: ptr = _rtArgvToStr(item)
+        // data + i*8 写入 str 头指针：没有解引用，用 core_store_ptr
+        core_store_ptr(data + i * 8, s)
+        i += 1
+    }
+    // 分配 list 头：len@0, cap@8, elem_size@16(=8), data@24
+    var header: ptr = core_alloc(32, 8)
+    _rtArgvSetI64(header, count)
+    _rtArgvSetI64(header + 8, count)
+    _rtArgvSetI64(header + 16, 8)
+    core_store_ptr(header + 24, data)
+    ret header
 }

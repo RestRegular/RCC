@@ -1,0 +1,6 @@
+fun sout(*args: any, end="\n"): void { encapsulated }
+
+fun main(): void {
+    serr("hello serr")
+}
+main()

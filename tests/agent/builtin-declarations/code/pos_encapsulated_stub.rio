@@ -1,0 +1,5 @@
+fun sout(*args: any, end="\n"): void { encapsulated }
+fun main(): void {
+    sout("stub ok")
+}
+main()

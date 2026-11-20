@@ -1,0 +1,12 @@
+fun main(): void {
+    var i: int = 7
+    var f: float = 2.5
+    var b: bool = true
+    var ri: Ref[int] = &i
+    var rf: Ref[float] = &f
+    var rb: Ref[bool] = &b
+    soutv(ri)
+    soutv(rf)
+    soutv(rb)
+}
+main()

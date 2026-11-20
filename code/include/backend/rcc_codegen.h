@@ -63,6 +63,11 @@ namespace backend
             _moduleNames.insert(_moduleNames.end(), aliases.begin(), aliases.end());
         }
 
+        // G1b：入口文件路径（绝对/规范形式）。用于 prog.entry 的编译期
+        // 「入口文件守卫」——按每个调用点 AST 的 pos.getFilepath() 与它比较，
+        // 导入模块（内联后仍保留原路径）里的 entry 调用发射为空操作。
+        void setEntryFilePath(const std::string& path) { _entryFilePath = path; }
+
         // 决议 C（2026-11-18 用户裁决）：条件销毁出口的诊断级别。
         //
         // 默认：需要「条件销毁」的出口是**编译错误**（不是警告、不是静默）。
@@ -110,6 +115,19 @@ namespace backend
                                     const std::shared_ptr<ast::ExpressionNode>& callNode,
                                     const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
         [[nodiscard]] bool isModuleName(const std::string& name) const;
+        // G1b：prog.entry(arg, *callArgs) —— 编译期入口文件守卫。
+        // 调用点在入口文件：把 callArgs 转发给回调（间接调用）。
+        // 调用点在被 import 的模块（内联后仍保留原路径）：发射为空操作。
+        void emitProgEntryCall(const std::shared_ptr<ast::ExpressionNode>& node,
+                               const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // G1b：prog.args(): list[str] —— 把 rt 构造器在 main 入口建好的 argv
+        // 全局槽的地址装进 %rax（返回 list 值，in global 出生地）。
+        void emitProgArgsCall(const std::shared_ptr<ast::ExpressionNode>& node);
+
+        // 内建严格化（2026-11-20 裁决）：裸名调用的目标必须是已登记的符号。
+        // 合法集合 = 用户函数/重载/泛型/encapsulated 桩/类构造 + core_*/rt_*
+        // 运行时原语 + 特化内建名（sout/serr/super/clone/release）。
+        [[nodiscard]] bool isKnownCallable(const std::string& name) const;
 
         // ---------- P4：函数值 / 匿名函数 / 间接调用 ----------
         // 匿名函数表达式：把函数体排进待发射队列，当前表达式的值取闭包对象地址。
@@ -740,10 +758,13 @@ namespace backend
         // 槽位名唯一，不会和用户变量冲突；返回形如 "-16(%rbp)" 的寻址串。
         [[nodiscard]] std::string allocateTemp(const sema::TypePtr& type);
 
-        // sout 特化
-        void emitSoutCall(const std::shared_ptr<ast::ExpressionNode>& node);
-        // sout 的单个实参：按静态类型分派到 rt_print_*
-        void emitSoutArg(const std::shared_ptr<ast::ExpressionNode>& arg);
+        // sout / serr 特化：err=false 走 stdout(fd=1, rt_print_*)，
+        // err=true 走 stderr(fd=2, rt_eprint_*)。
+        void emitSoutCall(const std::shared_ptr<ast::ExpressionNode>& node, bool err = false);
+        // soutv(r)：按引用所指的**值**打印（与 sout(Ref[T]) 打印地址区分）。
+        void emitSoutvCall(const std::shared_ptr<ast::ExpressionNode>& node);
+        // sout/serr 的单个实参：按静态类型分派到 rt_print_* / rt_eprint_*
+        void emitSoutArg(const std::shared_ptr<ast::ExpressionNode>& arg, bool err = false);
         // 调用一个 rt 打印函数：把值放在约定的位置后 call
         void emitRtPrintCall(const std::string& fnName, bool isFloat);
 
@@ -916,6 +937,8 @@ namespace backend
         // P8：模块名集合。`mod.fn(...)` 里的 mod 命中这里时，
         // 调用退化成直接调用 fn —— 模块已在加载期内联。
         std::vector<std::string> _moduleNames;
+        // G1b：入口文件绝对路径，供 prog.entry 编译期守卫比较调用点来源。
+        std::string _entryFilePath;
 
         // 作用域栈
         std::vector<std::map<std::string, VarSlot>> _scopes;

@@ -5,14 +5,27 @@
  * 旧版 io.rio 有四个函数：sout / print / sin / input。新版只剩两个，原因
  * 是前两个**不属于模块层**：
  *
- *  - `sout(*args, end="\n")`：这是**编译器特化**，不是普通函数。
+ *  - `sout(*args, end="\n")` / `serr(*args, end="\n")`：这是**编译器特化**，不是普通函数。
  *    rcc_codegen.cpp 的 emitCall 里按字符串比较拦截：
- *      if (n == "sout") { emitSoutCall(node); return; }
- *    它按每个实参的**静态类型**选 rt_print_*，变长参数只是语法糖。
+ *      if (n == "sout") { emitSoutCall(node, false); return; }
+ *      if (n == "serr") { emitSoutCall(node, true);  return; }
+ *    它按每个实参的**静态类型**选 rt_print_*（sout，stdout fd=1）或
+ *    rt_eprint_*（serr，stderr fd=2），变长参数只是语法糖。
  *    所以它既不需要模块定义，也不能被模块定义 —— 旧版函数体写的是
  *    `encapsulated`（指向已删除的内置函数注册表），内联进调用者后是
  *    空函数体，调用它只会链接失败。
- *    结论：`sout` 保留为**语言级内建**，本模块不定义它。
+ *    结论：`sout` / `serr` 保留为**语言级内建**，本模块不定义它们。
+ *
+ *    签名（供查阅，两者形态完全一致，仅输出目标不同）：
+ *      sout(*args, end="\n"): void   —— 写到 stdout
+ *      serr(*args, end="\n"): void   —— 写到 stderr
+ *    支持类型：int / float / bool / char / str / ptr / null。
+ *    `end` 必须是字符串字面量。二者均为保留名，用户不得重定义同签名函数。
+ *
+ *  - `soutv(r)`：打印引用所指的**值**。sout(Ref[T]) 按裁决打印地址（引用的
+ *    输出格式），soutv 补足「输出引用指向的值」的需求（G1b 同期裁决）。
+ *    参数是 Ref[T] / Mut[T] / Take[T]，按内层类型 T 打印，固定换行。
+ *    同为编译器特化内建、保留名。
  *
  *  - `print(*args, end="\n", sep=" ")`：依赖变长参数拼接 + ds.join。
  *    变长参数尚未实现（P13，见 docs/p12_varargs_proposal.md），

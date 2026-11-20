@@ -27,6 +27,19 @@ extern fun mem_move(dst: ptr, src: ptr, n: int): void
 extern fun mem_set(dst: ptr, byte: int, n: int): void
 extern fun mem_eq(a: ptr, b: ptr, n: int): bool
 
+// 计算**C 字符串**（裸字节、NUL 结尾）的长度，不含结尾的 0。
+// 与 core_str_len 的区别：core_str_len 读的是 Rio str 的长度头（+0 的 8
+// 字节），而这里读的是进程 argv 里 OS 给的 char*，必须逐字节扫到 NUL。
+// p 为 null 时返回 0。G1b 的 rt_argv_init 用它把 argv[i] 转成 Rio str。
+extern fun core_cstr_len(p: ptr): int
+
+// 读/写 p 指向的 8 字节（小端）整数/指针。
+// 引导期 rt 没有解引用运算符，堆里写出的 list 头、指针数组只能靠
+// core 层的读写原语填充；这两条是 G1b argv 构造器的最小必要能力。
+// 语义：load 返回 *(u64*)p；store 把 v 的 64 位按原样写进 *(u64*)p。
+extern fun core_load_ptr(p: ptr): ptr
+extern fun core_store_ptr(p: ptr, v: ptr): void
+
 // 分配器入口。返回 null 表示失败（不 panic，由 rt 决定如何处理）。
 // align 必须是 2 的幂。
 extern fun alloc(size: int, align: int): ptr

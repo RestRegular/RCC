@@ -60,12 +60,47 @@
 | **`v1.20.0`** | 2025-11-24 | 调整了标签描述比较逻辑，新增匿名函数简写形式 | **[Optimize] [Feature]** | RestRegular |
 | **`v1.21.0`** | 2025-11-28 | 适配Linux平台并修复部分符号错误 | **[Feature] [BugFix]** | RestRegular |
 | **`v1.22.0`** | 2026-11-17 | 删除旧 RA 后端路径，标准库整体重写为 `lib/std/*.rio`，补齐 11 项语言能力缺口 | **[Feature] [Refactor] [Breaking]** | RestRegular |
+| **`v1.23.0`** | 2026-11-20 | 完整实现结构化并发：scope/spawn、效果集并行检查、par_each、Locked/Atomic、Chan 与竞争排除静态检查 | **[Feature] [Docs] [Test]** | RestRegular |
+| **`v1.24.0`** | 2026-11-20 | 内存模型规范补强收尾：snapshot 成员登记、成员集合活跃性、循环重数、嵌套展平、dict.clone、set 旧对端自动移除 | **[Feature] [Docs] [Test]** | RestRegular |
 <!-- Add Version Overview -->
 
 ---
 ## 详细日志
 
 <!-- Add Version Details -->
+
+---
+### 版本号 `v1.24.0` (2026-11-20)
+- **类型**：**[Feature] [Docs] [Test]**
+- **作者**：RestRegular
+- **更新时间**：2026/11/20 08:31
+- **更新内容**：
+  - **[Feature]** 内存模型规范补强收尾，补齐 P13-6/P13-7 已批规范内的可落地项（提交 `ec20a4d`，18 文件 +481/-34）：
+    - **snapshot 成员登记**：`take`/`release` 时把成员集合登记进 snapshot，支持后续活跃性判断。
+    - **成员集合活跃性**：统计成员时排除已出作用域的死变量，避免把无效引用计入。
+    - **循环动态加入重数饱和**：循环体内动态加入的元素按 `many` 饱和，重数格 `ZERO/ONE/MANY/TOP` 计算更保守。
+    - **嵌套展平传递闭包**：成员集合沿 `groups→team→a` 多级嵌套做传递闭包展平，不再只展平一层。
+    - **`dict.clone()`**：新增字典浅拷贝原语 `core_clone_dict`，与 `str`/`list`/标量的 `clone()` 派发打通。
+    - **`set` 旧对端自动移除**：`core_link_set` 建立新边前先清除两端的旧边，再 `add` 新边，避免残留对偶边。
+  - **[Docs]** `docs/p12_plan.md` 过时状态订正；`p13_6_syntax_audit.md` / `p13_7_syntax_audit.md` 状态回填；`pending_designs.md` 明确登记剩余设计空白为「推迟、须另立提案」（G1b argv、规范 §12 未决 1–13、输出引用 API、§11.1 状态放宽、容器元素递归释放、`*@L`/闭包捕获/函数边界、物理 `links_nonempty` 位图、§7.5 实例级迭代冲突）。
+  - **[Test]** 新增 `L3-dict-clone`、`p13-6-pool` 五条（snapshot/活跃性/循环 many/嵌套展平）、`p13-7-link` 一条（set 旧对端），全量 40 套件 1035 用例全绿。
+
+---
+### 版本号 `v1.23.0` (2026-11-20)
+- **类型**：**[Feature] [Docs] [Test]**
+- **作者**：RestRegular
+- **更新时间**：2026/11/20（提交 `d26e111`，89 文件 +6061/-278：13 个 `code/`、2 个 `lib/core`、9 份文档、65 个测试文件）
+- **更新内容**：
+  - **[Feature]** 完整实现并验收结构化并发（`memory-model-spec-full.md` §10 全章）：
+    - **`scope` / `spawn`**：作用域内任务 + 末尾隐式 join；每任务一个 OS 线程（1:1），任务句柄为二等值，只接受具名顶层函数（Q1–Q3）。
+    - **效果集并行冲突检查**：由实参能力推导 `R/W/S/L` 效果，两两不冲突才允许并行；借出变量在 scope 内对父线程冻结；跨函数全局/extern 触碰汇总分析（Q13），Q4/Q13/G1–G4 全部落地。
+    - **`par_each` 数据并行**：自带 join、成员集合快照语义、禁止 Link 遍历（Q5/Q18）。
+    - **`Locked<T>` / `lock` / `Atomic<T>`**：二等值不逃逸、同锁重入编译期拒绝、不 poison；`Atomic` 最小集 `i32`/`i64` 顺序一致（Q6/Q7）。
+    - **`Chan<T>` 通道**：独立标准库类型、显式 close、scope 结束自动关闭、有界容量、`T?` 关闭语义（Q8）。
+    - **`at()` 安全窄化**：无效槽返回 `ptr?`，必须 `if var` 窄化后使用，消除解引用崩溃。
+    - **粒子系统两阶段示例**：按 Q5=C/Q19 以 `par_each` + 只读捕获另一类型 Pool + `at(id)` 落地，阶段间由 scope join 分隔。
+  - **[Docs]** 规范 §10.8 改为 par_each 两阶段 Rio 形态；§10.9 补 happens-before 同步点条文；新增 `p14_plan.md` + 6 份实施方案 + 设计审计文档。
+  - **[Test]** 新增 7 套 P14 测试（`p14-1a-thread`、`p14-1b-scope-spawn`、`p14-2`/`p14-3`/`p14-4`/`p14-5`、`p14-6-acceptance`、`p14-final`）；全量 40 套件 1028 用例全绿。已知限制仅剩死锁/活锁不在静态保证、Chan 退避轮询非 futex、关闭时残留 Content 泄漏（均为规范原有声明）。
 
 ---
 ### 版本号 `v1.22.0` (2026-11-17)

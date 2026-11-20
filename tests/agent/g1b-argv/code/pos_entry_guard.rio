@@ -1,0 +1,7 @@
+import(prog="prog")
+import(m="entry_guard_mod")
+fun main(): void {
+    m.moduleSide()
+    sout("guard-ok")
+}
+main()

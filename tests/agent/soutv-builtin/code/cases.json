@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "id": "pos_scalar",
+      "file": "code/pos_scalar.rio",
+      "expect": "42"
+    },
+    {
+      "id": "pos_types",
+      "file": "code/pos_types.rio",
+      "expect": "7\n2.5\ntrue"
+    },
+    {
+      "id": "neg_no_ref",
+      "file": "code/neg_no_ref.rio",
+      "expectFailure": true,
+      "mustMatch": "soutv requires a Ref/Mut/Take argument"
+    },
+    {
+      "id": "neg_reserved",
+      "file": "code/neg_reserved.rio",
+      "expectFailure": true,
+      "mustMatch": "reserved builtin/runtime name"
+    }
+  ]
+}

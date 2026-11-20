@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "id": "pos_builtins",
+      "file": "code/pos_builtins.rio",
+      "expect": "str=abc int=1 bool=true float=1.5\nsize=3 clone=1"
+    },
+    {
+      "id": "pos_runtime",
+      "file": "code/pos_runtime.rio",
+      "expect": "true"
+    },
+    {
+      "id": "neg_undeclared",
+      "file": "code/neg_undeclared.rio",
+      "expectFailure": true,
+      "mustMatch": "undeclared function"
+    },
+    {
+      "id": "neg_reserved_body",
+      "file": "code/neg_reserved_body.rio",
+      "expectFailure": true,
+      "mustMatch": "reserved builtin/runtime name"
+    },
+    {
+      "id": "pos_user_release",
+      "file": "code/pos_user_release.rio",
+      "expect": "42"
+    },
+    {
+      "id": "pos_encapsulated_stub",
+      "file": "code/pos_encapsulated_stub.rio",
+      "expect": "stub ok"
+    }
+  ]
+}

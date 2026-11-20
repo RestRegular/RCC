@@ -1,0 +1,7 @@
+fun main(): void {
+    var p: ptr = core_alloc(16, 8)
+    core_mem_set(p, 7, 8)
+    sout(core_mem_eq(p, p, 8))
+    core_free(p)
+}
+main()

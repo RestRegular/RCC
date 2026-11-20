@@ -64,7 +64,7 @@ $expectedFns = [ordered]@{
     math = @('abs', 'max', 'min', 'opp', 'pow', 'e', 'pi')
     ops  = @('orLazy', 'orVal', 'ternary', 'ternaryLazy')
     io   = @('input', 'sin')
-    prog = @('breakpoint', 'entry')
+    prog = @('breakpoint', 'entry', 'args')
 }
 
 $expectedSigs = @{
@@ -149,6 +149,7 @@ $expectedSigs = @{
     prog = @(
         'breakpoint(): void'
         'entry(arg: any, *args: any): void'
+        'args(): list'
     )
 }
 
@@ -494,6 +495,7 @@ sout(core_str_len(c) >= 0)
 import(prog="prog")
 breakpoint()
 entry(0)
+var _argv: list = prog.args()
 sout("ok")
 '@
 }
@@ -553,9 +555,11 @@ function Invoke-ApiLayer {
         foreach ($fn in $expectedFns[$m]) {
             $isFn = @($expectedSigs[$m] | Where-Object { $_ -match ('^' + [regex]::Escape($fn) + '\s*[\[(]') }).Count -gt 0
             if ($isFn) {
-                $called = $src -match ("(?<![\w.])" + [regex]::Escape($fn) + "\s*[\[(]")
+                # 函数名可带模块限定前缀（如 prog.args()），故前面的负向断言
+                # 只排除字母/数字/下划线，允许 `.` 出现在 `prog.` 这种限定名里。
+                $called = $src -match ("(?<![\w])" + [regex]::Escape($fn) + "\s*[\[(]")
             } else {
-                $called = $src -match ("(?<![\w.])" + [regex]::Escape($fn) + "(?![\w.])")
+                $called = $src -match ("(?<![\w])" + [regex]::Escape($fn) + "(?![\w])")
             }
             Record 'api' $m $called "covered $m.$fn" 'no call site in api source'
             if (-not $called) { $report += "    NOCALL $fn" }
@@ -585,10 +589,10 @@ function Invoke-ApiLayer {
         "import(datatype=`"datatype`")`nsout(1)`n" 'Cannot find imported module'
     Invoke-RioFails 'api' 'prog' 'gone_lowlevel' `
         "import(lowlevel=`"lowlevel`")`nsout(1)`n" 'Cannot find imported module'
-    # 真正不存在的函数：RCC 不报前端错，而是生成外部符号引用，链接期炸。
-    # 这不是理想行为（应在前端报错），但它是**当前实际行为**，登记为已知。
+    # 真正不存在的函数：内建严格化（2026-11-20 裁决）后改为**前端编译期报错**，
+    # 不再生成外部符号引用留到链接期炸（旧行为曾登记为已知缺陷，现已修复）。
     Invoke-RioFails 'api' 'ds' 'gone_ds_joins' `
-        "import(ds=`"ds`")`nsout(joins(`"a`", `"b`"))`n" 'undefined reference'
+        "import(ds=`"ds`")`nsout(joins(`"a`", `"b`"))`n" 'undeclared function'
 
     $reportPath = Join-Path $work 'api_report.txt'
     [System.IO.File]::WriteAllLines($reportPath, $report, $utf8NoBom)
@@ -1132,6 +1136,12 @@ entry(0)
 entry(0, 1, 2)
 sout("alive")
 '@) "alive" @('prog.breakpoint', 'prog.entry')
+    # G1b：prog.args() 返回 list[str]（调用程序时不传参 → 空 list）。
+    Invoke-RioCase 'behavior' 'prog' 'b_prog_args' (@'
+import(prog="prog")
+var a: list[str] = prog.args()
+sout(a[0])
+'@) "" @('prog.args')
 
     # ---------------- 跨模块 ----------------
     Invoke-RioCase 'behavior' 'ds' 'b_combo_all_modules' ($allImp + @'
