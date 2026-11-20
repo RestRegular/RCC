@@ -359,9 +359,6 @@ namespace ast {
     PassExpressionNode::PassExpressionNode(const Token &passToken)
         : ExpressionNode(passToken, NodeType::PASS){}
 
-    EncapsulatedExpressionNode::EncapsulatedExpressionNode(const Token &mainToken_)
-        : ExpressionNode(mainToken_, NodeType::PREFIX){}
-
     ConstructorDefinitionNode::ConstructorDefinitionNode(const Token &ctorToken,
         const std::shared_ptr<ExpressionNode> &paramNode,
         const std::shared_ptr<Token> &colonToken,

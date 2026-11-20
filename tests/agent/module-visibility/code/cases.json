@@ -1,0 +1,9 @@
+{
+  "cases": [
+    { "id": "pos_export", "main": "code/pos_export.rio", "files": ["code/pos_export.rio", "code/mod.rio"], "expect": "5\n7" },
+    { "id": "pos_alias", "main": "code/pos_alias.rio", "files": ["code/pos_alias.rio", "code/mod.rio"], "expect": "11" },
+    { "id": "neg_private", "main": "code/neg_private.rio", "files": ["code/neg_private.rio", "code/mod.rio"], "expectFailure": true, "mustMatch": "undeclared function" },
+    { "id": "neg_hidden", "main": "code/neg_hidden.rio", "files": ["code/neg_hidden.rio", "code/mod.rio"], "expectFailure": true, "mustMatch": "undeclared function" },
+    { "id": "neg_hidden_export", "main": "code/neg_hidden_export.rio", "files": ["code/neg_hidden_export.rio", "code/mod_conflict.rio"], "expectFailure": true, "mustMatch": "both 'hidden' and exported" }
+  ]
+}

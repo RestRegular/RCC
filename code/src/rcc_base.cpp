@@ -14,7 +14,7 @@ namespace base {
 
     const StringSet KEYWORDS = {
             "var", "fun", "if", "else", "elif", "for", "while", "until",
-            "ret", "break", "class", "struct", "pass", "ctor", "encapsulated", "try",
+            "ret", "break", "class", "struct", "pass", "ctor", "try",
             "catch", "finally", "throw", "link"
     };
 
@@ -100,7 +100,7 @@ namespace base {
         // access permission label
         "public", "private", "protected", "builtin",
         // restrict label
-        "const", "quote",
+        "const", "quote", "hidden",
         // life circle label
         "static", "global",
         // object-oriented feature label

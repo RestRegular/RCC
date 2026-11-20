@@ -1,0 +1,8 @@
+// 显式 import 前导文件幂等：不重复登记，也不破坏模块系统
+import "builtins"
+fun main(): void {
+    var p: ptr = core_alloc(8, 8)
+    core_free(p)
+    sout("import ok")
+}
+main()

@@ -1,4 +1,3 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 class A {
     fun m(x: int): int { ret 10 }
     fun m(x: str): int { ret 11 }

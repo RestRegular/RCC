@@ -1,5 +1,5 @@
-import mathx
-import algeb
+import "mathx"
+import "algeb"
 fun main() {
     sout(mathx.add(1, 2))
     sout(algeb.square(5))

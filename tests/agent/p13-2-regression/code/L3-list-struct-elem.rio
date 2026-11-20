@@ -2,7 +2,6 @@
 // 修前：list[Pt] 的 xs.size() / xs[0].x / xs.get(0).x 全报
 //       "Cannot determine the object type of attribute access"，
 //       而 var p: Pt = xs[99] 越界时**静默返回垃圾地址**、不报错。
-fun sout(*args: any, end="\n"): void { encapsulated }
 struct Pt { var x: int
  var y: int }
 fun main(): void {

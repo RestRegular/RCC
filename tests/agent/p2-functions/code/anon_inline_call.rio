@@ -1,2 +1,1 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 sout(((a, b) -> { ret a * b })(6, 7))

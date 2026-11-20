@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var s: str = "ab"
 sout(s[99] + 0)

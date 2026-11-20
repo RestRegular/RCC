@@ -48,7 +48,7 @@ function Invoke-Case {
     }
 }
 
-$imp = "import(ds=`"ds`", sm=`"str`")`n"
+$imp = "import(`"ds`", `"str`")`n"
 
 Write-Host ""
 Write-Host "=========== 第一层：compile ===========" -ForegroundColor Cyan

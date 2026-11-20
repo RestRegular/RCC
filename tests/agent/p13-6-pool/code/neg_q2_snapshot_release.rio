@@ -1,6 +1,6 @@
 // P13-6 完整化（§6.3 snapshot()）：a 进入 team 后 team.clone() 得 team2；
 // 即便源容器 team 被 clear（集合清空），快照 team2 仍持有 a，release 必须被拦。
-import(ds="ds")
+import ds = "ds"
 class Player { var name: str  ctor(n: str) { this.name = n } }
 fun main(): void {
     var pl = Pool.fixed(4)

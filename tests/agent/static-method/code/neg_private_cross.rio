@@ -1,0 +1,5 @@
+import "bmod"
+fun main(): void {
+    sout(B.f1())
+}
+main()

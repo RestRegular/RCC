@@ -22,29 +22,29 @@
 // ============================ 内存 ================================
 // 原始字节操作。语义与 C 的 memcpy / memmove / memset / memcmp 一致。
 
-extern fun mem_copy(dst: ptr, src: ptr, n: int): void
-extern fun mem_move(dst: ptr, src: ptr, n: int): void
-extern fun mem_set(dst: ptr, byte: int, n: int): void
-extern fun mem_eq(a: ptr, b: ptr, n: int): bool
+fun mem_copy(dst: ptr, src: ptr, n: int): void extern
+fun mem_move(dst: ptr, src: ptr, n: int): void extern
+fun mem_set(dst: ptr, byte: int, n: int): void extern
+fun mem_eq(a: ptr, b: ptr, n: int): bool extern
 
 // 计算**C 字符串**（裸字节、NUL 结尾）的长度，不含结尾的 0。
 // 与 core_str_len 的区别：core_str_len 读的是 Rio str 的长度头（+0 的 8
 // 字节），而这里读的是进程 argv 里 OS 给的 char*，必须逐字节扫到 NUL。
 // p 为 null 时返回 0。G1b 的 rt_argv_init 用它把 argv[i] 转成 Rio str。
-extern fun core_cstr_len(p: ptr): int
+fun core_cstr_len(p: ptr): int extern
 
 // 读/写 p 指向的 8 字节（小端）整数/指针。
 // 引导期 rt 没有解引用运算符，堆里写出的 list 头、指针数组只能靠
 // core 层的读写原语填充；这两条是 G1b argv 构造器的最小必要能力。
 // 语义：load 返回 *(u64*)p；store 把 v 的 64 位按原样写进 *(u64*)p。
-extern fun core_load_ptr(p: ptr): ptr
-extern fun core_store_ptr(p: ptr, v: ptr): void
+fun core_load_ptr(p: ptr): ptr extern
+fun core_store_ptr(p: ptr, v: ptr): void extern
 
 // 分配器入口。返回 null 表示失败（不 panic，由 rt 决定如何处理）。
 // align 必须是 2 的幂。
-extern fun alloc(size: int, align: int): ptr
-extern fun realloc(p: ptr, old_size: int, size: int, align: int): ptr
-extern fun free(p: ptr): void
+fun alloc(size: int, align: int): ptr extern
+fun realloc(p: ptr, old_size: int, size: int, align: int): ptr extern
+fun free(p: ptr): void extern
 
 // ==================== P13-1：受控的原地追加（D6 / D12）====================
 //
@@ -69,7 +69,7 @@ extern fun free(p: ptr): void
 // 参数 value 用 ptr：元素槽恒 8 字节，而 ptr 与数值族互通（P12/G12）、
 // 也与 str/list/dict 同属指针族，所以 int / char / bool / str / 容器指针
 // 都能传进来，不用为每种元素类型各写一份。
-extern fun core_list_append(xs: list, value: ptr): void
+fun core_list_append(xs: list, value: ptr): void extern
 
 // ==================== P13-1：深拷贝（clone）====================
 //
@@ -82,49 +82,49 @@ extern fun core_list_append(xs: list, value: ptr): void
 // 为什么 P13-1 需要它：严格借用规则拦下了 `ret 形参` 这类恒等函数，而
 // clone 是让 std 能合法「把借用转成自己拥有的新值」的手段 —— 不需要放宽
 // 任何规则，也不需要造近似。
-extern fun core_clone_list(xs: list): list
-extern fun core_clone_dict(d: dict): dict
-extern fun core_clone_str(s: str): str
+fun core_clone_list(xs: list): list extern
+fun core_clone_dict(d: dict): dict extern
+fun core_clone_str(s: str): str extern
 
 // ============================ IO ==================================
 // 文件描述符约定：0 = stdin, 1 = stdout, 2 = stderr
 // 返回实际读写的字节数；负数表示错误。
 
-extern fun io_write(fd: int, buf: ptr, n: int): int
-extern fun io_read(fd: int, buf: ptr, n: int): int
-extern fun io_flush(fd: int): void
+fun io_write(fd: int, buf: ptr, n: int): int extern
+fun io_read(fd: int, buf: ptr, n: int): int extern
+fun io_flush(fd: int): void extern
 
 // ============================ 进程 ================================
-extern fun proc_exit(code: int): void
-extern fun proc_abort(): void
+fun proc_exit(code: int): void extern
+fun proc_abort(): void extern
 
 // 写 stderr 后终止。msg 不需要以 0 结尾，长度由 len 指定。
-extern fun panic_raise(msg: ptr, len: int): void
+fun panic_raise(msg: ptr, len: int): void extern
 
 // ==================== P14-1a：结构化并发运行时地基 ====================
 // 仅运行时原语，不含任何语言层 scope/spawn 语义（那些在编译器里实现）。
 // thread_create：创建 OS 线程，入口 fn(arg)，返回线程句柄（ptr，失败返回 null）。
 // thread_join：等待线程结束并回收句柄；传 null 直接返回。
 // 名字带 core_ 前缀、与 core_win64.s 符号逐字一致（新后端用源码名直接做符号）。
-extern fun core_thread_create(fn: ptr, arg: ptr): ptr
-extern fun core_thread_join(handle: ptr): void
+fun core_thread_create(fn: ptr, arg: ptr): ptr extern
+fun core_thread_join(handle: ptr): void extern
 
 // ============================ 栈探测 ==============================
 // Windows 上栈帧超过 4KB 时必须探测 guard page，否则会踩空。
 // 由编译器在函数序言里自动插入，不暴露给用户代码。
-extern fun stack_probe(size: int): void
+fun stack_probe(size: int): void extern
 
 // ============================ 异常帧链 ============================
 // 采用显式帧链（setjmp/longjmp 风格），而非表驱动 unwind。
 // 代价：析构不保证执行；换来的是实现简单、可预测。
 
-extern fun eh_push(frame: ptr): ptr
-extern fun eh_pop(frame: ptr): void
-extern fun eh_throw(exc: ptr): void
+fun eh_push(frame: ptr): ptr extern
+fun eh_pop(frame: ptr): void extern
+fun eh_throw(exc: ptr): void extern
 
 // ============================ 杂项 ================================
-extern fun time_ns(): int
-extern fun sys_breakpoint(): void
+fun time_ns(): int extern
+fun sys_breakpoint(): void extern
 
 // ==================== P13-1 调试钩子（D17，仅调试构建）====================
 // 只用于验证「作用域末确实释放了」这类不可从外部观察的性质。
@@ -139,9 +139,9 @@ extern fun sys_breakpoint(): void
 // 名字带 `core_` 前缀：与 core_win64.s 里的符号**逐字一致**。
 // core.rio 里的 extern 名不会被自动加前缀（std 里也是直接写
 // `core_alloc(...)` 调用的），所以这里必须写全名。
-extern fun core_dbg_reset(): void
-extern fun core_dbg_allocations(): int
-extern fun core_dbg_frees(): int
+fun core_dbg_reset(): void extern
+fun core_dbg_allocations(): int extern
+fun core_dbg_frees(): int extern
 // D17 的另外两个钩子：
 //   core_dbg_double_frees() —— 被检测到的重复释放次数。
 //     实现是在「最近释放过的 16 个指针」里查重，命中就**不再真的释放**，
@@ -150,57 +150,57 @@ extern fun core_dbg_frees(): int
 //   core_dbg_poison_bytes() —— 释放前填 0xDD 的总字节数。块大小用
 //     HeapSize 问 Windows，不靠容器头里的 len/cap（那是逻辑长度，
 //     不是堆块大小）。
-extern fun core_dbg_double_frees(): int
-extern fun core_dbg_poison_bytes(): int
+fun core_dbg_double_frees(): int extern
+fun core_dbg_poison_bytes(): int extern
 
 // ==================== P13-6：Pool 三档真实分配器（Q1=A）====================
 // 池头固定 48 字节、地址稳定；槽位惰性分配（Pool 无类型参数，elem_size 只在
 // pool.new[T] 时才知道）。三档共用块链，fixed 满时 core_pool_alloc 返回 null。
-extern fun core_pool_new(mode: int, cap: int): ptr
-extern fun core_pool_alloc(pool: ptr, elem_size: int): ptr
-extern fun core_pool_release(pool: ptr, slot: ptr): void
+fun core_pool_new(mode: int, cap: int): ptr extern
+fun core_pool_alloc(pool: ptr, elem_size: int): ptr extern
+fun core_pool_release(pool: ptr, slot: ptr): void extern
 // P14-3：Pool 枚举原语（par_each / pool.at）
-extern fun core_pool_count(pool: ptr): int
-extern fun core_pool_slot_at(pool: ptr, index: int): ptr
+fun core_pool_count(pool: ptr): int extern
+fun core_pool_slot_at(pool: ptr, index: int): ptr extern
 
 // ==================== P14-4：显式同步运行时原语 ====================
 // 自旋锁（锁字 4 字节：0=未锁，1=已锁；xchg 隐含全屏障）
-extern fun core_lock_acquire(lockword: ptr): void
-extern fun core_lock_release(lockword: ptr): void
+fun core_lock_acquire(lockword: ptr): void extern
+fun core_lock_release(lockword: ptr): void extern
 // 原子：i64 返回值按 int（64 位）使用；i32 返回值只在低 32 位，
 // codegen 负责 movslq 符号扩展。全部顺序一致。
-extern fun core_atomic_load_i64(addr: ptr): int
-extern fun core_atomic_store_i64(addr: ptr, value: int): void
-extern fun core_atomic_fetch_add_i64(addr: ptr, value: int): int
-extern fun core_atomic_swap_i64(addr: ptr, value: int): int
-extern fun core_atomic_cas_i64(addr: ptr, expected: int, new_value: int): int
-extern fun core_atomic_fetch_op_i64(addr: ptr, value: int, op: int): int
-extern fun core_atomic_load_i32(addr: ptr): int
-extern fun core_atomic_store_i32(addr: ptr, value: int): void
-extern fun core_atomic_fetch_add_i32(addr: ptr, value: int): int
-extern fun core_atomic_swap_i32(addr: ptr, value: int): int
-extern fun core_atomic_cas_i32(addr: ptr, expected: int, new_value: int): int
-extern fun core_atomic_fetch_op_i32(addr: ptr, value: int, op: int): int
+fun core_atomic_load_i64(addr: ptr): int extern
+fun core_atomic_store_i64(addr: ptr, value: int): void extern
+fun core_atomic_fetch_add_i64(addr: ptr, value: int): int extern
+fun core_atomic_swap_i64(addr: ptr, value: int): int extern
+fun core_atomic_cas_i64(addr: ptr, expected: int, new_value: int): int extern
+fun core_atomic_fetch_op_i64(addr: ptr, value: int, op: int): int extern
+fun core_atomic_load_i32(addr: ptr): int extern
+fun core_atomic_store_i32(addr: ptr, value: int): void extern
+fun core_atomic_fetch_add_i32(addr: ptr, value: int): int extern
+fun core_atomic_swap_i32(addr: ptr, value: int): int extern
+fun core_atomic_cas_i32(addr: ptr, expected: int, new_value: int): int extern
+fun core_atomic_fetch_op_i32(addr: ptr, value: int, op: int): int extern
 
 // ==================== P14-5：Chan 有界通道运行时原语 ====================
 // 对象布局 48B 头 + cap*8 槽；一把自旋锁保护全部字段；满/空时解锁让出重试。
 // core_chan_new(capacity<=0) 用默认容量 16；返回值是指针（失败则 abort）。
 // core_chan_send 在已关闭通道上调用会 abort；core_chan_recv 在空且关闭时返回 null。
 // core_chan_drop 只释放通道对象本身，不递归释放残留载荷（无元素类型信息）。
-extern fun core_chan_new(capacity: int): ptr
-extern fun core_chan_send(ch: ptr, value: ptr): void
-extern fun core_chan_recv(ch: ptr): ptr
-extern fun core_chan_close(ch: ptr): void
-extern fun core_chan_drop(ch: ptr): void
+fun core_chan_new(capacity: int): ptr extern
+fun core_chan_send(ch: ptr, value: ptr): void extern
+fun core_chan_recv(ch: ptr): ptr extern
+fun core_chan_close(ch: ptr): void extern
+fun core_chan_drop(ch: ptr): void extern
 
 // ==================== P13-7：Link 成对引用原语 ====================
 // 全局边表维护成对关系（a.L 含 b ⟺ b.L' 含 a）。field 参数是编译期分配的
 // Link 字段索引。所有原语两端同步，用户代码拿不到单边接口。
-extern fun core_link_add(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void
-extern fun core_link_set(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void
-extern fun core_link_remove(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void
-extern fun core_link_clear(pool: ptr, a: ptr, aField: int, bField: int): void
-extern fun core_link_unlink_all(pool: ptr, a: ptr): void
-extern fun core_link_is_empty(a: ptr): int
-extern fun core_link_count(a: ptr, field: int): int
-extern fun core_link_has(a: ptr, field: int, peer: ptr): int
+fun core_link_add(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void extern
+fun core_link_set(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void extern
+fun core_link_remove(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void extern
+fun core_link_clear(pool: ptr, a: ptr, aField: int, bField: int): void extern
+fun core_link_unlink_all(pool: ptr, a: ptr): void extern
+fun core_link_is_empty(a: ptr): int extern
+fun core_link_count(a: ptr, field: int): int extern
+fun core_link_has(a: ptr, field: int, peer: ptr): int extern

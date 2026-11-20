@@ -1,0 +1,7 @@
+class A: hidden {
+    fun f(): int static public { ret 42 }
+}
+fun main(): void {
+    sout(A.f())
+}
+main()

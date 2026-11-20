@@ -1,0 +1,5 @@
+class B: public {
+    fun f1(): int static private { ret 11 }
+    fun f2(x: int): int static { ret x + 2 }
+    fun f3(): int static public { ret 33 }
+}

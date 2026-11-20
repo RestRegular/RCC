@@ -1,5 +1,5 @@
 // Q2: a 经 listAppend 进入活跃容器 team，release(a) 应被成员集合判据拦（重数 1）
-import(ds="ds")
+import ds = "ds"
 class Player { var name: str  ctor(n: str) { this.name = n } }
 fun main(): void {
     var pl = Pool.fixed(4)

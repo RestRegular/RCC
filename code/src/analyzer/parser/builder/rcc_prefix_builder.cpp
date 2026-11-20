@@ -104,7 +104,16 @@ namespace parser {
             recordUnexpectedTokenTypeError(nextToken(), TokenType::TOKEN_LBRACE);
             return nullptr;
         }
+        // builtin 类：类体里的无体方法声明可省略 builtin 标签（2026-11-20）。
+        bool classIsBuiltin = false;
+        if (const auto id = std::dynamic_pointer_cast<IdentifierNode>(nameNode))
+        {
+            for (const auto& label : id->getLabels())
+                if (label && label->getFullLabel() == "builtin") { classIsBuiltin = true; break; }
+        }
+        if (classIsBuiltin) ++_builtinClassDepth;
         auto bodyNode = buildBraceExpression();
+        if (classIsBuiltin) --_builtinClassDepth;
         return std::make_shared<ClassDefinitionNode>(classToken, nameNode, bodyNode);
     }
 
@@ -194,42 +203,103 @@ namespace parser {
                 labelNodes.push_back(std::static_pointer_cast<LabelNode>(buildLabelExpression()));
             }
         }
-        // P13-2/L0-1：签名子句白名单。
-        // 实测 `: int garbage[a]` 会被上面的循环收进 labelNodes：
-        //   label[0]="int"（返回类型），label[1]="garbage[a]"（带 [...] 的描述）。
-        // 决议 §9.1：返回类型之后只允许 from[...] / writes[...] / ensures[...]，
-        // 且不允许空方括号。任何其它名字一律编译报错。
-        // 因为 `int` 等类型是 TOKEN_LABEL 而 from 等是 TOKEN_IDENTIFIER，
-        // 但实参名也可能是 LABEL，这里只看 label[1..] 的**名字**。
+        // 内建声明改造（2026-11-20）：标签区**全部读完**后按名字分类，三者顺序无关。
+        //   - 声明修饰符：builtin / extern（可同时出现；只出现在无函数体的声明上）
+        //   - 签名子句：from[...] / writes[...] / ensures[...]（必须带 [...] 描述）
+        //   - 返回类型：既不是修饰符也不是子句的标签（第一个即类型，codegen 本来
+        //     就是扫描全部标签挑第一个能解析成类型的，所以不依赖它在标签区的位置）
+        // 分类结果：labelNodes 原样保留全部标签；signatureClauses 只装子句标签。
+        static const std::unordered_set<std::string> declModifiers = {
+            "builtin", "extern"
+        };
+        // 非类型修饰符：不从标签区里当返回类型/签名子句解释，原样留在 labelNodes。
+        // 包括对外可见性(hidden)、访问级别(public/protected/private)、
+        // 生命周期(static/global)及其它既有修饰符。
+        static const std::unordered_set<std::string> nonTypeModifiers = {
+            "hidden", "public", "protected", "private", "static", "global",
+            "const", "quote", "overwrite", "interface", "virtual"
+        };
         static const std::unordered_set<std::string> allowedClauses = {
             "from", "writes", "ensures"
         };
-        for (size_t i = 1; i < labelNodes.size(); ++i)        {
-            const auto& label = labelNodes[i];
+        bool isBuiltinDecl = false, isExternDecl = false, isHiddenDecl = false, isStaticDecl = false;
+        std::string accessLabel;
+        std::vector<std::shared_ptr<LabelNode>> signatureClauses;
+        for (const auto& label : labelNodes)
+        {
             if (!label) continue;
             const std::string name = label->getFullLabel();
-            if (!allowedClauses.contains(name))            {
+            if (declModifiers.contains(name))
+            {
+                if (name == "builtin") isBuiltinDecl = true;
+                else isExternDecl = true;
+                continue;
+            }
+            if (nonTypeModifiers.contains(name))
+            {
+                if (name == "hidden") isHiddenDecl = true;
+                else if (name == "static") isStaticDecl = true;
+                else if (name == "public" || name == "protected" || name == "private")
+                    accessLabel = name;
+                continue;
+            }
+            if (allowedClauses.contains(name))
+            {
+                const auto des = label->getLabelDesNodes();
+                if (des.empty() || !des[0] || !des[0]->getBodyNode())
+                {
+                    recordSemanticError(label->getMainToken(),
+                        "L0-1: signature clause '" + name + "' requires a non-empty [...] list");
+                    return nullptr;
+                }
+                signatureClauses.push_back(label);
+                continue;
+            }
+            // 其它标签一律是返回类型：只保留第一个，多余的按未知子句报错。
+            // （历史上第二个非子句标签就是 `garbage[a]` 这类误写，见 P13-2/L0-1。）
+            bool alreadyHasType = false;
+            for (const auto& prev : labelNodes)
+            {
+                if (!prev || prev == label) break;
+                const std::string pn = prev->getFullLabel();
+                if (!declModifiers.contains(pn) && !nonTypeModifiers.contains(pn) &&
+                    !allowedClauses.contains(pn))
+                {
+                    alreadyHasType = true;
+                    break;
+                }
+            }
+            if (alreadyHasType)
+            {
                 recordSemanticError(label->getMainToken(),
                     "L0-1: unknown signature clause '" + name +
                     "'; expected from[...], writes[...] or ensures[...]");
                 return nullptr;
             }
-            const auto des = label->getLabelDesNodes();
-            if (des.empty() || !des[0] || !des[0]->getBodyNode())            {
-                recordSemanticError(label->getMainToken(),
-                    "L0-1: signature clause '" + name + "' requires a non-empty [...] list");
-                return nullptr;
-            }
-        }
-        // P13-2/L3-F：把签名子句从返回类型标签里分离，存进 FunctionDefinitionNode。
-        std::vector<std::shared_ptr<LabelNode>> signatureClauses;
-        if (labelNodes.size() > 1)        {
-            signatureClauses.assign(labelNodes.begin() + 1, labelNodes.end());
-            labelNodes.resize(1); // 只保留 label[0] = 返回类型（可能为空）
         }
         if (nextTokenIs(TokenType::TOKEN_NEWLINE))
         {
-            // 函数声明
+            // 函数声明（无函数体）
+            // 内建声明改造：带 builtin/extern 修饰符的声明必须是 body=null 的
+            // FunctionDefinitionNode，这样 codegen 的签名预登记能收集到它；
+            // 不带修饰符的仍是旧式 FunctionDeclarationNode（codegen 忽略）。
+            // builtin 类里的方法可省略 builtin 标签：无体声明自动升格为内建声明。
+            const bool inheritedBuiltin = (_builtinClassDepth > 0);
+            if (isBuiltinDecl || isExternDecl || inheritedBuiltin)
+            {
+                auto decl = std::make_shared<FunctionDefinitionNode>(
+                    funToken, callNode, colonToken, labelNodes,
+                    nullptr /*indicator*/, nullptr /*body*/, signatureClauses);
+                decl->setDeclarationModifiers(isBuiltinDecl || inheritedBuiltin, isExternDecl);
+                decl->setHidden(isHiddenDecl);
+                decl->setStatic(isStaticDecl);
+                decl->setAccessLabel(accessLabel);
+                decl->setInheritedBuiltin(inheritedBuiltin);
+                if (isBuiltinDecl && isExternDecl)
+                    recordSemanticError(funToken,
+                        "a declaration cannot be both 'builtin' and 'extern'");
+                return decl;
+            }
             if (callNode->getRealType() == NodeType::CALL)
             {
                 if (const auto callFuncNode = std::static_pointer_cast<FunctionCallNode>(callNode);
@@ -238,9 +308,12 @@ namespace parser {
                         = std::static_pointer_cast<AnonFunctionDefinitionNode>(
                             callFuncNode->getRightNode()))
                     {
-                        return std::make_shared<FunctionDefinitionNode>(funToken, callNode, colonToken, labelNodes,
+                        auto fn = std::make_shared<FunctionDefinitionNode>(funToken, callNode, colonToken, labelNodes,
                             std::make_shared<Token>(funcDefNode->getIndicatorToken()),
                             funcDefNode->getBodyNode(), signatureClauses);
+                        fn->setStatic(isStaticDecl);
+                        fn->setAccessLabel(accessLabel);
+                        return fn;
                     }
                  }
             } else if (callNode->getRealType() == NodeType::ANON_FUNCTION_DEFINITION &&
@@ -248,9 +321,12 @@ namespace parser {
             {
                 if (const auto &funcDefNode = std::static_pointer_cast<InfixExpressionNode>(callNode))
                 {
-                    return std::make_shared<FunctionDefinitionNode>(funToken, funcDefNode->getLeftNode(), colonToken, labelNodes,
+                    auto fn = std::make_shared<FunctionDefinitionNode>(funToken, funcDefNode->getLeftNode(), colonToken, labelNodes,
                         std::make_shared<Token>(funcDefNode->getOpToken()),
                         funcDefNode->getRightNode(), signatureClauses);
+                    fn->setStatic(isStaticDecl);
+                    fn->setAccessLabel(accessLabel);
+                    return fn;
                 }
             }
             return std::make_shared<FunctionDeclarationNode>(funToken, callNode, colonToken, labelNodes);
@@ -265,8 +341,19 @@ namespace parser {
             return nullptr;
         }
         // 函数定义
+        if (isBuiltinDecl || isExternDecl)
+        {
+            recordSemanticError(funToken,
+                "'builtin' / 'extern' declare a function without a body; "
+                "remove the modifier or the function body");
+            return nullptr;
+        }
         const auto &bodyNode = buildBraceExpression();
-        return std::make_shared<FunctionDefinitionNode>(funToken, callNode, colonToken, labelNodes, indicatorToken, bodyNode, signatureClauses);
+        auto fn = std::make_shared<FunctionDefinitionNode>(funToken, callNode, colonToken, labelNodes, indicatorToken, bodyNode, signatureClauses);
+        fn->setHidden(isHiddenDecl);
+        fn->setStatic(isStaticDecl);
+        fn->setAccessLabel(accessLabel);
+        return fn;
     }
 
     ExpressionNodePtr Parser::buildIdentifierExpression(){
@@ -685,10 +772,6 @@ namespace parser {
 
     ExpressionNodePtr Parser::buildPassExpression() {
         return std::make_shared<PassExpressionNode>(currentToken());
-    }
-
-    ExpressionNodePtr Parser::buildEncapsulatedExpression() {
-        return std::make_shared<EncapsulatedExpressionNode>(currentToken());
     }
 
     ExpressionNodePtr Parser::buildConstructorExpression() {

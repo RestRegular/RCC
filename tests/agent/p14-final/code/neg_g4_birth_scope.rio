@@ -1,5 +1,4 @@
 // G4 负面：实参出生地是已关闭的内层 scope -> 编译期拒绝
-fun sout(*args: any, end="\n"): void { encapsulated }
 var pool = Pool.chunked(8)
 class P { var v: int  ctor(x: int) { this.v = x } }
 fun work(p: P): void { sout(p.v) }

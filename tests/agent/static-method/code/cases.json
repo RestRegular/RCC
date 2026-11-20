@@ -1,0 +1,7 @@
+{
+  "cases": [
+    { "id": "pos_same_module", "file": "code/pos_same_module.rio", "expect": "42" },
+    { "id": "pos_cross_module", "main": "code/pos_cross_module.rio", "files": ["code/pos_cross_module.rio", "code/bmod.rio"], "expect": "7\n33" },
+    { "id": "neg_private_cross", "main": "code/neg_private_cross.rio", "files": ["code/neg_private_cross.rio", "code/bmod.rio"], "expectFailure": true, "mustMatch": "private and cannot be accessed" }
+  ]
+}

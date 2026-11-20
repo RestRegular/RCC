@@ -1,4 +1,3 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 fun add(a, b) { ret a + b }
 fun apply2(f, x, y) { ret f(x, y) }
 sout(apply2(add, 3, 5))

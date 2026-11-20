@@ -1,4 +1,3 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var c = [1, 2] + [3, 4]
 c[0] = 99
 sout(c[0])

@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var m = 9223372036854775807
 sout(0 - m - 1)

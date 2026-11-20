@@ -1,4 +1,4 @@
-import mathx
+import "mathx"
 fun main() {
     sout(mathx.add(10, 20))
     sout(mathx.mul(3, 4))

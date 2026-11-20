@@ -151,6 +151,23 @@ namespace analyzer
             return {};
         }
 
+        // 类基名：跳过修饰标签（builtin/public/protected/private/hidden/extern），
+        // 它们不是基类（2026-11-20 可见性改造）。
+        std::string baseNameOf(const std::shared_ptr<ast::IdentifierNode>& id)
+        {
+            if (!id) return {};
+            static const std::unordered_set<std::string> kMods = {
+                "builtin", "extern", "public", "protected", "private", "hidden"
+            };
+            for (const auto& label : id->getLabels())
+            {
+                if (!label) continue;
+                const auto full = label->getFullLabel();
+                if (!full.empty() && !kMods.count(full)) return full;
+            }
+            return {};
+        }
+
         // 取一个表达式的**源码文本**。
         // `Node::toString()` 是调试用的（`[Node(STRING): [Token(...)...]]`），
         // 直接塞进符号表既难看又没法用；字面量改走 literalString()。
@@ -548,6 +565,22 @@ namespace analyzer
                                  _table.overloadedNames.end(), name) != _table.overloadedNames.end();
             }
 
+            // 从标签区解析显式符号属性（builtin/extern/normal）与可见性。
+            static void applyLabelAttrs(Symbol& sym,
+                                        const std::vector<std::shared_ptr<ast::LabelNode>>& labels)
+            {
+                for (const auto& l : labels)
+                {
+                    if (!l) continue;
+                    const std::string n = l->getFullLabel();
+                    if (n == "builtin") sym.attr = Symbol::SymbolAttr::BUILTIN;
+                    else if (n == "extern") sym.attr = Symbol::SymbolAttr::EXTERN;
+                    else if (n == "public" || n == "protected" || n == "private")
+                        sym.visibility = n;
+                    else if (n == "hidden") sym.hidden = true;
+                }
+            }
+
             void add(Symbol sym, const Location& loc)
             {
                 sym.file = loc.file;
@@ -592,7 +625,7 @@ namespace analyzer
                         std::dynamic_pointer_cast<ast::IdentifierNode>(cls->getNameNode()))
                 {
                     className = id->getName();
-                    base = annotationOf(id);        // `class Box: Base`
+                    base = baseNameOf(id);          // `class Box: Base`（跳过修饰标签）
                     loc = locationOf(*id);
                 }
                 if (className.empty()) return;
@@ -602,6 +635,24 @@ namespace analyzer
                 sym.name = className;
                 sym.baseClass = base;
                 sym.asmSymbol = className;
+                // 类标签：builtin/public/protected/private/hidden 是修饰标签，
+                // 不是基类名（annotationOf 已过滤），这里解析成显式属性。
+                bool classBuiltin = false;
+                std::string classDefaultVisibility;
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(cls->getNameNode()))
+                {
+                    applyLabelAttrs(sym, id->getLabels());
+                    // 类上的 public/protected/private 是「成员默认可见性」，不是
+                    // 类符号自身的可见性（类自身对外可见性仍由 export/hidden 决定）。
+                    // 这里保存下来供方法继承；同时清掉误落到类符号上的成员可见性。
+                    classBuiltin = (sym.attr == Symbol::SymbolAttr::BUILTIN);
+                    if (sym.visibility == "public" || sym.visibility == "protected" ||
+                        sym.visibility == "private")
+                    {
+                        classDefaultVisibility = sym.visibility;
+                        sym.visibility.clear();
+                    }
+                }
 
                 std::vector<std::string> members;
                 std::vector<std::string> methods;
@@ -632,7 +683,7 @@ namespace analyzer
                         {
                             const auto info = calleeOf(fn->getCallNode());
                             if (!info.name.empty()) methods.push_back(info.name);
-                            collectFunction(fn, &className);
+                            collectFunction(fn, &className, classBuiltin, classDefaultVisibility);
                             continue;
                         }
                         if (const auto ctor =
@@ -650,20 +701,16 @@ namespace analyzer
             }
 
             void collectFunction(const std::shared_ptr<ast::FunctionDefinitionNode>& fn,
-                                 const std::string* owner)
+                                 const std::string* owner,
+                                 bool classBuiltin = false,
+                                 const std::string& classDefaultVisibility = std::string())
             {
                 const auto info = calleeOf(fn->getCallNode());
                 if (info.name.empty()) return;
 
-                // `{ encapsulated }`：实现由 rt.o 提供，符号是裸名，不参与重载。
-                bool encapsulated = false;
-                if (const auto body =
-                        std::dynamic_pointer_cast<ast::BlockRangerNode>(fn->getBodyNode()))
-                {
-                    const auto& exprs = body->getBodyExpressions();
-                    encapsulated = exprs.size() == 1 &&
-                        std::dynamic_pointer_cast<ast::EncapsulatedExpressionNode>(exprs.front());
-                }
+                // 内建声明改造（2026-11-20）：encapsulated 桩改为 builtin/extern
+                // 无体声明，用 fn->isDeclaration() 判定「实现由编译器/运行时提供」。
+                const bool isExternalImpl = fn->isDeclaration();
 
                 Symbol sym;
                 sym.kind = owner ? SymbolKind::METHOD : SymbolKind::FUNCTION;
@@ -671,7 +718,14 @@ namespace analyzer
                 if (owner) sym.owner = *owner;
                 sym.genericParams = info.genericParams;
                 sym.returnType = returnTypeOf(fn);
-                sym.encapsulated = encapsulated;
+                sym.encapsulated = isExternalImpl;
+                applyLabelAttrs(sym, fn->getLabelNodes());
+                // 类被 builtin 修饰时，方法可省略 builtin 标签 —— 继承类的属性。
+                if (classBuiltin && sym.attr == Symbol::SymbolAttr::NORMAL)
+                    sym.attr = Symbol::SymbolAttr::BUILTIN;
+                // 方法未显式写访问级别时，取类标签区的默认级别。
+                if (owner && sym.visibility.empty() && !classDefaultVisibility.empty())
+                    sym.visibility = classDefaultVisibility;
                 collectParams(info.paramsNode, sym.params);
                 if (fn->getBodyNode()) collectCalls(fn->getBodyNode(), sym.calls);
 
@@ -710,18 +764,22 @@ namespace analyzer
                 sym.kind = SymbolKind::VARIABLE;
                 sym.name = def->getNameNode()->getName();
                 if (owner) sym.owner = *owner;
-                sym.type = annotationOf(def->getNameNode());
+                // 变量标签既含类型又含修饰（hidden/public/...），取类型时须跳过修饰。
+                static const std::unordered_set<std::string> kNonType = {
+                    "builtin", "extern", "hidden", "public", "protected", "private",
+                    "static", "global", "const", "quote", "overwrite", "interface", "virtual"
+                };
+                sym.type = baseNameOf(def->getNameNode());
                 if (sym.type.empty() && def->hasLabels())
                 {
                     for (const auto& label : def->getLabelNodes())
                     {
-                        if (label && !label->getFullLabel().empty())
-                        {
-                            sym.type = label->getFullLabel();
-                            break;
-                        }
+                        const auto fn = label ? label->getFullLabel() : std::string{};
+                        if (!fn.empty() && !kNonType.count(fn))
+                        { sym.type = fn; break; }
                     }
                 }
+                applyLabelAttrs(sym, def->getLabelNodes());
                 if (def->hasInitialValue() && def->getValueNode())
                 {
                     sym.initializer = sourceTextOf(def->getValueNode());
@@ -1110,6 +1168,10 @@ namespace analyzer
                     out << "  " << std::left << std::setw(static_cast<int>(width)) << sigs[i]
                         << "  " << sym.file << ":" << sym.line << ":" << sym.column;
                     if (sym.exported) out << "  [exported]";
+                    if (sym.hidden) out << "  [hidden]";
+                    if (sym.attr == Symbol::SymbolAttr::BUILTIN) out << "  [builtin]";
+                    else if (sym.attr == Symbol::SymbolAttr::EXTERN) out << "  [extern]";
+                    if (!sym.visibility.empty()) out << "  [" << sym.visibility << "]";
                     if (sym.fromModule) out << "  [module]";
                     if (!sym.asmSymbol.empty()) out << "  asm=" << sym.asmSymbol;
                     out << "\n";
@@ -1261,6 +1323,12 @@ namespace analyzer
                     out << "],\n";
                 }
                 out << "      \"exported\": " << (sym.exported ? "true" : "false") << ",\n";
+                out << "      \"hidden\": " << (sym.hidden ? "true" : "false") << ",\n";
+                out << "      \"attr\": \""
+                    << (sym.attr == Symbol::SymbolAttr::BUILTIN ? "builtin" :
+                        sym.attr == Symbol::SymbolAttr::EXTERN ? "extern" : "normal")
+                    << "\",\n";
+                out << "      \"visibility\": \"" << escapeJson(sym.visibility) << "\",\n";
                 out << "      \"fromModule\": " << (sym.fromModule ? "true" : "false") << "\n";
                 out << "    }" << (i + 1 < table.symbols.size() ? "," : "") << "\n";
             }

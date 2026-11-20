@@ -16,6 +16,19 @@
 
 namespace base
 {
+    // 可见性等级（2026-11-20）：private ⊂ protected ⊂ public。
+    // 只用于类成员的访问级别；顶层符号的对外可见性仍由 export/hidden 决定。
+    enum class Visibility { PRIVATE = 0, PROTECTED = 1, PUBLIC = 2 };
+
+    // 从标签串解析可见性；无显式标签时返回 not_found=false 的默认值。
+    inline bool parseVisibility(const std::string& label, Visibility& out)
+    {
+        if (label == "private")       { out = Visibility::PRIVATE;  return true; }
+        if (label == "protected")     { out = Visibility::PROTECTED; return true; }
+        if (label == "public")        { out = Visibility::PUBLIC;   return true; }
+        return false;
+    }
+
     // 自定义类型
     using StringStack = std::stack<std::string>;
     using StringVector = std::vector<std::string>;

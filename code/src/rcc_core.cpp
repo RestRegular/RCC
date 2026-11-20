@@ -55,7 +55,6 @@ namespace core {
         {"pass", TokenType::TOKEN_PASS},
         {"link", TokenType::TOKEN_LINK},
         {"var", TokenType::TOKEN_VAR},
-        {"encapsulated", TokenType::TOKEN_ENCAPSULATED},
         {"ret", TokenType::TOKEN_RET},
         {"+", TokenType::TOKEN_PLUS},
         {"-", TokenType::TOKEN_MINUS},
@@ -316,7 +315,6 @@ namespace core {
         case TokenType::TOKEN_WHILE: return "TOKEN_WHILE";
         case TokenType::TOKEN_CTOR: return "TOKEN_CTOR";
         case TokenType::TOKEN_DELIMITER: return "TOKEN_DELIMITER";
-        case TokenType::TOKEN_ENCAPSULATED: return "TOKEN_ENCAPSULATED";
         case TokenType::TOKEN_LINK: return "TOKEN_LINK";
         case TokenType::TOKEN_OPERATOR: return "TOKEN_OPERATOR";
         case TokenType::TOKEN_PASS: return "TOKEN_PASS";

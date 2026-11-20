@@ -1,6 +1,6 @@
 // P13-6 完整化（§6.3 活跃性）：容器 team 在内层作用域里持有 a，
 // 出作用域后 team 是死变量，其集合不再计入 release 判据，a 应可 release。
-import(ds="ds")
+import ds = "ds"
 class Player { var name: str  ctor(n: str) { this.name = n } }
 fun main(): void {
     var pl = Pool.fixed(4)

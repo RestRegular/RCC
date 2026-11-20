@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
-import base
+import "base"
 fun quad(x: int): int { ret twice(twice(x)) }

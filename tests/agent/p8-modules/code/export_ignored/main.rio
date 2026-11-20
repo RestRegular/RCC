@@ -1,4 +1,4 @@
-import utilx
+import "utilx"
 fun main() {
     sout(twice(5))
     var b = Box()

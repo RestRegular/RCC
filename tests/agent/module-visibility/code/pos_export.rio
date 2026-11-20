@@ -1,0 +1,6 @@
+import "mod"
+fun main(): void {
+    sout(publicAdd(2, 3))
+    sout(exportedVar)
+}
+main()

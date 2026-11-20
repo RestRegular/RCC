@@ -1,4 +1,4 @@
-import shapes
+import "shapes"
 fun main() {
     var p = Point(3, 4)
     sout(p.sum())

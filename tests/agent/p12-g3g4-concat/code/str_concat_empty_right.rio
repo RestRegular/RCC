@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var e: str = ""
 sout("head" + e)

@@ -1,5 +1,4 @@
 // 正向：单个 spawn，join 后计数平衡
-fun sout(*args: any, end="\n"): void { encapsulated }
 
 fun work(p: ptr): void {
     core_mem_set(p, 7, 8)

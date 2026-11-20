@@ -1,2 +1,1 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 fun add(a: int, b: int): int { ret a + b }

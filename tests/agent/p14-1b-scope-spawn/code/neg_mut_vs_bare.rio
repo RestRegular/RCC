@@ -1,6 +1,5 @@
 // P14-6/G2 负面：一个任务以 Mut 写、另一个裸传（读）同一对象 -> 写-读冲突
 class Player { var hp: int }
-fun sout(*args: any, end="\n"): void { encapsulated }
 fun work(p: Player): void { }
 fun main(): void {
     var pl = Player(10)

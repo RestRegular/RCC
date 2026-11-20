@@ -1,6 +1,5 @@
 // P14-6/G2 负面：两个任务都以 Mut 能力传同一对象 -> 写-写冲突，编译期拒绝
 class Player { var hp: int }
-fun sout(*args: any, end="\n"): void { encapsulated }
 fun work(p: Player): void { }
 fun main(): void {
     var pl = Player(10)

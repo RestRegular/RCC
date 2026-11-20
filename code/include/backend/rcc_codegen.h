@@ -24,6 +24,7 @@
 
 #include "rcc_asm_emitter.h"
 #include "rcc_abi.h"
+#include "../rcc_base.h"
 #include "../sema/rcc_sema_types.h"
 #include "../lib/rcc_utils.h"
 
@@ -58,15 +59,30 @@ namespace backend
                             const std::vector<std::string>& aliases = {})
         {
             _moduleNames = names;
-            // 别名与模块名同等对待：`import(u="utilx")` 之后 `u.twice(21)`
-            // 里的 u 也要被 isModuleName 认出来。
+            // 别名与模块名同等对待：`import lib = "lib"` 之后 `lib.foo(21)`
+            // 里的 lib 也要被 isModuleName 认出来。
             _moduleNames.insert(_moduleNames.end(), aliases.begin(), aliases.end());
         }
+
+        // 符号可见性改造（2026-11-20）：别名 -> 私有符号前缀。
+        // emitModuleFunctionCall 用它把 `alias.foo(...)` 解析到改名后的
+        // "<prefix>_foo" 符号；无别名映射的限定调用保持裸名（导出符号）。
+        void setAliasPrefixes(const std::vector<std::pair<std::string, std::string>>& m)
+        { _aliasPrefixes = m; }
 
         // G1b：入口文件路径（绝对/规范形式）。用于 prog.entry 的编译期
         // 「入口文件守卫」——按每个调用点 AST 的 pos.getFilepath() 与它比较，
         // 导入模块（内联后仍保留原路径）里的 entry 调用发射为空操作。
         void setEntryFilePath(const std::string& path) { _entryFilePath = path; }
+
+        // 内建声明改造（2026-11-20）：从隐式前导声明文件（Rio 源码 AST）登记
+        // builtin / extern 声明。返回登记条数；声明文件缺失/无声明时返回 0，
+        // 由调用方决定是否报错（库模式自举时允许为空）。
+        int registerDeclarations(const std::shared_ptr<ast::ProgramNode>& prelude,
+                                 std::string* errorOut = nullptr);
+        // 声明表是否已有某名字（调用点惰性校验用）。
+        [[nodiscard]] bool hasDeclaration(const std::string& name) const
+        { return _declaredBuiltins.count(name) > 0; }
 
         // 决议 C（2026-11-18 用户裁决）：条件销毁出口的诊断级别。
         //
@@ -113,7 +129,8 @@ namespace backend
         // P8：`mod.fn(args)` —— 模块已在加载期内联，直接按全局函数 fn 调用。
         void emitModuleFunctionCall(const std::string& fname,
                                     const std::shared_ptr<ast::ExpressionNode>& callNode,
-                                    const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+                                    const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                    const std::string& moduleQualifier = {});
         [[nodiscard]] bool isModuleName(const std::string& name) const;
         // G1b：prog.entry(arg, *callArgs) —— 编译期入口文件守卫。
         // 调用点在入口文件：把 callArgs 转发给回调（间接调用）。
@@ -125,9 +142,14 @@ namespace backend
         void emitProgArgsCall(const std::shared_ptr<ast::ExpressionNode>& node);
 
         // 内建严格化（2026-11-20 裁决）：裸名调用的目标必须是已登记的符号。
-        // 合法集合 = 用户函数/重载/泛型/encapsulated 桩/类构造 + core_*/rt_*
+        // 合法集合 = 用户函数/重载/泛型/builtin|extern 声明/类构造 + core_*/rt_*
         // 运行时原语 + 特化内建名（sout/serr/super/clone/release）。
         [[nodiscard]] bool isKnownCallable(const std::string& name) const;
+
+        // 内建声明改造（2026-11-20）：调用点惰性校验——特化内建/运行时原语
+        // 被调用时，声明表里必须有对应条目，否则硬错误终止并给出提示。
+        // 返回 true 表示通过（可以继续特化发射），false 表示已记录诊断。
+        bool requireBuiltinDeclaration(const std::string& name, const utils::Pos& pos);
 
         // ---------- P4：函数值 / 匿名函数 / 间接调用 ----------
         // 匿名函数表达式：把函数体排进待发射队列，当前表达式的值取闭包对象地址。
@@ -937,6 +959,8 @@ namespace backend
         // P8：模块名集合。`mod.fn(...)` 里的 mod 命中这里时，
         // 调用退化成直接调用 fn —— 模块已在加载期内联。
         std::vector<std::string> _moduleNames;
+        // 符号可见性改造（2026-11-20）：别名 -> 私有符号前缀（来自 loader）。
+        std::vector<std::pair<std::string, std::string>> _aliasPrefixes;
         // G1b：入口文件绝对路径，供 prog.entry 编译期守卫比较调用点来源。
         std::string _entryFilePath;
 
@@ -1088,8 +1112,13 @@ namespace backend
         expandSpreadForFixedParams(const std::string& fname,
                                    const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
                                    const utils::Pos& pos);
-        // 已登记但实现为 encapsulated 的函数（不发射函数体）
-        std::map<std::string, bool> _encapsulatedFunctions;
+        // 内建声明表（2026-11-20 改造）：从隐式前导 .rio 声明文件加载的
+        // builtin / extern 声明名 -> 声明种类（"builtin" / "extern"）。
+        // 调用点惰性核对：特化内建/原语被调用时必须有一张声明登记，否则硬错误。
+        std::map<std::string, std::string> _declaredBuiltins;
+        // 当前编译单元里用户显式写的 builtin/extern 声明（用于诊断来源与去重）。
+        // key = 名字，value = "builtin" / "extern"。
+        std::map<std::string, std::string> _sourceDeclarations;
         // 用户是否自己写了 fun main()（发射为 __rio_user_main）
         bool _hasUserMain = false;
         // 浮点字面量池：值 -> 标签
@@ -1317,6 +1346,20 @@ namespace backend
         void emitMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
                             const std::shared_ptr<ast::ExpressionNode>& callNode,
                             const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // 静态方法调用 `B.f()`（2026-11-20）：左侧标识符是类名，f 带 static 标签。
+        // 返回 true 表示已处理（成功发射或已记录诊断），false 表示不是静态调用。
+        bool emitStaticMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
+                                  const std::shared_ptr<ast::ExpressionNode>& callNode,
+                                  const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
+        // 读取方法的访问级别：显式标签优先，否则取类上的默认级别（protected）。
+        // 返回 base::Visibility。
+        base::Visibility methodVisibility(const std::shared_ptr<ast::FunctionDefinitionNode>& def,
+                                          const std::string& className) const;
+        // 检查对某个方法的访问是否合法。fromFile 为空表示入口文件；
+        // 非法时记录诊断并返回 false。
+        bool checkMethodAccess(const std::shared_ptr<ast::FunctionDefinitionNode>& def,
+                               const std::string& className, const std::string& methodName,
+                               const utils::Pos& pos, const std::string& fromFile);
         // `super(...)`：用当前 this 调用基类构造器。
         void emitSuperCall(const std::vector<std::shared_ptr<ast::ExpressionNode>>& args);
         // 类登记表
@@ -1547,6 +1590,10 @@ namespace backend
         std::string _currentClass;
         // 类登记表
         std::map<std::string, ClassInfo> _classes;
+        // 类成员的默认访问级别（类标签区 public/protected/private；缺省 protected）。
+        std::map<std::string, base::Visibility> _classDefaultVisibility;
+        // 类声明所在文件（用于跨文件访问级别检查；空 = 入口文件）。
+        std::map<std::string, std::string> _classDeclFile;
         // P13-7：所有已声明的类名（含尚未 registerClassBody 完成登记的）。
         // Link 字段的元素类型在类体解析阶段就要解析，此时 _classes 还没插入本类，
         // resolveTypeName 靠这个集合识别自引用/前向引用类名。
@@ -1584,9 +1631,6 @@ namespace backend
             bool retAnnotated = false;
             // 非空 = 泛型声明（走 P10 路径，不参与重载）。
             std::vector<std::string> genericParams;
-            // 函数体只有一个 encapsulated：由运行时提供实现，符号必须是裸名
-            // （rt.o 里就是这么定义的），所以不参与重载计数、不加修饰。
-            bool encapsulated = false;
             std::shared_ptr<ast::FunctionDefinitionNode> def;
         };
         // 纯收集：名字、形参、标注、默认值、返回类型。不做登记、不报错，

@@ -1,0 +1,2 @@
+fun hiddenConflict(): int hidden { ret 1 }
+export(hiddenConflict)

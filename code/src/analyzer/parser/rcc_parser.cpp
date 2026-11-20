@@ -71,8 +71,6 @@ namespace parser {
         {TokenType::TOKEN_FOR, &Parser::buildForExpression},
         // pass 语句
         {TokenType::TOKEN_PASS, &Parser::buildPassExpression},
-        // encapsulated 语句
-        {TokenType::TOKEN_ENCAPSULATED, &Parser::buildEncapsulatedExpression},
         // 构造函数
         {TokenType::TOKEN_CTOR, &Parser::buildConstructorExpression},
         // 类定义

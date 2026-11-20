@@ -1,7 +1,7 @@
 // P13-6 完整化（§6.3 嵌套展平）：容器的容器，有效成员集合是内层集合的并。
 // team 直接含 a，groups 含 team；team 出作用域后 groups 仍活跃且传递持有 a，
 // release(a) 必须被拦（诊断应指活跃容器 groups）。
-import(ds="ds")
+import ds = "ds"
 class Player { var name: str  ctor(n: str) { this.name = n } }
 fun main(): void {
     var pl = Pool.fixed(8)

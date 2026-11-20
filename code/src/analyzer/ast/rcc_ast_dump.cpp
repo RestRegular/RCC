@@ -111,7 +111,6 @@ namespace ast
             if (std::dynamic_pointer_cast<BranchNode>(node)) return name("BranchNode");
             if (std::dynamic_pointer_cast<ConditionNode>(node)) return name("ConditionNode");
             if (std::dynamic_pointer_cast<PassExpressionNode>(node)) return name("PassExpressionNode");
-            if (std::dynamic_pointer_cast<EncapsulatedExpressionNode>(node)) return name("EncapsulatedExpressionNode");
             if (std::dynamic_pointer_cast<TryNode>(node)) return name("TryNode");
             if (std::dynamic_pointer_cast<ThrowNode>(node)) return name("ThrowNode");
             if (std::dynamic_pointer_cast<ScopeNode>(node)) return name("ScopeNode");
@@ -394,7 +393,7 @@ namespace ast
                 return;
             }
 
-            // 其余节点（break/continue/pass/encapsulated）没有子节点
+            // 其余节点（break/continue/pass）没有子节点
         }
     }
 

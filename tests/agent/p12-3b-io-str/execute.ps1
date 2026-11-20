@@ -62,7 +62,7 @@ Write-Host ''
 Write-Host '=== 1. str：数值 -> 字符串 ==='
 
 Invoke-RioCase 'str_ints' @'
-import(strings="str")
+import "str"
 sout(intToStr(0))
 sout(intToStr(7))
 sout(intToStr(-45))
@@ -70,7 +70,7 @@ sout(intToStr(12345))
 '@ "0`n7`n-45`n12345"
 
 Invoke-RioCase 'str_floats' @'
-import(strings="str")
+import "str"
 sout(floatToStr(3.14))
 sout(floatToStr(2.5))
 sout(floatToStr(-1.5))
@@ -79,7 +79,7 @@ sout(floatToStr(10.0))
 
 # toStr 用重载按静态类型分派（泛型做不到类型分派，any 会截断 float）
 Invoke-RioCase 'str_toStr_overloads' @'
-import(strings="str")
+import "str"
 sout(toStr(42))
 sout(toStr(3.14))
 sout(toStr(true))
@@ -91,7 +91,7 @@ Write-Host ''
 Write-Host '=== 2. str：子串 / 查找 / 大小写 / 替换 / 切分 / 修剪 ==='
 
 Invoke-RioCase 'str_subStr' @'
-import(strings="str")
+import "str"
 sout("[" + subStr("hello world", 6, 5) + "]")
 sout("[" + subStr("hello", 1) + "]")
 sout("[" + subStr("hello", 0, 0) + "]")
@@ -99,7 +99,7 @@ sout("[" + subStr("hello", 99, 3) + "]")
 '@ "[world]`n[ello]`n[]`n[]"
 
 Invoke-RioCase 'str_find' @'
-import(strings="str")
+import "str"
 sout(find("hello world", "world"))
 sout(find("hello", "xyz"))
 sout(find("aaa", "a"))
@@ -107,21 +107,21 @@ sout(find("hello", "l", 3))
 '@ "6`n-1`n0`n3"
 
 Invoke-RioCase 'str_case' @'
-import(strings="str")
+import "str"
 sout(toUpperCase("hello"))
 sout(toLowerCase("WORLD"))
 sout(toUpperCase("a1b2"))
 '@ "HELLO`nworld`nA1B2"
 
 Invoke-RioCase 'str_replace' @'
-import(strings="str")
+import "str"
 sout(replace("aXbXc", "X", "-"))
 sout(replace("aXbXc", "X", "-", true))
 sout(replace("hello", "z", "y"))
 '@ "a-b-c`na-bXc`nhello"
 
 Invoke-RioCase 'str_split' @'
-import(strings="str")
+import "str"
 var p: list[str] = split("a,b,c", ",")
 sout(core_str_len(p))
 sout(p[0])
@@ -131,7 +131,7 @@ sout(core_str_len(q))
 '@ "3`na`nc`n2"
 
 Invoke-RioCase 'str_chunk' @'
-import(strings="str")
+import "str"
 var c: list[str] = chunk("abcdef", 2)
 sout(core_str_len(c))
 sout(c[0])
@@ -141,7 +141,7 @@ sout(c[2])
 # 用 [] 包住结果：$actual 末尾会被 .Trim() 吃掉，裸打印分不清
 # 「空串」和「只有空格的串」，也分不清 trim(...,false) 的尾随空格。
 Invoke-RioCase 'str_trim' @'
-import(strings="str")
+import "str"
 sout("[" + trim("  hi  ") + "]")
 sout("[" + trim("xxhixx", "x") + "]")
 sout("[" + trim("  hi  ", " ", true, false) + "]")
@@ -155,7 +155,7 @@ Write-Host '=== 3. str：字符 <-> 整数 ==='
 # 2026-11-16 用户裁决：intToChar 恢复原仓库的 `char` 返回类型；charToInt 保留
 # str 重载但要求长度恰为 1（否则运行时抛错），不再静默返回首字节。
 Invoke-RioCase 'str_char_int' @'
-import(strings="str")
+import "str"
 sout(toChar("A"))
 sout(charToInt("A"))
 sout(intToChar(66))
@@ -164,7 +164,7 @@ sout(toChar(""))
 
 # charToInt 的三种入参形式必须等价，且 char 与 int 分派正确。
 Invoke-RioCase 'str_charToInt_overloads' @'
-import(strings="str")
+import "str"
 var c: char = 'A'
 sout(charToInt(65))
 sout(charToInt(c))
@@ -176,7 +176,7 @@ sout(charToInt(true))
 $multiFile = Join-Path $work 'str_charToInt_multichar.rio'
 $multiExe = Join-Path $work 'str_charToInt_multichar.exe'
 [System.IO.File]::WriteAllText($multiFile, @'
-import(strings="str")
+import "str"
 sout(charToInt("true"))
 '@, $utf8NoBom)
 if (Test-Path $multiExe) { Remove-Item $multiExe -Force }
@@ -194,7 +194,7 @@ Write-Host ''
 Write-Host '=== 4. str：size 对 str / list / dict 通用 ==='
 
 Invoke-RioCase 'str_size' @'
-import(strings="str")
+import "str"
 sout(size("hello"))
 sout(size([1, 2, 3]))
 sout(size({"k": 1}))
@@ -204,7 +204,7 @@ Write-Host ''
 Write-Host '=== 5. io：sin / input ==='
 
 Invoke-RioCase 'io_input_prompt' @'
-import(io="io")
+import "io"
 sout("before")
 '@ "before"
 
@@ -212,7 +212,7 @@ sout("before")
 $inFile = Join-Path $work 'stdin.txt'
 [System.IO.File]::WriteAllText($inFile, "hello world`r`n", $utf8NoBom)
 $inputSrc = @'
-import(io="io")
+import "io"
 var s: str = input("")
 sout(core_str_len(s))
 sout(s)
@@ -234,7 +234,7 @@ Write-Host ''
 Write-Host '=== 6. 跨模块组合（str + io） ==='
 
 Invoke-RioCase 'combo_str_io' @'
-import(strings="str", io="io")
+import("str", "io")
 sout(toUpperCase(subStr("hello world", 0, 5)))
 sout(intToStr(size("abcd")))
 sout(replace(trim("  a b  "), " ", "_"))
@@ -246,7 +246,7 @@ Write-Host '=== 7. UTF-8 多字节字符不被切坏 ==='
 # 旧版 subStr 靠逐字符 setType 拼接，多字节字符会被拆成单字节后重新组装，
 # 新版按字节切 + 拷内存，天然保留原始字节序列。
 Invoke-RioCase 'utf8_substr' @'
-import(strings="str")
+import "str"
 sout(subStr("中文测试", 0, 6))
 sout(subStr("中文测试", 6, 6))
 sout(core_str_len("中文测试"))
@@ -297,7 +297,7 @@ sout(mk()[0])
 # 而同时 import ds 时又「碰巧」能用 —— 这类依赖只有单独 import 才暴露。
 # 所以这里刻意**只 import str**，不 import ds。
 Invoke-RioCase 'str_selfcontained_dict_fmt' @'
-import(sm="str")
+import "str"
 sout(toStr({"a": 1}))
 sout(toStr([1, 2]))
 '@ "{a: 1}`n[1, 2]"

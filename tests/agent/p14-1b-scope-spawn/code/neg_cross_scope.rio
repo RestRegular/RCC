@@ -1,5 +1,4 @@
 // 负面：内层 scope 里用外层句柄 spawn -> 跨层，编译期拒绝
-fun sout(*args: any, end="\n"): void { encapsulated }
 fun work(p: ptr): void { }
 fun main(): void {
     var a: ptr = core_alloc(16, 8)

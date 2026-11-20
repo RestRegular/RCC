@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
-import cycb
+import "cycb"
 fun ca(): int { ret 1 }

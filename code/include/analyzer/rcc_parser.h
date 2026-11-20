@@ -33,6 +33,9 @@ namespace parser {
 
         // 解析状态
         bool isInDictRanger = false;
+        // 当前是否在 builtin 类的类体里（嵌套计数）。builtin 类的方法可省略
+        // builtin 标签（2026-11-20）；无体函数声明据此升格成内建声明。
+        int _builtinClassDepth = 0;
 
         // 词法分析结果
         std::queue<std::shared_ptr<Token>> _tokens;
@@ -130,7 +133,6 @@ namespace parser {
         ExpressionNodePtr buildWhileExpression();
         ExpressionNodePtr buildUntilExpression();
         ExpressionNodePtr buildPassExpression();
-        ExpressionNodePtr buildEncapsulatedExpression();
         ExpressionNodePtr buildConstructorExpression();
         ExpressionNodePtr buildDictionaryExpression();
         ExpressionNodePtr buildListExpression();

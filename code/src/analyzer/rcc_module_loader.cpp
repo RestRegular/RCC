@@ -1,5 +1,5 @@
 //
-// rcc_module_loader.cpp —— 编译期模块内联（P8）
+// rcc_module_loader.cpp —— 编译期模块内联（P8）+ 符号可见性隔离（2026-11-20）
 //
 // 见 rcc_module_loader.h 的设计说明。
 //
@@ -8,12 +8,15 @@
 
 #include <cctype>
 #include <filesystem>
+#include <map>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 
 #include "../../include/analyzer/rcc_lexer.h"
 #include "../../include/analyzer/rcc_parser.h"
+#include "../../include/analyzer/rcc_symbol_export.h"
 #include "../../include/lib/rcc_utils.h"
 #include "../../include/rcc_base.h"
 
@@ -24,7 +27,6 @@ namespace analyzer
         namespace fs = std::filesystem;
 
         // 规范化绝对路径，作为「同一个模块」的判据。
-        // Windows 下大小写不敏感，统一转小写，避免 ds.rio / DS.rio 被当成两个。
         std::string canonicalPath(const std::string& path)
         {
             std::error_code ec;
@@ -58,8 +60,24 @@ namespace analyzer
             return fs::path(path).filename().string();
         }
 
-        // ext_info.json 里的 "main" 字段。这里不引 RJson（那是 legacy 层），
-        // 用最小的字符串扫描：找到 "main" 键后取后面第一个字符串字面量。
+        // 从模块路径派生一个稳定的私有符号前缀（如 str -> __str）。
+        std::string prefixOf(const std::string& moduleName)
+        {
+            std::string name = moduleName;
+            if (name.size() >= 2 && name.front() == '"' && name.back() == '"')
+                name = name.substr(1, name.size() - 2);
+            std::string base = fs::path(name).stem().string();
+            if (base.empty()) base = "mod";
+            std::string p;
+            for (char c : base)
+            {
+                if (std::isalnum(static_cast<unsigned char>(c))) p += c;
+                else p += '_';
+            }
+            return "__" + p + "_";
+        }
+
+        // ext_info.json 里的 "main" 字段。
         std::string readExtInfoMain(const std::string& jsonPath)
         {
             const std::string content = utils::readFile(jsonPath);
@@ -76,24 +94,29 @@ namespace analyzer
 
         struct ImportRef
         {
-            // 模块名（可能带 .rio 后缀或子路径）
             std::string moduleName;
-            // import(alias="mod") 里的 alias；普通 import 写法为空
             std::string alias;
         };
 
         using StatementPtr = std::shared_ptr<ast::StatementNode>;
         using StatementList = std::vector<StatementPtr>;
 
-        // 顶层语句剥掉 ExpressionStatementNode 外壳，取里面的表达式。
         std::shared_ptr<ast::ExpressionNode> expressionOf(const StatementPtr& stmt)
         {
             if (!stmt) return nullptr;
             if (const auto exprStmt = std::dynamic_pointer_cast<ast::ExpressionStatementNode>(stmt))
-            {
                 return exprStmt->getExpression();
-            }
             return nullptr;
+        }
+
+        // 从语句里取出字符串字面量（import "str" 的第二条语句）。
+        std::string stringOf(const StatementPtr& stmt)
+        {
+            const auto expr = expressionOf(stmt);
+            if (!expr) return {};
+            if (const auto str = std::dynamic_pointer_cast<ast::StringLiteralNode>(expr))
+                return str->literalString();
+            return {};
         }
 
         std::string identifierOf(const StatementPtr& stmt)
@@ -101,15 +124,91 @@ namespace analyzer
             const auto expr = expressionOf(stmt);
             if (!expr) return {};
             if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(expr))
-            {
                 return id->getName();
-            }
             return {};
         }
 
-        // `export(...)` / `export a, b` 在合并后必须整条丢掉：
-        // 模块被内联之后所有顶层定义都已经是同一翻译单元里的普通定义，
-        // export 没有语义；留着它会变成对未定义符号 export 的调用（链接失败）。
+        // --- 顶层符号发现 ----------------------------------------------------
+
+        struct ModuleSymbols
+        {
+            std::vector<std::string> all;      // 所有顶层可见候选符号
+            std::set<std::string> hidden;      // 被 hidden 修饰的符号
+        };
+
+        bool hasHiddenLabel(const std::vector<std::shared_ptr<ast::LabelNode>>& labels)
+        {
+            for (const auto& l : labels)
+                if (l && l->getFullLabel() == "hidden") return true;
+            return false;
+        }
+
+        void discoverSymbols(const std::shared_ptr<ast::ProgramNode>& program,
+                             ModuleSymbols& out)
+        {
+            if (!program) return;
+            auto add = [&](const std::string& name, bool hidden) {
+                if (name.empty()) return;
+                out.all.push_back(name);
+                if (hidden) out.hidden.insert(name);
+            };
+            for (const auto& stmt : program->getStatements())
+            {
+                const auto expr = expressionOf(stmt);
+                if (!expr) continue;
+                if (const auto fn = std::dynamic_pointer_cast<ast::FunctionDefinitionNode>(expr))
+                {
+                    std::string name;
+                    const auto callNode = fn->getCallNode();
+                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(callNode))
+                        name = id->getName();
+                    else if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(callNode))
+                    {
+                        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(call->getLeftNode()))
+                            name = id->getName();
+                        else if (const auto index = std::dynamic_pointer_cast<ast::IndexExpressionNode>(call->getLeftNode()))
+                            if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(index->getLeftNode()))
+                                name = id->getName();
+                    }
+                    else if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(callNode))
+                        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(infix->getLeftNode()))
+                            name = id->getName();
+                    add(name, fn->hidden() || hasHiddenLabel(fn->getLabelNodes()));
+                }
+                else if (const auto var = std::dynamic_pointer_cast<ast::VariableDefinitionNode>(expr))
+                {
+                    for (const auto& vd : var->getVarDefs())
+                    {
+                        if (!vd) continue;
+                        const auto id = vd->getNameNode();
+                        if (!id) continue;
+                        add(id->getName(), hasHiddenLabel(vd->getLabelNodes()));
+                    }
+                }
+                else if (const auto cls = std::dynamic_pointer_cast<ast::ClassDefinitionNode>(expr))
+                {
+                    std::string name;
+                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(cls->getNameNode()))
+                        name = id->getName();
+                    else if (const auto idx = std::dynamic_pointer_cast<ast::IndexExpressionNode>(cls->getNameNode()))
+                        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(idx->getLeftNode()))
+                            name = id->getName();
+                    std::vector<std::shared_ptr<ast::LabelNode>> labels;
+                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(cls->getNameNode()))
+                        labels = id->getLabels();
+                    add(name, hasHiddenLabel(labels));
+                }
+                else if (const auto st = std::dynamic_pointer_cast<ast::StructDefinitionNode>(expr))
+                {
+                    std::string name;
+                    std::vector<std::shared_ptr<ast::LabelNode>> labels;
+                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(st->getNameNode()))
+                    { name = id->getName(); labels = id->getLabels(); }
+                    add(name, hasHiddenLabel(labels));
+                }
+            }
+        }
+
         bool isExportStatement(const StatementPtr& stmt)
         {
             if (identifierOf(stmt) == "export") return true;
@@ -121,46 +220,35 @@ namespace analyzer
             return callee && callee->getName() == "export";
         }
 
-        // `import(dt="datatype", ops="ops")` 的实参收集：
-        // ParenRangerNode 里是逗号连接的一串 AssignmentNode。
-        void collectImportArgs(const std::shared_ptr<ast::ExpressionNode>& node,
-                               std::vector<ImportRef>& out)
+        // --- Token 级私有符号改名 -------------------------------------------
+        // 把模块源码 token 流里的私有符号改名，定义与模块内部引用一起改。
+        // 只改 TOKEN_IDENTIFIER，且跳过紧跟在 '.' 后面的 token（那是别的模块的
+        // 成员/限定符号，不该被本模块的改名影响）。
+
+        std::queue<std::shared_ptr<core::Token>>
+        rewriteTokens(const std::queue<std::shared_ptr<core::Token>>& orig,
+                      const std::map<std::string, std::string>& renameMap)
         {
-            if (!node) return;
-            if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
+            std::vector<std::shared_ptr<core::Token>> toks;
+            for (auto q = orig; !q.empty(); q.pop()) toks.push_back(q.front());
+            bool afterDot = false;
+            for (auto& t : toks)
             {
-                if (infix->getOpToken().getType() == core::TokenType::TOKEN_COMMA)
+                if (!t) continue;
+                const bool isDot = (t->getType() == core::TokenType::TOKEN_DOT);
+                const bool isIdent = (t->getType() == core::TokenType::TOKEN_IDENTIFIER);
+                if (isIdent && !afterDot)
                 {
-                    collectImportArgs(infix->getLeftNode(), out);
-                    collectImportArgs(infix->getRightNode(), out);
-                    return;
+                    const auto it = renameMap.find(t->getValue());
+                    if (it != renameMap.end()) t->setValue(it->second);
                 }
+                // 只有真正的 '.' 影响 afterDot；换行/空白会重置由 lexer 决定是否产 token，
+                // 这里保守起见只对紧接着 DOT 的下一个标识符跳过。
+                afterDot = isDot;
             }
-            if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))
-            {
-                collectImportArgs(paren->getRangerNode(), out);
-                return;
-            }
-            if (const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(node))
-            {
-                const auto pair = assign->getAssignPair();
-                const auto aliasId = std::dynamic_pointer_cast<ast::IdentifierNode>(pair.first);
-                const auto valueStr = std::dynamic_pointer_cast<ast::StringLiteralNode>(pair.second);
-                if (aliasId && valueStr)
-                {
-                    out.push_back({valueStr->literalString(), aliasId->getName()});
-                }
-                else if (const auto plainId = std::dynamic_pointer_cast<ast::IdentifierNode>(pair.second))
-                {
-                    // import(x=mod) 这种少见写法：值不是字符串，退化成标识符名
-                    out.push_back({plainId->getName(), aliasId ? aliasId->getName() : std::string{}});
-                }
-                return;
-            }
-            if (const auto str = std::dynamic_pointer_cast<ast::StringLiteralNode>(node))
-            {
-                out.push_back({str->literalString(), {}});
-            }
+            std::queue<std::shared_ptr<core::Token>> out;
+            for (const auto& t : toks) out.push(t);
+            return out;
         }
 
         class ModuleLoader
@@ -185,51 +273,37 @@ namespace analyzer
 
         private:
             ModuleLoadResult _result;
-            std::set<std::string> _loaded;      // 已内联的文件（规范化路径）
-            std::vector<std::string> _stack;    // 递归栈，用于环检测
+            std::set<std::string> _loaded;
+            std::vector<std::string> _stack;
 
-            // 解析 import 名字 -> 绝对路径。找不到返回空串。
-            // 顺序与 legacy 的 resolveImportedFilePath() 一致：
-            //   1) <RCC>/Lib/builtin/<name>.rio
-            //   2) <RCC>/Lib/<name>/ext_info.json 的 main 字段
-            //   3) 相对导入者所在目录
             std::string resolveModulePath(const std::string& moduleName,
                                           const std::string& importerPath) const
             {
                 std::string name = moduleName;
                 if (name.size() >= 2 && name.front() == '"' && name.back() == '"')
-                {
                     name = name.substr(1, name.size() - 2);
-                }
                 if (name.empty()) return {};
                 const bool hasExt = fs::path(name).has_extension();
                 const std::string withExt = hasExt ? name : name + ".rio";
 
-                // 1) 内置库
                 {
                     const std::string candidate =
                         utils::getAbsolutePath(withExt, base::RCC_BUILTIN_LIB_DIR);
                     if (pathExists(candidate)) return canonicalPath(candidate);
                 }
-
-                // 2) 外部扩展目录 + ext_info.json
                 {
                     const std::string extDir = utils::getAbsolutePath(name, base::RCC_LIB_DIR);
-                    const std::string infoPath =
-                        utils::getAbsolutePath("ext_info.json", extDir);
+                    const std::string infoPath = utils::getAbsolutePath("ext_info.json", extDir);
                     if (pathExists(infoPath))
                     {
                         const std::string entry = readExtInfoMain(infoPath);
                         if (!entry.empty())
                         {
-                            const std::string entryPath =
-                                utils::getAbsolutePath(entry, extDir);
+                            const std::string entryPath = utils::getAbsolutePath(entry, extDir);
                             if (pathExists(entryPath)) return canonicalPath(entryPath);
                         }
                     }
                 }
-
-                // 3) 相对源文件目录
                 {
                     const std::string dir = utils::getFileDirFromPath(importerPath);
                     const std::string candidate = utils::getAbsolutePath(withExt, dir);
@@ -238,8 +312,6 @@ namespace analyzer
                 return {};
             }
 
-            // 把 program 的语句展开成「无 import」的线性语句表；
-            // 被导入模块的语句**原地**替换掉 import 语句，因此依赖总在导入者之前。
             StatementList expandProgram(const std::string& filePath,
                                         const std::shared_ptr<ast::ProgramNode>& program)
             {
@@ -252,27 +324,45 @@ namespace analyzer
                     const auto& stmt = statements[i];
                     if (!stmt) continue;
 
-                    // ---------- 写法 1：`import <name>`（两条相邻语句）----------
+                    // 单行 import：Identifier("import") 后跟一条语句。
                     if (identifierOf(stmt) == "import")
                     {
-                        const std::string name = (i + 1 < statements.size())
-                                                     ? identifierOf(statements[i + 1])
-                                                     : std::string{};
-                        if (name.empty())
-                        {
+                        if (i + 1 >= statements.size())
                             throw std::runtime_error(
-                                "Malformed import statement: 'import' must be followed by a module "
-                                "name (" + posOf(stmt) + ")");
-                        }
-                        for (const auto& s : inlineModule({name, {}}, filePath, stmt))
+                                "Malformed import: expected a module path or alias after 'import' (" +
+                                posOf(stmt) + ")");
+                        const auto& nxt = statements[i + 1];
+                        ImportRef ref;
+                        if (const auto s = stringOf(nxt); !s.empty())
                         {
-                            result.push_back(s);
+                            ref.moduleName = s;             // import "str"
                         }
-                        ++i;  // 跳过模块名那条语句
+                        else if (const auto expr = expressionOf(nxt))
+                        {
+                            if (const auto asg = std::dynamic_pointer_cast<ast::AssignmentNode>(expr))
+                            {
+                                // import lib = "lib"
+                                const auto lhs = std::dynamic_pointer_cast<ast::IdentifierNode>(asg->getAssignPair().first);
+                                const auto rhs = std::dynamic_pointer_cast<ast::StringLiteralNode>(asg->getAssignPair().second);
+                                if (!lhs || !rhs)
+                                    throw std::runtime_error(
+                                        "Malformed aliased import: expected 'import name = \"module\"' (" +
+                                        posOf(stmt) + ")");
+                                ref.alias = lhs->getName();
+                                ref.moduleName = rhs->literalString();
+                            }
+                        }
+                        if (ref.moduleName.empty())
+                            throw std::runtime_error(
+                                "Malformed import: expected \"module\" or name = \"module\" (" +
+                                posOf(stmt) + ")");
+                        for (const auto& s : inlineModule(ref, filePath, stmt))
+                            result.push_back(s);
+                        ++i;  // 跳过模块路径那条语句
                         continue;
                     }
 
-                    // ---------- 写法 2：`import(...)`（一条 FunctionCallNode）----------
+                    // 括号 import：import("str", tlib="./path")
                     if (const auto expr = expressionOf(stmt))
                     {
                         if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(expr))
@@ -285,28 +375,17 @@ namespace analyzer
                                 std::vector<ImportRef> refs;
                                 collectImportArgs(call->getRightNode(), refs);
                                 if (refs.empty())
-                                {
                                     throw std::runtime_error(
-                                        "Malformed import statement: no module specified (" +
-                                        posOf(stmt) + ")");
-                                }
+                                        "Malformed import: no module specified (" + posOf(stmt) + ")");
                                 for (const auto& ref : refs)
-                                {
                                     for (const auto& s : inlineModule(ref, filePath, stmt))
-                                    {
                                         result.push_back(s);
-                                    }
-                                }
                                 continue;
                             }
                         }
                     }
 
                     // export(...) 在合并后没有语义，整条丢掉。
-                    // 裸写形式 `export a, b` 会被 parser 拆成
-                    //   ExpressionStatement(Identifier "export")
-                    //   ExpressionStatement(Infix(',' a, b))
-                    // 所以紧跟着的逗号链也要一起跳过。
                     if (isExportStatement(stmt))
                     {
                         if (identifierOf(stmt) == "export" && i + 1 < statements.size())
@@ -316,14 +395,10 @@ namespace analyzer
                                     std::dynamic_pointer_cast<ast::InfixExpressionNode>(nextExpr))
                             {
                                 if (infix->getOpToken().getType() == core::TokenType::TOKEN_COMMA)
-                                {
                                     ++i;
-                                }
                             }
                             else if (std::dynamic_pointer_cast<ast::IdentifierNode>(nextExpr))
-                            {
                                 ++i;
-                            }
                         }
                         continue;
                     }
@@ -332,52 +407,128 @@ namespace analyzer
                 }
                 return result;
             }
+
+            // 收集 import(...) 括号形式的参数。
+            void collectImportArgs(const std::shared_ptr<ast::ExpressionNode>& node,
+                                   std::vector<ImportRef>& out)
+            {
+                if (!node) return;
+                if (const auto infix = std::dynamic_pointer_cast<ast::InfixExpressionNode>(node))
+                {
+                    if (infix->getOpToken().getType() == core::TokenType::TOKEN_COMMA)
+                    {
+                        collectImportArgs(infix->getLeftNode(), out);
+                        collectImportArgs(infix->getRightNode(), out);
+                        return;
+                    }
+                }
+                if (const auto paren = std::dynamic_pointer_cast<ast::ParenRangerNode>(node))
+                {
+                    collectImportArgs(paren->getRangerNode(), out);
+                    return;
+                }
+                if (const auto assign = std::dynamic_pointer_cast<ast::AssignmentNode>(node))
+                {
+                    const auto pair = assign->getAssignPair();
+                    const auto aliasId = std::dynamic_pointer_cast<ast::IdentifierNode>(pair.first);
+                    const auto valueStr = std::dynamic_pointer_cast<ast::StringLiteralNode>(pair.second);
+                    if (aliasId && valueStr)
+                        out.push_back({valueStr->literalString(), aliasId->getName()});
+                    return;
+                }
+                if (const auto str = std::dynamic_pointer_cast<ast::StringLiteralNode>(node))
+                    out.push_back({str->literalString(), {}});
+            }
+
             StatementList inlineModule(const ImportRef& ref, const std::string& importerPath,
                                        const StatementPtr& importStmt)
             {
                 StatementList empty;
                 const std::string resolved = resolveModulePath(ref.moduleName, importerPath);
+                std::string displayName = ref.moduleName;
+                if (displayName.size() >= 2 && displayName.front() == '"' && displayName.back() == '"')
+                    displayName = displayName.substr(1, displayName.size() - 2);
                 if (resolved.empty())
-                {
                     throw std::runtime_error(
-                        "Cannot find imported module '" + ref.moduleName + "' (imported at " +
+                        "Cannot find imported module '" + displayName + "' (imported at " +
                         posOf(importStmt) + "). Searched " +
                         base::RCC_BUILTIN_LIB_DIR + ", " + base::RCC_LIB_DIR +
                         " and the source file's directory.");
+
+                const std::string prefix = prefixOf(ref.moduleName);
+                // 去重键含前缀：同一模块被不同别名/可见性导入时生成独立副本。
+                const std::string key = resolved + "|" + prefix;
+                rememberName(ref.moduleName);
+                if (!ref.alias.empty())
+                {
+                    rememberAlias(ref.alias);
+                    _result.aliasPrefixes.push_back({ref.alias, prefix});
                 }
 
-                // 记下模块名（含别名），供 codegen 识别 `mod.fn(...)` 限定调用
-                rememberName(ref.moduleName);
-                // 别名（`import(u="utilx")` 里的 u）也是「模块名」的一种：
-                // codegen 的 isModuleName 要靠它识别 `u.twice(21)` 这种限定调用。
-                // 但它不该出现在用户看到的模块清单里（那会显示成导入了一个
-                // 叫 u 的模块）。所以两边分开记。
-                if (!ref.alias.empty()) rememberAlias(ref.alias);
-
-                // 已内联过：不再重复插入语句（同一模块只展开一次）。
-                // 注意顺序：**先**查环、再查去重。否则 A->B->A 这种真环会
-                // 被去重静默吞掉（主文件一开始就在 _loaded 里），看起来像成功。
-                if (_loaded.find(resolved) != _loaded.end())
+                // 先查环、再去重。
+                if (_loaded.find(key) != _loaded.end())
                 {
                     for (const auto& entry : _stack)
-                    {
-                        if (entry == resolved)
+                        if (entry == key)
                         {
                             std::string chain;
                             for (const auto& s : _stack) chain += fileNameOf(s) + " -> ";
                             chain += fileNameOf(resolved);
                             throw std::runtime_error("Recursive import detected: " + chain);
                         }
-                    }
                     return empty;
                 }
-                _loaded.insert(resolved);
+                _loaded.insert(key);
                 _result.files.push_back(resolved);
-                _stack.push_back(resolved);
+                _stack.push_back(key);
+
                 StatementList nested;
                 try
                 {
-                    nested = expandProgram(resolved, parseRioFile(resolved));
+                    // 第一次解析：发现符号 / export / hidden。
+                    const auto firstAst = parseRioFile(resolved);
+                    ModuleSymbols syms;
+                    discoverSymbols(firstAst, syms);
+                    const auto exported = collectExportNames(firstAst);
+                    const std::set<std::string> exportSet(exported.begin(), exported.end());
+
+                    // hidden ∩ export → 编译错误。
+                    for (const auto& h : syms.hidden)
+                        if (exportSet.count(h))
+                            throw std::runtime_error(
+                                "Symbol '" + h + "' in module '" + ref.moduleName +
+                                "' is both 'hidden' and exported — compilation error");
+
+                    // 计算改名表：
+                    //  - 带别名：全部顶层符号改名（外部只能通过 alias.x 访问）
+                    //  - 无别名：有 export 时，仅导出符号保留原名，其余改名；
+                    //            无 export 时，仅 hidden 符号改名。
+                    std::map<std::string, std::string> renameMap;
+                    for (const auto& name : syms.all)
+                    {
+                        // 带别名：全部符号改名，外部只能通过 alias.name 访问（符号隔离）。
+                        // 无别名且有 export：仅导出符号保留原名（全局可见），其余改名。
+                        // 无别名且无 export：仅 hidden 符号改名，其余全局可见。
+                        bool visible;
+                        if (!ref.alias.empty()) visible = false;
+                        else if (exported.empty()) visible = !syms.hidden.count(name);
+                        else visible = exportSet.count(name) > 0;
+                        if (!visible) renameMap[name] = prefix + name;
+                    }
+
+                    // Token 级改名：读源码 -> 改 token -> 重新解析。
+                    lexer::Lexer lexer(resolved);
+                    auto tokens = lexer.tokenize();
+                    auto renamed = rewriteTokens(tokens, renameMap);
+                    parser::Parser parser(std::move(renamed));
+                    const auto parsed = parser.parse();
+                    if (parsed.first || !parsed.second)
+                    {
+                        std::string errors;
+                        for (const auto& msg : parser.getErrorMsgs()) errors += msg + "\n";
+                        throw std::runtime_error("Syntax errors in " + resolved + "\n" + errors);
+                    }
+                    nested = expandProgram(resolved, parsed.second);
                 }
                 catch (...)
                 {
@@ -391,47 +542,29 @@ namespace analyzer
             void rememberName(const std::string& name)
             {
                 if (name.empty()) return;
-                // 去掉 .rio 后缀，只记模块名本身
                 std::string bare = name;
                 if (bare.size() > 4 && bare.substr(bare.size() - 4) == ".rio")
-                {
                     bare = bare.substr(0, bare.size() - 4);
-                }
-                // import(io="io") 的模块名带引号，与裸名 `io` 是同一个模块；
-                // 不剥引号会让 moduleNames 里出现 "io" 和 io 两份。
                 if (bare.size() >= 2 && bare.front() == '"' && bare.back() == '"')
-                {
                     bare = bare.substr(1, bare.size() - 2);
-                }
                 for (const auto& n : _result.moduleNames)
-                {
                     if (n == bare) return;
-                }
                 _result.moduleNames.push_back(bare);
             }
 
-            // 别名只进 codegen 用的名字集合，不进用户可见的模块清单。
             void rememberAlias(const std::string& name)
             {
                 if (name.empty()) return;
                 for (const auto& n : _result.moduleAliases)
-                {
                     if (n == name) return;
-                }
                 _result.moduleAliases.push_back(name);
             }
 
             static std::string posOf(const StatementPtr& stmt)
             {
                 if (!stmt) return "<unknown>";
-                try
-                {
-                    return stmt->getPosStr();
-                }
-                catch (...)
-                {
-                    return "<unknown>";
-                }
+                try { return stmt->getPosStr(); }
+                catch (...) { return "<unknown>"; }
             }
         };
     }
@@ -439,9 +572,7 @@ namespace analyzer
     std::shared_ptr<ast::ProgramNode> parseRioFile(const std::string& filePath)
     {
         if (!pathExists(filePath))
-        {
             throw std::runtime_error("Failed to read file: " + filePath);
-        }
         lexer::Lexer lexer(filePath);
         auto tokens = lexer.tokenize();
         parser::Parser parser(std::move(tokens));
@@ -450,10 +581,7 @@ namespace analyzer
         {
             std::string errors;
             for (const auto& msg : parser.getErrorMsgs())
-            {
-                errors += msg;
-                errors += "\n";
-            }
+                errors += msg + "\n";
             throw std::runtime_error("Syntax errors in " + filePath + "\n" + errors);
         }
         return parsed.second;

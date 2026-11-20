@@ -89,7 +89,6 @@ namespace core {
         TOKEN_DOT,
         TOKEN_ELIF,
         TOKEN_ELSE,
-        TOKEN_ENCAPSULATED,
         TOKEN_EQUAL,
         TOKEN_FALSE,
         TOKEN_FLOAT,

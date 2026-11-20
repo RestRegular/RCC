@@ -1,0 +1,5 @@
+fun publicAdd(a: int, b: int): int { ret a + b }
+fun hiddenHelper(): int hidden { ret 99 }
+var exportedVar: int = 7
+fun privateCalc(x: int): int { ret x * 2 }
+export(publicAdd, exportedVar)

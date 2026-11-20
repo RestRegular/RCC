@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 sout(3.14)
 sout(1.5 + 2.25)

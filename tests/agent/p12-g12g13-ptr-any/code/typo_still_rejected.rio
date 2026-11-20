@@ -1,4 +1,3 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 fun f(a: piont): int {
     ret a
 }

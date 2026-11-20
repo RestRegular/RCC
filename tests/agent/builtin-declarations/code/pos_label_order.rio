@@ -1,0 +1,6 @@
+// 顺序无关：修饰符写在返回类型之前（: builtin void）
+fun sout(*args: any, end="\n"): builtin void
+fun main(): void {
+    sout("order ok")
+}
+main()

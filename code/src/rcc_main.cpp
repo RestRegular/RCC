@@ -33,6 +33,31 @@ namespace
                std::filesystem::is_regular_file(path, ec);
     }
 
+    // 内建声明改造（2026-11-20）：隐式前导声明文件的加载。
+    // 前导文件位于 RCC.exe 同级的 lib/std/builtins.rio（构建时由仓库
+    // lib/std/builtins.rio 拷贝而来）。返回解析出的 AST；找不到返回 nullptr，
+    // 由调用方按「库模式允许缺失、普通构建报库不完整」处理。
+    std::shared_ptr<ast::ProgramNode> loadBuiltinPrelude(std::string& errorOut)
+    {
+        // 与 lib/std/*.rio 的构建时拷贝目标一致：release/Lib/builtin/。
+        const std::string path = getAbsolutePath("./Lib/builtin/builtins.rio", getRCCDir());
+        if (!fileExists(path))
+        {
+            errorOut = "builtin declaration prelude not found: " + path;
+            return nullptr;
+        }
+        lexer::Lexer lexer(path);
+        auto tokens = lexer.tokenize();
+        parser::Parser parser(std::move(tokens));
+        const auto [hasError, program] = parser.parse();
+        if (hasError || !program)
+        {
+            for (const auto& msg : parser.getErrorMsgs()) errorOut += msg + "\n";
+            return nullptr;
+        }
+        return program;
+    }
+
     // 决议 C（2026-11-18 用户裁决第 2、3 条）：扫描**文件级**注释指令
     // `// @allow-cond-destroy`。
     //
@@ -399,9 +424,30 @@ void handleBuildFlag()
                                         scanCondDestroyDirective(sourcePath));
     // 模块名 + 别名都要交给 codegen：isModuleName 用它识别 `mod.fn` / `u.fn`。
     codeGen.setModuleNames(merged.moduleNames, merged.moduleAliases);
+    codeGen.setAliasPrefixes(merged.aliasPrefixes);
     // G1b：入口文件路径（绝对形式）交给后端，供 prog.entry 编译期守卫
     // 判断调用点是否来自入口文件（被 import 的模块内联后仍保留原路径）。
     codeGen.setEntryFilePath(sourcePath);
+    // 内建声明改造（2026-11-20）：自动加载隐式前导声明表。
+    // 库模式（-emit-lib，编译 rt/std 自身）允许前导缺失/为空——那时还没有
+    // 稳定的声明表；普通构建必须加载到声明，否则后续调用点校验会全数失败，
+    // 这里先明确报「库不完整」，给出可操作的提示。
+    std::string preludeError;
+    const auto preludeAst = loadBuiltinPrelude(preludeError);
+    if (!preludeAst)
+    {
+        if (!__emit_lib_flag__)
+            throw std::runtime_error(
+                "Standard library incomplete: " + preludeError +
+                "\nBuild/install lib/std/builtins.rio alongside RCC.exe.");
+    }
+    else
+    {
+        std::string declError;
+        codeGen.registerDeclarations(preludeAst, &declError);
+        if (!declError.empty())
+            throw std::runtime_error("Standard library declaration error: " + declError);
+    }
     std::string codegenError;
     const std::string assembly = codeGen.generate(merged.program, codegenError);
     if (assembly.empty())

@@ -2,7 +2,6 @@
 // struct 返回需要调用方传缓冲区地址（__p5_retbuf 占第一个整型寄存器），
 // 间接调用的目标地址在 %r11、env 在 %r10，没有位置再摆 retbuf。
 // 修前这里是静默错误值（%rax 里其实是别的地址），修后是编译期错误。
-fun sout(*args: any, end="\n"): void { encapsulated }
 struct Pt { var x: int
  var y: int }
 fun main(): void {

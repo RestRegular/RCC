@@ -1,5 +1,5 @@
 // 决议 D：get_mut 元素视图活跃时 listRemove（左移元素）同样必须报错。
-import(ds="ds")
+import ds = "ds"
 fun main(): void {
     var xs = [1, 2, 3]
     var a = xs.get_mut(0)

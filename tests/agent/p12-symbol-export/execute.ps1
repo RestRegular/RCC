@@ -94,7 +94,7 @@ fun g(): void { }
 
 # 覆盖：import 别名 + export 语句（export 会在模块内联时被丢弃，必须前置扫描）
 $calls = Write-Source 'calls' @'
-import(io="io")
+import "io"
 export(helper, Shape, Circle)
 
 class Shape {
@@ -269,7 +269,7 @@ Check '内置库导出非空' ($builtin -match 'Symbol table')
 # 不会有 Modules 行 —— 这里改用一个真的 import 了内置库的源文件来验证内联。
 $modSrc = Join-Path $work 'mod_inline.rio'
 $null = New-Item -ItemType Directory -Force -Path $work
-[System.IO.File]::WriteAllText($modSrc, "import(ds=`"ds`")`nvar xs: list[int] = [3, 1, 2]`nsout(top(xs))`n")
+[System.IO.File]::WriteAllText($modSrc, "import `"ds`"`nvar xs: list[int] = [3, 1, 2]`nsout(top(xs))`n")
 $modOut = & $rcc -s --path $modSrc --fmt text 2>&1 | Out-String
 Check '导入内置库报出模块名' ($modOut -match 'Modules:.*ds')
 

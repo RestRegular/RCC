@@ -1,4 +1,3 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var fs = [1.5, 2.5, 3.5]
 sout(fs[0])
 sout(fs[2])

@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var quad = (a, b, c, d) -> { ret a + b * 2 + c * 3 + d * 4 }
 sout(quad(1, 2, 3, 4))

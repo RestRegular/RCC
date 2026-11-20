@@ -1,5 +1,4 @@
 // 正向：scope 内两个 spawn，块末 join，两个跨线程 free 计数平衡
-fun sout(*args: any, end="\n"): void { encapsulated }
 
 fun work(p: ptr): void {
     core_mem_set(p, 7, 8)

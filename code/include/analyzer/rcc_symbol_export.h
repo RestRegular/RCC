@@ -119,12 +119,24 @@ namespace analyzer
         // 不做符号决议：导出器没有类型系统，索引工具要的是「提到了哪些名字」。
         std::vector<std::string> calls;
 
-        // 实现由运行时（rt.o）提供的 `{ encapsulated }` 函数。
-        // 这类函数符号是裸名，且不参与重载计数。
+        // 实现由编译器特化或运行时（rt.o/extern）提供的无体声明函数。
+        // 由 Rio 源码的 builtin / extern 标签修饰；符号是裸名，不参与重载计数。
+        // （字段名沿用历史名 encapsulated，语义已随 2026-11-20 改造更新。）
         bool encapsulated = false;
 
         // 是否被 `export(...)` 列出
         bool exported = false;
+
+        // 显式符号属性（2026-11-20）：kind 分类（builtin / extern / normal）
+        // 与可见性。builtin/extern 由标签区修饰（函数/类的 builtin|extern），
+        // visibility 由 public/protected/private 标签给出；顶层符号的对外
+        // 可见性另由 exported/hidden 表达，这里记的是**显式词法可见性**。
+        enum class SymbolAttr { NORMAL, BUILTIN, EXTERN };
+        SymbolAttr attr = SymbolAttr::NORMAL;
+        // 空串 = 未显式标注（继承容器默认）；否则 "public"/"protected"/"private"。
+        std::string visibility;
+        // hidden 标签（对外不可见）。
+        bool hidden = false;
 
         // 是否来自被 import 内联进来的模块文件（而非主文件）
         bool fromModule = false;

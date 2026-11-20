@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var a: str = "你好"
 if a == "你好" { sout("eq") } else { sout("ne") }

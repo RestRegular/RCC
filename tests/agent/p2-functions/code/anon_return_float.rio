@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var half = (x) -> { ret x / 2.0 }
 sout(half(5.0))

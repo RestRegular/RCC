@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var triple = (x) -> x * 3
 sout(triple(7))

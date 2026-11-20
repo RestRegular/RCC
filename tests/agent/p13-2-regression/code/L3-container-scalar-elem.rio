@@ -1,5 +1,4 @@
 // 对照：非 struct 元素的容器全部正常（确认拒绝没有误伤）
-fun sout(*args: any, end="\n"): void { encapsulated }
 fun main(): void {
     var xs: list[int] = [1, 2, 3]
     sout(xs[0])

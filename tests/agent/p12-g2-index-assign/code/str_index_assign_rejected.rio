@@ -1,4 +1,3 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var s: str = "hello"
 s[1] = "X"
 sout(s)

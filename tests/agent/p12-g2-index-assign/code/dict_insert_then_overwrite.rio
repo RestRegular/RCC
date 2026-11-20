@@ -1,4 +1,3 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 var d = {"a": 1}
 d["z"] = 5
 d["z"] = 6

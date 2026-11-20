@@ -1,0 +1,8 @@
+// 修饰符写在返回类型之前：: builtin ptr —— 顺序无关，应正确解析
+fun core_alloc(size: int, align: int): builtin ptr
+fun main(): void {
+    var p: ptr = core_alloc(8, 8)
+    core_free(p)
+    sout("order ok")
+}
+main()

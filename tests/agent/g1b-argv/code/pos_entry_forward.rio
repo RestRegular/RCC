@@ -1,4 +1,4 @@
-import(prog="prog")
+import prog = "prog"
 fun cb(x: int, s: str) {
     sout("cb ", x, " ", s)
 }

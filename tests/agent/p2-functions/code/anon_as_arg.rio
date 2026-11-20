@@ -1,3 +1,2 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 fun apply(f, x) { ret f(x) }
 sout(apply((n) -> { ret n * n }, 5))

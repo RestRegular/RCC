@@ -64,7 +64,8 @@ namespace backend
             if (isLifecycleLabel(name))
                 return true;
             static const std::unordered_set<std::string> kModifiers = {
-                "public", "private", "protected", "builtin", "const", "quote", "overwrite", "interface", "virtual"};
+                "public", "private", "protected", "builtin", "extern", "const", "quote", "hidden",
+                "overwrite", "interface", "virtual"};
             return kModifiers.count(name) > 0;
         }
         // 从形如 "a: int" 的标签里取类型名。
@@ -2926,24 +2927,9 @@ namespace backend
                 sig.retType = inferred;
             }
         }
-        // 函数体只有一个 encapsulated：实现由运行时提供，符号必须保持裸名。
-        if (const auto bodyBlock = std::dynamic_pointer_cast<ast::BlockRangerNode>(node->getBodyNode()))
-        {
-            bool onlyEncapsulated = !bodyBlock->getBodyExpressions().empty();
-            for (const auto& e : bodyBlock->getBodyExpressions())
-            {
-                if (!std::dynamic_pointer_cast<ast::EncapsulatedExpressionNode>(e))
-                {
-                    onlyEncapsulated = false;
-                    break;
-                }
-            }
-            sig.encapsulated = onlyEncapsulated;
-        }
-        else if (std::dynamic_pointer_cast<ast::EncapsulatedExpressionNode>(node->getBodyNode()))
-        {
-            sig.encapsulated = true;
-        }
+        // 内建声明改造（2026-11-20）：encapsulated 已移除。原语/内建声明
+        // 现在是带 builtin/extern 修饰符的无体函数，在 emitProgram 里登记到
+        // _declaredBuiltins，不经过 collectSignature 的 encapsulated 判定。
         return sig;
     }
     void CodeGen::registerOverloadSignatures(const std::vector<std::shared_ptr<ast::FunctionDefinitionNode>>& fns)
@@ -2985,9 +2971,6 @@ namespace backend
             }
             // 泛型声明走 P10 自己的路径：模板本身不发射，也不会和重载集混在一起。
             if (!sig.genericParams.empty())
-                continue;
-            // encapsulated 由 rt.o 提供实现，符号是裸名，不参与重载计数。
-            if (sig.encapsulated)
                 continue;
             // 编译器特化的名字不参与重载：
             //   main  -> 固定发射成 __rio_user_main
@@ -3881,6 +3864,56 @@ namespace backend
                         }
                     }
                     const std::string owner = classNameOf(member->getLeftNode());
+                    // 2026-11-20：静态方法 B.f() 的返回类型从 static 方法定义推。
+                    // 左侧是类名（findClass 命中）且重载集里有 static 成员时生效。
+                    if (mid)
+                    {
+                        const auto clsId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+                        if (clsId && findClass(clsId->getName()))
+                        {
+                            const auto ovl = collectMethodOverloads(clsId->getName(), mid->getName());
+                            // 按实参类型做与发射端一致的重载决议，取返回类型。
+                            std::vector<std::shared_ptr<ast::ExpressionNode>> callArgs;
+                            if (const auto an = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))
+                                collectArgs(an, callArgs);
+                            std::vector<sema::TypePtr> actual;
+                            for (const auto& a : callArgs) actual.push_back(inferType(a));
+                            const MethodRef* best = nullptr;
+                            std::vector<sema::TypePtr> bestTypes;
+                            int bestScore = -1;
+                            for (const auto& ov : ovl)
+                            {
+                                if (!ov.def || !ov.def->isStatic()) continue;
+                                std::vector<std::string> pn;
+                                std::vector<sema::TypePtr> pt;
+                                if (const auto inner = std::dynamic_pointer_cast<ast::FunctionCallNode>(ov.def->getCallNode()))
+                                    if (const auto an2 = std::dynamic_pointer_cast<ast::ExpressionNode>(inner->getRightNode()))
+                                    {
+                                        collectParamNamesT(an2, pn);
+                                        collectParamTypesT(an2, pt);
+                                    }
+                                while (pt.size() < pn.size()) pt.push_back(sema::getIntType());
+                                if (pt.size() != actual.size()) continue;
+                                int score = 0; bool ok = true;
+                                for (size_t i = 0; i < actual.size(); ++i)
+                                {
+                                    const int s = overloadScore(pt[i], actual[i], true);
+                                    if (s < 0) { ok = false; break; }
+                                    score += s;
+                                }
+                                if (ok && score > bestScore) { bestScore = score; best = &ov; bestTypes = pt; }
+                            }
+                            const MethodRef* chosen = best ? best : (ovl.empty() ? nullptr : &ovl.front());
+                            if (chosen && chosen->def)
+                            {
+                                std::vector<std::string> pn;
+                                if (const auto inner = std::dynamic_pointer_cast<ast::FunctionCallNode>(chosen->def->getCallNode()))
+                                    if (const auto an2 = std::dynamic_pointer_cast<ast::ExpressionNode>(inner->getRightNode()))
+                                        collectParamNamesT(an2, pn);
+                                return methodReturnType(chosen->def, pn, bestTypes, chosen->owner);
+                            }
+                        }
+                    }
                     // P13-2（docs §B）：`x.clone()` 的静态类型就是接收者类型。
                     // 必须排在 classNameOf 之后、owner 判空之前：str/list 是
                     // 内置类型（owner 为空），落到 return int 会让
@@ -4415,7 +4448,7 @@ namespace backend
         _functionParams.clear();
         _functionReturns.clear();
         // P11：重载表。_functionParamNames / _functionDefaults /
-        // _functionParamAnnotated / _encapsulatedFunctions / _hasUserMain
+        // _functionParamAnnotated / _declaredBuiltins / _hasUserMain
         // 历史上就没有在这里清（同一 CodeGen 实例只 generate 一次），
         // 新表必须清，否则第二次 generate 会看到上一次的候选集。
         _overloads.clear();
@@ -4550,6 +4583,91 @@ namespace backend
         }
         _asm.inst("movsd", label + "(%rip)", "%xmm0");
     }
+    int CodeGen::registerDeclarations(const std::shared_ptr<ast::ProgramNode>& prelude,
+                                      std::string* errorOut)
+    {
+        // 内建声明改造（2026-11-20）：扫描前导声明文件的顶层语句，收集所有
+        // 带 builtin / extern 修饰符的无体函数声明，登记它们的名字。
+        // 条目带 kind（"builtin"/"extern"），供诊断说明来源；重复名字幂等，
+        // 先到先得（前导文件内部重复声明属于库自身的 bug，另由回归覆盖）。
+        if (!prelude) return 0;
+        int added = 0;
+        // builtin 类方法的基本签名合法性校验辅助：类型名必须能被识别。
+        auto recognizableType = [](const sema::TypePtr& t) {
+            return t && t->getKind() != sema::TypeKind::TK_UNKNOWN &&
+                   t->getKind() != sema::TypeKind::TK_VOID; // void 只允许作返回类型
+        };
+        auto reportError = [&](const utils::Pos& pos, const std::string& msg) {
+            const std::string text = posPrefix(pos) + msg;
+            if (errorOut) { if (errorOut->empty()) *errorOut = text; }
+            else fail(text);
+        };
+        for (const auto& stmt : prelude->getStatements())
+        {
+            if (!stmt) continue;
+            const auto exprStmt = std::dynamic_pointer_cast<ast::ExpressionStatementNode>(stmt);
+            if (!exprStmt) continue;
+            // builtin 类：方法声明做基本签名校验（类型可解析、标签合法）。
+            if (const auto cls = std::dynamic_pointer_cast<ast::ClassDefinitionNode>(exprStmt->getExpression()))
+            {
+                bool clsBuiltin = false;
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(cls->getNameNode()))
+                    for (const auto& l : id->getLabels())
+                        if (l && l->getFullLabel() == "builtin") { clsBuiltin = true; break; }
+                if (!clsBuiltin) continue;
+                if (const auto block = std::dynamic_pointer_cast<ast::BlockRangerNode>(cls->getBodyNode()))
+                {
+                    for (const auto& e : block->getBodyExpressions())
+                    {
+                        const auto fn = std::dynamic_pointer_cast<ast::FunctionDefinitionNode>(e);
+                        if (!fn) continue;
+                        // 返回类型：取标签区里第一个「类型标签」（跳过修饰符/子句）。
+                        // `any` 是合法标签但 resolveTypeName 故意映射成 UNKNOWN，
+                        // 所以单独记一个 isAny 标记来区分它与真正的未知类型名。
+                        sema::TypePtr ret = sema::getVoidType();
+                        bool sawTypeLabel = false;
+                        bool retIsAny = false;
+                        bool retValid = true;
+                        for (const auto& l : fn->getLabelNodes())
+                        {
+                            if (!l) continue;
+                            const std::string full = l->getFullLabel();
+                            if (full.empty() || isNonTypeLabel(full) || full == "from" ||
+                                full == "writes" || full == "ensures") continue;
+                            sawTypeLabel = true;
+                            retIsAny = (full == "any");
+                            auto t = typeFromLabelNode(l, _currentGenericParams);
+                            retValid = t && (recognizableType(t) || retIsAny ||
+                                             t->getKind() == sema::TypeKind::TK_VOID);
+                            ret = t ? t : sema::getUnknownType();
+                            break;
+                        }
+                        if (sawTypeLabel && !retValid)
+                            reportError(fn->getPos(), "builtin method declaration has an invalid return type");
+                    }
+                }
+                continue;
+            }
+            const auto fn = std::dynamic_pointer_cast<ast::FunctionDefinitionNode>(exprStmt->getExpression());
+            if (!fn || !fn->isDeclaration()) continue;
+            // 名字提取规则与 collectSignature 一致。
+            std::string name;
+            if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(fn->getCallNode()))
+                name = id->getName();
+            else if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(fn->getCallNode()))
+                if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(call->getLeftNode()))
+                    name = id->getName();
+            if (name.empty()) continue;
+            const std::string kind = fn->isBuiltin() ? "builtin" : "extern";
+            if (!_declaredBuiltins.count(name))
+            {
+                _declaredBuiltins[name] = kind;
+                ++added;
+            }
+        }
+        return added;
+    }
+
     void CodeGen::emitProgram(const std::shared_ptr<ast::ProgramNode>& program)
     {
         // 第一遍：按语句种类分流。注意这里**不立即**发射函数体：
@@ -4574,6 +4692,24 @@ namespace backend
                 continue;
             if (const auto fn = std::dynamic_pointer_cast<ast::FunctionDefinitionNode>(expr))
             {
+                // 内建声明改造：源码里的 builtin/extern 无体声明登记进声明表，
+                // 不进入函数体发射队列。
+                if (fn->isDeclaration())
+                {
+                    std::string dname;
+                    if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(fn->getCallNode()))
+                        dname = id->getName();
+                    else if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(fn->getCallNode()))
+                        if (const auto id = std::dynamic_pointer_cast<ast::IdentifierNode>(call->getLeftNode()))
+                            dname = id->getName();
+                    if (!dname.empty())
+                    {
+                        const std::string kind = fn->isBuiltin() ? "builtin" : "extern";
+                        _sourceDeclarations[dname] = kind;
+                        if (!_declaredBuiltins.count(dname)) _declaredBuiltins[dname] = kind;
+                    }
+                    continue;
+                }
                 functionNodes.push_back(fn);
                 continue;
             }
@@ -4948,9 +5084,8 @@ namespace backend
             emitContinue();
             return;
         }
-        // pass / encapsulated
-        if (std::dynamic_pointer_cast<ast::PassExpressionNode>(node) ||
-            std::dynamic_pointer_cast<ast::EncapsulatedExpressionNode>(node))
+        // pass
+        if (std::dynamic_pointer_cast<ast::PassExpressionNode>(node))
         {
             return;
         }
@@ -5191,10 +5326,9 @@ namespace backend
             emitContinue();
             return;
         }
-        if (std::dynamic_pointer_cast<ast::PassExpressionNode>(node) ||
-            std::dynamic_pointer_cast<ast::EncapsulatedExpressionNode>(node))
+        if (std::dynamic_pointer_cast<ast::PassExpressionNode>(node))
         {
-            // pass / encapsulated 作为语句无副作用
+            // pass 作为语句无副作用
             return;
         }
         // ---------- P7：异常 ----------
@@ -11451,7 +11585,7 @@ namespace backend
         // 判定直接调用还是经由函数值间接调用：
         //   * 标识符且是 sout              -> sout 特化
         //   * 标识符且是当前作用域里的局部变量 -> 槽位里放着函数值，间接调用
-        //   * 标识符且不是局部变量           -> 直接调用（含 extern/encapsulated，
+        //   * 标识符且不是局部变量           -> 直接调用（含 extern/builtin 声明，
         //                                      它们的签名可能不在本文件里，
         //                                      不能因为「不认识」就当成间接调用）
         //   * 被调者是任意其它表达式         -> 间接调用
@@ -11481,7 +11615,7 @@ namespace backend
                             emitProgArgsCall(node);
                             return;
                         }
-                        emitModuleFunctionCall(fnId->getName(), node, args);
+                        emitModuleFunctionCall(fnId->getName(), node, args, modId->getName());
                         return;
                     }
                 }
@@ -11751,6 +11885,9 @@ namespace backend
                     _asm.addRsp(32);
                     return;
                 }
+                // 静态方法 B.f()：左侧是类名、方法带 static 标签。优先于实例分派。
+                if (emitStaticMethodCall(member, node, args))
+                    return;
                 emitMethodCall(member, node, args);
                 return;
             }
@@ -11758,6 +11895,12 @@ namespace backend
         if (const auto calleeId = std::dynamic_pointer_cast<ast::IdentifierNode>(callee))
         {
             const std::string n = calleeId->getName();
+            // 内建声明改造（2026-11-20）：这些名字走编译器特化，仍需有对应声明。
+            static const std::unordered_set<std::string> kBareSpecialized = {
+                "sout", "serr", "soutv", "super", "entry"
+            };
+            if (kBareSpecialized.count(n) && !requireBuiltinDeclaration(n, node->getPos()))
+                return;
             // sout / serr 特化：serr 是 standard error output，与 sout 完全同构，
             // 仅目标 fd 不同（stdout=1 / stderr=2）。
             if (n == "sout")
@@ -11845,6 +11988,7 @@ namespace backend
                 // `ret clone(trueValue)` 比方法形式更自然，且 `T` 没有方法表。
                 if (n == "clone" && args.size() == 1)
                 {
+                    if (!requireBuiltinDeclaration("clone", node->getPos())) return;
                     const auto recvType = inferType(args[0]);
                     if (!recvType)
                     {
@@ -11911,6 +12055,11 @@ namespace backend
                                "builtin/runtime names are reserved");
                     return;
                 }
+                // 内建声明改造：core_* / rt_* 运行时原语虽是合法调用，但仍需在
+                // 声明表里有对应条目（惰性核对，库不完整即硬错误）。
+                if ((n.rfind("core_", 0) == 0 || n.rfind("rt_", 0) == 0) &&
+                    !requireBuiltinDeclaration(n, node->getPos()))
+                    return;
                 fname = n;
             }
         }
@@ -12096,13 +12245,26 @@ namespace backend
         }
         _asm.mov("__rio_argv_list(%rip)", "%rax");
     }
+    bool CodeGen::requireBuiltinDeclaration(const std::string& name, const utils::Pos& pos)
+    {
+        if (_declaredBuiltins.count(name)) return true;
+        // 库模式自举（rt.rio 自身定义 rt_*）允许缺失——那时还没有前导表。
+        if (_libraryMode) return true;
+        failAt(pos,
+               "call to builtin '" + name +
+               "' without a declaration — the standard library is incomplete: "
+               "add 'fun " + name + "(...) builtin' or '... extern' to the builtin "
+               "declaration file (label region, e.g. ': void builtin')");
+        return false;
+    }
+
     bool CodeGen::isKnownCallable(const std::string& name) const
     {
         // 内建严格化（2026-11-20 裁决）：未声明的函数不可「凭空调用」。
         // 下面任何一张表命中、或属于白名单形态，都视为已声明。
         // 用户函数（含前向调用：registerOverloadSignatures 在发射函数体前预登记）
         if (_functionParams.count(name) || _functionReturns.count(name) ||
-            _allFunctionDefs.count(name) || _encapsulatedFunctions.count(name))
+            _allFunctionDefs.count(name) || _declaredBuiltins.count(name))
             return true;
         // 重载 / 泛型
         if (_overloadedNames.count(name) || _overloads.count(name) || _genericFunctions.count(name))
@@ -12603,33 +12765,46 @@ namespace backend
         (void)hasKeyword;
     }
     void CodeGen::emitModuleFunctionCall(const std::string& fname, const std::shared_ptr<ast::ExpressionNode>& callNode,
-                                         const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)
+                                         const std::vector<std::shared_ptr<ast::ExpressionNode>>& args,
+                                         const std::string& moduleQualifier)
     {
+        // 符号可见性改造（2026-11-20）：若限定符是「别名导入」，模块所有符号
+        // 在 loader 阶段都被改名为 <prefix>_<name>，这里把 fname 换成改名后的符号。
+        std::string resolvedName = fname;
+        if (!moduleQualifier.empty())
+        {
+            for (const auto& [alias, prefix] : _aliasPrefixes)
+                if (alias == moduleQualifier)
+                {
+                    resolvedName = prefix + fname;
+                    break;
+                }
+        }
         // 模块在加载期已经被内联，`mod.fn(...)` 与 `fn(...)` 是同一个符号。
         // 这里只处理「直接调用模块里的全局函数」这一种情形：
         //   * 模块里的类由类名直接构造（`mod.Cls(...)` 会退化成构造调用）
         //   * 其余非函数成员（`mod.CONST`）不是调用，不该走到这里
-        if (lookupVar(fname) == nullptr && findClass(fname) != nullptr)
+        if (lookupVar(resolvedName) == nullptr && findClass(resolvedName) != nullptr)
         {
-            emitConstructorCall(fname, callNode, args);
+            emitConstructorCall(resolvedName, callNode, args);
             return;
         }
         // P12/G14：模块里的泛型函数 —— `math.max(1, 2)` 的符号在调用点
         // 才单态化出来，直接发裸名 `max` 会链接失败（定义处根本没发射这个名字）。
         // 必须和裸名调用走同一条决议路径。
-        if (_genericFunctions.find(fname) != _genericFunctions.end())
+        if (_genericFunctions.find(resolvedName) != _genericFunctions.end())
         {
             // callee 传 nullptr：`mod.fn(...)` 的限定名不携带显式类型实参
             // （`mod.fn[int](...)` 是另一种 AST 形态，另行处理）。
-            if (tryEmitGenericCall(fname, nullptr, callNode, args))
+            if (tryEmitGenericCall(resolvedName, nullptr, callNode, args))
                 return;
         }
         // P11：模块里被内联进来的函数同样可能是重载集 —— `mod.f(1.5)`
         // 必须和 `f(1.5)` 决议到同一个符号，否则会调到「最后一个定义」上去。
-        if (_overloadedNames.find(fname) != _overloadedNames.end())
+        if (_overloadedNames.find(resolvedName) != _overloadedNames.end())
         {
             bool ambiguous = false;
-            const std::string symbol = resolveOverload(fname, args, &ambiguous);
+            const std::string symbol = resolveOverload(resolvedName, args, &ambiguous);
             if (symbol.empty())
             {
                 failOverload(fname, args, callNode ? callNode->getPos() : utils::getUnknownPos(), ambiguous);
@@ -12639,23 +12814,23 @@ namespace backend
             return;
         }
         std::vector<sema::TypePtr> paramTypes;
-        if (const auto found = _functionParams.find(fname); found != _functionParams.end())
+        if (const auto found = _functionParams.find(resolvedName); found != _functionParams.end())
         {
             paramTypes = found->second;
         }
         // 决议 A：模块函数同样可能返回 struct（返回缓冲区走第一个整型位置）。
-        const auto modRetIt = _functionReturns.find(fname);
+        const auto modRetIt = _functionReturns.find(resolvedName);
         const auto modRetType = modRetIt != _functionReturns.end() ? modRetIt->second : nullptr;
         size_t modArgStart = 0;
         const std::string modRetBuf = prepareStructRetBuf(modRetType, modArgStart);
-        const size_t callArea = emitArgsToRegisters(normalizeCallArgs(args, fname), fname, paramTypes, modArgStart);
+        const size_t callArea = emitArgsToRegisters(normalizeCallArgs(args, resolvedName), resolvedName, paramTypes, modArgStart);
         if (hasFailed())
         {
             return;
         }
         if (!modRetBuf.empty())
             _asm.mov(modRetBuf, "%rcx");
-        _asm.call(fname);
+        _asm.call(resolvedName);
         _asm.addRsp(callArea);
         finishStructRetCall(modRetBuf);
     }
@@ -14173,6 +14348,11 @@ namespace backend
     {
         ClassInfo info;
         info.name = className;
+        // 2026-11-20：类标签区的 public/protected/private 只设「本类内部符号的默认
+        // 可见性」，不影响类符号自身（类的对外可见性由 export/hidden 决定）。
+        // builtin 修饰整个类时，方法可省略 builtin 标签。
+        bool classBuiltin = false;
+        base::Visibility classDefault = base::Visibility::PROTECTED;
         // 继承：类名标识符上的标签就是基类名（`class Derived: Base`）
         std::shared_ptr<ast::IdentifierNode> id;
         if (const auto nameIndex = std::dynamic_pointer_cast<ast::IndexExpressionNode>(node->getNameNode()))
@@ -14185,18 +14365,28 @@ namespace backend
         }
         if (id)
         {
+            // class 名字标签区里，builtin/public/protected/private/hidden 是
+            // 修饰标签（2026-11-20），不是基类名；过滤掉它们后第一个才是基类。
+            static const std::unordered_set<std::string> kClassModifierLabels = {
+                "builtin", "public", "protected", "private", "hidden", "extern"
+            };
             for (const auto& label : id->getLabels())
             {
                 if (!label)
                     continue;
                 const std::string full = label->getFullLabel();
-                if (!full.empty())
+                if (full == "builtin") { classBuiltin = true; continue; }
+                base::Visibility v;
+                if (base::parseVisibility(full, v)) { classDefault = v; continue; }
+                if (!full.empty() && !kClassModifierLabels.count(full))
                 {
                     info.baseName = full;
                     break;
                 }
             }
         }
+        _classDefaultVisibility[className] = classDefault;
+        _classDeclFile[className] = node->getPos().getFilepath();
         if (const auto body = std::dynamic_pointer_cast<ast::BlockRangerNode>(node->getBodyNode()))
         {
             for (const auto& stmt : body->getBodyExpressions())
@@ -14282,6 +14472,8 @@ namespace backend
                     }
                     if (!mname.empty())
                     {
+                        // builtin 类的方法继承 builtin 属性（可省略标签）。
+                        if (classBuiltin) fn->setInheritedBuiltin(true);
                         // P12/G5：方法名可以重载 —— 全部收进重载集，
                         // 单定义时 methods 仍指向那一份（保持裸名）。
                         info.methodOverloads[mname].push_back(fn);
@@ -14915,8 +15107,10 @@ namespace backend
                 _functionParamNames[methodSymbolName] = paramNames;
                 _currentSignatureClauses =
                     def ? def->getSignatureClauses() : std::vector<std::shared_ptr<ast::LabelNode>>{};
+                // 静态方法无隐式 this：hasThis=false，调用点也按无 this 排参。
+                const bool isStaticMethod = def && def->isStatic();
                 emitFunctionBody(methodSymbolName, paramNames, paramTypes, ret, def->getBodyNode(), true, {}, {}, "",
-                                 true, retAnnotated);
+                                 !isStaticMethod, retAnnotated);
             }
         }
         _currentClass = savedClass;
@@ -15854,6 +16048,131 @@ namespace backend
             _asm.addRsp(32);
             if (is32) _asm.inst("movslq", "%eax", "%rax");
         }
+        return true;
+    }
+
+    // ---- 静态方法 / 访问级别（2026-11-20） ---------------------------------
+    base::Visibility CodeGen::methodVisibility(
+        const std::shared_ptr<ast::FunctionDefinitionNode>& def,
+        const std::string& className) const
+    {
+        base::Visibility v;
+        if (def && base::parseVisibility(def->getAccessLabel(), v))
+            return v;
+        const auto it = _classDefaultVisibility.find(className);
+        return it == _classDefaultVisibility.end() ? base::Visibility::PROTECTED : it->second;
+    }
+
+    bool CodeGen::checkMethodAccess(const std::shared_ptr<ast::FunctionDefinitionNode>& def,
+                                    const std::string& className, const std::string& methodName,
+                                    const utils::Pos& pos, const std::string& fromFile)
+    {
+        const auto vis = methodVisibility(def, className);
+        if (vis == base::Visibility::PRIVATE)
+        {
+            // 类的 public/protected/private 只设成员默认可见性；private 成员
+            // 从别的类/模块访问一律编译错误。同一类内部（this 方法体）允许。
+            const std::string declFile = [&]() {
+                const auto it = _classDeclFile.find(className);
+                return it == _classDeclFile.end() ? std::string() : it->second;
+            }();
+            const bool sameFile = declFile.empty() || fromFile.empty() || declFile == fromFile;
+            const bool inSameClass = !_currentClass.empty() && _currentClass == className;
+            if (!inSameClass && !sameFile)
+            {
+                failAt(pos, "method '" + className + "." + methodName + "' is private and cannot be "
+                            "accessed from another module");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool CodeGen::emitStaticMethodCall(const std::shared_ptr<ast::InfixExpressionNode>& member,
+                                       const std::shared_ptr<ast::ExpressionNode>& callNode,
+                                       const std::vector<std::shared_ptr<ast::ExpressionNode>>& args)
+    {
+        // 形态：B.f() —— member 是 DOT 中缀，左为类名标识符，右为方法名标识符。
+        const auto ownerId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getLeftNode());
+        const auto methodId = std::dynamic_pointer_cast<ast::IdentifierNode>(member->getRightNode());
+        if (!ownerId || !methodId)
+            return false;
+        const std::string owner = ownerId->getName();
+        // 只处理确实是类名、且方法带 static 标签的情况。
+        const ClassInfo* cls = findClass(owner);
+        if (!cls)
+            return false;
+        const auto overloads = collectMethodOverloads(owner, methodId->getName());
+        if (overloads.empty())
+            return false;
+        bool anyStatic = false;
+        for (const auto& ov : overloads)
+            if (ov.def && ov.def->isStatic()) { anyStatic = true; break; }
+        if (!anyStatic)
+            return false;
+
+        // 访问级别检查（调用点所在文件来自位置信息）。
+        const std::string fromFile = callNode ? callNode->getPos().getFilepath() : std::string();
+        if (!checkMethodAccess(overloads.front().def, overloads.front().owner,
+                               methodId->getName(), member->getPos(), fromFile))
+            return true;
+
+        // 从重载集里按实参类型挑最合适的一份（与实例方法同一套打分）。
+        std::vector<sema::TypePtr> actualTypes;
+        for (const auto& a : args)
+            actualTypes.push_back(inferType(a));
+        const MethodRef* best = nullptr;
+        int bestScore = -1;
+        std::vector<sema::TypePtr> bestTypes;
+        for (const auto& cand : overloads)
+        {
+            if (!cand.def || !cand.def->isStatic()) continue;
+            std::vector<std::string> cn;
+            std::vector<sema::TypePtr> ct;
+            if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(cand.def->getCallNode()))
+                if (const auto an = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))
+                {
+                    collectParamNamesT(an, cn);
+                    collectParamTypesT(an, ct);
+                }
+            while (ct.size() < cn.size()) ct.push_back(sema::getIntType());
+            if (ct.size() != actualTypes.size()) continue;
+            int score = 0; bool ok = true;
+            for (size_t i = 0; i < actualTypes.size(); ++i)
+            {
+                const int s = overloadScore(ct[i], actualTypes[i], true);
+                if (s < 0) { ok = false; break; }
+                score += s;
+            }
+            if (!ok) continue;
+            if (score > bestScore) { bestScore = score; best = &cand; bestTypes = ct; }
+        }
+        if (!best)
+        {
+            failAt(member->getPos(),
+                   "No matching overload for static method '" + methodId->getName() + "' of class " + owner);
+            return true;
+        }
+        std::string symbol = best->owner + "." + methodId->getName();
+        if (overloads.size() >= 2)
+            symbol = mangleOverload(best->owner + "." + methodId->getName(), bestTypes);
+
+        std::vector<std::string> paramNames;
+        if (const auto call = std::dynamic_pointer_cast<ast::FunctionCallNode>(best->def->getCallNode()))
+            if (const auto an = std::dynamic_pointer_cast<ast::ExpressionNode>(call->getRightNode()))
+                collectParamNamesT(an, paramNames);
+        const auto ret = methodReturnType(best->def, paramNames, bestTypes, best->owner);
+        const std::vector<bool>* mask = nullptr;
+        if (const auto f = _functionParamAnnotated.find(symbol); f != _functionParamAnnotated.end())
+            mask = &f->second;
+        size_t argStart = 0;
+        const std::string retBuf = prepareStructRetBuf(ret, argStart);
+        argStart = retBuf.empty() ? 0 : 1;   // 静态方法无隐式 this
+        const size_t area = emitArgsToRegisters(args, symbol, bestTypes, argStart, mask);
+        if (hasFailed()) return true;
+        _asm.call(symbol);
+        _asm.addRsp(area);
+        finishStructRetCall(retBuf);
         return true;
     }
 
@@ -17672,37 +17991,10 @@ namespace backend
             }
         }
         _functionReturns[fname] = retType;
-        // 函数体若只有一个 encapsulated 语句，表示「由运行时提供实现」：
-        // 只登记签名，不发射函数体，调用点照常生成 call，由链接器去 rt 里找。
-        // 这样 legacy 测试开头那个
-        //     fun sout(*args, end="\n"): void { encapsulated }
-        // 桩就不会再卡在 Node(PREFIX) 上。
-        if (const auto bodyBlock = std::dynamic_pointer_cast<ast::BlockRangerNode>(node->getBodyNode()))
-        {
-            bool onlyEncapsulated = !bodyBlock->getBodyExpressions().empty();
-            for (const auto& e : bodyBlock->getBodyExpressions())
-            {
-                if (!std::dynamic_pointer_cast<ast::EncapsulatedExpressionNode>(e))
-                {
-                    onlyEncapsulated = false;
-                    break;
-                }
-            }
-            if (onlyEncapsulated)
-            {
-                _encapsulatedFunctions[fname] = true;
-                return;
-            }
-        }
-        else if (std::dynamic_pointer_cast<ast::EncapsulatedExpressionNode>(node->getBodyNode()))
-        {
-            _encapsulatedFunctions[fname] = true;
-            return;
-        }
-        // 内建严格化（2026-11-20 裁决）：保留名冲突——用户不得给 codegen
-        // 特化内建写真实函数体（那样会被特化分发静默忽略，产生「定义了却不生效」
-        // 的假象）。上面的 encapsulated 桩是合法的「声明」，到这里仍留着的就是
-        // 有实体的定义，一律拒绝。core_*/rt_* 运行时符号同理。
+        // 内建声明改造（2026-11-20）：encapsulated 桩已移除。带 builtin/extern
+        // 修饰符的无体声明在 emitProgram 里就登记并跳过，不会走到这里。
+        // 保留名冲突——用户不得给 codegen 特化内建写真实函数体（那样会被特化
+        // 分发静默忽略，产生「定义了却不生效」的假象）。core_*/rt_* 同理。
         // 注意 release 不在本表：按 P13-2/L3 裁决，用户自定义 `fun release(x: int)`
         // 是合法的（裸名调用只在「没定义过」时才拦），不能被保留名误伤。
         if (!_libraryMode &&  // rt.rio 自身（emit-lib 构建）合法定义 rt_* 实体
@@ -17712,7 +18004,8 @@ namespace backend
         {
             failAt(node->getPos(),
                    "function '" + fname + "' has a body but is a reserved builtin/runtime name; "
-                   "declare it with an 'encapsulated' body, or use a different name");
+                   "declare it without a body using the 'builtin' or 'extern' label, "
+                   "or use a different name");
             return;
         }
         // P11：重载名的发射符号在预登记表里已经定好了（形参类型要参与修饰，

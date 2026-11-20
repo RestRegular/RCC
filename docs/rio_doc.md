@@ -101,7 +101,7 @@ scripts\test.bat
 ### 2.2 第一个 Rio 程序
 
 ```rio
-import(io="io")
+import "io"
 
 sout("Hello, Rio!")
 ```
@@ -128,7 +128,7 @@ Hello, Rio!
   ```
   `sout` / `serr` 都是编译器特化（分别按静态类型选 `rt_print_*` / `rt_eprint_*`），
   均属保留名，用户不得重定义同签名函数。
-- `import(io="io")` 把 `io` 模块内联进来。模块是**编译期内联**的，不是运行期加载。
+- `import "io"` 把 `io` 模块内联进来。模块是**编译期内联**的，不是运行期加载。
 
 ---
 
@@ -330,14 +330,14 @@ sout(xs)          // [99, 12, 3]
 **长度**用 `str.size`（见 7.2）：
 
 ```rio
-import(sm="str")
+import "str"
 sout(size(xs))    // 3
 ```
 
 **列表操作**用 `ds` 模块（见 7.1）：
 
 ```rio
-import(ds="ds")
+import "ds"
 var doubled = map(xs, (v: int) -> { ret v * 2 })
 var evens = filter(xs, (v: int) -> { ret v % 2 == 0 })
 var sorted = sort(xs)
@@ -360,7 +360,7 @@ d["new"] = 1        // 新增键
 遍历字典用 `ds.dictKeys` / `ds.dictValues` 取出键值列表，再用 `while` 循环：
 
 ```rio
-import(ds="ds", sm="str")
+import("ds", "str")
 var d: dict = {"a": 1, "b": 2}
 var ks: list[str] = dictKeys(d)
 var i = 0
@@ -592,7 +592,7 @@ sout(f(5))          // 10
 作为参数传递：
 
 ```rio
-import(ds="ds")
+import "ds"
 var doubled = map([1, 2, 3], (v: int) -> { ret v * 2 })
 ```
 
@@ -639,6 +639,32 @@ sout(p.len2())     // 25
 ```
 
 **静态成员**：`var count: int static = 0`，通过 `类名.成员` 访问。
+
+**静态方法**（2026-11-20）：方法标签区写 `static`，通过 `类名.方法()` 调用，
+没有隐式 `this`：
+
+```rio
+class Math: public {
+    fun square(x: int): int static { ret x * x }
+    fun secret(): int static private { ret 1 }
+}
+sout(Math.square(5))   // 25，合法
+// Math.secret()      // 编译错误：private 方法不能从别的类/模块访问
+```
+
+**类成员的可见性**（2026-11-20）：类标签区的 `public` / `protected` / `private`
+只设**本类内部符号的默认访问级别**（缺省 `protected`），**不影响类自身的对外
+可见性**（类对外可见性仍由 `export` / `hidden` 决定）。方法可在标签区用
+`public` / `protected` / `private` 覆盖默认值，满足 `A(方法) ⊆ A(所在类)`。
+`private` 方法从别的类/模块访问是编译错误；非 private（默认 / public）可访问。
+例：
+
+```rio
+class A: hidden {
+    fun f(): int static public { ret 42 }
+}
+A.f()   // 合法：A 对外 hidden，但同一模块内 public 成员可访问
+```
 
 ### 5.2 继承
 
@@ -716,28 +742,63 @@ try {
 
 ## 七、标准库
 
-标准库是 `lib/std/*.rio` 六个模块，**全部是 Rio 源码**，没有隐藏的内置实现。
+标准库是 `lib/std/*.rio` 七个模块（六个功能模块 + 一个内建声明前导），**全部是 Rio
+源码**，没有隐藏的内置实现。
 
-**导入方式**：
+### 7.0 内建声明前导（2026-11-20 改造）
+
+编译器特化内建（`sout`/`serr`/`soutv`/`super`/`entry`/`clone` 等）与运行时原语
+（`core_*`/`rt_*`）都有对应的 **Rio 源码声明**，集中在 `lib/std/builtins.rio`。
+该文件是**隐式前导**：编译器启动时自动加载，所有声明无需 `import` 即可见。
+
+- **声明语法**：写在函数签名的标签区，无函数体：
+  ```rio
+  fun sout(*args: any, end="\n"): void builtin   // 编译器特化
+  fun core_alloc(size: int, align: int): ptr extern  // 运行时提供
+  ```
+  `builtin` / `extern` 与其它标签（`from[...]`/`writes[...]`/返回类型）**顺序无关**；
+  推荐顺序：返回类型 → 修饰符 → 签名子句。
+- **完整性校验**：调用点惰性检查——被调用的内建必须在声明表里有条目，否则编译
+  期**硬错误终止**并提示「标准库不完整」。库作者新增特化内建时必须同步补声明。
+- **`import` 幂等**：显式 `import "builtins"` 不重复登记，只为编辑器
+  跳转/查阅声明服务；内建始终可见。
+- **容器方法声明**（2026-11-20）：`x.clone()` / `xs.get(i)` / `xs.get_mut(i)` /
+  `xs.split_at(k)` / `xs.split_from(k)` 的声明放在前导里的 `builtin` 类中
+  （`Str` / `List` / `Dict`）。类带 `builtin` 标签后，其方法可省略 `builtin`
+  —— 整类都是内建的。这些声明只供符号导出 / 查阅 / 编辑器跳转，实际分派仍
+  由 codegen 按接收者静态类型特化完成，前导 AST 不生成代码。声明会做基本
+  签名合法性校验（返回/参数类型可解析、标签合法），无效类型名导致编译期
+  「标准库声明错误」。
+- **符号属性与可见性**：导出符号（`rcc -s`）会标注
+  `builtin` / `extern` / 普通，以及 `public` / `protected` / `private` 可见性；
+  类上的 `public`/`protected`/`private` 只设成员默认级别，类自身可见性仍是
+  `export` / `hidden`。
+
+**导入方式（2026-11-20 新语法）**：
 
 ```rio
-import(ds="ds")                              // 单个
-import(ds="ds", sm="str", m="math")          // 多个
+import "str"                    // 单库，导出的符号直接用裸名（一行只能导一个）
+import "./path/to/test_lib"     // 路径形式的自定义库，符号直接用裸名
+import lib = "lib"              // 别名导入：只能通过 lib.foo 访问，符号隔离
+import("str", "./path/to/lib")  // 一次导入多个库
+import("str", tlib="./path")    // 混合：str 裸名可用，test_lib 只能通过 tlib 访问
 ```
 
-`import` 把模块**内联**进当前编译单元，模块内的函数进入同一命名空间，
-所以可以直接用裸名调用（`sort(xs)` 而不是 `ds.sort(xs)`）。
+`import` 把模块**内联**进当前编译单元，但按 `export` / `hidden` 做可见性隔离：
 
-**约定**：模块私有函数带前缀（`_ds`、`_str`），不会与其它模块撞名。
-
-> **嵌套 import 会平铺符号**：如果 `ds` 内部 import 了 `str`，那么
-> `import ds` 之后你也能直接调 `str` 的函数。这是现有语义，不是 bug，
-> 但**不要依赖它** —— 明确写出你要用的模块。
+- **可见性**：模块中出现 `export(...)` 时，它是**对外可见白名单**——只有列入的
+  符号对导入者可见；没有 `export` 时所有顶层符号默认可见。
+- **`hidden` 标签**：可修饰变量/函数/类/struct，使该符号对外不可见（模块内部
+  仍可用）。一个符号若同时被 `hidden` 修饰又出现在 `export` 中，**编译报错**。
+- **别名隔离**：带别名的导入（无论是 `import x = "m"` 还是 `import "m"`）会
+  把模块**全部**顶层符号隔离，外部只能通过 `x.foo` 访问。
+- 被隔离/未导出的符号在编译期改名（加 `__模块名_` 前缀），定义与模块内部引用
+  同步改写；外部按原名访问会得到「undeclared function」错误。
 
 ### 7.1 `ds` —— 容器操作（22 个）
 
 ```rio
-import(ds="ds")
+import "ds"
 ```
 
 | 函数 | 签名 | 说明 |
@@ -774,7 +835,7 @@ import(ds="ds")
 ### 7.2 `str` —— 字符串（15 个函数 / 22 个重载入口）
 
 ```rio
-import(sm="str")
+import "str"
 ```
 
 | 函数 | 签名 | 说明 |
@@ -813,7 +874,7 @@ import(sm="str")
 ### 7.3 `math` —— 数学（7 个）
 
 ```rio
-import(m="math")
+import "math"
 ```
 
 | 名称 | 签名 | 说明 |
@@ -831,7 +892,7 @@ import(m="math")
 ### 7.4 `ops` —— 惰性与三元（4 个）
 
 ```rio
-import(o="ops")
+import "ops"
 ```
 
 | 函数 | 签名 | 说明 |
@@ -842,7 +903,7 @@ import(o="ops")
 | `orLazy` | `[T](front: T, back: func): T` | `front` 为 `null` 时调 `back` 求值 |
 
 ```rio
-import(o="ops")
+import "ops"
 sout(ternary(true, "a", "b"))       // a
 sout(orVal(null, 10))               // 10
 sout(orVal(5, 10))                  // 5
@@ -852,7 +913,7 @@ sout(orLazy(null, () -> { ret 7 })) // 7
 ### 7.5 `io` —— 输入（2 个）
 
 ```rio
-import(io="io")
+import "io"
 ```
 
 | 函数 | 签名 | 说明 |
@@ -866,7 +927,7 @@ import(io="io")
 ### 7.6 `prog` —— 程序控制（2 个）
 
 ```rio
-import(prog="prog")
+import "prog"
 ```
 
 | 函数 | 签名 | 说明 |
@@ -1005,7 +1066,7 @@ fun pass(x: any): any {
 ### 9.1 完整示例
 
 ```rio
-import(ds="ds", sm="str", m="math")
+import("ds", "str", "math")
 
 fun main(): void {
     var xs: list[int] = [3, 1, 4, 1, 5]
@@ -1056,7 +1117,7 @@ upper: DONE
 
 | 旧写法 | 新写法 |
 |---|---|
-| `import stdio` | `import(io="io")` |
+| `import stdio` | `import "io"` |
 | `ds.size(x)` | `str.size(x)` |
 | `ds.unpack(x)` | 直接用 `x` |
 | `ds.iter(xs, cb)` | `ds.map` / `ds.filter` / `ds.forInRange` |

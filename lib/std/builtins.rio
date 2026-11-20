@@ -1,0 +1,188 @@
+/*
+ * builtins.rio —— RCC 内建声明前导（implicit prelude）
+ *
+ * ============================ 定位 ============================
+ * 本文件是「特化内建 / 运行时原语」的**唯一声明真相**。它不是普通模块：
+ * 编译器启动时会自动加载它，把里面所有 builtin / extern 声明登记进声明表，
+ * 对所有编译单元永远可见。
+ *
+ * 用户也可以显式 `import(builtins="builtins")` —— 但那是幂等的：已经由
+ * 前导加载过的声明不会重复登记，只为编辑器跳转 / 想查阅声明的人服务。
+ *
+ * 语法（2026-11-20 改造）：声明写在函数签名的**标签区**，无函数体：
+ *     fun name(params): RET builtin     —— 编译器特化实现（emitCall 按名字派发）
+ *     fun name(params): RET extern      —— 实现由 rt.o / core_win64.o 提供
+ * 标签顺序无关（推荐先写返回类型，再写 builtin/extern，最后写 from/writes/ensures）。
+ *
+ * 「库完整性」口径：调用点惰性校验——只有被调用到的内建才检查其声明。
+ * 若某内建被调用却在本表找不到声明，编译期硬错误终止，提示库不完整。
+ *
+ * ============================ 分类 ============================
+ *   builtin —— 编译器把调用点直接特化（sout/serr/soutv/super/entry/clone），
+ *              签名仅供查阅/类型推断，不生成普通 call。
+ *   extern  —— 符号由运行时目标文件提供（core_* / rt_*），签名与 ABI 一致。
+ *
+ * 容器方法（x.clone()/xs.get()/xs.get_mut()/xs.split_at()/xs.split_from()）
+ * 走接收者方法派发，没有裸名函数符号。它们的**声明**放在下面的 builtin 类里，
+ * 仅供符号导出 / 用户查阅 / 编辑器跳转：实际分派仍由 codegen 按接收者静态类型
+ * 特化完成，声明本身不生成代码（前导 AST 不进入 emitProgram）。
+ * 类带 builtin 标签后，其方法可省略 builtin —— 整类都是内建的。
+ * 语言级内建 size()/release(x) 的裸名调用有专门诊断，也不在此处。
+ * =================================================================
+ */
+
+// ---------- 编译器特化内建（builtin） ----------
+fun sout(*args: any, end="\n"): void builtin
+fun serr(*args: any, end="\n"): void builtin
+fun soutv(r: any): void builtin
+fun super(*args: any): void builtin
+fun entry(arg: any, *callArgs: any): void builtin
+fun prog.entry(arg: any, *callArgs: any): void builtin
+fun prog.args(): list[str] builtin
+fun clone(x: any): any builtin
+
+// ---------- 容器方法声明（builtin 类，方法可省略 builtin 标签） ----------
+// 这些类只为符号导出 / 查阅 / 编辑器服务；真实分派由 codegen 按接收者静态类型
+// 特化完成。签名做基本合法性校验（参数/返回类型可解析、标签合法）。
+class Str: builtin public {
+    fun clone(): str
+}
+
+class List: builtin public {
+    fun clone(): list
+    fun get(index: int): any
+    fun get_mut(index: int): ptr
+    fun split_at(index: int): ptr
+    fun split_from(index: int): ptr
+}
+
+class Dict: builtin public {
+    fun clone(): dict
+    fun get(key: str): any
+}
+
+// ---------- 内存 / 字节 ----------
+fun core_mem_copy(dst: ptr, src: ptr, n: int): void extern
+fun core_mem_move(dst: ptr, src: ptr, n: int): void extern
+fun core_mem_set(dst: ptr, byte: int, n: int): void extern
+fun core_mem_eq(a: ptr, b: ptr, n: int): bool extern
+fun core_str_len(s: ptr): int extern
+fun core_cstr_len(p: ptr): int extern
+fun core_load_ptr(p: ptr): ptr extern
+fun core_store_ptr(p: ptr, v: ptr): void extern
+
+// ---------- 分配 ----------
+fun core_alloc(size: int, align: int): ptr extern
+fun core_realloc(p: ptr, old_size: int, size: int, align: int): ptr extern
+fun core_free(p: ptr): void extern
+
+// ---------- 容器原语 ----------
+fun core_list_append(xs: list, value: ptr): void extern
+fun core_clone_list(xs: list): list extern
+fun core_clone_dict(d: dict): dict extern
+fun core_clone_str(s: str): str extern
+
+// ---------- I/O / 进程 ----------
+fun core_io_write(fd: int, buf: ptr, n: int): int extern
+fun core_io_write_byte(fd: int, ch: int): int extern
+fun core_io_read(fd: int, buf: ptr, n: int): int extern
+fun core_io_flush(fd: int): void extern
+fun core_proc_exit(code: int): void extern
+fun core_proc_abort(): void extern
+fun core_panic_raise(msg: ptr, len: int): void extern
+fun core_time_ns(): int extern
+fun core_sys_breakpoint(): void extern
+fun core_stack_probe(size: int): void extern
+
+// ---------- 异常帧链 ----------
+fun core_eh_push(frame: ptr): ptr extern
+fun core_eh_pop(frame: ptr): void extern
+fun core_eh_throw(exc: ptr): void extern
+
+// ---------- 调试钩子 ----------
+fun core_dbg_reset(): void extern
+fun core_dbg_allocations(): int extern
+fun core_dbg_frees(): int extern
+fun core_dbg_double_frees(): int extern
+fun core_dbg_poison_bytes(): int extern
+fun core_dbg_bump_alloc(): void extern
+fun core_dbg_bump_free(): void extern
+
+// ---------- Pool ----------
+fun core_pool_new(mode: int, cap: int): ptr extern
+fun core_pool_alloc(pool: ptr, elem_size: int): ptr extern
+fun core_pool_release(pool: ptr, slot: ptr): void extern
+fun core_pool_count(pool: ptr): int extern
+fun core_pool_slot_at(pool: ptr, index: int): ptr extern
+
+// ---------- 线程 ----------
+fun core_thread_create(fn: ptr, arg: ptr): ptr extern
+fun core_thread_join(handle: ptr): void extern
+
+// ---------- 同步原语（锁 / 原子） ----------
+fun core_lock_acquire(lockword: ptr): void extern
+fun core_lock_release(lockword: ptr): void extern
+fun core_atomic_load_i64(addr: ptr): int extern
+fun core_atomic_store_i64(addr: ptr, value: int): void extern
+fun core_atomic_fetch_add_i64(addr: ptr, value: int): int extern
+fun core_atomic_swap_i64(addr: ptr, value: int): int extern
+fun core_atomic_cas_i64(addr: ptr, expected: int, new_value: int): int extern
+fun core_atomic_fetch_op_i64(addr: ptr, value: int, op: int): int extern
+fun core_atomic_load_i32(addr: ptr): int extern
+fun core_atomic_store_i32(addr: ptr, value: int): void extern
+fun core_atomic_fetch_add_i32(addr: ptr, value: int): int extern
+fun core_atomic_swap_i32(addr: ptr, value: int): int extern
+fun core_atomic_cas_i32(addr: ptr, expected: int, new_value: int): int extern
+fun core_atomic_fetch_op_i32(addr: ptr, value: int, op: int): int extern
+
+// ---------- Chan ----------
+fun core_chan_new(capacity: int): ptr extern
+fun core_chan_send(ch: ptr, value: ptr): void extern
+fun core_chan_recv(ch: ptr): ptr extern
+fun core_chan_close(ch: ptr): void extern
+fun core_chan_drop(ch: ptr): void extern
+
+// ---------- Link ----------
+fun core_link_add(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void extern
+fun core_link_set(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void extern
+fun core_link_remove(pool: ptr, a: ptr, aField: int, b: ptr, bField: int): void extern
+fun core_link_clear(pool: ptr, a: ptr, bField: int): void extern
+fun core_link_unlink_all(pool: ptr, a: ptr): void extern
+fun core_link_is_empty(a: ptr): int extern
+fun core_link_count(a: ptr, field: int): int extern
+fun core_link_has(a: ptr, field: int, peer: ptr): int extern
+fun core_link_edge_count(a: ptr): int extern
+fun core_link_edges(a: ptr): ptr extern
+
+// ---------- 运行时打印原语（rt.o） ----------
+fun rt_write_byte_fd(fd: int, ch: int): void extern
+fun rt_write_byte(ch: int): void extern
+fun rt_write_bytes_fd(fd: int, s: ptr, n: int): void extern
+fun rt_write_bytes(s: ptr, n: int): void extern
+fun rt_write_str_fd(fd: int, s: ptr, n: int): void extern
+fun rt_write_str(s: ptr, n: int): void extern
+fun rt_print_uint_fd(fd: int, v: int): void extern
+fun rt_print_int_fd(fd: int, v: int): void extern
+fun rt_print_int(v: int): void extern
+fun rt_print_bool_fd(fd: int, v: int): void extern
+fun rt_print_bool(v: int): void extern
+fun rt_print_null_fd(fd: int): void extern
+fun rt_print_null(): void extern
+fun rt_print_str_fd(fd: int, s: ptr): void extern
+fun rt_print_str(s: ptr): void extern
+fun rt_print_float_fd(fd: int, v: float): void extern
+fun rt_print_float(v: float): void extern
+fun rt_print_ptr_fd(fd: int, v: int): void extern
+fun rt_print_ptr(v: int): void extern
+fun rt_print_char_fd(fd: int, v: int): void extern
+fun rt_print_char(v: int): void extern
+fun rt_eprint_int(v: int): void extern
+fun rt_eprint_bool(v: int): void extern
+fun rt_eprint_null(): void extern
+fun rt_eprint_str(s: ptr): void extern
+fun rt_eprint_float(v: float): void extern
+fun rt_eprint_ptr(v: int): void extern
+fun rt_eprint_char(v: int): void extern
+fun rt_pow10(n: int): int extern
+fun rt_pow16(n: int): int extern
+fun rt_argv_init(argc: int, argv: ptr): ptr extern

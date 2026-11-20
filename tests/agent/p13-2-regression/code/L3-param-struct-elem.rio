@@ -1,5 +1,4 @@
 // 形参标注同样拦住（这条走的是不同的解析入口）
-fun sout(*args: any, end="\n"): void { encapsulated }
 struct Pt { var x: int
  var y: int }
 fun f(xs: list[Pt]): void { sout("nope") }

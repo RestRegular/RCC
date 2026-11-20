@@ -1,4 +1,6 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
+// 新的标签区声明语法：builtin/extern 声明在源码里也合法（幂等，前导已登记）
+fun sout(*args: any, end="\n"): void builtin
+fun core_mem_set(dst: ptr, byte: int, n: int): void extern
 fun main(): void {
     sout("stub ok")
 }

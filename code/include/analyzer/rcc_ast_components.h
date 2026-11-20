@@ -248,6 +248,8 @@ namespace ast {
             const std::vector<std::shared_ptr<LabelNode>> &labels_);
         [[nodiscard]] Pos getPos() const override;
         [[nodiscard]] std::string getName() const;
+        // 模块可见性隔离（2026-11-20）：内联时把私有符号改名，定义与引用同步。
+        void setName(const std::string& name_) { name = name_; }
         [[nodiscard]] Token getColonToken() const;
         [[nodiscard]] std::shared_ptr<Token> getColonTokenPtr() const;
         [[nodiscard]] std::vector<std::shared_ptr<LabelNode>> getLabels() const;
@@ -433,6 +435,13 @@ namespace ast {
         // 每个 LabelNode 的 fullLabel 是子句名，labelDesNodes[0]->getBodyNode()
         // 是参数表达式列表。空 = 未写子句。
         std::vector<std::shared_ptr<LabelNode>> signatureClauses;
+        // 内建声明改造（2026-11-20）：标签区的 builtin / extern 修饰符。
+        // 二者都表示「无函数体、实现由编译器特化或运行时提供」的声明；
+        // bodyNode 为 nullptr。codegen 据此把它们登记进声明表而不发射函数体。
+        bool isBuiltinDeclaration = false;
+        bool isExternDeclaration = false;
+        // 模块可见性（2026-11-20）：hidden 标签 = 对外不可见（模块内部仍可用）
+        bool isHidden = false;
     public:
         explicit FunctionDefinitionNode(const Token &mainToken_,
             const std::shared_ptr<ExpressionNode> &callNode,
@@ -448,6 +457,28 @@ namespace ast {
         [[nodiscard]] std::shared_ptr<Token> getIndicatorToken() const;
         [[nodiscard]] const std::vector<std::shared_ptr<LabelNode>>& getSignatureClauses() const;
         void setSignatureClauses(const std::vector<std::shared_ptr<LabelNode>>& clauses);
+        // 声明修饰符读写（builtin / extern，顺序无关）
+        void setDeclarationModifiers(bool builtin, bool external)
+        { isBuiltinDeclaration = builtin; isExternDeclaration = external; }
+        [[nodiscard]] bool isDeclaration() const
+        { return isBuiltinDeclaration || isExternDeclaration; }
+        [[nodiscard]] bool isBuiltin() const { return isBuiltinDeclaration; }
+        [[nodiscard]] bool isExtern() const { return isExternDeclaration; }
+        void setHidden(bool v) { isHidden = v; }
+        [[nodiscard]] bool hidden() const { return isHidden; }
+        // 静态方法（static 标签）：用类名调用 B.f()，无隐式 this。
+        void setStatic(bool v) { isStaticMethod = v; }
+        [[nodiscard]] bool isStatic() const { return isStaticMethod; }
+        // 访问级别（public/protected/private）。空串 = 未显式写出，取容器默认值。
+        void setAccessLabel(const std::string& v) { accessLabel = v; }
+        [[nodiscard]] const std::string& getAccessLabel() const { return accessLabel; }
+        // 该成员是否声明在 builtin 类里（继承：类自带 builtin 时方法可省略）。
+        void setInheritedBuiltin(bool v) { inheritedBuiltin = v; }
+        [[nodiscard]] bool isInheritedBuiltin() const { return inheritedBuiltin; }
+    private:
+        bool isStaticMethod = false;
+        std::string accessLabel;
+        bool inheritedBuiltin = false;
     };
 
     class AnonFunctionDefinitionNode final : public ExpressionNode {
@@ -610,11 +641,6 @@ namespace ast {
     class PassExpressionNode final : public ExpressionNode {
     public:
         explicit PassExpressionNode(const Token &passToken);
-    };
-
-    class EncapsulatedExpressionNode final : public ExpressionNode {
-    public:
-        explicit EncapsulatedExpressionNode(const Token &mainToken_);
     };
 
     class ConstructorDefinitionNode : public ExpressionNode {

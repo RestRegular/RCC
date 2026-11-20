@@ -1,0 +1,3 @@
+import "mod"
+fun main(): void { sout(hiddenHelper()) }
+main()

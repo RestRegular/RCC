@@ -1,6 +1,6 @@
-import moda
-import modb
-import base
+import "moda"
+import "modb"
+import "base"
 fun main() {
     sout(quad(1))
     sout(oct(1))

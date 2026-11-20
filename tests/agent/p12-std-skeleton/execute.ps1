@@ -119,7 +119,7 @@ function Invoke-RioCase($name, $src, $expected) {
 }
 
 Invoke-RioCase 'use_math' @'
-import(math="math")
+import "math"
 sout(max(5, 3))
 sout(min(1.5, 2.5))
 sout(pow(2, 10))
@@ -128,27 +128,27 @@ sout(opp(3))
 '@ "5`n1.5`n1024`n7`n-3"
 
 Invoke-RioCase 'use_math_qualified' @'
-import(math="math")
+import "math"
 sout(math.max(5, 3))
 sout(math.pow(1.5, 3))
 '@ "5`n3.375"
 
 Invoke-RioCase 'use_ops' @'
-import(ops="ops")
+import "ops"
 sout(ternary(true, "a", "b"))
 sout(orVal(null, 10))
 sout(orLazy(null, () -> { ret 7 }))
 '@ "a`n10`n7"
 
 Invoke-RioCase 'use_prog' @'
-import(prog="prog")
+import "prog"
 breakpoint()
 sout("alive")
 '@ "alive"
 
 # max(1,2)=2、min(3,4)=3，所以 2>3 为假 —— 期望 "no"。
 Invoke-RioCase 'use_all_three' @'
-import(math="math", ops="ops", prog="prog")
+import("math", "ops", "prog")
 sout(ternary(max(1, 2) > min(3, 4), "yes", "no"))
 breakpoint()
 '@ "no"
@@ -166,7 +166,7 @@ foreach ($gone in @('_pure_builtin.rio', 'lowlevel.rio')) {
 # 这里预期 RCC 失败：stderr 会被 PowerShell 包成 NativeCommandError，
 # 必须用 2>&1 + ErrorAction 抑制，否则脚本会以非 0 退出。
 $ll = Join-Path $work 'use_lowlevel_gone.rio'
-[System.IO.File]::WriteAllText($ll, "import(lowlevel=`"lowlevel`")`nsout(1)`n", $utf8NoBom)
+[System.IO.File]::WriteAllText($ll, "import `"lowlevel`"`nsout(1)`n", $utf8NoBom)
 # $ErrorActionPreference='Stop' 会把原生命令的 stderr 变成终止性错误，
 # 而这里**预期**失败，必须临时放宽。
 $savedEap = $ErrorActionPreference

@@ -1,5 +1,4 @@
 // G3 负面：spawn 目标用 Link 遍历原语 -> 编译期拒绝
-fun sout(*args: any, end="\n"): void { encapsulated }
 class U { var peers: Link[U][peers][many]  ctor() {} }
 fun work(u: U): void { sout(u.peers.count()) }
 fun main(): void {

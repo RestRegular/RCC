@@ -1,4 +1,3 @@
-fun sout(*args: any, end="\n"): void { encapsulated }
 sout("before")
 throw "uncaught"
 sout("NOT REACHED")

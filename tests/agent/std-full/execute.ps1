@@ -339,7 +339,7 @@ function Invoke-CompileLayer {
 
     # 已删模块的 import 必须干净失败（不是诡异错误）
     Invoke-RioFails 'compile' 'prog' 'import_lowlevel_gone' `
-        "import(lowlevel=`"lowlevel`")`nsout(1)`n" 'Cannot find imported module'
+        "import `"lowlevel`"`nsout(1)`n" 'Cannot find imported module'
 }
 
 # ============================================================================
@@ -350,7 +350,7 @@ function Invoke-CompileLayer {
 # 因为「省略能编译且等价于显式传默认值」是 §5.6 的硬要求。
 $apiSources = @{
     ds   = @'
-import(ds="ds")
+import "ds"
 var l: list[int] = [1, 2, 3]
 var e: list[int] = []
 var d: dict = {"a": 1, "b": 2}
@@ -410,7 +410,7 @@ sout(toFloat(true))
 sout(toFloat(3))
 '@
     str  = @'
-import(sm="str")
+import "str"
 sout(intToStr(1))
 sout(floatToStr(1.5))
 sout(toStr(1))
@@ -448,7 +448,7 @@ sout("[" + trim("  a  ", " ", false, true) + "]")
 sout(size("abc"))
 '@
     math = @'
-import(m="math")
+import "math"
 var a: int = abs(-1)
 var b: float = abs(-1.5)
 var c: int = max(1, 2)
@@ -470,7 +470,7 @@ sout(k)
 sout(l)
 '@
     ops  = @'
-import(o="ops")
+import "ops"
 var a: int = ternary(true, 1, 2)
 var b: str = ternary(false, "a", "b")
 var c: int = ternaryLazy(true, () -> { ret 1 }, () -> { ret 2 })
@@ -483,7 +483,7 @@ sout(d)
 sout(e)
 '@
     io   = @'
-import(io="io")
+import "io"
 var a: str = sin()
 var b: str = input()
 var c: str = input("prompt: ")
@@ -492,7 +492,7 @@ sout(core_str_len(b) >= 0)
 sout(core_str_len(c) >= 0)
 '@
     prog = @'
-import(prog="prog")
+import "prog"
 breakpoint()
 entry(0)
 var _argv: list = prog.args()
@@ -586,13 +586,13 @@ function Invoke-ApiLayer {
 
     # 已删模块必须干净失败（前端错误，不是链接期 undefined reference）
     Invoke-RioFails 'api' 'prog' 'gone_datatype' `
-        "import(datatype=`"datatype`")`nsout(1)`n" 'Cannot find imported module'
+        "import `"datatype`"`nsout(1)`n" 'Cannot find imported module'
     Invoke-RioFails 'api' 'prog' 'gone_lowlevel' `
-        "import(lowlevel=`"lowlevel`")`nsout(1)`n" 'Cannot find imported module'
+        "import `"lowlevel`"`nsout(1)`n" 'Cannot find imported module'
     # 真正不存在的函数：内建严格化（2026-11-20 裁决）后改为**前端编译期报错**，
     # 不再生成外部符号引用留到链接期炸（旧行为曾登记为已知缺陷，现已修复）。
     Invoke-RioFails 'api' 'ds' 'gone_ds_joins' `
-        "import(ds=`"ds`")`nsout(joins(`"a`", `"b`"))`n" 'undeclared function'
+        "import `"ds`"`nsout(joins(`"a`", `"b`"))`n" 'undeclared function'
 
     $reportPath = Join-Path $work 'api_report.txt'
     [System.IO.File]::WriteAllLines($reportPath, $report, $utf8NoBom)
@@ -607,9 +607,9 @@ function Invoke-BehaviorLayer {
     Write-Host ''
     Write-Host '================ 第三层：behavior ================' -ForegroundColor Cyan
 
-    $dsImp = "import(ds=`"ds`")`n"
-    $stImp = "import(sm=`"str`")`n"
-    $allImp = "import(ds=`"ds`", sm=`"str`", m=`"math`", o=`"ops`", io=`"io`", prog=`"prog`")`n"
+    $dsImp = "import `"ds`"`n"
+    $stImp = "import `"str`"`n"
+    $allImp = "import(`"ds`", `"str`", `"math`", `"ops`", `"io`", `"prog`")`n"
 
     # ---------------- ds：正常 ----------------
     Invoke-RioCase 'behavior' 'ds' 'b_ds_isEmpty' ($dsImp + @'
@@ -1046,13 +1046,13 @@ sout(toUpperCase("abc"))
 
     # ---------------- math ----------------
     Invoke-RioCase 'behavior' 'math' 'b_math_consts' (@'
-import(m="math")
+import "math"
 sout(pi)
 sout(e)
 '@) "3.141593`n2.718281" @('math.pi', 'math.e')
 
     Invoke-RioCase 'behavior' 'math' 'b_math_maxmin' (@'
-import(m="math")
+import "math"
 sout(max(5, 3))
 sout(max(1.5, 2.5))
 sout(min(3, 4))
@@ -1061,7 +1061,7 @@ sout(max(-1, -9))
 '@) "5`n2.5`n3`n1.5`n-1" @('math.max', 'math.min')
 
     Invoke-RioCase 'behavior' 'math' 'b_math_pow' (@'
-import(m="math")
+import "math"
 sout(pow(2, 10))
 sout(pow(1.5, 3))
 sout(pow(2, 0))
@@ -1069,7 +1069,7 @@ sout(pow(5, 1))
 '@) "1024`n3.375`n1`n5" @('math.pow')
 
     Invoke-RioCase 'behavior' 'math' 'b_math_abs_opp' (@'
-import(m="math")
+import "math"
 sout(abs(-7))
 sout(abs(7))
 sout(abs(-1.5))
@@ -1080,7 +1080,7 @@ sout(opp(0))
 
     # ---------------- ops ----------------
     Invoke-RioCase 'behavior' 'ops' 'b_ops_ternary' (@'
-import(o="ops")
+import "ops"
 sout(ternary(true, "a", "b"))
 sout(ternary(false, "a", "b"))
 sout(ternary(1 < 2, 10, 20))
@@ -1089,7 +1089,7 @@ sout(ternaryLazy(false, () -> { ret 1 }, () -> { ret 2 }))
 '@) "a`nb`n10`n1`n2" @('ops.ternary', 'ops.ternaryLazy')
 
     Invoke-RioCase 'behavior' 'ops' 'b_ops_or' (@'
-import(o="ops")
+import "ops"
 sout(orVal(null, 10))
 sout(orVal(5, 10))
 sout(orLazy(null, () -> { ret 7 }))
@@ -1098,7 +1098,7 @@ sout(orLazy(3, () -> { ret 7 }))
 
     # ---------------- io ----------------
     Invoke-RioCase 'behavior' 'io' 'b_io_sin' (@'
-import(io="io")
+import "io"
 var s: str = sin()
 sout(core_str_len(s) >= 0)
 sout("sin-ok")
@@ -1108,7 +1108,7 @@ sout("sin-ok")
     $inFile = Join-Path $work 'b_io_stdin.txt'
     [System.IO.File]::WriteAllText($inFile, "hello world`r`n", $utf8NoBom)
     $inSrc = @'
-import(io="io")
+import "io"
 var s: str = input("")
 sout(core_str_len(s))
 sout(s)
@@ -1130,7 +1130,7 @@ sout(s)
 
     # ---------------- prog ----------------
     Invoke-RioCase 'behavior' 'prog' 'b_prog_entry_breakpoint' (@'
-import(prog="prog")
+import "prog"
 breakpoint()
 entry(0)
 entry(0, 1, 2)
@@ -1138,7 +1138,7 @@ sout("alive")
 '@) "alive" @('prog.breakpoint', 'prog.entry')
     # G1b：prog.args() 返回 list[str]（调用程序时不传参 → 空 list）。
     Invoke-RioCase 'behavior' 'prog' 'b_prog_args' (@'
-import(prog="prog")
+import "prog"
 var a: list[str] = prog.args()
 sout(a[0])
 '@) "" @('prog.args')

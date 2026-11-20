@@ -1,5 +1,4 @@
 // P14-1a：端到端基本用例——主线程 alloc -> 子线程写+free -> join
-fun sout(*args: any, end="\n"): void { encapsulated }
 
 fun child(p: ptr): void {
     core_mem_set(p, 7, 8)

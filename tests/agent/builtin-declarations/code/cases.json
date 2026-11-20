@@ -23,6 +23,21 @@
       "mustMatch": "reserved builtin/runtime name"
     },
     {
+      "id": "pos_label_order",
+      "file": "code/pos_label_order.rio",
+      "expect": "order ok"
+    },
+    {
+      "id": "pos_type_after_modifier",
+      "file": "code/pos_type_after_modifier.rio",
+      "expect": "order ok"
+    },
+    {
+      "id": "pos_import_prelude",
+      "file": "code/pos_import_prelude.rio",
+      "expect": "import ok"
+    },
+    {
       "id": "pos_user_release",
       "file": "code/pos_user_release.rio",
       "expect": "42"
